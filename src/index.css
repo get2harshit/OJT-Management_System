@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Montserrat', system-ui, -apple-system, Roboto, Arial, sans-serif;
+  }
+  body {
+    background-color: #000000;
+    color: #f3f4f6;
+  }
+}
+
+@layer utilities {
+  .text-gold {
+    color: #ffcc3f;
+  }
+  .bg-gold {
+    background-color: #ffcc3f;
+  }
+  .border-gold {
+    border-color: #ffcc3f;
+  }
+  .hover\:bg-gold-hover:hover {
+    background-color: #e6b636;
+  }
+  .ring-gold {
+    --tw-ring-color: #ffcc3f;
+  }
+}

@@ -1,0 +1,44 @@
+import DataTable from '../../components/DataTable';
+import type { Profile, Student, Batch } from '../../lib/types';
+
+interface Props {
+  profiles: Profile[];
+  students: Student[];
+  batches: Batch[];
+}
+
+export default function MentorStudents({ profiles, students, batches }: Props) {
+  const studentProfiles = profiles.filter((p) => p.role === 'STUDENT');
+
+  const data = students.map((s) => {
+    const prof = studentProfiles.find((p) => p.id === s.user_id);
+    const batch = batches.find((b) => b.id === s.batch_id);
+    return {
+      user_id: s.user_id,
+      name: prof?.name ?? '-',
+      email: prof?.email ?? '-',
+      roll_number: s.roll_number,
+      batch: batch?.name ?? '-',
+    };
+  });
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-bold text-white">My Students</h1>
+        <p className="text-gray-400 text-sm mt-1">View your assigned students</p>
+      </div>
+
+      <DataTable
+        columns={[
+          { key: 'roll_number', header: 'Roll Number' },
+          { key: 'name', header: 'Name' },
+          { key: 'email', header: 'Email' },
+          { key: 'batch', header: 'Batch' },
+        ]}
+        data={data}
+        searchPlaceholder="Search students..."
+      />
+    </div>
+  );
+}
