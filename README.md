@@ -50,14 +50,14 @@ The frontend communicates with REST APIs for:
 - Attendance tracking
 - Credits system
 
-```env
+
 VITE_API_BASE_URL=http://localhost:5000
 
 
 ## Getting Started
 
 ### Install dependencies
-```bash
+
 npm install
 
 Run development server
@@ -69,6 +69,6 @@ Build
 npm run build
 npm run preview
 
-Staging Info
+## Staging Info
 
 This branch is used for staging deployment and testing before production release.
