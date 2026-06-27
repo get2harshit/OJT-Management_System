@@ -61,8 +61,11 @@ VITE_API_BASE_URL=http://localhost:5000
 npm install
 
 Run development server
+
 npm run dev
+
 Build
+
 npm run build
 npm run preview
 
