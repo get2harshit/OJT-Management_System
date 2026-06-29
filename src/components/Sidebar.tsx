@@ -2,17 +2,17 @@ import { useState } from 'react';
 import {
   LayoutDashboard,
   Users,
-  BookOpen,
   Cloud,
   CalendarCheck,
   FolderOpen,
   CheckSquare,
-  MessageSquare,
   ChevronLeft,
   ChevronRight,
   LogOut,
   Upload,
   CreditCard,
+  Briefcase,
+  Award,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
 
@@ -26,25 +26,27 @@ const adminTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'students', label: 'Students', icon: Users },
   { id: 'mentors', label: 'Mentors', icon: Users },
-  { id: 'semesters', label: 'Semesters', icon: BookOpen },
+  { id: 'ojts', label: 'OJTs', icon: Briefcase },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
   { id: 'credits', label: 'Cloud Credits', icon: Cloud },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
+  { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
 ];
 
 const mentorTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'students', label: 'My Students', icon: Users },
+  { id: 'ojts', label: 'OJTs & Projects', icon: Briefcase },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
-  { id: 'credits', label: 'Cloud Credits', icon: Cloud },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
-  { id: 'comments', label: 'Comments', icon: MessageSquare },
+  { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
 ];
 
 const studentTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'projects', label: 'Pick Project', icon: Briefcase },
   { id: 'tasks', label: 'My Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'My Submissions', icon: Upload },
   { id: 'credits', label: 'Cloud Credits', icon: CreditCard },
