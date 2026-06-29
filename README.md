@@ -52,7 +52,6 @@ The frontend communicates with REST APIs for:
 
 
 localhost url : http://localhost:5175/
-
 VITE_API_BASE_URL=http://localhost:5000
 
 

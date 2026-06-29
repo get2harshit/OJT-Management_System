@@ -16,7 +16,7 @@ export default function StudentCredits({ studentId, credits, profiles }: Props) 
       ...c,
       student_name: student?.name ?? '-',
     };
-  });
+  }); 
 
   return (
     <div className="space-y-4">
