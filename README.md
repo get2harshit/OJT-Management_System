@@ -1,6 +1,7 @@
 # OJT-Management_System
 
 [![Open in Bolt](https://bolt.new/static/open-in-bolt.svg)](https://bolt.new/~/sb1-yziqzkdr)
+
 # OJT Management System Frontend (Staging)
 
 This repository contains the **frontend application (staging environment)** for the OJT Management System built using React (Vite).
@@ -51,6 +52,8 @@ The frontend communicates with REST APIs for:
 
 
 localhost url : http://localhost:5175/
+
+VITE_API_BASE_URL=http://localhost:5000
 
 
 ## Getting Started
