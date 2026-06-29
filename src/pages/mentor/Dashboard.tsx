@@ -1,6 +1,7 @@
-import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Users, CheckSquare, FolderOpen, CalendarCheck, TrendingUp } from 'lucide-react';
 import StatCard from '../../components/StatCard';
-import type { Profile, Student, Task, Submission, Credit, Attendance } from '../../lib/types';
+import type { Profile, Student, Task, Submission, Attendance, Semester, Batch } from '../../lib/types';
 
 interface Props {
   mentorId: string;
@@ -8,18 +9,45 @@ interface Props {
   students: Student[];
   tasks: Task[];
   submissions: Submission[];
-  credits: Credit[];
   attendance: Attendance[];
+  semesters: Semester[];
+  batches: Batch[];
 }
 
-export default function MentorDashboard({ mentorId, profiles, students, tasks, submissions, credits, attendance }: Props) {
-  // In a real app we'd filter by mentor assignment; here we show all for demo
-  const myStudents = students;
-  const myTasks = tasks.filter((t) => t.mentor_id === mentorId || t.is_common);
-  const mySubmissions = submissions.filter((s) => myStudents.some((st) => st.user_id === s.student_id));
-  const pendingSubmissions = mySubmissions.filter((s) => s.status === 'PENDING').length;
-  const totalCredits = credits.reduce((sum, c) => sum + Number(c.amount), 0);
-  const attendanceCount = attendance.length;
+export default function MentorDashboard({ mentorId, profiles: _profiles, students, tasks, submissions, attendance, semesters, batches }: Props) {
+  const [semFilter, setSemFilter] = useState('');
+  const [batchFilter, setBatchFilter] = useState('');
+  const [trackFilter, setTrackFilter] = useState('');
+
+  const distinctSemesters = useMemo(() => {
+    const ids = [...new Set(students.map(s => s.semester_id).filter(Boolean))] as string[];
+    return semesters.filter(s => ids.includes(s.id));
+  }, [students, semesters]);
+
+  const filteredBatches = useMemo(() => {
+    if (!semFilter) return batches;
+    return batches.filter(b => b.semester_id === semFilter);
+  }, [semFilter, batches]);
+
+  const distinctTracks = useMemo(() => {
+    return [...new Set(students.map(s => s.track).filter(Boolean))] as string[];
+  }, [students]);
+
+  const filteredStudents = useMemo(() => {
+    return students.filter(s => {
+      if (semFilter && s.semester_id !== semFilter) return false;
+      if (batchFilter && s.batch_id !== batchFilter) return false;
+      if (trackFilter && s.track !== trackFilter) return false;
+      return true;
+    });
+  }, [students, semFilter, batchFilter, trackFilter]);
+
+  const studentIds = new Set(filteredStudents.map(s => s.user_id));
+
+  const myTasks = tasks.filter(t => t.mentor_id === mentorId || t.assigned_to === null);
+  const mySubmissions = submissions.filter(s => studentIds.has(s.student_id));
+  const pendingSubmissions = mySubmissions.filter(s => s.status === 'PENDING').length;
+  const filteredAttendance = attendance.filter(a => studentIds.has(a.student_id));
 
   return (
     <div className="space-y-6">
@@ -28,12 +56,27 @@ export default function MentorDashboard({ mentorId, profiles, students, tasks, s
         <p className="text-gray-400 text-sm mt-1">Overview of your assigned students and tasks</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatCard title="My Students" value={myStudents.length} icon={Users} />
+      {/* Filter Bar */}
+      <div className="flex flex-wrap gap-3">
+        <select value={semFilter} onChange={e => { setSemFilter(e.target.value); setBatchFilter(''); }} className="bg-zinc-850 border border-zinc-750 text-gray-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-gold min-w-[160px]">
+          <option value="">All Semesters</option>
+          {distinctSemesters.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <select value={batchFilter} onChange={e => setBatchFilter(e.target.value)} className="bg-zinc-850 border border-zinc-750 text-gray-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-gold min-w-[160px]">
+          <option value="">All Batches</option>
+          {filteredBatches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+        <select value={trackFilter} onChange={e => setTrackFilter(e.target.value)} className="bg-zinc-850 border border-zinc-750 text-gray-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-gold min-w-[160px]">
+          <option value="">All Tracks</option>
+          {distinctTracks.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <StatCard title="My Students" value={filteredStudents.length} icon={Users} />
         <StatCard title="My Tasks" value={myTasks.length} icon={CheckSquare} />
         <StatCard title="Pending Reviews" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" />
-        <StatCard title="Cloud Credits" value={`$${totalCredits}`} icon={Cloud} />
-        <StatCard title="Attendance Records" value={attendanceCount} icon={CalendarCheck} />
+        <StatCard title="Attendance Records" value={filteredAttendance.length} icon={CalendarCheck} />
         <StatCard title="Avg Progress" value="72%" icon={TrendingUp} trend="+5%" />
       </div>
 
@@ -44,8 +87,8 @@ export default function MentorDashboard({ mentorId, profiles, students, tasks, s
             <TrendingUp size={18} className="text-gold" />
           </div>
           <div className="space-y-3">
-            {['PENDING', 'ACCEPTED', 'RETURNED'].map((status) => {
-              const count = mySubmissions.filter((s) => s.status === status).length;
+            {(['PENDING', 'ACCEPTED', 'RETURNED'] as const).map((status) => {
+              const count = mySubmissions.filter(s => s.status === status).length;
               const pct = mySubmissions.length ? Math.round((count / mySubmissions.length) * 100) : 0;
               return (
                 <div key={status}>
@@ -73,10 +116,10 @@ export default function MentorDashboard({ mentorId, profiles, students, tasks, s
           </div>
           <div className="space-y-3">
             {myTasks
-              .filter((t) => t.due_date)
+              .filter(t => t.due_date)
               .sort((a, b) => new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime())
               .slice(0, 5)
-              .map((task) => (
+              .map(task => (
                 <div key={task.id} className="flex items-center gap-3 text-sm">
                   <div className="w-2 h-2 rounded-full bg-gold" />
                   <span className="text-gray-300 flex-1">{task.title}</span>

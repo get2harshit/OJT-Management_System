@@ -2,15 +2,16 @@ import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
-import type { Credit, Profile, Student } from '../../lib/types';
+import type { Credit, Profile, Student, CloudProvider } from '../../lib/types';
 
 interface Props {
   credits: Credit[];
   profiles: Profile[];
   students: Student[];
+  addCredit: (credit: Omit<Credit, 'id' | 'assigned_at'>) => void;
 }
 
-export default function AdminCredits({ credits, profiles, students }: Props) {
+export default function AdminCredits({ credits, profiles, students, addCredit }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({ student_id: '', provider: 'AWS', amount: '', code: '', expiry_date: '' });
 
@@ -115,7 +116,18 @@ export default function AdminCredits({ credits, profiles, students }: Props) {
             />
           </div>
           <button
-            onClick={() => setModalOpen(false)}
+            onClick={() => {
+              if (!form.student_id || !form.amount || !form.code) return;
+              addCredit({
+                student_id: form.student_id,
+                provider: form.provider as CloudProvider,
+                amount: Number(form.amount),
+                code: form.code,
+                expiry_date: form.expiry_date || null,
+              });
+              setForm({ student_id: '', provider: 'AWS', amount: '', code: '', expiry_date: '' });
+              setModalOpen(false);
+            }}
             className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors"
           >
             Assign Credit

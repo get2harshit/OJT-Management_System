@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Sidebar from '../../components/Sidebar';
 import Dashboard from './Dashboard';
+import ProjectPicker from './ProjectPicker';
 import Tasks from './Tasks';
 import Submissions from './Submissions';
 import Credits from './Credits';
@@ -9,8 +10,27 @@ import { useMockData } from '../../hooks/useMockData';
 
 export default function StudentPanel() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [initialSelectedSubId, setInitialSelectedSubId] = useState<string | null>(null);
+  const [initialNewSubTaskId, setInitialNewSubTaskId] = useState<string | null>(null);
   const data = useMockData();
   const studentId = 's1'; // demo student
+
+  const handleViewSubmission = (subId: string) => {
+    setInitialSelectedSubId(subId);
+    setInitialNewSubTaskId(null);
+    setActiveTab('submissions');
+  };
+
+  const handleNewSubmission = (taskId: string) => {
+    setInitialNewSubTaskId(taskId);
+    setInitialSelectedSubId(null);
+    setActiveTab('submissions');
+  };
+
+  const handleClearInitialState = () => {
+    setInitialSelectedSubId(null);
+    setInitialNewSubTaskId(null);
+  };
 
   const renderTab = () => {
     switch (activeTab) {
@@ -24,8 +44,25 @@ export default function StudentPanel() {
             attendance={data.attendance}
           />
         );
+      case 'projects':
+        return (
+          <ProjectPicker
+            studentId={studentId}
+            projects={data.projects}
+            students={data.students}
+            updateStudent={data.updateStudent}
+          />
+        );
       case 'tasks':
-        return <Tasks studentId={studentId} tasks={data.tasks} submissions={data.submissions} />;
+        return (
+          <Tasks
+            studentId={studentId}
+            tasks={data.tasks}
+            submissions={data.submissions}
+            onViewSubmission={handleViewSubmission}
+            onNewSubmission={handleNewSubmission}
+          />
+        );
       case 'submissions':
         return (
           <Submissions
@@ -34,6 +71,11 @@ export default function StudentPanel() {
             tasks={data.tasks}
             comments={data.comments}
             profiles={data.profiles}
+            addComment={data.addComment}
+            addSubmission={data.addSubmission}
+            initialSelectedSubId={initialSelectedSubId}
+            initialNewSubTaskId={initialNewSubTaskId}
+            onClearInitialState={handleClearInitialState}
           />
         );
       case 'credits':

@@ -2,11 +2,11 @@ import { useState } from 'react';
 import Sidebar from '../../components/Sidebar';
 import Dashboard from './Dashboard';
 import Students from './Students';
+import OJTs from './OJTs';
 import Tasks from './Tasks';
 import Submissions from './Submissions';
-import Credits from './Credits';
 import Attendance from './Attendance';
-import Comments from './Comments';
+import EvaluationTracker from './EvaluationTracker';
 import { useMockData } from '../../hooks/useMockData';
 
 export default function MentorPanel() {
@@ -24,22 +24,23 @@ export default function MentorPanel() {
             students={data.students}
             tasks={data.tasks}
             submissions={data.submissions}
-            credits={data.credits}
             attendance={data.attendance}
+            semesters={data.semesters}
+            batches={data.batches}
           />
         );
       case 'students':
         return <Students profiles={data.profiles} students={data.students} batches={data.batches} />;
+      case 'ojts':
+        return <OJTs ojts={data.ojts} projects={data.projects} students={data.students} profiles={data.profiles} addProject={data.addProject} addProjects={data.addProjects} updateStudent={data.updateStudent} deleteProject={data.deleteProject} />;
       case 'tasks':
-        return <Tasks tasks={data.tasks} mentorId={mentorId} />;
+        return <Tasks tasks={data.tasks} mentorId={mentorId} profiles={data.profiles} students={data.students} addTask={data.addTask} deleteTask={data.deleteTask} />;
       case 'submissions':
-        return <Submissions submissions={data.submissions} tasks={data.tasks} profiles={data.profiles} students={data.students} />;
-      case 'credits':
-        return <Credits credits={data.credits} profiles={data.profiles} />;
+        return <Submissions submissions={data.submissions} tasks={data.tasks} profiles={data.profiles} students={data.students} comments={data.comments} addComment={data.addComment} updateSubmissionStatus={data.updateSubmissionStatus} mentorId={mentorId} />;
       case 'attendance':
-        return <Attendance attendance={data.attendance} profiles={data.profiles} students={data.students} />;
-      case 'comments':
-        return <Comments comments={data.comments} profiles={data.profiles} submissions={data.submissions} tasks={data.tasks} />;
+        return <Attendance attendance={data.attendance} profiles={data.profiles} students={data.students} toggleAttendance={data.toggleAttendance} markAllAttendance={data.markAllAttendance} />;
+      case 'evaluation':
+        return <EvaluationTracker profiles={data.profiles} students={data.students} attendance={data.attendance} updateStudent={data.updateStudent} />;
       default:
         return (
           <Dashboard
@@ -48,8 +49,9 @@ export default function MentorPanel() {
             students={data.students}
             tasks={data.tasks}
             submissions={data.submissions}
-            credits={data.credits}
             attendance={data.attendance}
+            semesters={data.semesters}
+            batches={data.batches}
           />
         );
     }

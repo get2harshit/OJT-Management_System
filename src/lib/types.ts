@@ -28,19 +28,48 @@ export interface Student {
   user_id: string;
   roll_number: string;
   batch_id: string | null;
+  semester_id: string | null;
+  track: string | null;
+  ojt_id: string | null;
+  project_id: string | null;
+  viva1: number | null;
+  viva2: number | null;
+  viva3: number | null;
+  ojt_marks: number | null;
 }
+
+export interface OJT {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  created_at: string;
+}
+
+export interface Project {
+  id: string;
+  title: string;
+  description: string;
+  track: string;
+  created_at: string;
+}
+
+export type TaskType = 'STUDENT_SPECIFIC' | 'MENTOR_SPECIFIC';
 
 export interface Task {
   id: string;
   title: string;
   description: string | null;
-  is_common: boolean;
+  type: TaskType;
+  assigned_to: string | null;
   mentor_id: string | null;
+  start_date: string | null;
   due_date: string | null;
   created_at: string;
 }
 
 export type SubmissionStatus = 'PENDING' | 'ACCEPTED' | 'RETURNED';
+export type SubmissionCategory = 'PRD' | 'VIDEO' | 'COMMON_TASK' | 'SPECIFIC_TASK';
 
 export interface Submission {
   id: string;
@@ -50,6 +79,7 @@ export interface Submission {
   file_url: string;
   file_name: string;
   status: SubmissionStatus;
+  category: SubmissionCategory;
   submitted_at: string;
 }
 
