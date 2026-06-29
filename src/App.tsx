@@ -3,11 +3,14 @@ import { Shield, GraduationCap, User } from 'lucide-react';
 import AdminPanel from './pages/admin';
 import MentorPanel from './pages/mentor';
 import StudentPanel from './pages/student';
+import LoginForm from './components/LoginForm';
+
 
 type Panel = 'landing' | 'admin' | 'mentor' | 'student';
 
 export default function App() {
   const [panel, setPanel] = useState<Panel>('landing');
+  const [loginForm, setLoginForm] = useState<'admin' | 'mentor' | 'student' | null>(null);
 
   if (panel === 'admin') return <AdminPanel />;
   if (panel === 'mentor') return <MentorPanel />;
@@ -25,7 +28,7 @@ export default function App() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <button
-            onClick={() => setPanel('admin')}
+            onClick={() => setLoginForm('admin')}
             className="group bg-zinc-850 border border-zinc-750 rounded-2xl p-8 text-left hover:border-gold/40 hover:shadow-2xl hover:shadow-gold/5 transition-all duration-300 hover:scale-[1.02]"
           >
             <div className="flex items-center gap-4 mb-4">
@@ -43,7 +46,7 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setPanel('mentor')}
+            onClick={() => setLoginForm('mentor')}
             className="group bg-zinc-850 border border-zinc-750 rounded-2xl p-8 text-left hover:border-gold/40 hover:shadow-2xl hover:shadow-gold/5 transition-all duration-300 hover:scale-[1.02]"
           >
             <div className="flex items-center gap-4 mb-4">
@@ -61,7 +64,7 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setPanel('student')}
+            onClick={() => setLoginForm('student')}
             className="group bg-zinc-850 border border-zinc-750 rounded-2xl p-8 text-left hover:border-gold/40 hover:shadow-2xl hover:shadow-gold/5 transition-all duration-300 hover:scale-[1.02]"
           >
             <div className="flex items-center gap-4 mb-4">
@@ -77,6 +80,15 @@ export default function App() {
               View tasks, submit deliverables, track attendance, view cloud credits, and read mentor comments.
             </p>
           </button>
+
+
+          {loginForm && (
+  <LoginForm
+    role={loginForm}
+    onSuccess={(role) => { setPanel(role); setLoginForm(null); }}
+    onClose={() => setLoginForm(null)}
+  />
+)}
         </div>
       </div>
     </div>
