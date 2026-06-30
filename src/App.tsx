@@ -1,20 +1,13 @@
-import { useState } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import { Shield, GraduationCap, User } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import AdminPanel from './pages/admin';
 import MentorPanel from './pages/mentor';
 import StudentPanel from './pages/student';
-import LoginForm from './components/LoginForm';
+import RoleLogin from './pages/auth/RoleLogin';
 
-
-type Panel = 'landing' | 'admin' | 'mentor' | 'student';
-
-export default function App() {
-  const [panel, setPanel] = useState<Panel>('landing');
-  const [loginForm, setLoginForm] = useState<'admin' | 'mentor' | 'student' | null>(null);
-
-  if (panel === 'admin') return <AdminPanel />;
-  if (panel === 'mentor') return <MentorPanel />;
-  if (panel === 'student') return <StudentPanel />;
+function Landing() {
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-6">
@@ -28,7 +21,7 @@ export default function App() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <button
-            onClick={() => setLoginForm('admin')}
+            onClick={() => navigate('/admin')}
             className="group bg-zinc-850 border border-zinc-750 rounded-2xl p-8 text-left hover:border-gold/40 hover:shadow-2xl hover:shadow-gold/5 transition-all duration-300 hover:scale-[1.02]"
           >
             <div className="flex items-center gap-4 mb-4">
@@ -46,7 +39,7 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setLoginForm('mentor')}
+            onClick={() => navigate('/mentor')}
             className="group bg-zinc-850 border border-zinc-750 rounded-2xl p-8 text-left hover:border-gold/40 hover:shadow-2xl hover:shadow-gold/5 transition-all duration-300 hover:scale-[1.02]"
           >
             <div className="flex items-center gap-4 mb-4">
@@ -64,7 +57,7 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setLoginForm('student')}
+            onClick={() => navigate('/student')}
             className="group bg-zinc-850 border border-zinc-750 rounded-2xl p-8 text-left hover:border-gold/40 hover:shadow-2xl hover:shadow-gold/5 transition-all duration-300 hover:scale-[1.02]"
           >
             <div className="flex items-center gap-4 mb-4">
@@ -80,17 +73,25 @@ export default function App() {
               View tasks, submit deliverables, track attendance, view cloud credits, and read mentor comments.
             </p>
           </button>
-
-
-          {loginForm && (
-  <LoginForm
-    role={loginForm}
-    onSuccess={(role) => { setPanel(role); setLoginForm(null); }}
-    onClose={() => setLoginForm(null)}
-  />
-)}
         </div>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Landing />} />
+
+      <Route path="/admin" element={<RoleLogin role="admin" />} />
+      <Route path="/admin/dashboard/*" element={<AdminPanel />} />
+
+      <Route path="/mentor" element={<RoleLogin role="mentor" />} />
+      <Route path="/mentor/dashboard/*" element={<MentorPanel />} />
+
+      <Route path="/student" element={<RoleLogin role="student" />} />
+      <Route path="/student/dashboard/*" element={<StudentPanel />} />
+    </Routes>
   );
 }
