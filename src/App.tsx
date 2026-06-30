@@ -5,6 +5,7 @@ import AdminPanel from './pages/admin';
 import MentorPanel from './pages/mentor';
 import StudentPanel from './pages/student';
 import RoleLogin from './pages/auth/RoleLogin';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function Landing() {
   const navigate = useNavigate();
@@ -85,12 +86,36 @@ export default function App() {
       <Route path="/" element={<Landing />} />
 
       <Route path="/admin" element={<RoleLogin role="admin" />} />
-      <Route path="/admin/dashboard/*" element={<AdminPanel />} />
+      <Route
+        path="/admin/dashboard/*"
+        element={
+          <ProtectedRoute role="admin">
+            <AdminPanel />
+          </ProtectedRoute>
+        }
+      />
+      {/* <Route path="/admin/dashboard/*" element={<AdminPanel />} /> */}
 
       <Route path="/mentor" element={<RoleLogin role="mentor" />} />
-      <Route path="/mentor/dashboard/*" element={<MentorPanel />} />
+      <Route
+        path="/mentor/dashboard/*"
+        element={
+          <ProtectedRoute role="mentor">
+            <MentorPanel />
+          </ProtectedRoute>
+        }
+      />
+      {/* <Route path="/mentor/dashboard/*" element={<MentorPanel />} /> */}
 
       <Route path="/student" element={<RoleLogin role="student" />} />
+      <Route
+        path="/student/dashboard/*"
+        element={
+          <ProtectedRoute role="student">
+            <StudentPanel />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/student/dashboard/*" element={<StudentPanel />} />
     </Routes>
   );
