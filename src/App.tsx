@@ -1,46 +1,16 @@
-import { useState } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import { Shield, GraduationCap, User } from 'lucide-react';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import LoginModal from './components/LoginForm';
+import { useNavigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
 import AdminPanel from './pages/admin';
 import MentorPanel from './pages/mentor';
 import StudentPanel from './pages/student';
+import RoleLogin from './pages/auth/RoleLogin';
+import ProtectedRoute from './components/ProtectedRoute';
 
-type LoginRole = 'admin' | 'mentor' | 'student';
+function Landing() {
+  const navigate = useNavigate();
 
-function AppInner() {
-  const { user, loading, logout } = useAuth();
-  const [loginRole, setLoginRole] = useState<LoginRole | null>(null);
-
-  // Show loading state while restoring session
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
-          <p className="text-gray-400 text-sm">Restoring session…</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Authenticated — route to the correct panel based on role
-  if (user) {
-    const role = user.role;
-    if (role === 'admin' || role === 'batch_manager') {
-      return <AdminPanel onLogout={logout} />;
-    }
-    if (role === 'mentor' || role === 'external_mentor') {
-      return <MentorPanel onLogout={logout} />;
-    }
-    if (role === 'student') {
-      return <StudentPanel onLogout={logout} />;
-    }
-    // Fallback for unknown roles
-    return <AdminPanel onLogout={logout} />;
-  }
-
-  // Not authenticated — landing page
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-6">
       <div className="max-w-5xl w-full">
@@ -48,12 +18,12 @@ function AppInner() {
           <h1 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight mb-3">
             OJT <span className="text-gold">Management</span>
           </h1>
-          <p className="text-gray-400 text-lg">Select your panel to sign in</p>
+          <p className="text-gray-400 text-lg">Select your panel to continue</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <button
-            onClick={() => setLoginRole('admin')}
+            onClick={() => navigate('/admin')}
             className="group bg-zinc-850 border border-zinc-750 rounded-2xl p-8 text-left hover:border-gold/40 hover:shadow-2xl hover:shadow-gold/5 transition-all duration-300 hover:scale-[1.02]"
           >
             <div className="flex items-center gap-4 mb-4">
@@ -71,7 +41,7 @@ function AppInner() {
           </button>
 
           <button
-            onClick={() => setLoginRole('mentor')}
+            onClick={() => navigate('/mentor')}
             className="group bg-zinc-850 border border-zinc-750 rounded-2xl p-8 text-left hover:border-gold/40 hover:shadow-2xl hover:shadow-gold/5 transition-all duration-300 hover:scale-[1.02]"
           >
             <div className="flex items-center gap-4 mb-4">
@@ -89,7 +59,7 @@ function AppInner() {
           </button>
 
           <button
-            onClick={() => setLoginRole('student')}
+            onClick={() => navigate('/student')}
             className="group bg-zinc-850 border border-zinc-750 rounded-2xl p-8 text-left hover:border-gold/40 hover:shadow-2xl hover:shadow-gold/5 transition-all duration-300 hover:scale-[1.02]"
           >
             <div className="flex items-center gap-4 mb-4">
@@ -107,14 +77,6 @@ function AppInner() {
           </button>
         </div>
       </div>
-
-      {/* Login modal */}
-      {loginRole && (
-        <LoginModal
-          role={loginRole}
-          onClose={() => setLoginRole(null)}
-        />
-      )}
     </div>
   );
 }
@@ -122,7 +84,39 @@ function AppInner() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppInner />
+      <Routes>
+        <Route path="/" element={<Landing />} />
+
+        <Route path="/admin" element={<RoleLogin role="admin" />} />
+        <Route
+          path="/admin/dashboard/*"
+          element={
+            <ProtectedRoute role="admin">
+              <AdminPanel />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route path="/mentor" element={<RoleLogin role="mentor" />} />
+        <Route
+          path="/mentor/dashboard/*"
+          element={
+            <ProtectedRoute role="mentor">
+              <MentorPanel />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route path="/student" element={<RoleLogin role="student" />} />
+        <Route
+          path="/student/dashboard/*"
+          element={
+            <ProtectedRoute role="student">
+              <StudentPanel />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
     </AuthProvider>
   );
 }

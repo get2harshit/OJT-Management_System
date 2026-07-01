@@ -25,7 +25,7 @@ export default function StudentCredits({ studentId, credits, creditRequests, pro
       ...c,
       student_name: student?.name ?? '-',
     };
-  });
+  }); 
 
   const handleSave = () => {
     if (!form.amount || !form.reason) return;
