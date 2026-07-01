@@ -125,25 +125,7 @@ interface StoredData {
 }
 
 function loadData(): StoredData {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (!parsed.creditRequests) parsed.creditRequests = defaultCreditRequests;
-      
-      // Sync local storage when default profiles/mentors are modified
-      const hasNitin = parsed.profiles?.some((p: any) => p.name === 'Nitin Singh');
-      const hasJaya = parsed.profiles?.some((p: any) => p.name === 'Jayaprasad');
-      const hasRohit = parsed.profiles?.some((p: any) => p.name === 'Rohit Gupta');
-      if (hasNitin || hasJaya || !hasRohit) {
-        parsed.profiles = defaultProfiles;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-      }
-      
-      return parsed as StoredData;
-    }
-  } catch { /* ignore parse errors */ }
-  return {
+  const freshDefaults: StoredData = {
     profiles: defaultProfiles,
     semesters: defaultSemesters,
     batches: defaultBatches,
@@ -157,6 +139,33 @@ function loadData(): StoredData {
     ojts: defaultOJTs,
     projects: defaultProjects,
   };
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (!parsed.creditRequests) parsed.creditRequests = defaultCreditRequests;
+      
+      // Auto-reset local storage when outdated tracks are found
+      const hasOldTracks = parsed.students?.some((s: any) => 
+        s.track === 'Cloud Computing' || s.track === 'DevOps' || s.track === 'Full Stack'
+      ) || parsed.projects?.some((p: any) => 
+        p.track === 'Cloud Computing' || p.track === 'DevOps' || p.track === 'Full Stack'
+      );
+
+      const hasNitin = parsed.profiles?.some((p: any) => p.name === 'Nitin Singh');
+      const hasJaya = parsed.profiles?.some((p: any) => p.name === 'Jayaprasad');
+      const hasRohit = parsed.profiles?.some((p: any) => p.name === 'Rohit Gupta');
+
+      if (hasOldTracks || hasNitin || hasJaya || !hasRohit) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(freshDefaults));
+        return freshDefaults;
+      }
+      
+      return parsed as StoredData;
+    }
+  } catch { /* ignore parse errors */ }
+  return freshDefaults;
 }
 
 function saveData(data: StoredData) {
