@@ -4,20 +4,33 @@ FROM node:20-alpine AS builder
 WORKDIR /usr/src/app
 
 COPY package*.json ./
+COPY tsconfig*.json ./
+COPY vite.config.ts ./
+COPY tailwind.config.js ./
+COPY postcss.config.js ./
+COPY index.html ./
+
 RUN npm ci
 
-COPY . .
+COPY src ./src
+COPY public ./public
 
 RUN npm run build
 
-# Stage 2: Serve static build with nginx
-FROM nginx:1.27-alpine
+# Stage 2: Production Run
+FROM node:20-alpine
 
-COPY --from=builder /usr/src/app/dist /usr/share/nginx/html
+WORKDIR /usr/src/app
 
-# SPA fallback so client-side routes (react-router-dom) don't 404 on refresh
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY package*.json ./
 
-EXPOSE 80
+RUN npm ci --omit=dev
 
-CMD ["nginx", "-g", "daemon off;"]
+COPY public ./public
+COPY --from=builder /usr/src/app/dist ./dist
+COPY server.js ./dist/server.js
+
+EXPOSE 8080
+ENV NODE_ENV=production
+
+CMD ["node", "dist/server.js"]
