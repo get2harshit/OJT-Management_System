@@ -32,7 +32,7 @@ export default function ProtectedRoute({ role, children }: Props) {
     );
 
   if (!hasAccess) {
-    return <Navigate to={`/${role}`} replace />;
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
