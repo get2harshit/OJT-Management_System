@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard,
   Users,
@@ -20,13 +21,15 @@ interface SidebarProps {
   panel: PanelType;
   activeTab: string;
   onTabChange: (tab: string) => void;
+  onLogout?: () => void;
 }
 
 const adminTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'students', label: 'Students', icon: Users },
   { id: 'mentors', label: 'Mentors', icon: Users },
-  { id: 'ojts', label: 'OJTs', icon: Briefcase },
+  { id: 'ojts', label: 'OJT Setup', icon: Briefcase },
+  { id: 'allocations', label: 'Allocations', icon: Award },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
   { id: 'credits', label: 'Cloud Credits', icon: Cloud },
@@ -40,6 +43,7 @@ const mentorTabs = [
   { id: 'ojts', label: 'OJTs & Projects', icon: Briefcase },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
+  { id: 'credits', label: 'Credit Requests', icon: Cloud },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
 ];
@@ -53,8 +57,16 @@ const studentTabs = [
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
 ];
 
-export default function Sidebar({ panel, activeTab, onTabChange }: SidebarProps) {
+export default function Sidebar({ panel, activeTab, onTabChange, onLogout }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+
+  let user = null;
+  try {
+    const auth = useAuth();
+    user = auth.user;
+  } catch {
+    // AuthProvider not present
+  }
 
   const tabs =
     panel === 'admin' ? adminTabs :
@@ -107,15 +119,29 @@ export default function Sidebar({ panel, activeTab, onTabChange }: SidebarProps)
         })}
       </nav>
 
+      {user && (
+        <div className="p-4 border-t border-zinc-750 flex items-center gap-3 bg-zinc-800/10">
+          <div className="w-8 h-8 rounded-full bg-gold/15 border border-gold/30 flex items-center justify-center text-gold font-bold text-sm shrink-0">
+            {user.fullName?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
+          </div>
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-white truncate">{user.fullName || 'User'}</p>
+              <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="p-4 border-t border-zinc-750">
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => onLogout ? onLogout() : window.location.reload()}
           className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors ${
             collapsed ? 'justify-center w-full' : ''
           }`}
         >
           <LogOut size={18} />
-          {!collapsed && <span>Switch Panel</span>}
+          {!collapsed && <span>{onLogout ? 'Sign Out' : 'Switch Panel'}</span>}
         </button>
       </div>
     </aside>

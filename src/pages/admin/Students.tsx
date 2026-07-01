@@ -32,7 +32,7 @@ export default function AdminStudents({
   const [csvText, setCsvText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const tracks = ['Cloud Computing', 'DevOps', 'Full Stack', 'Data Science', 'Cybersecurity'];
+  const tracks = ['Product Development', 'Application Development', 'Data Scientist', 'Open Source', 'Gen AI'];
   const studentProfiles = profiles.filter(p => p.role === 'STUDENT');
 
   const data = students.map(s => {
@@ -90,26 +90,26 @@ export default function AdminStudents({
     }
     const lines = text.trim().split('\n');
     const parsed: { name: string; email: string; roll_number: string; batch_id: string | null; semester_id: string | null; track: string | null }[] = [];
-    
+
     for (let i = 1; i < lines.length; i++) {
       const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
       if (cols.length >= 3) {
         const name = cols[0];
         const email = cols[1];
         const roll_number = cols[2];
-        
+
         // Find semester by name
         const semName = cols[3] || '';
         const semester = semesters.find(sem => sem.name.toLowerCase() === semName.toLowerCase());
         const semester_id = semester ? semester.id : null;
-        
+
         // Find batch by name
         const batName = cols[4] || '';
         const batch = batches.find(b => b.name.toLowerCase() === batName.toLowerCase());
         const batch_id = batch ? batch.id : null;
-        
+
         const track = cols[5] || null;
-        
+
         parsed.push({ name, email, roll_number, semester_id, batch_id, track });
       }
     }
@@ -143,13 +143,6 @@ export default function AdminStudents({
           <p className="text-gray-400 text-sm mt-1">Manage enrolled students</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => setCsvModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200"
-          >
-            <Upload size={18} />
-            Upload CSV
-          </button>
           <button
             onClick={() => { setEditingId(null); setForm({ name: '', email: '', roll_number: '', batch_id: '', semester_id: '', track: '' }); setModalOpen(true); }}
             className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200"
@@ -258,14 +251,14 @@ export default function AdminStudents({
           <div className="bg-zinc-800/40 p-3 rounded-lg text-xs font-mono text-gray-400 space-y-1">
             <span className="text-gold">Example Format:</span>
             <div>name,email,roll_number,semester,batch,track</div>
-            <div>John Doe,john@ojt.edu,OJT-2024-007,Fall 2024,Batch A,Cloud Computing</div>
+            <div>John Doe,john@ojt.edu,OJT-2024-007,Fall 2024,Batch A,Product Development</div>
           </div>
           <div>
             <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleFileUpload} className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gold/10 file:text-gold hover:file:bg-gold/20" />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Or paste CSV below</label>
-            <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={6} placeholder={"name,email,roll_number,semester,batch,track\nJohn Doe,john@ojt.edu,OJT-2024-007,Fall 2024,Batch A,Cloud Computing"} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold font-mono" />
+            <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={6} placeholder={"name,email,roll_number,semester,batch,track\nJohn Doe,john@ojt.edu,OJT-2024-007,Fall 2024,Batch A,Product Development"} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold font-mono" />
           </div>
           <button onClick={handleCSVUpload} className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors flex items-center justify-center gap-2">
             <FileText size={18} />

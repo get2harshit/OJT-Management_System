@@ -25,7 +25,7 @@ function getTaskStatus(task: Task, submissions: Submission[], studentId: string)
   return 'UPCOMING';
 }
 
-export default function StudentTasks({ studentId, tasks, submissions }: Props) {
+export default function StudentTasks({ studentId, tasks, submissions, onViewSubmission, onNewSubmission }: Props) {
   const [filter, setFilter] = useState<TaskFilter>('ALL');
 
   const taskData = useMemo(() => {

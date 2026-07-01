@@ -1,16 +1,22 @@
 import { useState, useCallback } from 'react';
 import type {
   Profile, Semester, Batch, Student, Task, Submission, Credit, Attendance, Comment,
-  OJT, Project,
+  OJT, Project, CreditRequest
 } from '../lib/types';
 
 // ─── Default Mock Data ──────────────────────────────────────────────────────────
 
 const defaultProfiles: Profile[] = [
   { id: 'a1', email: 'admin@ojt.edu', name: 'Admin User', role: 'ADMIN', created_at: '2024-01-01' },
-  { id: 'm1', email: 'mentor1@ojt.edu', name: 'Dr. Sarah Chen', role: 'MENTOR', created_at: '2024-01-01' },
-  { id: 'm2', email: 'mentor2@ojt.edu', name: 'Prof. James Wilson', role: 'MENTOR', created_at: '2024-01-01' },
-  { id: 'm3', email: 'mentor3@ojt.edu', name: 'Dr. Priya Patel', role: 'MENTOR', created_at: '2024-01-01' },
+  // OJT Form mentors (Nitin Singh & Jayaprasad removed, Rohit Gupta added)
+  { id: 'm1', email: 'vishal.donda@ojt.edu', name: 'Donda Vishal', role: 'MENTOR', created_at: '2024-01-01', track: 'Application Development', tracks: ['Application Development', 'Data Scientist'], capacity: 5, is_available: true },
+  { id: 'm2', email: 'rohit.gupta@ojt.edu', name: 'Rohit Gupta', role: 'MENTOR', created_at: '2024-01-01', track: 'Application Development', tracks: ['Application Development', 'Product Development', 'Gen AI'], capacity: 5, is_available: true },
+  { id: 'm3', email: 'khan.majeed@ojt.edu', name: 'Mohammed Majeed Khan', role: 'MENTOR', created_at: '2024-01-01', track: 'Application Development', tracks: ['Application Development'], capacity: 5, is_available: true },
+  { id: 'm4', email: 'batra.harshit@ojt.edu', name: 'Harshit Batra', role: 'MENTOR', created_at: '2024-01-01', track: 'Application Development', tracks: ['Application Development', 'Product Development', 'Gen AI'], capacity: 5, is_available: true },
+  { id: 'm6', email: 'dhooria.kshitiz@ojt.edu', name: 'Kshitiz Dhooria', role: 'MENTOR', created_at: '2024-01-01', track: 'Application Development', tracks: ['Application Development', 'Product Development'], capacity: 5, is_available: true },
+  { id: 'm7', email: 'patidar.narvin@ojt.edu', name: 'Narvin Patidar', role: 'MENTOR', created_at: '2024-01-01', track: 'Application Development', tracks: ['Application Development', 'Open Source'], capacity: 5, is_available: true },
+  { id: 'm8', email: 'kumar.divyashant@ojt.edu', name: 'Divyashant Kumar', role: 'MENTOR', created_at: '2024-01-01', track: 'Application Development', tracks: ['Application Development', 'Product Development'], capacity: 5, is_available: true },
+  { id: 'm9', email: 'das.subham@ojt.edu', name: 'Subham Das', role: 'MENTOR', created_at: '2024-01-01', track: 'Application Development', tracks: ['Application Development'], capacity: 5, is_available: true },
   { id: 's1', email: 'student1@ojt.edu', name: 'Alice Johnson', role: 'STUDENT', created_at: '2024-01-01' },
   { id: 's2', email: 'student2@ojt.edu', name: 'Bob Smith', role: 'STUDENT', created_at: '2024-01-01' },
   { id: 's3', email: 'student3@ojt.edu', name: 'Charlie Davis', role: 'STUDENT', created_at: '2024-01-01' },
@@ -31,12 +37,12 @@ const defaultBatches: Batch[] = [
 ];
 
 const defaultStudents: Student[] = [
-  { user_id: 's1', roll_number: 'OJT-2024-001', batch_id: 'b1', semester_id: 'sem1', track: 'Cloud Computing', ojt_id: 'ojt1', project_id: 'p1', viva1: 85, viva2: 78, viva3: null, ojt_marks: 72 },
-  { user_id: 's2', roll_number: 'OJT-2024-002', batch_id: 'b1', semester_id: 'sem1', track: 'Cloud Computing', ojt_id: 'ojt1', project_id: 'p2', viva1: 70, viva2: null, viva3: null, ojt_marks: null },
-  { user_id: 's3', roll_number: 'OJT-2024-003', batch_id: 'b1', semester_id: 'sem1', track: 'DevOps', ojt_id: 'ojt1', project_id: null, viva1: 92, viva2: 88, viva3: 90, ojt_marks: 85 },
-  { user_id: 's4', roll_number: 'OJT-2024-004', batch_id: 'b2', semester_id: 'sem1', track: 'DevOps', ojt_id: null, project_id: null, viva1: null, viva2: null, viva3: null, ojt_marks: null },
-  { user_id: 's5', roll_number: 'OJT-2024-005', batch_id: 'b2', semester_id: 'sem2', track: 'Full Stack', ojt_id: null, project_id: null, viva1: 60, viva2: 55, viva3: null, ojt_marks: null },
-  { user_id: 's6', roll_number: 'OJT-2024-006', batch_id: 'b3', semester_id: 'sem2', track: 'Full Stack', ojt_id: null, project_id: null, viva1: null, viva2: null, viva3: null, ojt_marks: null },
+  { user_id: 's1', roll_number: 'OJT-2024-001', batch_id: 'b1', semester_id: 'sem1', track: 'Product Development', ojt_id: 'ojt1', project_id: 'p1', mentor_id: 'm1', viva1: 85, viva2: 78, viva3: null, ojt_marks: 72, internal_marks: 88, presentation_marks: 90, logbook_checked: true, project_video_url: 'https://youtube.com/watch?v=demo1', deployment_url: 'https://demo1.vercel.app', progress_status: 'ON_TRACK', preferred_mentors: ['m1', 'm2'] },
+  { user_id: 's2', roll_number: 'OJT-2024-002', batch_id: 'b1', semester_id: 'sem1', track: 'Product Development', ojt_id: 'ojt1', project_id: 'p2', mentor_id: 'm1', viva1: 70, viva2: null, viva3: null, ojt_marks: null, internal_marks: null, presentation_marks: null, logbook_checked: false, progress_status: 'DELAYING' },
+  { user_id: 's3', roll_number: 'OJT-2024-003', batch_id: 'b1', semester_id: 'sem1', track: 'Application Development', ojt_id: 'ojt1', project_id: 'p3', mentor_id: 'm2', viva1: 92, viva2: 88, viva3: 90, ojt_marks: 85, internal_marks: 91, presentation_marks: 94, logbook_checked: true, project_video_url: 'https://youtube.com/watch?v=demo3', deployment_url: 'https://demo3.vercel.app', progress_status: 'ON_TRACK' },
+  { user_id: 's4', roll_number: 'OJT-2024-004', batch_id: 'b2', semester_id: 'sem1', track: 'Application Development', ojt_id: null, project_id: null, mentor_id: null, viva1: null, viva2: null, viva3: null, ojt_marks: null, progress_status: 'IN_PROCESS' },
+  { user_id: 's5', roll_number: 'OJT-2024-005', batch_id: 'b2', semester_id: 'sem2', track: 'Data Scientist', ojt_id: null, project_id: null, mentor_id: 'm3', viva1: 60, viva2: 55, viva3: null, ojt_marks: null, progress_status: 'DELAYING' },
+  { user_id: 's6', roll_number: 'OJT-2024-006', batch_id: 'b3', semester_id: 'sem2', track: 'Data Scientist', ojt_id: null, project_id: null, mentor_id: null, viva1: null, viva2: null, viva3: null, ojt_marks: null, progress_status: 'IN_PROCESS' },
 ];
 
 const defaultOJTs: OJT[] = [
@@ -45,17 +51,17 @@ const defaultOJTs: OJT[] = [
 ];
 
 const defaultProjects: Project[] = [
-  { id: 'p1', title: 'AWS Infrastructure Automation', description: 'Build automated infrastructure provisioning using Terraform and AWS.', track: 'Cloud Computing', created_at: '2024-09-05' },
-  { id: 'p2', title: 'GCP Kubernetes Deployment', description: 'Deploy a multi-tier application on GKE.', track: 'Cloud Computing', created_at: '2024-09-05' },
-  { id: 'p3', title: 'CI/CD Pipeline Design', description: 'Design a full CI/CD pipeline using GitHub Actions.', track: 'DevOps', created_at: '2024-09-05' },
+  { id: 'p1', title: 'E-Commerce Marketplace', description: 'Design a full-featured e-commerce application with secure checkout and catalog management.', track: 'Product Development', created_at: '2024-09-05', end_goals: 'Working frontend, Stripe integration, deployment link', related_field: 'React, Node, Express, MongoDB' },
+  { id: 'p2', title: 'Social Network App', description: 'Build a private social networking service with feeds, messaging, and profile setup.', track: 'Application Development', created_at: '2024-09-05', end_goals: 'Responsive mobile-friendly dashboard and messaging system', related_field: 'Flutter, Firebase, GraphQL' },
+  { id: 'p3', title: 'Customer Churn Predictor', description: 'Create an ML model that predicts customer churn based on usage logs and demographic variables.', track: 'Data Scientist', created_at: '2024-09-05', end_goals: 'Jupyter notebook with models, confusion matrices, and model API', related_field: 'Python, Pandas, Scikit-learn, FastAPI' },
 ];
 
 const defaultTasks: Task[] = [
-  { id: 't1', title: 'Cloud Fundamentals', description: 'Learn cloud basics', type: 'STUDENT_SPECIFIC', assigned_to: null, mentor_id: null, start_date: '2024-09-01', due_date: '2024-10-15', created_at: '2024-09-01' },
-  { id: 't2', title: 'AWS EC2 Setup', description: 'Deploy a VM', type: 'STUDENT_SPECIFIC', assigned_to: 's1', mentor_id: null, start_date: '2024-09-10', due_date: '2024-10-20', created_at: '2024-09-01' },
-  { id: 't3', title: 'VPC Configuration', description: 'Set up networking', type: 'MENTOR_SPECIFIC', assigned_to: 'm1', mentor_id: 'm1', start_date: '2024-09-15', due_date: '2024-10-25', created_at: '2024-09-05' },
-  { id: 't4', title: 'S3 Storage Lab', description: 'Object storage practice', type: 'STUDENT_SPECIFIC', assigned_to: 's3', mentor_id: 'm2', start_date: '2024-09-20', due_date: '2024-10-30', created_at: '2024-09-05' },
-  { id: 't5', title: 'Weekly Progress Report', description: 'Submit weekly report to mentor', type: 'MENTOR_SPECIFIC', assigned_to: null, mentor_id: null, start_date: '2024-09-01', due_date: '2024-12-20', created_at: '2024-09-01' },
+  { id: 't1', title: 'Wireframe and PRD Submission', description: 'Draft the product requirements and draw low-fidelity user wireframes.', type: 'STUDENT_SPECIFIC', assigned_to: null, mentor_id: null, start_date: '2024-09-01', due_date: '2024-10-15', created_at: '2024-09-01', week_number: 1, sub_tasks: ['Draft PRD document', 'Draw initial mobile screens', 'Get peer feedback'], is_viva: false, track: 'Product Development' },
+  { id: 't2', title: 'Database Design Schema', description: 'Formulate database entities, relations, and primary keys.', type: 'STUDENT_SPECIFIC', assigned_to: 's1', mentor_id: null, start_date: '2024-09-10', due_date: '2024-10-20', created_at: '2024-09-01', week_number: 2, sub_tasks: ['Create ERD schema diagram', 'Run migration scripts locally', 'Insert initial mock records'], is_viva: false, track: 'Product Development' },
+  { id: 't3', title: 'Viva 1: Mid-Term Evaluation', description: 'Oral evaluation on foundational aspects and architecture design.', type: 'MENTOR_SPECIFIC', assigned_to: 'm1', mentor_id: 'm1', start_date: '2024-09-15', due_date: '2024-10-25', created_at: '2024-09-05', week_number: 4, sub_tasks: ['Review design drafts', 'Examine database performance constraints'], is_viva: true, track: 'Product Development' },
+  { id: 't4', title: 'Feature API Development', description: 'Build and deploy RESTful end-points.', type: 'STUDENT_SPECIFIC', assigned_to: 's3', mentor_id: 'm2', start_date: '2024-09-20', due_date: '2024-10-30', created_at: '2024-09-05', week_number: 6, sub_tasks: ['Write unit tests for endpoints', 'Deploy staging API'], is_viva: false, track: 'Application Development' },
+  { id: 't5', title: 'Log Book Submission', description: 'Submit log book for checking.', type: 'MENTOR_SPECIFIC', assigned_to: null, mentor_id: null, start_date: '2024-09-01', due_date: '2024-12-20', created_at: '2024-09-01', week_number: 12, sub_tasks: ['Check all weekly logs', 'Sign off logbook page'], is_viva: false, track: 'Product Development' },
 ];
 
 const defaultSubmissions: Submission[] = [
@@ -73,6 +79,11 @@ const defaultCredits: Credit[] = [
   { id: 'c2', student_id: 's1', provider: 'GCP', amount: 150, code: 'GCP-CREDIT-002', expiry_date: '2025-06-01', assigned_at: '2024-09-01' },
   { id: 'c3', student_id: 's2', provider: 'AWS', amount: 100, code: 'AWS-CREDIT-003', expiry_date: '2025-06-01', assigned_at: '2024-09-01' },
   { id: 'c4', student_id: 's3', provider: 'VULTR', amount: 50, code: 'VULTR-CREDIT-004', expiry_date: '2025-03-01', assigned_at: '2024-09-01' },
+];
+
+const defaultCreditRequests: CreditRequest[] = [
+  { id: 'cr1', student_id: 's1', provider: 'AWS', amount: 100, reason: 'Need AWS credits for hosting e-commerce prototype.', mentor_status: 'VOUCHED', admin_status: 'PENDING', created_at: '2024-09-20' },
+  { id: 'cr2', student_id: 's2', provider: 'GCP', amount: 50, reason: 'Need Google App Engine hosting for assignment.', mentor_status: 'PENDING', admin_status: 'PENDING', created_at: '2024-09-21' },
 ];
 
 const defaultAttendance: Attendance[] = [
@@ -106,6 +117,7 @@ interface StoredData {
   tasks: Task[];
   submissions: Submission[];
   credits: Credit[];
+  creditRequests: CreditRequest[];
   attendance: Attendance[];
   comments: Comment[];
   ojts: OJT[];
@@ -115,7 +127,21 @@ interface StoredData {
 function loadData(): StoredData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as StoredData;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (!parsed.creditRequests) parsed.creditRequests = defaultCreditRequests;
+      
+      // Sync local storage when default profiles/mentors are modified
+      const hasNitin = parsed.profiles?.some((p: any) => p.name === 'Nitin Singh');
+      const hasJaya = parsed.profiles?.some((p: any) => p.name === 'Jayaprasad');
+      const hasRohit = parsed.profiles?.some((p: any) => p.name === 'Rohit Gupta');
+      if (hasNitin || hasJaya || !hasRohit) {
+        parsed.profiles = defaultProfiles;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+      }
+      
+      return parsed as StoredData;
+    }
   } catch { /* ignore parse errors */ }
   return {
     profiles: defaultProfiles,
@@ -125,6 +151,7 @@ function loadData(): StoredData {
     tasks: defaultTasks,
     submissions: defaultSubmissions,
     credits: defaultCredits,
+    creditRequests: defaultCreditRequests,
     attendance: defaultAttendance,
     comments: defaultComments,
     ojts: defaultOJTs,
@@ -179,13 +206,23 @@ export function useMockData() {
   }, [data, persist]);
 
   // ── Profiles (Mentors & Students) ────────────────────────────────────────────
-  const addMentor = useCallback((name: string, email: string) => {
+  const addMentor = useCallback((name: string, email: string, tracks: string[], capacity = 5, isAvailable = true) => {
     const id = 'm' + uid();
-    const profile: Profile = { id, name, email, role: 'MENTOR', created_at: new Date().toISOString().slice(0, 10) };
+    const profile: Profile = {
+      id,
+      name,
+      email,
+      role: 'MENTOR',
+      created_at: new Date().toISOString().slice(0, 10),
+      track: tracks[0] || 'Product Development',
+      tracks,
+      capacity,
+      is_available: isAvailable
+    };
     persist({ ...data, profiles: [...data.profiles, profile] });
   }, [data, persist]);
 
-  const addMentors = useCallback((records: { name: string; email: string }[]) => {
+  const addMentors = useCallback((records: { name: string; email: string; tracks?: string[] }[]) => {
     const newProfiles = [...data.profiles];
     records.forEach(r => {
       const id = 'm' + uid();
@@ -194,10 +231,82 @@ export function useMockData() {
         name: r.name,
         email: r.email,
         role: 'MENTOR',
-        created_at: new Date().toISOString().slice(0, 10)
+        created_at: new Date().toISOString().slice(0, 10),
+        track: r.tracks?.[0] || 'Product Development',
+        tracks: r.tracks || ['Product Development'],
+        capacity: 5,
+        is_available: true
       });
     });
     persist({ ...data, profiles: newProfiles });
+  }, [data, persist]);
+
+  const updateProfile = useCallback((id: string, patch: Partial<Profile>) => {
+    persist({
+      ...data,
+      profiles: data.profiles.map(p => p.id === id ? { ...p, ...patch } : p)
+    });
+  }, [data, persist]);
+
+  const importOJTBatch = useCallback((cohortId: string, studentRecords: any[]) => {
+    let currentProfiles = [...data.profiles];
+    let currentStudents = [...data.students];
+    let currentProjects = [...data.projects];
+
+    studentRecords.forEach(record => {
+      const studentId = 's' + uid();
+      currentProfiles.push({
+        id: studentId,
+        email: record.email || `${record.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@ojt.edu`,
+        name: record.name,
+        role: 'STUDENT',
+        created_at: new Date().toISOString().slice(0, 10)
+      });
+
+      let projectId: string | null = null;
+      if (record.is_own_project) {
+        const newProjId = 'p' + uid();
+        currentProjects.push({
+          id: newProjId,
+          title: record.project_title || `Own Project - ${record.name}`,
+          description: record.project_description || '',
+          track: record.track,
+          created_at: new Date().toISOString().slice(0, 10),
+          related_field: record.tech_stack || '',
+          source: 'Own'
+        });
+        projectId = newProjId;
+      }
+
+      const randNum = Math.floor(100 + Math.random() * 900);
+      const rollNumber = `OJT-2024-${randNum}`;
+
+      currentStudents.push({
+        user_id: studentId,
+        roll_number: rollNumber,
+        batch_id: null,
+        semester_id: null,
+        track: record.track,
+        ojt_id: cohortId,
+        project_id: projectId,
+        mentor_id: null,
+        preferred_mentors: record.preferred_mentors || [],
+        contact_no: record.contact_no || '',
+        tech_stack: record.tech_stack || '',
+        viva1: null,
+        viva2: null,
+        viva3: null,
+        ojt_marks: null,
+        progress_status: 'IN_PROCESS'
+      });
+    });
+
+    persist({
+      ...data,
+      profiles: currentProfiles,
+      students: currentStudents,
+      projects: currentProjects
+    });
   }, [data, persist]);
 
   const addStudentRecord = useCallback((name: string, email: string, roll_number: string, batch_id: string, semester_id: string, track: string) => {
@@ -211,7 +320,9 @@ export function useMockData() {
       track: track || null,
       ojt_id: null,
       project_id: null,
+      mentor_id: null,
       viva1: null, viva2: null, viva3: null, ojt_marks: null,
+      progress_status: 'IN_PROCESS'
     };
     persist({ ...data, profiles: [...data.profiles, profile], students: [...data.students, student] });
   }, [data, persist]);
@@ -237,7 +348,9 @@ export function useMockData() {
         track: r.track,
         ojt_id: null,
         project_id: null,
+        mentor_id: null,
         viva1: null, viva2: null, viva3: null, ojt_marks: null,
+        progress_status: 'IN_PROCESS'
       });
     });
 
@@ -328,6 +441,98 @@ export function useMockData() {
     persist({ ...data, credits: [...data.credits, { ...credit, id: uid(), assigned_at: new Date().toISOString().slice(0, 10) }] });
   }, [data, persist]);
 
+  const addCreditRequest = useCallback((req: Omit<CreditRequest, 'id' | 'mentor_status' | 'admin_status' | 'created_at'>) => {
+    const newReq: CreditRequest = {
+      ...req,
+      id: 'cr' + uid(),
+      mentor_status: 'PENDING',
+      admin_status: 'PENDING',
+      created_at: new Date().toISOString().slice(0, 10),
+    };
+    persist({ ...data, creditRequests: [...data.creditRequests, newReq] });
+  }, [data, persist]);
+
+  const vouchCreditRequest = useCallback((id: string, status: 'VOUCHED' | 'REJECTED') => {
+    persist({
+      ...data,
+      creditRequests: data.creditRequests.map(r => r.id === id ? { ...r, mentor_status: status } : r)
+    });
+  }, [data, persist]);
+
+  const approveCreditRequest = useCallback((id: string, status: 'APPROVED' | 'REJECTED', code?: string) => {
+    const target = data.creditRequests.find(r => r.id === id);
+    if (!target) return;
+
+    let updatedCredits = [...data.credits];
+    if (status === 'APPROVED' && code) {
+      updatedCredits.push({
+        id: 'c' + uid(),
+        student_id: target.student_id,
+        provider: target.provider,
+        amount: target.amount,
+        code: code,
+        expiry_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), // 90 days expiry
+        assigned_at: new Date().toISOString().slice(0, 10),
+      });
+    }
+
+    persist({
+      ...data,
+      credits: updatedCredits,
+      creditRequests: data.creditRequests.map(r => r.id === id ? { ...r, admin_status: status, code } : r)
+    });
+  }, [data, persist]);
+
+  // ── Change Requests ──────────────────────────────────────────────────────────
+  const addStudentChangeRequest = useCallback((studentId: string, type: 'MENTOR' | 'PROJECT', requestedId: string, reason: string) => {
+    const student = data.students.find(s => s.user_id === studentId);
+    const currentCount = student?.change_request?.count || 0;
+
+    const updatedStudents = data.students.map(s => {
+      if (s.user_id === studentId) {
+        return {
+          ...s,
+          change_request: {
+            type,
+            requestedId,
+            reason,
+            status: 'PENDING' as const,
+            count: currentCount + 1
+          }
+        };
+      }
+      return s;
+    });
+
+    persist({ ...data, students: updatedStudents });
+  }, [data, persist]);
+
+  const resolveStudentChangeRequest = useCallback((studentId: string, status: 'APPROVED' | 'REJECTED') => {
+    const student = data.students.find(s => s.user_id === studentId);
+    if (!student || !student.change_request) return;
+
+    const { type, requestedId } = student.change_request;
+
+    const updatedStudents = data.students.map(s => {
+      if (s.user_id === studentId) {
+        const patch: Partial<Student> = {
+          change_request: {
+            ...s.change_request!,
+            status
+          }
+        };
+        if (status === 'APPROVED') {
+          if (type === 'MENTOR') patch.mentor_id = requestedId;
+          if (type === 'PROJECT') patch.project_id = requestedId;
+        }
+        return { ...s, ...patch };
+      }
+      return s;
+    });
+
+    persist({ ...data, students: updatedStudents });
+  }, [data, persist]);
+
   return {
     ...data,
     addOJT,
@@ -337,6 +542,8 @@ export function useMockData() {
     deleteProject,
     addMentor,
     addMentors,
+    updateProfile,
+    importOJTBatch,
     addStudentRecord,
     addStudentRecords,
     deleteProfile,
@@ -350,5 +557,10 @@ export function useMockData() {
     toggleAttendance,
     markAllAttendance,
     addCredit,
+    addCreditRequest,
+    vouchCreditRequest,
+    approveCreditRequest,
+    addStudentChangeRequest,
+    resolveStudentChangeRequest,
   };
 }

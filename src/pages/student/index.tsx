@@ -8,7 +8,7 @@ import Credits from './Credits';
 import Attendance from './Attendance';
 import { useMockData } from '../../hooks/useMockData';
 
-export default function StudentPanel() {
+export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [initialSelectedSubId, setInitialSelectedSubId] = useState<string | null>(null);
   const [initialNewSubTaskId, setInitialNewSubTaskId] = useState<string | null>(null);
@@ -50,7 +50,9 @@ export default function StudentPanel() {
             studentId={studentId}
             projects={data.projects}
             students={data.students}
+            profiles={data.profiles}
             updateStudent={data.updateStudent}
+            addStudentChangeRequest={data.addStudentChangeRequest}
           />
         );
       case 'tasks':
@@ -79,7 +81,15 @@ export default function StudentPanel() {
           />
         );
       case 'credits':
-        return <Credits studentId={studentId} credits={data.credits} profiles={data.profiles} />;
+        return (
+          <Credits
+            studentId={studentId}
+            credits={data.credits}
+            creditRequests={data.creditRequests}
+            profiles={data.profiles}
+            addCreditRequest={data.addCreditRequest}
+          />
+        );
       case 'attendance':
         return <Attendance studentId={studentId} attendance={data.attendance} profiles={data.profiles} />;
       default:
@@ -97,7 +107,7 @@ export default function StudentPanel() {
 
   return (
     <div className="flex min-h-screen bg-black">
-      <Sidebar panel="student" activeTab={activeTab} onTabChange={setActiveTab} />
+      <Sidebar panel="student" activeTab={activeTab} onTabChange={setActiveTab} onLogout={onLogout} />
       <main className="flex-1 p-6 overflow-auto">
         <div className="max-w-7xl mx-auto">{renderTab()}</div>
       </main>

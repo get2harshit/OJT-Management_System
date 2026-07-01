@@ -1,12 +1,12 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Upload, FileText, UserPlus, Trash2 } from 'lucide-react';
 import Modal from '../../components/Modal';
 import DataTable from '../../components/DataTable';
-import type { OJT, Project, Student, Profile } from '../../lib/types';
+import type { Project, Student, Profile, Cohort } from '../../lib/types';
 import { getDurationString } from '../../lib/utils';
+import { apiListCohorts } from '../../lib/api';
 
 interface Props {
-  ojts: OJT[];
   projects: Project[];
   students: Student[];
   profiles: Profile[];
@@ -16,12 +16,20 @@ interface Props {
   deleteProject: (id: string) => void;
 }
 
-export default function MentorOJTs({ ojts, projects, students, profiles, addProject, addProjects, updateStudent, deleteProject }: Props) {
+export default function MentorOJTs({ projects, students, profiles, addProjects, updateStudent, deleteProject }: Props) {
   const [csvModalOpen, setCsvModalOpen] = useState(false);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [csvText, setCsvText] = useState('');
   const [assignForm, setAssignForm] = useState({ student_id: '', ojt_id: '', project_id: '' });
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Fetch cohorts from API for the OJT dropdown
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  useEffect(() => {
+    apiListCohorts()
+      .then(data => setCohorts(Array.isArray(data) ? data : []))
+      .catch(() => setCohorts([]));
+  }, []);
 
   const studentProfiles = profiles.filter(p => p.role === 'STUDENT');
 
@@ -68,7 +76,7 @@ export default function MentorOJTs({ ojts, projects, students, profiles, addProj
     setAssignModalOpen(false);
   };
 
-  const selectedOJT = ojts.find(o => o.id === assignForm.ojt_id);
+  const selectedCohort = cohorts.find(c => c.id === assignForm.ojt_id);
 
   const projectData = projects.map(p => ({
     ...p,
@@ -77,15 +85,16 @@ export default function MentorOJTs({ ojts, projects, students, profiles, addProj
 
   const studentData = students.map(s => {
     const prof = studentProfiles.find(p => p.id === s.user_id);
-    const ojt = ojts.find(o => o.id === s.ojt_id);
+    const ojt = cohorts.find(c => c.id === s.ojt_id);
     const proj = projects.find(p => p.id === s.project_id);
-    return {
-      user_id: s.user_id,
-      name: prof?.name ?? '-',
-      roll_number: s.roll_number,
-      ojt_name: ojt?.name ?? 'Not Assigned',
-      project_title: proj?.title ?? 'Not Assigned',
-    };
+      const termLabel = ojt ? (ojt.sessionTerm === 'Term 1' ? 'Semester 1' : ojt.sessionTerm === 'Term 2' ? 'Semester 2' : ojt.sessionTerm) : '';
+      return {
+        user_id: s.user_id,
+        name: prof?.name ?? '-',
+        roll_number: s.roll_number,
+        ojt_name: ojt ? `${ojt.academicYear} — ${termLabel}` : 'Not Assigned',
+        project_title: proj?.title ?? 'Not Assigned',
+      };
   });
 
   return (
@@ -177,7 +186,7 @@ export default function MentorOJTs({ ojts, projects, students, profiles, addProj
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Or paste CSV below</label>
-            <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={6} placeholder={'title,description,track\nAWS Lambda Functions,Build serverless functions,Cloud Computing'} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold font-mono" />
+            <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={6} placeholder={'title,description,track\nAWS Lambda Functions,Build serverless functions,Product Development'} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold font-mono" />
           </div>
           <button onClick={handleCSVUpload} className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors flex items-center justify-center gap-2">
             <FileText size={18} />
@@ -203,11 +212,18 @@ export default function MentorOJTs({ ojts, projects, students, profiles, addProj
             <label className="block text-sm text-gray-400 mb-1">OJT Program</label>
             <select value={assignForm.ojt_id} onChange={e => setAssignForm({ ...assignForm, ojt_id: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold">
               <option value="">Select OJT</option>
-              {ojts.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              {cohorts.map(c => {
+                const termLabel = c.sessionTerm === 'Term 1' ? 'Semester 1' :
+                                  c.sessionTerm === 'Term 2' ? 'Semester 2' :
+                                  c.sessionTerm;
+                return (
+                  <option key={c.id} value={c.id}>{c.academicYear} — {termLabel}</option>
+                );
+              })}
             </select>
-            {selectedOJT && (
+            {selectedCohort && (
               <p className="text-xs text-gray-500 mt-1">
-                Duration: {getDurationString(selectedOJT.start_date, selectedOJT.end_date)} ({selectedOJT.start_date} → {selectedOJT.end_date})
+                Duration: {getDurationString(selectedCohort.startDate, selectedCohort.endDate)} ({selectedCohort.startDate} → {selectedCohort.endDate})
               </p>
             )}
           </div>
