@@ -13,7 +13,8 @@ COPY index.html ./
 RUN npm ci
 
 COPY src ./src
-COPY public ./public
+RUN mkdir -p public
+COPY public/ ./public/
 
 RUN npm run build
 
@@ -26,7 +27,6 @@ COPY package*.json ./
 
 RUN npm ci --omit=dev
 
-COPY public ./public
 COPY --from=builder /usr/src/app/dist ./dist
 COPY server.js ./dist/server.js
 
@@ -34,3 +34,4 @@ EXPOSE 8080
 ENV NODE_ENV=production
 
 CMD ["node", "dist/server.js"]
+
