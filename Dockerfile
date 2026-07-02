@@ -6,9 +6,7 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 RUN npm ci
 
-COPY src ./src
-RUN mkdir -p public
-COPY public/ ./public/
+COPY . .
 
 RUN npm run build
 
@@ -17,10 +15,9 @@ FROM nginx:1.27-alpine
 
 COPY --from=builder /usr/src/app/dist /usr/share/nginx/html
 
-COPY --from=builder /usr/src/app/dist ./dist
-COPY server.js ./dist/server.js
+# SPA fallback so client-side routes (react-router-dom) don't 404 on refresh
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 8080
 
-CMD ["node", "dist/server.js"]
-
+CMD ["nginx", "-g", "daemon off;"]
