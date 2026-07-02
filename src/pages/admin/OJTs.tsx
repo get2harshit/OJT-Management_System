@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Trash2, Calendar, RefreshCw, Upload, FileText, Briefcase, Layers, Target, Code } from 'lucide-react';
+import { Plus, Trash2, Calendar, RefreshCw, Upload, FileText, Briefcase, Layers, Target, Code, Edit2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import type { Cohort, TermSession, Project, Profile, Student } from '../../lib/types';
-import { apiListCohorts, apiCreateCohort, apiDeleteCohort } from '../../lib/api';
+import { apiListCohorts, apiCreateCohort, apiDeleteCohort, apiUpdateCohort } from '../../lib/api';
 import { getDurationString } from '../../lib/utils';
 
 const TERM_OPTIONS: TermSession[] = ['Semester 1', 'Semester 2', 'Term 1', 'Term 2', 'Summer Fast-Track'];
@@ -32,6 +32,7 @@ export default function AdminOJTs({
   
   // Cohorts State
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [editingCohortId, setEditingCohortId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cohortModalOpen, setCohortModalOpen] = useState(false);
@@ -90,19 +91,46 @@ export default function AdminOJTs({
     else if (cohortForm.sessionTerm === 'Semester 2') apiTerm = 'Term 2';
 
     try {
-      await apiCreateCohort({
-        academicYear: cohortForm.academicYear,
-        sessionTerm: apiTerm,
-        startDate: cohortForm.startDate,
-        endDate: cohortForm.endDate,
-        isActive: cohortForm.isActive,
-      });
+      if (editingCohortId) {
+        await apiUpdateCohort(editingCohortId, {
+          academicYear: cohortForm.academicYear,
+          sessionTerm: apiTerm,
+          startDate: cohortForm.startDate,
+          endDate: cohortForm.endDate,
+          isActive: cohortForm.isActive,
+        });
+      } else {
+        await apiCreateCohort({
+          academicYear: cohortForm.academicYear,
+          sessionTerm: apiTerm,
+          startDate: cohortForm.startDate,
+          endDate: cohortForm.endDate,
+          isActive: cohortForm.isActive,
+        });
+      }
       setCohortForm({ academicYear: '', sessionTerm: 'Semester 1', startDate: '', endDate: '', isActive: true });
+      setEditingCohortId(null);
       setCohortModalOpen(false);
       await fetchCohorts();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create cohort');
+      setError(err instanceof Error ? err.message : 'Failed to save cohort');
     }
+  };
+
+  const handleEditCohort = (cohort: Cohort) => {
+    setEditingCohortId(cohort.id);
+    let formTerm = cohort.sessionTerm;
+    if (cohort.sessionTerm === 'Term 1') formTerm = 'Semester 1';
+    else if (cohort.sessionTerm === 'Term 2') formTerm = 'Semester 2';
+
+    setCohortForm({
+      academicYear: cohort.academicYear,
+      sessionTerm: formTerm,
+      startDate: cohort.startDate,
+      endDate: cohort.endDate,
+      isActive: cohort.isActive,
+    });
+    setCohortModalOpen(true);
   };
 
   const handleDeleteCohort = async (id: string) => {
@@ -384,14 +412,23 @@ export default function AdminOJTs({
               ]}
               data={cohortData}
               searchPlaceholder="Search cohorts..."
-              actions={(row) => (
-                <button
-                  onClick={() => handleDeleteCohort(row.id)}
-                  className="p-1.5 text-gray-400 hover:text-red-400 transition-colors"
-                  title="Delete Cohort"
-                >
-                  <Trash2 size={16} />
-                </button>
+              actions={(row: any) => (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleEditCohort(row as unknown as Cohort)}
+                    className="p-1.5 text-gray-400 hover:text-gold transition-colors"
+                    title="Edit Cohort"
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteCohort(row.id)}
+                    className="p-1.5 text-gray-400 hover:text-red-400 transition-colors"
+                    title="Delete Cohort"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               )}
             />
           )}
@@ -453,7 +490,15 @@ export default function AdminOJTs({
       )}
 
       {/* Cohort Modal */}
-      <Modal open={cohortModalOpen} onClose={() => setCohortModalOpen(false)} title="Create OJT Cohort">
+      <Modal
+        open={cohortModalOpen}
+        onClose={() => {
+          setCohortModalOpen(false);
+          setEditingCohortId(null);
+          setCohortForm({ academicYear: '', sessionTerm: 'Semester 1', startDate: '', endDate: '', isActive: true });
+        }}
+        title={editingCohortId ? "Edit OJT Cohort" : "Create OJT Cohort"}
+      >
         <div className="space-y-4">
           <div>
             <label className="block text-sm text-gray-400 mb-1">Academic Batch / Year</label>
@@ -512,7 +557,7 @@ export default function AdminOJTs({
             onClick={handleSaveCohort}
             className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors"
           >
-            Create Cohort
+            {editingCohortId ? "Update Cohort" : "Create Cohort"}
           </button>
         </div>
       </Modal>

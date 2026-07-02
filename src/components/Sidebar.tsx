@@ -61,9 +61,11 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout }: Sid
   const [collapsed, setCollapsed] = useState(false);
 
   let user = null;
+  let logout: (() => Promise<void>) | null = null;
   try {
     const auth = useAuth();
     user = auth.user;
+    logout = auth.logout;
   } catch {
     // AuthProvider not present
   }
@@ -135,13 +137,21 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout }: Sid
 
       <div className="p-4 border-t border-zinc-750">
         <button
-          onClick={() => onLogout ? onLogout() : window.location.reload()}
+          onClick={async () => {
+            if (onLogout) {
+              onLogout();
+            } else if (logout) {
+              await logout();
+            } else {
+              window.location.reload();
+            }
+          }}
           className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors ${
             collapsed ? 'justify-center w-full' : ''
           }`}
         >
           <LogOut size={18} />
-          {!collapsed && <span>{onLogout ? 'Sign Out' : 'Switch Panel'}</span>}
+          {!collapsed && <span>{(onLogout || logout) ? 'Sign Out' : 'Switch Panel'}</span>}
         </button>
       </div>
     </aside>
