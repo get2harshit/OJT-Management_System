@@ -21,7 +21,9 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
 
   useEffect(() => {
-    apiListCohorts().then(res => setCohorts(res)).catch(() => {});
+    if (activeTab === 'allocations') {
+      apiListCohorts().then(res => setCohorts(res)).catch(() => {});
+    }
   }, [activeTab]);
 
   const renderTab = () => {
