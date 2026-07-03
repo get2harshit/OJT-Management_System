@@ -4,9 +4,17 @@ import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import type { Cohort, TermSession, Project, Profile } from '../../lib/types';
 import { apiListCohorts, apiCreateCohort, apiDeleteCohort, apiUpdateCohort, apiAddProjectsToCohort, apiGetProjectsForCohort } from '../../lib/api';
-import { getDurationString } from '../../lib/utils';
+import { getDurationString, toDateOnly, formatDateDisplay } from '../../lib/utils';
 
-const TERM_OPTIONS: TermSession[] = ['Semester 1', 'Semester 2', 'Term 1', 'Term 2', 'Summer Fast-Track'];
+const TERM_OPTIONS: TermSession[] = ['Term 1', 'Term 2', 'Summer Fast-Track'];
+const TERM_LABELS: Record<TermSession, string> = {
+  'Term 1': 'ODD',
+  'Term 2': 'EVEN',
+  'Summer Fast-Track': 'Summer Fast-Track',
+};
+const COHORT_BATCH_OPTIONS = ['2024-2028', '2025-2029', '2026-2030'];
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const COHORT_NAME_REGEX = new RegExp(`^OJT (${MONTH_NAMES.join('|')}),[0-9]{4}$`);
 const TRACKS = ['Product Development', 'Application Development', 'Data Scientist', 'Open Source', 'Gen AI'];
 
 interface OJTsProps {
@@ -91,7 +99,7 @@ export default function AdminOJTs({
     if (!cohortForm.name || cohortForm.academicYear.length === 0 || !cohortForm.startDate || !cohortForm.endDate) return;
 
     if (!COHORT_NAME_REGEX.test(cohortForm.name)) {
-      setError('Cohort Name must be in the format "OJT <Month>,<Year>", e.g. OJT August,2026');
+      alert('Cohort Name must be in the format "OJT <Month>,<Year>", e.g. OJT August,2026');
       return;
     }
 
@@ -100,12 +108,12 @@ export default function AdminOJTs({
       return !match || Number(match[2]) - Number(match[1]) !== 4;
     });
     if (invalidBatch) {
-      setError('Allowed Batches must be 4-year B.Tech spans in the format YYYY-YYYY, e.g. 2024-2028');
+      alert('Allowed Batches must be 4-year B.Tech spans in the format YYYY-YYYY, e.g. 2024-2028');
       return;
     }
 
     if (cohortForm.startDate > cohortForm.endDate) {
-      setError('Start Date must be before End Date');
+      alert('Start Date must be before End Date');
       return;
     }
 
@@ -845,9 +853,9 @@ export default function AdminOJTs({
           setMappedProjectIds([]);
           setProjectSearchQuery('');
         }}
-        title={`Manage Projects for ${selectedCohortForProjects?.academicYear} — ${
-          selectedCohortForProjects?.sessionTerm === 'Term 1' ? 'Semester 1' :
-          selectedCohortForProjects?.sessionTerm === 'Term 2' ? 'Semester 2' :
+        title={`Manage Projects for ${selectedCohortForProjects?.name || (selectedCohortForProjects?.academicYear ?? []).join(', ')} — ${
+          selectedCohortForProjects?.sessionTerm === 'Term 1' ? 'ODD' :
+          selectedCohortForProjects?.sessionTerm === 'Term 2' ? 'EVEN' :
           selectedCohortForProjects?.sessionTerm ?? ''
         }`}
       >
