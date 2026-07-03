@@ -40,6 +40,10 @@ async function apiFetch<T>(
   const body = await res.json().catch(() => null);
 
   if (!res.ok) {
+    if (res.status === 401) {
+      clearStoredToken();
+      window.dispatchEvent(new Event('ojt-unauthorized'));
+    }
     const msg = body?.message || body?.error || `Request failed (${res.status})`;
     throw new Error(msg);
   }

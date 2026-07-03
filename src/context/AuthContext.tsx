@@ -40,7 +40,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     apiGetMe()
       .then((me) => {
-        setUser(me);
+        setUser({
+          ...me,
+          role: me.role ? (me.role.toLowerCase() as ApiUserRole) : 'student'
+        });
         setToken(storedToken);
       })
       .catch(() => {
@@ -52,24 +55,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  // Listen for global unauthorized events to clean up session
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      clearStoredToken();
+      setToken(null);
+      setUser(null);
+    };
+    window.addEventListener('ojt-unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('ojt-unauthorized', handleUnauthorized);
+    };
+  }, []);
+
   const login = useCallback(async (email: string, password: string, allowedRoles?: ApiUserRole[]) => {
     const result = await apiSignIn(email, password);
-    if (allowedRoles && !allowedRoles.includes(result.user.role)) {
+    const normalizedUser = {
+      ...result.user,
+      role: result.user.role ? (result.user.role.toLowerCase() as ApiUserRole) : 'student'
+    };
+    if (allowedRoles && !allowedRoles.includes(normalizedUser.role)) {
       throw new Error(`Access denied: You do not have permission to access the selected panel.`);
     }
     setStoredToken(result.accessToken);
     setToken(result.accessToken);
-    setUser(result.user);
+    setUser(normalizedUser);
   }, []);
 
   const signup = useCallback(async (email: string, password: string, fullName: string, role: ApiUserRole, allowedRoles?: ApiUserRole[]) => {
     const result = await apiSignUp(email, password, fullName, role);
-    if (allowedRoles && !allowedRoles.includes(result.user.role)) {
+    const normalizedUser = {
+      ...result.user,
+      role: result.user.role ? (result.user.role.toLowerCase() as ApiUserRole) : 'student'
+    };
+    if (allowedRoles && !allowedRoles.includes(normalizedUser.role)) {
       throw new Error(`Access denied: You do not have permission to access the selected panel.`);
     }
     setStoredToken(result.accessToken);
     setToken(result.accessToken);
-    setUser(result.user);
+    setUser(normalizedUser);
   }, []);
 
   const logout = useCallback(async () => {

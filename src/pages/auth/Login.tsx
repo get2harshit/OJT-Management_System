@@ -8,7 +8,8 @@ import type { ApiUserRole } from '../../lib/types';
 type View = 'login' | 'signup' | 'reset';
 
 function dashboardPathForRole(role: ApiUserRole): string {
-  switch (role) {
+  const normRole = (role || '').toLowerCase();
+  switch (normRole) {
     case 'admin':
     case 'batch_manager':
       return '/admin/dashboard';
@@ -16,6 +17,7 @@ function dashboardPathForRole(role: ApiUserRole): string {
     case 'external_mentor':
       return '/mentor/dashboard';
     case 'student':
+    default:
       return '/student/dashboard';
   }
 }
