@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from '../../components/Sidebar';
 import Dashboard from './Dashboard';
 import ProjectPicker from './ProjectPicker';
@@ -7,13 +7,56 @@ import Submissions from './Submissions';
 import Credits from './Credits';
 import Attendance from './Attendance';
 import { useMockData } from '../../hooks/useMockData';
+import { useAuth } from '../../context/AuthContext';
+import { apiGetProjectsForCohort, apiListProjects } from '../../lib/api';
+import type { Project } from '../../lib/types';
 
 export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [initialSelectedSubId, setInitialSelectedSubId] = useState<string | null>(null);
   const [initialNewSubTaskId, setInitialNewSubTaskId] = useState<string | null>(null);
   const data = useMockData();
-  const studentId = 's1'; // demo student
+
+  let authUser = null;
+  try {
+    const auth = useAuth();
+    authUser = auth.user;
+  } catch {
+    // AuthProvider not present
+  }
+  const studentId = authUser?.id || 's1';
+
+  const [cohortProjects, setCohortProjects] = useState<Project[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
+  useEffect(() => {
+    apiListProjects()
+      .then(res => setAllProjects(Array.isArray(res) ? res : []))
+      .catch(err => console.error('Failed to load projects catalog fallback', err));
+  }, []);
+
+  const student = data.students.find(s => s.user_id === studentId);
+  const studentCohortId = student?.ojt_id;
+
+  useEffect(() => {
+    if (!studentCohortId) {
+      setCohortProjects([]);
+      return;
+    }
+    setLoadingProjects(true);
+    apiGetProjectsForCohort(studentCohortId)
+      .then(res => {
+        setCohortProjects(Array.isArray(res) ? res : []);
+      })
+      .catch(err => {
+        console.error('Failed to load cohort projects, falling back to all projects.', err);
+        setCohortProjects([]);
+      })
+      .finally(() => {
+        setLoadingProjects(false);
+      });
+  }, [studentCohortId]);
 
   const handleViewSubmission = (subId: string) => {
     setInitialSelectedSubId(subId);
@@ -45,10 +88,21 @@ export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
           />
         );
       case 'projects':
+        if (loadingProjects) {
+          return (
+            <div className="min-h-[50vh] flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-8 h-8 border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
+                <p className="text-gray-400 text-sm">Loading cohort projects…</p>
+              </div>
+            </div>
+          );
+        }
         return (
           <ProjectPicker
             studentId={studentId}
-            projects={data.projects}
+            projects={cohortProjects.length > 0 ? cohortProjects : allProjects}
+            isCohortFiltered={cohortProjects.length > 0}
             students={data.students}
             profiles={data.profiles}
             updateStudent={data.updateStudent}

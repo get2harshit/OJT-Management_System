@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Trash2, Calendar, RefreshCw, Upload, FileText, Briefcase, Layers, Target, Code, Edit2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
-import type { Cohort, TermSession, Project, Profile, Student } from '../../lib/types';
-import { apiListCohorts, apiCreateCohort, apiDeleteCohort, apiUpdateCohort } from '../../lib/api';
+import type { Cohort, TermSession, Project, Profile } from '../../lib/types';
+import { apiListCohorts, apiCreateCohort, apiDeleteCohort, apiUpdateCohort, apiAddProjectsToCohort, apiGetProjectsForCohort } from '../../lib/api';
 import { getDurationString } from '../../lib/utils';
 
 const TERM_OPTIONS: TermSession[] = ['Semester 1', 'Semester 2', 'Term 1', 'Term 2', 'Summer Fast-Track'];
@@ -15,7 +15,6 @@ interface OJTsProps {
   addProjects: (projs: Omit<Project, 'id' | 'created_at'>[]) => void;
   deleteProject: (id: string) => void;
   profiles: Profile[];
-  students: Student[];
   importOJTBatch: (cohortId: string, studentRecords: any[]) => void;
 }
 
@@ -25,7 +24,6 @@ export default function AdminOJTs({
   addProjects,
   deleteProject,
   profiles,
-  students,
   importOJTBatch
 }: OJTsProps) {
   const [activeTab, setActiveTab] = useState<'cohorts' | 'catalog'>('cohorts');
@@ -33,6 +31,14 @@ export default function AdminOJTs({
   // Cohorts State
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [editingCohortId, setEditingCohortId] = useState<string | null>(null);
+
+  // Cohort Project Mapping State
+  const [manageProjectsModalOpen, setManageProjectsModalOpen] = useState(false);
+  const [selectedCohortForProjects, setSelectedCohortForProjects] = useState<Cohort | null>(null);
+  const [mappedProjectIds, setMappedProjectIds] = useState<string[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [savingProjects, setSavingProjects] = useState(false);
+  const [projectSearchQuery, setProjectSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cohortModalOpen, setCohortModalOpen] = useState(false);
@@ -141,6 +147,44 @@ export default function AdminOJTs({
       setCohorts(prev => prev.filter(c => c.id !== id));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to delete cohort');
+    }
+  };
+
+  const handleOpenManageProjects = async (cohort: Cohort) => {
+    setSelectedCohortForProjects(cohort);
+    setLoadingProjects(true);
+    setMappedProjectIds([]);
+    setProjectSearchQuery('');
+    setManageProjectsModalOpen(true);
+    try {
+      const data = await apiGetProjectsForCohort(cohort.id);
+      setMappedProjectIds(Array.isArray(data) ? data.map(p => p.id) : []);
+    } catch (err: unknown) {
+      console.error(err);
+      alert('Failed to load projects mapped to this cohort.');
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  const handleToggleProjectMapping = (projectId: string) => {
+    setMappedProjectIds(prev => 
+      prev.includes(projectId) ? prev.filter(id => id !== projectId) : [...prev, projectId]
+    );
+  };
+
+  const handleSaveCohortProjects = async () => {
+    if (!selectedCohortForProjects) return;
+    setSavingProjects(true);
+    try {
+      await apiAddProjectsToCohort(selectedCohortForProjects.id, mappedProjectIds);
+      alert('Cohort projects updated successfully!');
+      setManageProjectsModalOpen(false);
+      setSelectedCohortForProjects(null);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to map projects to cohort');
+    } finally {
+      setSavingProjects(false);
     }
   };
 
@@ -414,6 +458,13 @@ export default function AdminOJTs({
               searchPlaceholder="Search cohorts..."
               actions={(row: any) => (
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleOpenManageProjects(row as unknown as Cohort)}
+                    className="p-1.5 text-gray-400 hover:text-gold transition-colors"
+                    title="Manage Cohort Projects"
+                  >
+                    <Briefcase size={16} />
+                  </button>
                   <button
                     onClick={() => handleEditCohort(row as unknown as Cohort)}
                     className="p-1.5 text-gray-400 hover:text-gold transition-colors"
@@ -747,6 +798,91 @@ export default function AdminOJTs({
             <FileText size={18} />
             Import Project Catalog
           </button>
+        </div>
+      </Modal>
+
+      {/* Manage Cohort Projects Modal */}
+      <Modal
+        open={manageProjectsModalOpen}
+        onClose={() => {
+          setManageProjectsModalOpen(false);
+          setSelectedCohortForProjects(null);
+          setMappedProjectIds([]);
+          setProjectSearchQuery('');
+        }}
+        title={`Manage Projects for ${selectedCohortForProjects?.academicYear} — ${
+          selectedCohortForProjects?.sessionTerm === 'Term 1' ? 'Semester 1' :
+          selectedCohortForProjects?.sessionTerm === 'Term 2' ? 'Semester 2' :
+          selectedCohortForProjects?.sessionTerm ?? ''
+        }`}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-400">
+            Select one or more master projects from the catalog templates to map to this cohort.
+          </p>
+
+          <input
+            type="text"
+            value={projectSearchQuery}
+            onChange={e => setProjectSearchQuery(e.target.value)}
+            placeholder="Search projects..."
+            className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold mb-2"
+          />
+
+          {loadingProjects ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-5 h-5 border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
+            </div>
+          ) : (
+            <div className="max-h-60 overflow-y-auto space-y-2 border border-zinc-750 p-2 rounded-lg bg-zinc-800/40">
+              {projects
+                .filter(p => {
+                  if (!projectSearchQuery) return true;
+                  const q = projectSearchQuery.toLowerCase();
+                  return p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.track.toLowerCase().includes(q);
+                })
+                .map(p => (
+                  <label
+                    key={p.id}
+                    className="flex items-start gap-3 p-2 rounded-md hover:bg-zinc-750 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={mappedProjectIds.includes(p.id)}
+                      onChange={() => handleToggleProjectMapping(p.id)}
+                      className="mt-1 rounded bg-zinc-750 border-zinc-650 text-gold focus:ring-gold"
+                    />
+                    <div className="text-xs">
+                      <p className="text-white font-semibold">{p.title}</p>
+                      <p className="text-gray-400 line-clamp-1">{p.description}</p>
+                      <span className="text-[10px] text-gold/80 mt-0.5 inline-block bg-gold/10 px-1.5 py-0.2 rounded-full font-medium">{p.track}</span>
+                    </div>
+                  </label>
+                ))}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={() => {
+                setManageProjectsModalOpen(false);
+                setSelectedCohortForProjects(null);
+                setMappedProjectIds([]);
+                setProjectSearchQuery('');
+              }}
+              className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveCohortProjects}
+              disabled={savingProjects || loadingProjects}
+              className="px-4 py-2 bg-gold hover:bg-gold-hover text-black font-semibold rounded-lg transition-colors text-sm flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {savingProjects && <div className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
+              Save Changes
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

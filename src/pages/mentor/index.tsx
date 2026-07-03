@@ -9,11 +9,19 @@ import Attendance from './Attendance';
 import EvaluationTracker from './EvaluationTracker';
 import Credits from './Credits';
 import { useMockData } from '../../hooks/useMockData';
+import { useAuth } from '../../context/AuthContext';
 
 export default function MentorPanel({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const data = useMockData();
-  const mentorId = 'm1'; // demo mentor
+  let authUser = null;
+  try {
+    const auth = useAuth();
+    authUser = auth.user;
+  } catch {
+    // AuthProvider not present
+  }
+  const mentorId = authUser?.id || 'm1'; // demo mentor
 
   const renderTab = () => {
     switch (activeTab) {
