@@ -3,7 +3,7 @@ import { Upload, FileText, UserPlus, Trash2 } from 'lucide-react';
 import Modal from '../../components/Modal';
 import DataTable from '../../components/DataTable';
 import type { Project, Student, Profile, Cohort } from '../../lib/types';
-import { getDurationString } from '../../lib/utils';
+import { getDurationString, formatDateDisplay } from '../../lib/utils';
 import { apiListCohorts } from '../../lib/api';
 
 interface Props {
@@ -87,12 +87,12 @@ export default function MentorOJTs({ projects, students, profiles, addProjects, 
     const prof = studentProfiles.find(p => p.id === s.user_id);
     const ojt = cohorts.find(c => c.id === s.ojt_id);
     const proj = projects.find(p => p.id === s.project_id);
-      const termLabel = ojt ? (ojt.sessionTerm === 'Term 1' ? 'Semester 1' : ojt.sessionTerm === 'Term 2' ? 'Semester 2' : ojt.sessionTerm) : '';
+      const termLabel = ojt ? (ojt.sessionTerm === 'Term 1' ? 'ODD' : ojt.sessionTerm === 'Term 2' ? 'EVEN' : ojt.sessionTerm) : '';
       return {
         user_id: s.user_id,
         name: prof?.name ?? '-',
         roll_number: s.roll_number,
-        ojt_name: ojt ? `${ojt.academicYear} — ${termLabel}` : 'Not Assigned',
+        ojt_name: ojt ? (ojt.name || `${ojt.academicYear.join(', ')} — ${termLabel}`) : 'Not Assigned',
         project_title: proj?.title ?? 'Not Assigned',
       };
   });
@@ -213,17 +213,17 @@ export default function MentorOJTs({ projects, students, profiles, addProjects, 
             <select value={assignForm.ojt_id} onChange={e => setAssignForm({ ...assignForm, ojt_id: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold">
               <option value="">Select OJT</option>
               {cohorts.map(c => {
-                const termLabel = c.sessionTerm === 'Term 1' ? 'Semester 1' :
-                                  c.sessionTerm === 'Term 2' ? 'Semester 2' :
+                const termLabel = c.sessionTerm === 'Term 1' ? 'ODD' :
+                                  c.sessionTerm === 'Term 2' ? 'EVEN' :
                                   c.sessionTerm;
                 return (
-                  <option key={c.id} value={c.id}>{c.academicYear} — {termLabel}</option>
+                  <option key={c.id} value={c.id}>{c.name || `${c.academicYear.join(', ')} — ${termLabel}`}</option>
                 );
               })}
             </select>
             {selectedCohort && (
               <p className="text-xs text-gray-500 mt-1">
-                Duration: {getDurationString(selectedCohort.startDate, selectedCohort.endDate)} ({selectedCohort.startDate} → {selectedCohort.endDate})
+                Duration: {getDurationString(selectedCohort.startDate, selectedCohort.endDate)} ({formatDateDisplay(selectedCohort.startDate)} → {formatDateDisplay(selectedCohort.endDate)})
               </p>
             )}
           </div>

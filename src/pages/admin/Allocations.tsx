@@ -29,7 +29,7 @@ export default function AdminAllocations({ students, profiles, projects, cohorts
     const proj = projects.find(pr => pr.id === s.project_id);
     const cohort = cohorts.find(c => c.id === s.ojt_id);
 
-    const cohortTermLabel = cohort ? (cohort.sessionTerm === 'Term 1' ? 'Semester 1' : cohort.sessionTerm === 'Term 2' ? 'Semester 2' : cohort.sessionTerm) : '';
+    const cohortTermLabel = cohort ? (cohort.sessionTerm === 'Term 1' ? 'ODD' : cohort.sessionTerm === 'Term 2' ? 'EVEN' : cohort.sessionTerm) : '';
 
     return {
       ...s,
@@ -37,7 +37,7 @@ export default function AdminAllocations({ students, profiles, projects, cohorts
       roll_number: s.roll_number,
       mentor_name: mentor?.name ?? 'Not Assigned',
       project_title: proj?.title ?? 'Not Assigned',
-      cohort_label: cohort ? `${cohort.academicYear} — ${cohortTermLabel}` : 'Not Assigned',
+      cohort_label: cohort ? (cohort.name || `${cohort.academicYear.join(', ')} — ${cohortTermLabel}`) : 'Not Assigned',
     };
   });
 
@@ -285,11 +285,11 @@ export default function AdminAllocations({ students, profiles, projects, cohorts
             >
               <option value="">Unassigned</option>
               {cohorts.map(c => {
-                const termLabel = c.sessionTerm === 'Term 1' ? 'Semester 1' :
-                                  c.sessionTerm === 'Term 2' ? 'Semester 2' :
+                const termLabel = c.sessionTerm === 'Term 1' ? 'ODD' :
+                                  c.sessionTerm === 'Term 2' ? 'EVEN' :
                                   c.sessionTerm;
                 return (
-                  <option key={c.id} value={c.id}>{c.academicYear} — {termLabel}</option>
+                  <option key={c.id} value={c.id}>{c.name || `${c.academicYear.join(', ')} — ${termLabel}`}</option>
                 );
               })}
             </select>

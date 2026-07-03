@@ -42,8 +42,9 @@ export default function AdminOJTs({
   const [loading, setLoading] = useState(true);
   const [cohortModalOpen, setCohortModalOpen] = useState(false);
   const [cohortForm, setCohortForm] = useState({
-    academicYear: '',
-    sessionTerm: 'Semester 1' as TermSession,
+    name: '',
+    academicYear: [] as string[],
+    sessionTerm: 'Term 1' as TermSession,
     startDate: '',
     endDate: '',
     isActive: true,
@@ -87,32 +88,48 @@ export default function AdminOJTs({
   }, [fetchCohorts]);
 
   const handleSaveCohort = async () => {
-    if (!cohortForm.academicYear || !cohortForm.startDate || !cohortForm.endDate) return;
-    
-    // Map Semester 1/2 to Term 1/2 for backend enum validation compatibility
-    let apiTerm: TermSession = cohortForm.sessionTerm;
-    if (cohortForm.sessionTerm === 'Semester 1') apiTerm = 'Term 1';
-    else if (cohortForm.sessionTerm === 'Semester 2') apiTerm = 'Term 2';
+    if (!cohortForm.name || cohortForm.academicYear.length === 0 || !cohortForm.startDate || !cohortForm.endDate) return;
+
+    if (!COHORT_NAME_REGEX.test(cohortForm.name)) {
+      setError('Cohort Name must be in the format "OJT <Month>,<Year>", e.g. OJT August,2026');
+      return;
+    }
+
+    const invalidBatch = cohortForm.academicYear.find(batch => {
+      const match = batch.match(/^(\d{4})-(\d{4})$/);
+      return !match || Number(match[2]) - Number(match[1]) !== 4;
+    });
+    if (invalidBatch) {
+      setError('Allowed Batches must be 4-year B.Tech spans in the format YYYY-YYYY, e.g. 2024-2028');
+      return;
+    }
+
+    if (cohortForm.startDate > cohortForm.endDate) {
+      setError('Start Date must be before End Date');
+      return;
+    }
 
     try {
       if (editingCohortId) {
         await apiUpdateCohort(editingCohortId, {
+          name: cohortForm.name,
           academicYear: cohortForm.academicYear,
-          sessionTerm: apiTerm,
+          sessionTerm: cohortForm.sessionTerm,
           startDate: cohortForm.startDate,
           endDate: cohortForm.endDate,
           isActive: cohortForm.isActive,
         });
       } else {
         await apiCreateCohort({
+          name: cohortForm.name,
           academicYear: cohortForm.academicYear,
-          sessionTerm: apiTerm,
+          sessionTerm: cohortForm.sessionTerm,
           startDate: cohortForm.startDate,
           endDate: cohortForm.endDate,
           isActive: cohortForm.isActive,
         });
       }
-      setCohortForm({ academicYear: '', sessionTerm: 'Semester 1', startDate: '', endDate: '', isActive: true });
+      setCohortForm({ name: '', academicYear: [], sessionTerm: 'Term 1', startDate: '', endDate: '', isActive: true });
       setEditingCohortId(null);
       setCohortModalOpen(false);
       await fetchCohorts();
@@ -123,15 +140,12 @@ export default function AdminOJTs({
 
   const handleEditCohort = (cohort: Cohort) => {
     setEditingCohortId(cohort.id);
-    let formTerm = cohort.sessionTerm;
-    if (cohort.sessionTerm === 'Term 1') formTerm = 'Semester 1';
-    else if (cohort.sessionTerm === 'Term 2') formTerm = 'Semester 2';
-
     setCohortForm({
-      academicYear: cohort.academicYear,
-      sessionTerm: formTerm,
-      startDate: cohort.startDate,
-      endDate: cohort.endDate,
+      name: cohort.name ?? '',
+      academicYear: Array.isArray(cohort.academicYear) ? cohort.academicYear : [cohort.academicYear].filter(Boolean) as string[],
+      sessionTerm: cohort.sessionTerm,
+      startDate: toDateOnly(cohort.startDate),
+      endDate: toDateOnly(cohort.endDate),
       isActive: cohort.isActive,
     });
     setCohortModalOpen(true);
@@ -330,12 +344,12 @@ export default function AdminOJTs({
   };
 
   const cohortData = cohorts.map(c => {
-    const termLabel = c.sessionTerm === 'Term 1' ? 'Semester 1' : 
-                      c.sessionTerm === 'Term 2' ? 'Semester 2' : 
+    const termLabel = c.sessionTerm === 'Term 1' ? 'ODD' : 
+                      c.sessionTerm === 'Term 2' ? 'EVEN' : 
                       c.sessionTerm;
     return {
       ...c,
-      label: `${c.academicYear} — ${termLabel}`,
+      label: c.name || `${(Array.isArray(c.academicYear) ? c.academicYear : [c.academicYear]).join(', ')} — ${termLabel}`,
       sessionTermMapped: termLabel,
       duration: getDurationString(c.startDate, c.endDate),
     };
@@ -421,9 +435,17 @@ export default function AdminOJTs({
             <DataTable
               columns={[
                 { key: 'label', header: 'Cohort Name' },
-                { key: 'sessionTermMapped', header: 'Term / Semester' },
-                { key: 'startDate', header: 'Start Date' },
-                { key: 'endDate', header: 'End Date' },
+                { key: 'sessionTermMapped', header: 'Semester' },
+                {
+                  key: 'startDate',
+                  header: 'Start Date',
+                  render: (row) => <span>{formatDateDisplay(row.startDate)}</span>,
+                },
+                {
+                  key: 'endDate',
+                  header: 'End Date',
+                  render: (row) => <span>{formatDateDisplay(row.endDate)}</span>,
+                },
                 {
                   key: 'duration',
                   header: 'Duration',
@@ -538,30 +560,51 @@ export default function AdminOJTs({
         onClose={() => {
           setCohortModalOpen(false);
           setEditingCohortId(null);
-          setCohortForm({ academicYear: '', sessionTerm: 'Semester 1', startDate: '', endDate: '', isActive: true });
+          setCohortForm({ name: '', academicYear: [], sessionTerm: 'Term 1', startDate: '', endDate: '', isActive: true });
         }}
         title={editingCohortId ? "Edit OJT Cohort" : "Create OJT Cohort"}
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Academic Batch / Year</label>
+            <label className="block text-sm text-gray-400 mb-1">Cohort Name</label>
             <input
               type="text"
-              value={cohortForm.academicYear}
-              onChange={e => setCohortForm({ ...cohortForm, academicYear: e.target.value })}
-              placeholder="e.g. Batch 2024"
+              value={cohortForm.name}
+              onChange={e => setCohortForm({ ...cohortForm, name: e.target.value })}
+              placeholder="e.g. OJT August,2026"
               className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Session Semester / Term</label>
+            <label className="block text-sm text-gray-400 mb-1">Allowed Batches</label>
+            <div className="flex flex-wrap gap-3 bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2">
+              {Array.from(new Set([...COHORT_BATCH_OPTIONS, ...cohortForm.academicYear])).map(batch => (
+                <label key={batch} className="flex items-center gap-1.5 text-sm text-white cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cohortForm.academicYear.includes(batch)}
+                    onChange={e => {
+                      const next = e.target.checked
+                        ? [...cohortForm.academicYear, batch]
+                        : cohortForm.academicYear.filter(b => b !== batch);
+                      setCohortForm({ ...cohortForm, academicYear: next });
+                    }}
+                    className="accent-gold"
+                  />
+                  {batch}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Semester</label>
             <select
               value={cohortForm.sessionTerm}
               onChange={e => setCohortForm({ ...cohortForm, sessionTerm: e.target.value as TermSession })}
               className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
             >
               {TERM_OPTIONS.map(t => (
-                <option key={t} value={t}>{t}</option>
+                <option key={t} value={t}>{TERM_LABELS[t]}</option>
               ))}
             </select>
           </div>

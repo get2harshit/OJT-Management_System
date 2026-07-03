@@ -172,11 +172,12 @@ export interface AuthResult {
   user: AuthUser;
 }
 
-export type TermSession = 'Term 1' | 'Term 2' | 'Semester 1' | 'Semester 2' | 'Summer Fast-Track';
+export type TermSession = 'Term 1' | 'Term 2' | 'Summer Fast-Track';
 
 export interface Cohort {
   id: string;
-  academicYear: string;
+  name?: string;
+  academicYear: string[];
   sessionTerm: TermSession;
   startDate: string;
   endDate: string;
@@ -186,7 +187,8 @@ export interface Cohort {
 }
 
 export interface CreateCohortBody {
-  academicYear: string;
+  name: string;
+  academicYear: string[];
   sessionTerm: TermSession;
   startDate: string;
   endDate: string;
@@ -194,7 +196,8 @@ export interface CreateCohortBody {
 }
 
 export interface UpdateCohortBody {
-  academicYear?: string;
+  name?: string;
+  academicYear?: string[];
   sessionTerm?: TermSession;
   startDate?: string;
   endDate?: string;
