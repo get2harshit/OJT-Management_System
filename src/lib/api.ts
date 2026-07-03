@@ -1,4 +1,4 @@
-import type { AuthResult, AuthUser, Cohort, CreateCohortBody, UpdateCohortBody, ApiUserRole } from './types';
+import type { AuthResult, AuthUser, Cohort, CreateCohortBody, UpdateCohortBody, ApiUserRole, Project } from './types';
 
 // ── Base URL ────────────────────────────────────────────────────────────────────
 
@@ -40,6 +40,10 @@ async function apiFetch<T>(
   const body = await res.json().catch(() => null);
 
   if (!res.ok) {
+    if (res.status === 401) {
+      clearStoredToken();
+      window.dispatchEvent(new Event('ojt-unauthorized'));
+    }
     const msg = body?.message || body?.error || `Request failed (${res.status})`;
     throw new Error(msg);
   }
@@ -114,6 +118,92 @@ export async function apiUpdateCohort(id: string, body: UpdateCohortBody): Promi
 
 export async function apiDeleteCohort(id: string): Promise<void> {
   return apiFetch<void>(`/api/v1/cohorts/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+// Helper functions to map frontend track string formats (e.g. "Product Development")
+// to backend PostgreSQL enum strings (e.g. "product_development") and vice versa.
+const mapFrontendTrackToBackend = (track?: string | null): string => {
+  if (!track) return 'product_development';
+  switch (track) {
+    case 'Product Development': return 'product_development';
+    case 'Application Development': return 'application_development';
+    case 'Data Scientist': return 'data_scientist';
+    case 'Open Source': return 'open_source';
+    case 'Gen AI': return 'gen_ai';
+    default: return track;
+  }
+};
+
+const mapBackendTrackToFrontend = (track?: string | null): string => {
+  if (!track) return 'Product Development';
+  switch (track) {
+    case 'product_development': return 'Product Development';
+    case 'application_development': return 'Application Development';
+    case 'data_scientist': return 'Data Scientist';
+    case 'open_source': return 'Open Source';
+    case 'gen_ai': return 'Gen AI';
+    default: return track;
+  }
+};
+
+// ── Cohorts Project Mapping API ──────────────────────────────────────────────────
+
+export async function apiAddProjectsToCohort(cohortId: string, projectIds: string[]): Promise<void> {
+  return apiFetch<void>(`/api/v1/cohorts/${cohortId}/projects`, {
+    method: 'POST',
+    body: JSON.stringify({ projectIds }),
+  });
+}
+
+export async function apiGetProjectsForCohort(cohortId: string): Promise<Project[]> {
+  const res = await apiFetch<any[]>(`/api/v1/cohorts/${cohortId}/projects`);
+  return res.map(p => ({
+    ...p,
+    track: mapBackendTrackToFrontend(p.track),
+    related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
+  }));
+}
+
+// ── Projects API ─────────────────────────────────────────────────────────────────
+
+export async function apiListProjects(track?: string): Promise<Project[]> {
+  const apiTrack = track ? mapFrontendTrackToBackend(track) : undefined;
+  const url = apiTrack ? `/api/v1/projects?track=${apiTrack}` : '/api/v1/projects';
+  const res = await apiFetch<any[]>(url);
+  return res.map(p => ({
+    ...p,
+    track: mapBackendTrackToFrontend(p.track),
+    related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
+  }));
+}
+
+export async function apiCreateProject(body: {
+  title: string;
+  description: string;
+  track: string;
+  techStack?: string[];
+  problemStatement?: string;
+  endUsersDefined?: string;
+}): Promise<Project> {
+  const payload = {
+    ...body,
+    track: mapFrontendTrackToBackend(body.track),
+  };
+  const p = await apiFetch<any>('/api/v1/projects', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return {
+    ...p,
+    track: mapBackendTrackToFrontend(p.track),
+    related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
+  };
+}
+
+export async function apiDeleteProject(id: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/projects/${id}`, {
     method: 'DELETE',
   });
 }

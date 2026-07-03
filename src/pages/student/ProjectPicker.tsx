@@ -10,9 +10,10 @@ interface Props {
   profiles: Profile[];
   updateStudent: (userId: string, patch: Partial<Student>) => void;
   addStudentChangeRequest: (studentId: string, type: 'MENTOR' | 'PROJECT', requestedId: string, reason: string) => void;
+  isCohortFiltered?: boolean;
 }
 
-export default function ProjectPicker({ studentId, projects, students, profiles, updateStudent, addStudentChangeRequest }: Props) {
+export default function ProjectPicker({ studentId, projects, students, profiles, updateStudent, addStudentChangeRequest, isCohortFiltered }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [trackFilter, setTrackFilter] = useState('');
   const [swapModalOpen, setSwapModalOpen] = useState(false);
@@ -78,6 +79,13 @@ export default function ProjectPicker({ studentId, projects, students, profiles,
           <p className="text-gray-400 text-sm mt-1">Browse project deliverables, select your stack, and manage advisor allocations</p>
         </div>
       </div>
+
+      {isCohortFiltered && (
+        <div className="bg-gold/10 border border-gold/20 text-gold text-xs px-4 py-2.5 rounded-lg flex items-center gap-2">
+          <Briefcase size={14} />
+          <span>Showing projects mapped to your cohort by the OJT Admin.</span>
+        </div>
+      )}
 
       {/* Current Assignment Card */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

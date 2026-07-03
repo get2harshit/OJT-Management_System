@@ -8,7 +8,8 @@ import type { ApiUserRole } from '../../lib/types';
 type View = 'login' | 'signup' | 'reset';
 
 function dashboardPathForRole(role: ApiUserRole): string {
-  switch (role) {
+  const normRole = (role || '').toLowerCase();
+  switch (normRole) {
     case 'admin':
     case 'batch_manager':
       return '/admin/dashboard';
@@ -16,6 +17,7 @@ function dashboardPathForRole(role: ApiUserRole): string {
     case 'external_mentor':
       return '/mentor/dashboard';
     case 'student':
+    default:
       return '/student/dashboard';
   }
 }
@@ -71,7 +73,6 @@ export default function Login() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [resetSent, setResetSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -86,42 +87,41 @@ export default function Login() {
   const resetForm = () => {
     setName(''); setEmail(''); setPassword(''); setConfirmPassword('');
     setShowPassword(false); setShowConfirmPassword(false);
-    setError(null); setResetSent(false);
+    setResetSent(false);
   };
 
   const switchView = (v: View) => { resetForm(); setView(v); };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
 
     // ── Forgot Password ──
     if (view === 'reset') {
-      if (!email) { setError('Please enter your email.'); return; }
+      if (!email) { alert('Please enter your email.'); return; }
       setSubmitting(true);
       try {
         await apiForgotPassword(email);
         setResetSent(true);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to send reset email.');
+        alert(err instanceof Error ? err.message : 'Failed to send reset email.');
       } finally {
         setSubmitting(false);
       }
       return;
     }
 
-    if (!email || !password) { setError('Please fill in all fields.'); return; }
-    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    if (!email || !password) { alert('Please fill in all fields.'); return; }
+    if (password.length < 8) { alert('Password must be at least 8 characters.'); return; }
 
     // ── Sign Up ──
     if (view === 'signup') {
-      if (!name.trim()) { setError('Please enter your name.'); return; }
-      if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
+      if (!name.trim()) { alert('Please enter your name.'); return; }
+      if (password !== confirmPassword) { alert('Passwords do not match.'); return; }
       setSubmitting(true);
       try {
         await signup(email, password, name.trim(), signupRole);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Sign up failed.');
+        alert(err instanceof Error ? err.message : 'Sign up failed.');
       } finally {
         setSubmitting(false);
       }
@@ -134,7 +134,7 @@ export default function Login() {
     try {
       await login(email, password);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Sign in failed.');
+      alert(err instanceof Error ? err.message : 'Sign in failed.');
     } finally {
       setSubmitting(false);
     }
@@ -208,7 +208,7 @@ export default function Login() {
                     onToggle={() => setShowPassword((s) => !s)}
                   />
 
-                  {error && <p className="text-red-400 text-xs bg-red-400/10 px-3 py-2 rounded-lg">{error}</p>}
+
 
                   <button
                     type="submit"
@@ -297,7 +297,7 @@ export default function Login() {
                     onToggle={() => setShowConfirmPassword((s) => !s)}
                   />
 
-                  {error && <p className="text-red-400 text-xs bg-red-400/10 px-3 py-2 rounded-lg">{error}</p>}
+
 
                   <button
                     type="submit"
@@ -348,8 +348,7 @@ export default function Login() {
                       />
                     </div>
 
-                    {error && <p className="text-red-400 text-xs bg-red-400/10 px-3 py-2 rounded-lg">{error}</p>}
-
+ 
                     <button
                       type="submit"
                       disabled={submitting}

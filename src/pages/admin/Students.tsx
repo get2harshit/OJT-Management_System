@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Plus, Pencil, Trash2, Upload, FileText } from 'lucide-react';
+import { Plus, Pencil, Trash2, FileText } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import type { Profile, Student, Batch, Semester } from '../../lib/types';
