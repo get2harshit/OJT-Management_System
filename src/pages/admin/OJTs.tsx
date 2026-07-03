@@ -40,7 +40,6 @@ export default function AdminOJTs({
   const [savingProjects, setSavingProjects] = useState(false);
   const [projectSearchQuery, setProjectSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [cohortModalOpen, setCohortModalOpen] = useState(false);
   const [cohortForm, setCohortForm] = useState({
     academicYear: '',
@@ -73,12 +72,11 @@ export default function AdminOJTs({
 
   const fetchCohorts = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const data = await apiListCohorts();
       setCohorts(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load cohorts');
+      alert(err instanceof Error ? err.message : 'Failed to load cohorts');
     } finally {
       setLoading(false);
     }
@@ -119,7 +117,7 @@ export default function AdminOJTs({
       setCohortModalOpen(false);
       await fetchCohorts();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to save cohort');
+      alert(err instanceof Error ? err.message : 'Failed to save cohort');
     }
   };
 
@@ -146,7 +144,7 @@ export default function AdminOJTs({
       await apiDeleteCohort(id);
       setCohorts(prev => prev.filter(c => c.id !== id));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to delete cohort');
+      alert(err instanceof Error ? err.message : 'Failed to delete cohort');
     }
   };
 
@@ -411,12 +409,6 @@ export default function AdminOJTs({
             </div>
           </div>
 
-          {error && (
-            <div className="bg-red-400/10 border border-red-400/20 text-red-400 text-sm px-4 py-3 rounded-lg flex items-center justify-between">
-              <span>{error}</span>
-              <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">✕</button>
-            </div>
-          )}
 
           {loading && cohortData.length === 0 ? (
             <div className="flex items-center justify-center py-16">
