@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Sparkles, Activity } from 'lucide-react';
 import StatCard from '../../components/StatCard';
 import type { Profile, Student, Task, Submission, Credit, Attendance, Semester, Batch } from '../../lib/types';
+import { useMentors } from '../../hooks/useMentors';
 
 interface Props {
   profiles: Profile[];
@@ -45,7 +46,7 @@ export default function AdminDashboard({ profiles, students, tasks, submissions,
   const studentIds = new Set(filteredStudents.map(s => s.user_id));
 
   const studentCount = filteredStudents.length;
-  const mentors = useMemo(() => profiles.filter(p => p.role === 'MENTOR'), [profiles]);
+  const mentors = useMentors(profiles);
   const mentorCount = mentors.length;
   const taskCount = tasks.length;
   const filteredSubmissions = submissions.filter(s => studentIds.has(s.student_id));

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Check, X, AlertTriangle, Search, Calendar, Users, CheckCircle, XCircle } from 'lucide-react';
 import type { Attendance, Profile, Student } from '../../lib/types';
+import { useStudentProfiles } from '../../hooks/useStudents';
 
 interface Props {
   attendance: Attendance[];
@@ -20,7 +21,7 @@ export default function AdminAttendance({
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const studentProfiles = profiles.filter((p) => p.role === 'STUDENT');
+  const studentProfiles = useStudentProfiles(profiles);
 
   // Compute overall unique attendance dates in the database
   const totalUniqueDates = useMemo(() => {

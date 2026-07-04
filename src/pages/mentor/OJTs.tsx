@@ -5,6 +5,9 @@ import DataTable from '../../components/DataTable';
 import type { Project, Student, Profile, Cohort } from '../../lib/types';
 import { getDurationString, formatDateDisplay } from '../../lib/utils';
 import { apiListCohorts } from '../../lib/api';
+import { useStudentProfiles } from '../../hooks/useStudents';
+import { parseCSV as parseCSVRows, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../lib/csv';
+import { getCohortLabel } from '../../lib/cohortLabel';
 
 interface Props {
   projects: Project[];
@@ -31,17 +34,17 @@ export default function MentorOJTs({ projects, students, profiles, addProjects, 
       .catch(() => setCohorts([]));
   }, []);
 
-  const studentProfiles = profiles.filter(p => p.role === 'STUDENT');
+  const studentProfiles = useStudentProfiles(profiles);
 
   const parseCSV = (text: string) => {
-    if (text.startsWith('PK\x03\x04') || text.includes('xl/worksheets') || text.includes('[Content_Types].xml')) {
-      alert("Error: Invalid file format. It looks like you uploaded an Excel (.xlsx) file instead of a plain CSV. Please save/export your spreadsheet as Comma Separated Values (.csv) and try again.");
+    if (isExcelBinaryFile(text)) {
+      alert(EXCEL_FILE_WARNING);
       return [];
     }
-    const lines = text.trim().split('\n');
+    const rows = parseCSVRows(text);
     const parsed: Omit<Project, 'id' | 'created_at'>[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i];
       if (cols.length >= 3) {
         parsed.push({ title: cols[0], description: cols[1], track: cols[2] });
       }
@@ -87,26 +90,25 @@ export default function MentorOJTs({ projects, students, profiles, addProjects, 
     const prof = studentProfiles.find(p => p.id === s.user_id);
     const ojt = cohorts.find(c => c.id === s.ojt_id);
     const proj = projects.find(p => p.id === s.project_id);
-      const termLabel = ojt ? (ojt.sessionTerm === 'Term 1' ? 'ODD' : ojt.sessionTerm === 'Term 2' ? 'EVEN' : ojt.sessionTerm) : '';
-      return {
-        user_id: s.user_id,
-        name: prof?.name ?? '-',
-        roll_number: s.roll_number,
-        ojt_name: ojt ? (ojt.name || `${ojt.academicYear.join(', ')} — ${termLabel}`) : 'Not Assigned',
-        project_title: proj?.title ?? 'Not Assigned',
-      };
+    return {
+      user_id: s.user_id,
+      name: prof?.name ?? '-',
+      roll_number: s.roll_number,
+      ojt_name: ojt ? getCohortLabel(ojt) : 'Not Assigned',
+      project_title: proj?.title ?? 'Not Assigned',
+    };
   });
 
   return (
     <div className="space-y-8">
       {/* ── Projects Section ── */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-white">OJTs & Projects</h1>
             <p className="text-gray-400 text-sm mt-1">Upload projects via CSV and assign OJTs/projects to students</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button onClick={() => setCsvModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200">
               <Upload size={18} />
               Upload CSV
@@ -212,14 +214,9 @@ export default function MentorOJTs({ projects, students, profiles, addProjects, 
             <label className="block text-sm text-gray-400 mb-1">OJT Program</label>
             <select value={assignForm.ojt_id} onChange={e => setAssignForm({ ...assignForm, ojt_id: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold">
               <option value="">Select OJT</option>
-              {cohorts.map(c => {
-                const termLabel = c.sessionTerm === 'Term 1' ? 'ODD' :
-                                  c.sessionTerm === 'Term 2' ? 'EVEN' :
-                                  c.sessionTerm;
-                return (
-                  <option key={c.id} value={c.id}>{c.name || `${c.academicYear.join(', ')} — ${termLabel}`}</option>
-                );
-              })}
+              {cohorts.map(c => (
+                <option key={c.id} value={c.id}>{getCohortLabel(c)}</option>
+              ))}
             </select>
             {selectedCohort && (
               <p className="text-xs text-gray-500 mt-1">

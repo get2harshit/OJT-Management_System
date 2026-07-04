@@ -3,6 +3,9 @@ import { Plus, Trash2, Calendar, Target, CheckSquare, Layers } from 'lucide-reac
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import type { Task, Profile, Student, TaskType } from '../../lib/types';
+import { useMentors } from '../../hooks/useMentors';
+import { useStudentProfiles } from '../../hooks/useStudents';
+import { TRACKS } from '../../lib/constants';
 
 interface Props {
   tasks: Task[];
@@ -12,7 +15,6 @@ interface Props {
   deleteTask: (id: string) => void;
 }
 
-const TRACKS = ['Product Development', 'Application Development', 'Data Scientist', 'Open Source', 'Gen AI'];
 const WEEKS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 export default function AdminTasks({ tasks, profiles, students, addTask, deleteTask }: Props) {
@@ -30,8 +32,8 @@ export default function AdminTasks({ tasks, profiles, students, addTask, deleteT
     sub_tasks_raw: '',
   });
 
-  const mentors = profiles.filter(p => p.role === 'MENTOR');
-  const studentProfiles = profiles.filter(p => p.role === 'STUDENT');
+  const mentors = useMentors(profiles);
+  const studentProfiles = useStudentProfiles(profiles);
 
   const assignableList = form.type === 'STUDENT_SPECIFIC'
     ? students.map(s => {
@@ -86,7 +88,7 @@ export default function AdminTasks({ tasks, profiles, students, addTask, deleteT
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Week-wise Goals & Tasks</h1>
           <p className="text-gray-400 text-sm mt-1">Map out structured goals, viva checkpoints, and sub-tasks for each tech stack track</p>
@@ -159,7 +161,7 @@ export default function AdminTasks({ tasks, profiles, students, addTask, deleteT
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add Task / Weekly Goal">
         <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm text-gray-400 mb-1 flex items-center gap-1">
                 <Calendar size={14} className="text-gold" />
@@ -249,7 +251,7 @@ export default function AdminTasks({ tasks, profiles, students, addTask, deleteT
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm text-gray-400 mb-1">Start Date</label>
               <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />

@@ -1,5 +1,6 @@
 import DataTable from '../../components/DataTable';
 import type { Profile, Student, Batch } from '../../lib/types';
+import { useStudentProfiles } from '../../hooks/useStudents';
 
 interface Props {
   profiles: Profile[];
@@ -8,7 +9,7 @@ interface Props {
 }
 
 export default function MentorStudents({ profiles, students, batches }: Props) {
-  const studentProfiles = profiles.filter((p) => p.role === 'STUDENT');
+  const studentProfiles = useStudentProfiles(profiles);
 
   const data = students.map((s) => {
     const prof = studentProfiles.find((p) => p.id === s.user_id);

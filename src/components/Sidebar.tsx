@@ -14,6 +14,7 @@ import {
   CreditCard,
   Briefcase,
   Award,
+  X,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
 
@@ -22,6 +23,8 @@ interface SidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
   onLogout?: () => void;
+  mobileOpen: boolean;
+  onCloseMobile: () => void;
 }
 
 const adminTabs = [
@@ -57,7 +60,7 @@ const studentTabs = [
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
 ];
 
-export default function Sidebar({ panel, activeTab, onTabChange, onLogout }: SidebarProps) {
+export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobileOpen, onCloseMobile }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   let user = null;
@@ -82,40 +85,46 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout }: Sid
 
   return (
     <aside
-      className={`flex flex-col bg-zinc-850 border-r border-zinc-750 transition-all duration-300 ${
-        collapsed ? 'w-16' : 'w-64'
+      className={`fixed lg:static inset-y-0 left-0 z-40 flex flex-col bg-zinc-850 border-r border-zinc-750 transition-transform lg:transition-all duration-300 transform w-64 ${
+        mobileOpen ? 'translate-x-0' : '-translate-x-full'
+      } lg:translate-x-0 ${
+        collapsed ? 'lg:w-16' : 'lg:w-64'
       }`}
     >
       <div className="flex items-center justify-between h-16 px-4 border-b border-zinc-750">
-        {!collapsed && (
-          <span className="text-lg font-bold text-gold tracking-wider uppercase">
-            {panelLabel}
-          </span>
-        )}
+        <span className={`text-lg font-bold text-gold tracking-wider uppercase ${collapsed ? 'lg:hidden' : ''}`}>
+          {panelLabel}
+        </span>
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-1 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
+          className="hidden lg:block p-1 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
         >
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
+        <button
+          onClick={onCloseMobile}
+          className="lg:hidden p-1 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
+        >
+          <X size={18} />
+        </button>
       </div>
 
-      <nav className="flex-1 py-4 space-y-1">
+      <nav className="flex-1 py-4 space-y-1 overflow-y-auto">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
-              onClick={() => onTabChange(tab.id)}
+              onClick={() => { onTabChange(tab.id); onCloseMobile(); }}
               className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
                 isActive
                   ? 'text-gold bg-zinc-750 border-l-2 border-gold'
                   : 'text-gray-400 hover:text-white hover:bg-zinc-750'
-              } ${collapsed ? 'justify-center' : ''}`}
+              } ${collapsed ? 'lg:justify-center' : ''}`}
             >
               <Icon size={18} />
-              {!collapsed && <span>{tab.label}</span>}
+              <span className={collapsed ? 'lg:hidden' : ''}>{tab.label}</span>
             </button>
           );
         })}
@@ -126,12 +135,10 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout }: Sid
           <div className="w-8 h-8 rounded-full bg-gold/15 border border-gold/30 flex items-center justify-center text-gold font-bold text-sm shrink-0">
             {user.fullName?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
           </div>
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-white truncate">{user.fullName || 'User'}</p>
-              <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
-            </div>
-          )}
+          <div className={`min-w-0 flex-1 ${collapsed ? 'lg:hidden' : ''}`}>
+            <p className="text-xs font-bold text-white truncate">{user.fullName || 'User'}</p>
+            <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
+          </div>
         </div>
       )}
 
@@ -146,12 +153,12 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout }: Sid
               window.location.reload();
             }
           }}
-          className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors ${
-            collapsed ? 'justify-center w-full' : ''
+          className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors w-full ${
+            collapsed ? 'lg:justify-center' : ''
           }`}
         >
           <LogOut size={18} />
-          {!collapsed && <span>{(onLogout || logout) ? 'Sign Out' : 'Switch Panel'}</span>}
+          <span className={collapsed ? 'lg:hidden' : ''}>{(onLogout || logout) ? 'Sign Out' : 'Switch Panel'}</span>
         </button>
       </div>
     </aside>

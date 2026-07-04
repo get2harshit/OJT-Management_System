@@ -56,12 +56,12 @@ export default function AdminCredits({ credits, creditRequests, profiles, studen
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Cloud Credits Manager</h1>
           <p className="text-gray-400 text-sm mt-1">Review requests from students/mentors and allocate cloud vouchers</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button
             onClick={() => setModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200"

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Sidebar from '../../components/Sidebar';
+import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import Students from './Students';
 import OJTs from './OJTs';
@@ -69,11 +69,8 @@ export default function MentorPanel({ onLogout }: { onLogout?: () => void }) {
   };
 
   return (
-    <div className="flex min-h-screen bg-black">
-      <Sidebar panel="mentor" activeTab={activeTab} onTabChange={setActiveTab} onLogout={onLogout} />
-      <main className="flex-1 p-6 overflow-auto">
-        <div className="max-w-7xl mx-auto">{renderTab()}</div>
-      </main>
-    </div>
+    <AppShell panel="mentor" activeTab={activeTab} onTabChange={setActiveTab} onLogout={onLogout}>
+      {renderTab()}
+    </AppShell>
   );
 }

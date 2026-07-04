@@ -3,6 +3,7 @@ import { Award, CheckSquare, Square, Video, ExternalLink } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import type { Profile, Student, Attendance } from '../../lib/types';
+import { useStudentProfiles } from '../../hooks/useStudents';
 
 interface Props {
   profiles: Profile[];
@@ -20,7 +21,7 @@ export default function MentorEvaluationTracker({ profiles, students, attendance
     project_video_url: '', deployment_url: ''
   });
 
-  const studentProfiles = profiles.filter((p) => p.role === 'STUDENT');
+  const studentProfiles = useStudentProfiles(profiles);
 
   const totalUniqueDates = useMemo(() => {
     return new Set(attendance.map((a) => a.date)).size;
@@ -174,7 +175,7 @@ export default function MentorEvaluationTracker({ profiles, students, attendance
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Update Grades & Project Deliverables">
         <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm text-gray-400 mb-1">Viva 1 (0-100)</label>
               <input

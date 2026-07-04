@@ -3,6 +3,9 @@ import { Plus, Pencil, Trash2, FileText } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import type { Profile, Student, Batch, Semester } from '../../lib/types';
+import { useStudentProfiles } from '../../hooks/useStudents';
+import { TRACKS } from '../../lib/constants';
+import { parseCSV as parseCSVRows, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../lib/csv';
 
 interface Props {
   profiles: Profile[];
@@ -32,8 +35,8 @@ export default function AdminStudents({
   const [csvText, setCsvText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const tracks = ['Product Development', 'Application Development', 'Data Scientist', 'Open Source', 'Gen AI'];
-  const studentProfiles = profiles.filter(p => p.role === 'STUDENT');
+  const tracks = TRACKS;
+  const studentProfiles = useStudentProfiles(profiles);
 
   const data = students.map(s => {
     const prof = studentProfiles.find(p => p.id === s.user_id);
@@ -84,15 +87,15 @@ export default function AdminStudents({
   };
 
   const parseCSV = (text: string) => {
-    if (text.startsWith('PK\x03\x04') || text.includes('xl/worksheets') || text.includes('[Content_Types].xml')) {
-      alert("Error: Invalid file format. It looks like you uploaded an Excel (.xlsx) file instead of a plain CSV. Please save/export your spreadsheet as Comma Separated Values (.csv) and try again.");
+    if (isExcelBinaryFile(text)) {
+      alert(EXCEL_FILE_WARNING);
       return [];
     }
-    const lines = text.trim().split('\n');
+    const rows = parseCSVRows(text);
     const parsed: { name: string; email: string; roll_number: string; batch_id: string | null; semester_id: string | null; track: string | null }[] = [];
 
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i];
       if (cols.length >= 3) {
         const name = cols[0];
         const email = cols[1];
@@ -137,12 +140,12 @@ export default function AdminStudents({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Students</h1>
           <p className="text-gray-400 text-sm mt-1">Manage enrolled students</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => { setEditingId(null); setForm({ name: '', email: '', roll_number: '', batch_id: '', semester_id: '', track: '' }); setModalOpen(true); }}
             className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200"

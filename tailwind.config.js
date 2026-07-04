@@ -8,24 +8,24 @@ export default {
       },
       colors: {
         gold: {
-          DEFAULT: '#ffcc3f',
-          hover: '#e6b636',
-          dark: '#c99a2a',
+          DEFAULT: 'rgb(var(--color-gold) / <alpha-value>)',
+          hover: 'rgb(var(--color-gold-hover) / <alpha-value>)',
+          dark: 'rgb(var(--color-gold-dark) / <alpha-value>)',
         },
         zinc: {
-          850: '#18181b',
-          750: '#27272a',
+          850: 'rgb(var(--color-zinc-850) / <alpha-value>)',
+          750: 'rgb(var(--color-zinc-750) / <alpha-value>)',
         },
       },
       borderColor: {
         zinc: {
-          750: '#27272a',
+          750: 'rgb(var(--color-zinc-750) / <alpha-value>)',
         },
       },
       backgroundColor: {
         zinc: {
-          850: '#18181b',
-          750: '#27272a',
+          850: 'rgb(var(--color-zinc-850) / <alpha-value>)',
+          750: 'rgb(var(--color-zinc-750) / <alpha-value>)',
         },
       },
     },

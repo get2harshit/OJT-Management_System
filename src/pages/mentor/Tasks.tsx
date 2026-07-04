@@ -3,6 +3,8 @@ import { Plus, Pencil, Trash2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import type { Task, Profile, Student, TaskType } from '../../lib/types';
+import { useMentors } from '../../hooks/useMentors';
+import { useStudentProfiles } from '../../hooks/useStudents';
 
 interface Props {
   tasks: Task[];
@@ -20,14 +22,15 @@ export default function MentorTasks({ tasks, mentorId, profiles, students, addTa
     type: 'STUDENT_SPECIFIC' as TaskType, assigned_to: '',
   });
 
-  const studentProfiles = profiles.filter(p => p.role === 'STUDENT');
+  const studentProfiles = useStudentProfiles(profiles);
+  const mentors = useMentors(profiles);
 
   const assignableList = form.type === 'STUDENT_SPECIFIC'
     ? students.map(s => {
         const prof = studentProfiles.find(p => p.id === s.user_id);
         return { id: s.user_id, label: `${prof?.name ?? s.user_id} (${s.roll_number})` };
       })
-    : profiles.filter(p => p.role === 'MENTOR').map(m => ({ id: m.id, label: m.name }));
+    : mentors.map(m => ({ id: m.id, label: m.name }));
 
   // Mentor sees tasks assigned to them or unassigned
   const myTasks = tasks.filter(t => t.mentor_id === mentorId || t.assigned_to === mentorId || t.assigned_to === null);
@@ -58,7 +61,7 @@ export default function MentorTasks({ tasks, mentorId, profiles, students, addTa
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Tasks</h1>
           <p className="text-gray-400 text-sm mt-1">Manage tasks for your students</p>
@@ -128,7 +131,7 @@ export default function MentorTasks({ tasks, mentorId, profiles, students, addTa
               {assignableList.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm text-gray-400 mb-1">Start Date</label>
               <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />

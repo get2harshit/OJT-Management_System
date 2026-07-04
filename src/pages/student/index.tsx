@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import Sidebar from '../../components/Sidebar';
+import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import ProjectPicker from './ProjectPicker';
 import Tasks from './Tasks';
@@ -160,11 +160,8 @@ export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
   };
 
   return (
-    <div className="flex min-h-screen bg-black">
-      <Sidebar panel="student" activeTab={activeTab} onTabChange={setActiveTab} onLogout={onLogout} />
-      <main className="flex-1 p-6 overflow-auto">
-        <div className="max-w-7xl mx-auto">{renderTab()}</div>
-      </main>
-    </div>
+    <AppShell panel="student" activeTab={activeTab} onTabChange={setActiveTab} onLogout={onLogout}>
+      {renderTab()}
+    </AppShell>
   );
 }
