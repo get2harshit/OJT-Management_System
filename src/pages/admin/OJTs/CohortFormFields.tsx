@@ -1,6 +1,6 @@
 import DateRangePicker from '../../../components/DateRangePicker';
 import { SEMESTER_SESSION_OPTIONS, SEMESTER_SESSION_LABELS } from '../../../lib/constants';
-import { computeCohortDefaultsFromStartDate, type CohortFormState } from './cohortForm';
+import { computeCohortDefaultsFromStartDate, type CohortFormState } from '../../../lib/cohortForm';
 
 interface CohortFormFieldsProps {
   form: CohortFormState;
@@ -9,8 +9,8 @@ interface CohortFormFieldsProps {
   onEligibleBatchOptionsChange: (options: string[]) => void;
 }
 
-// Shared field markup for the Create Cohort modal and the Edit OJT page —
-// same form, two different hosts.
+// Field markup for the cohort form, shared by the Create and Edit flows of
+// the cohort modal in CohortsPanel.
 export default function CohortFormFields({ form, onChange, eligibleBatchOptions, onEligibleBatchOptionsChange }: CohortFormFieldsProps) {
   return (
     <div className="space-y-4">

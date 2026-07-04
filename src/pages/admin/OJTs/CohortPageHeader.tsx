@@ -6,9 +6,9 @@ interface CohortPageHeaderProps {
   subtitle?: string;
 }
 
-// Shared header for the cohort action pages (Edit/View/Select Project/Select
-// Student): a Back button plus title, so each page returns to wherever the
-// admin navigated from instead of a fixed route.
+// Shared header for the cohort action pages (View/Select Project/Select
+// Student/Select Mentor): a Back button plus title, so each page returns to
+// wherever the admin navigated from instead of a fixed route.
 export default function CohortPageHeader({ title, subtitle }: CohortPageHeaderProps) {
   const navigate = useNavigate();
   return (

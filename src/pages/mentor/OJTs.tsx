@@ -5,7 +5,7 @@ import DataTable from '../../components/DataTable';
 import type { Project, Student, Profile, Cohort } from '../../lib/types';
 import { getDurationString, formatDateDisplay } from '../../lib/utils';
 import { apiListCohorts } from '../../lib/api';
-import { useStudentProfiles } from '../../hooks/useStudents';
+import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 import { parseCSV as parseCSVRows, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../lib/csv';
 import { getCohortLabel } from '../../lib/cohortLabel';
 

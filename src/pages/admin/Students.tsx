@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import DataTable from '../../components/DataTable';
-import SpinnerSquare from '../../spinner/logoSpinner';
+import SpinnerSquare from '../../components/SpinnerSquare';
 import type { ApiStudent } from '../../lib/types';
 import { apiListStudents } from '../../lib/api';
 

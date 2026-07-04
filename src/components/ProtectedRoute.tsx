@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import SpinnerSquare from '../spinner/logoSpinner';
+import SpinnerSquare from './SpinnerSquare';
 
 type Role = 'admin' | 'mentor' | 'student';
 

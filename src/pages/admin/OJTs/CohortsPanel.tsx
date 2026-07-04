@@ -4,13 +4,13 @@ import { Plus, Trash2, Calendar, RefreshCw, Upload, Briefcase, Edit2, Eye, Users
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import ActionsMenu from '../../../components/ActionsMenu';
-import SpinnerSquare from '../../../spinner/logoSpinner';
+import SpinnerSquare from '../../../components/SpinnerSquare';
 import type { Cohort, Profile } from '../../../lib/types';
 import { apiListCohorts, apiCreateCohort, apiUpdateCohort, apiGetCohort, apiDeleteCohort } from '../../../lib/api';
 import { getDurationString, formatDateDisplay, toDateOnly } from '../../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import CohortFormFields from './CohortFormFields';
-import { computeCohortDefaultsFromStartDate, EMPTY_COHORT_FORM, validateCohortForm } from './cohortForm';
+import { computeCohortDefaultsFromStartDate, EMPTY_COHORT_FORM, validateCohortForm } from '../../../lib/cohortForm';
 import FormCsvImportModal from './FormCsvImportModal';
 
 interface CohortsPanelProps {

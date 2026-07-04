@@ -1,5 +1,5 @@
-import type { SemesterSession } from '../../../lib/types';
-import { formatDateDisplay } from '../../../lib/utils';
+import type { SemesterSession } from './types';
+import { formatDateDisplay } from './utils';
 
 export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export const COHORT_NAME_REGEX = new RegExp(`^OJT (${MONTH_NAMES.join('|')}) [0-9]{4}$`);

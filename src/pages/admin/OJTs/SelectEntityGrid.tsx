@@ -1,7 +1,7 @@
 import { CheckSquare, Square } from 'lucide-react';
-import SpinnerSquare from '../../../spinner/logoSpinner';
+import SpinnerSquare from '../../../components/SpinnerSquare';
 
-// Generic multi-select grid: "Select Project" and "Select Student" pages are
+// Generic multi-select grid: the Select Project/Student/Mentor pages are all
 // the same search + select-all + card-grid + save shell around different
 // data and card content, so the shell lives here once and each caller only
 // supplies what's actually different (via renderCard/getId/onSelectAll).

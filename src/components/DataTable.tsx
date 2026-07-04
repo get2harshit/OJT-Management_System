@@ -67,7 +67,7 @@ export default function DataTable<T extends Record<string, unknown>>({
           <tbody>
             {paginated.map((row, idx) => (
               <tr
-                key={idx}
+                key={typeof row.id === 'string' || typeof row.id === 'number' ? row.id : idx}
                 className="border-b border-zinc-750/50 hover:bg-zinc-750/20 transition-colors"
               >
                 {columns.map((col) => (

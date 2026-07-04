@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar, Users, Briefcase, UserCog } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
-import SpinnerSquare from '../../../spinner/logoSpinner';
+import SpinnerSquare from '../../../components/SpinnerSquare';
 import type { CohortDetails, Project } from '../../../lib/types';
 import { apiGetCohort, apiGetProjectsForCohort } from '../../../lib/api';
 import { getDurationString, formatDateDisplay } from '../../../lib/utils';

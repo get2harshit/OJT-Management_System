@@ -1,6 +1,6 @@
 import DataTable from '../../components/DataTable';
 import type { Profile, Student, Batch } from '../../lib/types';
-import { useStudentProfiles } from '../../hooks/useStudents';
+import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 
 interface Props {
   profiles: Profile[];

@@ -3,7 +3,7 @@ import { Award, CheckSquare, Square, Video, ExternalLink } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import type { Profile, Student, Attendance } from '../../lib/types';
-import { useStudentProfiles } from '../../hooks/useStudents';
+import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 
 interface Props {
   profiles: Profile[];

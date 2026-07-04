@@ -8,7 +8,7 @@ import Credits from './Credits';
 import Attendance from './Attendance';
 import { useMockData } from '../../hooks/useMockData';
 import { useAuth } from '../../context/AuthContext';
-import SpinnerSquare from '../../spinner/logoSpinner';
+import SpinnerSquare from '../../components/SpinnerSquare';
 import { apiGetProjectsForCohort, apiListProjects } from '../../lib/api';
 import type { Project } from '../../lib/types';
 
