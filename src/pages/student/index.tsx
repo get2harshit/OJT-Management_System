@@ -8,6 +8,7 @@ import Credits from './Credits';
 import Attendance from './Attendance';
 import { useMockData } from '../../hooks/useMockData';
 import { useAuth } from '../../context/AuthContext';
+import SpinnerSquare from '../../spinner/logoSpinner';
 import { apiGetProjectsForCohort, apiListProjects } from '../../lib/api';
 import type { Project } from '../../lib/types';
 
@@ -92,7 +93,7 @@ export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
           return (
             <div className="min-h-[50vh] flex items-center justify-center">
               <div className="flex flex-col items-center gap-3">
-                <div className="w-8 h-8 border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
+                <SpinnerSquare size={56} />
                 <p className="text-gray-400 text-sm">Loading cohort projects…</p>
               </div>
             </div>

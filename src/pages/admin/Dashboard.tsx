@@ -1,24 +1,32 @@
-import { useState, useMemo } from 'react';
-import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Sparkles, Activity } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Sparkles, Activity, UserCog, Briefcase } from 'lucide-react';
 import StatCard from '../../components/StatCard';
-import type { Profile, Student, Task, Submission, Credit, Attendance, Semester, Batch } from '../../lib/types';
+import type { Profile, Student, Task, Submission, Attendance, Semester, Batch, DashboardMetrics } from '../../lib/types';
 import { useMentors } from '../../hooks/useMentors';
+import { apiGetDashboardMetrics } from '../../lib/api';
 
 interface Props {
   profiles: Profile[];
   students: Student[];
   tasks: Task[];
   submissions: Submission[];
-  credits: Credit[];
   attendance: Attendance[];
   semesters: Semester[];
   batches: Batch[];
 }
 
-export default function AdminDashboard({ profiles, students, tasks, submissions, credits, attendance, semesters, batches }: Props) {
+export default function AdminDashboard({ profiles, students, tasks, submissions, attendance, semesters, batches }: Props) {
   const [semFilter, setSemFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
   const [trackFilter, setTrackFilter] = useState('');
+
+  // Real backend counts (students/mentors/batch managers/projects/credits) —
+  // everything else on this page (progress tracker, mentor table, submission
+  // breakdown, activity feed) has no backend equivalent yet and stays mock.
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  useEffect(() => {
+    apiGetDashboardMetrics().then(setMetrics).catch(() => setMetrics(null));
+  }, []);
 
   const distinctSemesters = useMemo(() => {
     const ids = [...new Set(students.map(s => s.semester_id).filter(Boolean))] as string[];
@@ -45,14 +53,10 @@ export default function AdminDashboard({ profiles, students, tasks, submissions,
 
   const studentIds = new Set(filteredStudents.map(s => s.user_id));
 
-  const studentCount = filteredStudents.length;
   const mentors = useMentors(profiles);
-  const mentorCount = mentors.length;
   const taskCount = tasks.length;
   const filteredSubmissions = submissions.filter(s => studentIds.has(s.student_id));
   const pendingSubmissions = filteredSubmissions.filter(s => s.status === 'PENDING').length;
-  const filteredCredits = credits.filter(c => studentIds.has(c.student_id));
-  const totalCredits = filteredCredits.reduce((sum, c) => sum + Number(c.amount), 0);
   const filteredAttendance = attendance.filter(a => studentIds.has(a.student_id));
   const attendanceCount = filteredAttendance.length;
 
@@ -118,13 +122,17 @@ export default function AdminDashboard({ profiles, students, tasks, submissions,
         </select>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatCard title="Students" value={studentCount} icon={Users} />
-        <StatCard title="Mentors" value={mentorCount} icon={Users} />
+      {/* Stat Cards — Students/Mentors/Batch Managers/Projects/Credits are real
+          backend counts; Tasks/Pending Submissions/Attendance stay mock since
+          the metrics endpoint has no data for them. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard title="Students" value={metrics ? metrics.studentsCount : '—'} icon={Users} />
+        <StatCard title="Mentors" value={metrics ? metrics.mentorsCount : '—'} icon={Users} />
+        <StatCard title="Batch Managers" value={metrics ? metrics.batchManagersCount : '—'} icon={UserCog} />
+        <StatCard title="Projects" value={metrics ? metrics.projectsCount : '—'} icon={Briefcase} />
+        <StatCard title="Cloud Credits" value={metrics ? `$${metrics.totalCreditsAvailable}` : '—'} icon={Cloud} />
         <StatCard title="Tasks" value={taskCount} icon={CheckSquare} />
         <StatCard title="Pending Submissions" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" />
-        <StatCard title="Cloud Credits" value={`$${totalCredits}`} icon={Cloud} />
         <StatCard title="Attendance Records" value={attendanceCount} icon={CalendarCheck} />
       </div>
 

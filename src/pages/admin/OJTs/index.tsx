@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Briefcase, Layers } from 'lucide-react';
-import type { Project, Profile, Student } from '../../../lib/types';
+import type { Project, Profile } from '../../../lib/types';
 import CohortsPanel from './CohortsPanel';
 import ProjectCatalogPanel from './ProjectCatalogPanel';
 
@@ -10,8 +10,6 @@ interface OJTsProps {
   addProjects: (projs: Omit<Project, 'id' | 'created_at'>[]) => void;
   deleteProject: (id: string) => void;
   profiles: Profile[];
-  students: Student[];
-  updateStudent: (userId: string, patch: Partial<Student>) => void;
   importOJTBatch: (cohortId: string, studentRecords: any[]) => void;
 }
 
@@ -21,8 +19,6 @@ export default function AdminOJTs({
   addProjects,
   deleteProject,
   profiles,
-  students,
-  updateStudent,
   importOJTBatch
 }: OJTsProps) {
   const [activeTab, setActiveTab] = useState<'cohorts' | 'catalog'>('cohorts');
@@ -64,10 +60,7 @@ export default function AdminOJTs({
 
       {activeTab === 'cohorts' && (
         <CohortsPanel
-          projects={projects}
           profiles={profiles}
-          students={students}
-          updateStudent={updateStudent}
           importOJTBatch={importOJTBatch}
         />
       )}

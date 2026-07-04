@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import SpinnerSquare from '../spinner/logoSpinner';
 
 type Role = 'admin' | 'mentor' | 'student';
 
@@ -15,7 +16,7 @@ export default function ProtectedRoute({ role, children }: Props) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
+          <SpinnerSquare size={64} />
           <p className="text-gray-400 text-sm">Verifying session…</p>
         </div>
       </div>

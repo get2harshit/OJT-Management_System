@@ -1,4 +1,4 @@
-import type { Cohort, CreateCohortBody, UpdateCohortBody, Project } from '../types';
+import type { Cohort, CohortDetails, CreateCohortBody, UpdateCohortBody, Project } from '../types';
 import { apiFetch } from './client';
 import { mapBackendTrackToFrontend } from './trackMapping';
 
@@ -6,8 +6,8 @@ export async function apiListCohorts(): Promise<Cohort[]> {
   return apiFetch<Cohort[]>('/api/v1/cohorts');
 }
 
-export async function apiGetCohort(id: string): Promise<Cohort> {
-  return apiFetch<Cohort>(`/api/v1/cohorts/${id}`);
+export async function apiGetCohort(id: string): Promise<CohortDetails> {
+  return apiFetch<CohortDetails>(`/api/v1/cohorts/${id}`);
 }
 
 export async function apiCreateCohort(body: CreateCohortBody): Promise<Cohort> {
@@ -44,4 +44,21 @@ export async function apiGetProjectsForCohort(cohortId: string): Promise<Project
     track: mapBackendTrackToFrontend(p.track),
     related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
   }));
+}
+
+// Additive only — there's no unmap endpoint, so callers can only grow a
+// cohort's student list, never remove from it via this call.
+export async function apiAddStudentsToCohort(cohortId: string, userIds: string[]): Promise<void> {
+  return apiFetch<void>(`/api/v1/cohorts/${cohortId}/students`, {
+    method: 'POST',
+    body: JSON.stringify({ userIds }),
+  });
+}
+
+// Additive only — same reasoning as apiAddStudentsToCohort.
+export async function apiAddMentorsToCohort(cohortId: string, userIds: string[]): Promise<void> {
+  return apiFetch<void>(`/api/v1/cohorts/${cohortId}/mentors`, {
+    method: 'POST',
+    body: JSON.stringify({ userIds }),
+  });
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import Students from './Students';
@@ -10,6 +11,10 @@ import Submissions from './Submissions';
 import Credits from './Credits';
 import Attendance from './Attendance';
 import EvaluationTracker from './EvaluationTracker';
+import ViewCohortPage from './OJTs/ViewCohortPage';
+import CohortStudentsPage from './OJTs/CohortStudentsPage';
+import CohortProjectsPage from './OJTs/CohortProjectsPage';
+import CohortMentorsPage from './OJTs/CohortMentorsPage';
 import { useMockData } from '../../hooks/useMockData';
 import { apiListCohorts, apiListProjects, apiCreateProject, apiDeleteProject } from '../../lib/api';
 import { useEffect, useCallback } from 'react';
@@ -91,14 +96,13 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
             students={data.students}
             tasks={data.tasks}
             submissions={data.submissions}
-            credits={data.credits}
             attendance={data.attendance}
             semesters={data.semesters}
             batches={data.batches}
           />
         );
       case 'students':
-        return <Students profiles={data.profiles} students={data.students} batches={data.batches} semesters={data.semesters} updateStudent={data.updateStudent} addStudentRecord={data.addStudentRecord} addStudentRecords={data.addStudentRecords} deleteProfile={data.deleteProfile} />;
+        return <Students />;
       case 'mentors':
         return <Mentors profiles={data.profiles} addMentor={data.addMentor} addMentors={data.addMentors} deleteProfile={data.deleteProfile} updateProfile={data.updateProfile} />;
       case 'allocations':
@@ -111,8 +115,6 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
             addProjects={handleBulkAddProjects}
             deleteProject={handleDeleteProject}
             profiles={data.profiles}
-            students={data.students}
-            updateStudent={data.updateStudent}
             importOJTBatch={data.importOJTBatch}
           />
         );
@@ -133,7 +135,6 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
             students={data.students}
             tasks={data.tasks}
             submissions={data.submissions}
-            credits={data.credits}
             attendance={data.attendance}
             semesters={data.semesters}
             batches={data.batches}
@@ -144,7 +145,13 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
 
   return (
     <AppShell panel="admin" activeTab={activeTab} onTabChange={setActiveTab} onLogout={onLogout}>
-      {renderTab()}
+      <Routes>
+        <Route path="ojts/:cohortId/view" element={<ViewCohortPage />} />
+        <Route path="ojts/:cohortId/students" element={<CohortStudentsPage />} />
+        <Route path="ojts/:cohortId/projects" element={<CohortProjectsPage projects={projectsList} />} />
+        <Route path="ojts/:cohortId/mentors" element={<CohortMentorsPage />} />
+        <Route path="*" element={renderTab()} />
+      </Routes>
     </AppShell>
   );
 }

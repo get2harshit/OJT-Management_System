@@ -24,7 +24,7 @@ export default function DataTable<T extends Record<string, unknown>>({
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const pageSize = 12;
 
   const filtered = search
     ? data.filter((row) => {
