@@ -3,6 +3,10 @@ import { RefreshCw, Check, X, ShieldAlert } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import type { Student, Profile, Project, Cohort } from '../../lib/types';
+import { useMentors } from '../../hooks/useMentors';
+import { useStudentProfiles } from '../../hooks/useStudents';
+import { TRACKS } from '../../lib/constants';
+import { getCohortLabel } from '../../lib/cohortLabel';
 
 interface Props {
   students: Student[];
@@ -18,10 +22,8 @@ export default function AdminAllocations({ students, profiles, projects, cohorts
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [form, setForm] = useState({ mentor_id: '', project_id: '', ojt_id: '', track: '' });
 
-  const mentors = profiles.filter(p => p.role === 'MENTOR');
-  const studentProfiles = profiles.filter(p => p.role === 'STUDENT');
-
-  const TRACKS = ['Product Development', 'Application Development', 'Data Scientist', 'Open Source', 'Gen AI'];
+  const mentors = useMentors(profiles);
+  const studentProfiles = useStudentProfiles(profiles);
 
   const studentData = students.map(s => {
     const p = studentProfiles.find(pr => pr.id === s.user_id);
@@ -29,15 +31,13 @@ export default function AdminAllocations({ students, profiles, projects, cohorts
     const proj = projects.find(pr => pr.id === s.project_id);
     const cohort = cohorts.find(c => c.id === s.ojt_id);
 
-    const cohortTermLabel = cohort ? (cohort.sessionTerm === 'Term 1' ? 'ODD' : cohort.sessionTerm === 'Term 2' ? 'EVEN' : cohort.sessionTerm) : '';
-
     return {
       ...s,
       student_name: p?.name ?? '-',
       roll_number: s.roll_number,
       mentor_name: mentor?.name ?? 'Not Assigned',
       project_title: proj?.title ?? 'Not Assigned',
-      cohort_label: cohort ? (cohort.name || `${cohort.academicYear.join(', ')} — ${cohortTermLabel}`) : 'Not Assigned',
+      cohort_label: cohort ? getCohortLabel(cohort) : 'Not Assigned',
     };
   });
 
@@ -143,7 +143,7 @@ export default function AdminAllocations({ students, profiles, projects, cohorts
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Mentor & Project Allocations</h1>
           <p className="text-gray-400 text-sm mt-1">Finalize students OJT runs, mentors, and projects. Review allocation swap requests.</p>
@@ -284,14 +284,9 @@ export default function AdminAllocations({ students, profiles, projects, cohorts
               className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
             >
               <option value="">Unassigned</option>
-              {cohorts.map(c => {
-                const termLabel = c.sessionTerm === 'Term 1' ? 'ODD' :
-                                  c.sessionTerm === 'Term 2' ? 'EVEN' :
-                                  c.sessionTerm;
-                return (
-                  <option key={c.id} value={c.id}>{c.name || `${c.academicYear.join(', ')} — ${termLabel}`}</option>
-                );
-              })}
+              {cohorts.map(c => (
+                <option key={c.id} value={c.id}>{getCohortLabel(c)}</option>
+              ))}
             </select>
           </div>
           <div>

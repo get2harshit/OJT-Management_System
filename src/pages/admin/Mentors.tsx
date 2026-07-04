@@ -3,6 +3,9 @@ import { Plus, Trash2, Upload, FileText, Edit2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import type { Profile } from '../../lib/types';
+import { useMentors } from '../../hooks/useMentors';
+import { TRACKS } from '../../lib/constants';
+import { parseCSV as parseCSVRows, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../lib/csv';
 
 interface Props {
   profiles: Profile[];
@@ -11,8 +14,6 @@ interface Props {
   deleteProfile: (id: string) => void;
   updateProfile: (id: string, patch: Partial<Profile>) => void;
 }
-
-const TRACKS = ['Product Development', 'Application Development', 'Data Scientist', 'Open Source', 'Gen AI'];
 
 export default function AdminMentors({ profiles, addMentor, addMentors, deleteProfile, updateProfile }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -30,7 +31,7 @@ export default function AdminMentors({ profiles, addMentor, addMentors, deletePr
   const [csvText, setCsvText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const mentors = profiles.filter((p) => p.role === 'MENTOR');
+  const mentors = useMentors(profiles);
 
   const handleSave = () => {
     if (!form.name || !form.email || form.tracks.length === 0) return;
@@ -70,15 +71,15 @@ export default function AdminMentors({ profiles, addMentor, addMentors, deletePr
   };
 
   const parseCSV = (text: string) => {
-    if (text.startsWith('PK\x03\x04') || text.includes('xl/worksheets') || text.includes('[Content_Types].xml')) {
-      alert("Error: Invalid file format. It looks like you uploaded an Excel (.xlsx) file instead of a plain CSV. Please save/export your spreadsheet as Comma Separated Values (.csv) and try again.");
+    if (isExcelBinaryFile(text)) {
+      alert(EXCEL_FILE_WARNING);
       return [];
     }
-    const lines = text.trim().split('\n');
+    const rows = parseCSVRows(text);
     const parsed: { name: string; email: string; tracks?: string[] }[] = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i];
       if (cols.length >= 2) {
         const trackField = cols[2] || '';
         const tracks = trackField
@@ -115,12 +116,12 @@ export default function AdminMentors({ profiles, addMentor, addMentors, deletePr
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Mentors</h1>
           <p className="text-gray-400 text-sm mt-1">Manage mentor profiles, track specialties, capacity, and availability</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setCsvModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200"
@@ -217,7 +218,7 @@ export default function AdminMentors({ profiles, addMentor, addMentors, deletePr
           
           <div>
             <label className="block text-sm text-gray-400 mb-2">Specialized Tracks (Select one or more)</label>
-            <div className="grid grid-cols-2 gap-2 bg-zinc-800/50 p-3 rounded-lg border border-zinc-700">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-zinc-800/50 p-3 rounded-lg border border-zinc-700">
               {TRACKS.map(t => {
                 const checked = form.tracks.includes(t);
                 return (
@@ -240,7 +241,7 @@ export default function AdminMentors({ profiles, addMentor, addMentors, deletePr
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-gray-400 mb-1">Max Capacity (Students)</label>
               <input

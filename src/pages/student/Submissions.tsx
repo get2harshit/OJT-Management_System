@@ -131,7 +131,7 @@ export default function StudentSubmissions({
 
               <hr className="border-zinc-750" />
 
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-500 block">Version</span>
                   <span className="text-gray-300 font-semibold">v{activeSub.version}</span>

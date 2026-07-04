@@ -1,33 +1,67 @@
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap');
+@import 'react-day-picker/style.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* RGB channel triples (not hex) so Tailwind's color-opacity modifiers
+   (e.g. bg-gold/10, border-zinc-750/50) can do rgb(var(...) / <alpha>). */
+:root {
+  --color-gold: 255 204 63;
+  --color-gold-hover: 230 182 54;
+  --color-gold-dark: 201 154 42;
+  --color-zinc-750: 39 39 42;
+  --color-zinc-850: 24 24 27;
+  --color-bg: 0 0 0;
+  --color-fg: 243 244 246;
+}
 
 @layer base {
   html {
     font-family: 'Montserrat', system-ui, -apple-system, Roboto, Arial, sans-serif;
   }
   body {
-    background-color: #000000;
-    color: #f3f4f6;
+    background-color: rgb(var(--color-bg));
+    color: rgb(var(--color-fg));
   }
 }
 
 @layer utilities {
   .text-gold {
-    color: #ffcc3f;
+    color: rgb(var(--color-gold));
   }
   .bg-gold {
-    background-color: #ffcc3f;
+    background-color: rgb(var(--color-gold));
   }
   .border-gold {
-    border-color: #ffcc3f;
+    border-color: rgb(var(--color-gold));
   }
   .hover\:bg-gold-hover:hover {
-    background-color: #e6b636;
+    background-color: rgb(var(--color-gold-hover));
   }
   .ring-gold {
-    --tw-ring-color: #ffcc3f;
+    --tw-ring-color: rgb(var(--color-gold));
   }
+}
+
+/* Dark-theme overrides for react-day-picker (the app has no light mode). */
+.rdp-root {
+  --rdp-accent-color: rgb(var(--color-gold));
+  --rdp-accent-background-color: rgb(var(--color-gold) / 0.15);
+  --rdp-today-color: rgb(var(--color-gold));
+  --rdp-day_button-border: 2px solid transparent;
+  color: rgb(var(--color-fg));
+}
+.rdp-weekday {
+  color: rgb(156 163 175); /* text-gray-400 */
+}
+.rdp-day_button:hover:not([disabled]) {
+  background-color: rgb(var(--color-zinc-750));
+}
+.rdp-outside {
+  color: rgb(107 114 128); /* text-gray-500 */
+}
+.rdp-chevron {
+  fill: rgb(var(--color-gold));
 }

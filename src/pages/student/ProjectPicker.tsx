@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Briefcase, CheckCircle2, Search, ArrowLeftRight, HelpCircle, UserCheck } from 'lucide-react';
 import type { Project, Student, Profile } from '../../lib/types';
 import Modal from '../../components/Modal';
+import { useMentors } from '../../hooks/useMentors';
 
 interface Props {
   studentId: string;
@@ -29,9 +30,7 @@ export default function ProjectPicker({ studentId, projects, students, profiles,
     return [...new Set(projects.map(p => p.track).filter(Boolean))];
   }, [projects]);
 
-  const mentors = useMemo(() => {
-    return profiles.filter(p => p.role === 'MENTOR');
-  }, [profiles]);
+  const mentors = useMentors(profiles);
 
   const filteredProjects = useMemo(() => {
     return projects.filter(p => {
