@@ -4,7 +4,7 @@ import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import type { Student, Profile, Project, Cohort } from '../../lib/types';
 import { useMentors } from '../../hooks/useMentors';
-import { useStudentProfiles } from '../../hooks/useStudents';
+import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 import { TRACKS } from '../../lib/constants';
 import { getCohortLabel } from '../../lib/cohortLabel';
 

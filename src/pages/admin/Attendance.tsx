@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Check, X, AlertTriangle, Search, Calendar, Users, CheckCircle, XCircle } from 'lucide-react';
 import type { Attendance, Profile, Student } from '../../lib/types';
-import { useStudentProfiles } from '../../hooks/useStudents';
+import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 
 interface Props {
   attendance: Attendance[];

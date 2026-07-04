@@ -64,3 +64,42 @@ export interface UpdateCohortBody {
   endDate?: string;
   isActive?: boolean;
 }
+
+// Real backend student shape (from GET /api/v1/students), distinct from the
+// mock-domain `Student` type in student.ts which the rest of the app still
+// runs on.
+export interface ApiStudent {
+  id: string;
+  rollNumber?: string;
+  batch?: string;
+  currentTier?: string;
+  email?: string | null;
+  fullName?: string | null;
+  phoneNumber?: string | null;
+  isHosteller?: boolean | null;
+  activeStatus?: boolean | null;
+}
+
+// Real backend mentor shape (from GET /api/v1/mentors).
+export interface ApiMentor {
+  id: string;
+  organization?: string;
+  isExternal: boolean;
+  email?: string;
+  fullName?: string;
+  phoneNumber?: string;
+}
+
+export interface CohortDetails extends Cohort {
+  students: ApiStudent[];
+  mentors: ApiMentor[];
+  batchManagers: unknown[];
+}
+
+export interface DashboardMetrics {
+  studentsCount: number;
+  mentorsCount: number;
+  batchManagersCount: number;
+  projectsCount: number;
+  totalCreditsAvailable: number;
+}

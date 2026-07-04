@@ -4,7 +4,7 @@ import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import type { Task, Profile, Student, TaskType } from '../../lib/types';
 import { useMentors } from '../../hooks/useMentors';
-import { useStudentProfiles } from '../../hooks/useStudents';
+import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 
 interface Props {
   tasks: Task[];
