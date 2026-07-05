@@ -4,6 +4,7 @@ import { Shield, GraduationCap, User, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { apiForgotPassword } from '../../lib/api';
 import type { ApiUserRole } from '../../lib/types';
+import { useToast } from '../../toast';
 
 type View = 'login' | 'signup' | 'reset';
 
@@ -64,6 +65,7 @@ function PasswordField({ label, value, onChange, placeholder, show, onToggle }: 
 export default function Login() {
   const { user, login, signup } = useAuth();
   const navigate = useNavigate();
+  const { showError } = useToast();
 
   const [view, setView] = useState<View>('login');
   const [signupRole, setSignupRole] = useState<ApiUserRole>('student');
@@ -97,31 +99,31 @@ export default function Login() {
 
     // ── Forgot Password ──
     if (view === 'reset') {
-      if (!email) { alert('Please enter your email.'); return; }
+      if (!email) { showError('Please enter your email.'); return; }
       setSubmitting(true);
       try {
         await apiForgotPassword(email);
         setResetSent(true);
       } catch (err: unknown) {
-        alert(err instanceof Error ? err.message : 'Failed to send reset email.');
+        showError(err instanceof Error ? err.message : 'Failed to send reset email.');
       } finally {
         setSubmitting(false);
       }
       return;
     }
 
-    if (!email || !password) { alert('Please fill in all fields.'); return; }
-    if (password.length < 8) { alert('Password must be at least 8 characters.'); return; }
+    if (!email || !password) { showError('Please fill in all fields.'); return; }
+    if (password.length < 8) { showError('Password must be at least 8 characters.'); return; }
 
     // ── Sign Up ──
     if (view === 'signup') {
-      if (!name.trim()) { alert('Please enter your name.'); return; }
-      if (password !== confirmPassword) { alert('Passwords do not match.'); return; }
+      if (!name.trim()) { showError('Please enter your name.'); return; }
+      if (password !== confirmPassword) { showError('Passwords do not match.'); return; }
       setSubmitting(true);
       try {
         await signup(email, password, name.trim(), signupRole);
       } catch (err: unknown) {
-        alert(err instanceof Error ? err.message : 'Sign up failed.');
+        showError(err instanceof Error ? err.message : 'Sign up failed.');
       } finally {
         setSubmitting(false);
       }
@@ -134,7 +136,7 @@ export default function Login() {
     try {
       await login(email, password);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Sign in failed.');
+      showError(err instanceof Error ? err.message : 'Sign in failed.');
     } finally {
       setSubmitting(false);
     }

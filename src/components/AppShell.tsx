@@ -21,6 +21,7 @@ const PANEL_LABELS: Record<PanelType, string> = {
 // desktop, hamburger-triggered off-canvas drawer below the lg breakpoint.
 export default function AppShell({ panel, activeTab, onTabChange, onLogout, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <div className="flex min-h-screen bg-black">
@@ -38,9 +39,13 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
         onLogout={onLogout}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
+        collapsed={collapsed}
+        onToggleCollapse={() => setCollapsed(c => !c)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* The sidebar is fixed (so it stays put while this pane scrolls), which
+          takes it out of normal flow — this margin reserves its width instead. */}
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${collapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
         <header className="lg:hidden flex items-center justify-between h-14 px-4 border-b border-zinc-750 bg-zinc-850">
           <button
             onClick={() => setMobileOpen(true)}

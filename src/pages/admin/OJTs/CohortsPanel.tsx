@@ -12,6 +12,7 @@ import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabe
 import CohortFormFields from './CohortFormFields';
 import { computeCohortDefaultsFromStartDate, EMPTY_COHORT_FORM, validateCohortForm } from '../../../lib/cohortForm';
 import FormCsvImportModal from './FormCsvImportModal';
+import { useToast } from '../../../toast';
 
 interface CohortsPanelProps {
   profiles: Profile[];
@@ -20,6 +21,7 @@ interface CohortsPanelProps {
 
 export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelProps) {
   const navigate = useNavigate();
+  const { showError } = useToast();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingCohortId, setEditingCohortId] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
       const data = await apiListCohorts();
       setCohorts(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to load cohorts');
+      showError(err instanceof Error ? err.message : 'Failed to load cohorts');
     } finally {
       setLoading(false);
     }
@@ -54,7 +56,7 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
   const handleSaveCohort = async () => {
     const error = validateCohortForm(cohortForm);
     if (error) {
-      alert(error);
+      showError(error);
       return;
     }
     try {
@@ -74,7 +76,7 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
       closeCohortModal();
       await fetchCohorts();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to save cohort');
+      showError(err instanceof Error ? err.message : 'Failed to save cohort');
     }
   };
 
@@ -99,7 +101,7 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
         isActive: cohort.isActive,
       });
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to load cohort');
+      showError(err instanceof Error ? err.message : 'Failed to load cohort');
       closeCohortModal();
     }
   };
@@ -111,7 +113,7 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
       await apiDeleteCohort(id);
       setCohorts(prev => prev.filter(c => c.id !== id));
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to delete cohort');
+      showError(err instanceof Error ? err.message : 'Failed to delete cohort');
     }
   };
 
@@ -153,7 +155,7 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
       </div>
 
       {loading && cohortData.length === 0 ? (
-        <div className="flex items-center justify-center py-16">
+        <div className="min-h-[50vh] flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <SpinnerSquare size={48} />
             <p className="text-gray-500 text-sm">Loading cohorts…</p>

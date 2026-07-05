@@ -4,6 +4,7 @@ import Modal from '../../../components/Modal';
 import type { Profile } from '../../../lib/types';
 import { parseCSV } from '../../../lib/csv';
 import { useMentors } from '../../../hooks/useMentors';
+import { useToast } from '../../../toast';
 
 interface CohortOption {
   id: string;
@@ -26,6 +27,7 @@ export default function FormCsvImportModal({ open, onClose, cohortOptions, profi
   const [csvText, setCsvText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const mentors = useMentors(profiles);
+  const { showSuccess, showError } = useToast();
 
   const handleClose = () => {
     setSelectedCohortId('');
@@ -93,7 +95,7 @@ export default function FormCsvImportModal({ open, onClose, cohortOptions, profi
 
     if (records.length > 0) {
       importOJTBatch(selectedCohortId, records);
-      alert(`Successfully imported ${records.length} students from the OJT form responses!`);
+      showSuccess(`Successfully imported ${records.length} students from the OJT form responses!`);
     }
 
     handleClose();

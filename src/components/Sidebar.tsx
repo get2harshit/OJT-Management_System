@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard,
@@ -25,6 +24,8 @@ interface SidebarProps {
   onLogout?: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 const adminTabs = [
@@ -60,9 +61,7 @@ const studentTabs = [
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
 ];
 
-export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobileOpen, onCloseMobile }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
-
+export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobileOpen, onCloseMobile, collapsed, onToggleCollapse }: SidebarProps) {
   let user = null;
   let logout: (() => Promise<void>) | null = null;
   try {
@@ -85,7 +84,7 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
 
   return (
     <aside
-      className={`fixed lg:static inset-y-0 left-0 z-40 flex flex-col bg-zinc-850 border-r border-zinc-750 transition-transform lg:transition-all duration-300 transform w-64 ${
+      className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-zinc-850 border-r border-zinc-750 transition-all duration-300 w-64 ${
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       } lg:translate-x-0 ${
         collapsed ? 'lg:w-16' : 'lg:w-64'
@@ -96,7 +95,7 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
           {panelLabel}
         </span>
         <button
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={onToggleCollapse}
           className="hidden lg:block p-1 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
         >
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}

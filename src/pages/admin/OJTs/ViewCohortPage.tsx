@@ -7,10 +7,12 @@ import type { CohortDetails, Project } from '../../../lib/types';
 import { apiGetCohort, apiGetProjectsForCohort } from '../../../lib/api';
 import { getDurationString, formatDateDisplay } from '../../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
+import { useToast } from '../../../toast';
 
 export default function ViewCohortPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
+  const { showError } = useToast();
   const [cohort, setCohort] = useState<CohortDetails | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +28,7 @@ export default function ViewCohortPage() {
       setCohort(details);
       setProjects(mappedProjects);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to load cohort');
+      showError(err instanceof Error ? err.message : 'Failed to load cohort');
       navigate(-1);
     } finally {
       setLoading(false);
@@ -41,7 +43,7 @@ export default function ViewCohortPage() {
     return (
       <div className="space-y-6">
         <CohortPageHeader title="View OJT Cohort" />
-        <div className="flex items-center justify-center py-16">
+        <div className="min-h-[50vh] flex items-center justify-center">
           <SpinnerSquare size={48} />
         </div>
       </div>
@@ -115,7 +117,12 @@ export default function ViewCohortPage() {
             <UserCog size={16} className="text-gold" />
             <p className="text-white text-sm font-semibold">Mentors ({cohort.mentors.length})</p>
           </div>
-          <p className="text-gray-500 text-xs">{cohort.mentors.length === 0 ? 'No mentors mapped yet.' : `${cohort.mentors.length} mentor(s) mapped.`}</p>
+          <div className="space-y-1 max-h-64 overflow-y-auto">
+            {cohort.mentors.length === 0 && <p className="text-gray-500 text-xs">No mentors mapped yet.</p>}
+            {cohort.mentors.map(m => (
+              <p key={m.id} className="text-gray-300 text-xs truncate">{m.fullName || m.email || m.id}</p>
+            ))}
+          </div>
         </div>
       </div>
     </div>

@@ -5,10 +5,12 @@ import SelectEntityGrid from './SelectEntityGrid';
 import type { ApiStudent } from '../../../lib/types';
 import { apiListStudents, apiGetCohort, apiAddStudentsToCohort } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
+import { useToast } from '../../../toast';
 
 export default function CohortStudentsPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
+  const { showSuccess, showError } = useToast();
 
   const [cohortLabel, setCohortLabel] = useState('');
   const [eligibleStudents, setEligibleStudents] = useState<ApiStudent[]>([]);
@@ -33,7 +35,7 @@ export default function CohortStudentsPage() {
       setOriginalMappedStudentIds(currentlyMapped);
     } catch (err: unknown) {
       console.error(err);
-      alert('Failed to load students eligible for this cohort.');
+      showError('Failed to load students eligible for this cohort.');
       navigate(-1);
     } finally {
       setLoading(false);
@@ -79,10 +81,10 @@ export default function CohortStudentsPage() {
     setSaving(true);
     try {
       await apiAddStudentsToCohort(cohortId, newlyAdded);
-      alert('Cohort students updated successfully!');
+      showSuccess('Cohort students updated successfully!');
       navigate(-1);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to map students to cohort');
+      showError(err instanceof Error ? err.message : 'Failed to map students to cohort');
     } finally {
       setSaving(false);
     }
@@ -118,7 +120,7 @@ export default function CohortStudentsPage() {
                 type="checkbox"
                 checked={selected}
                 onChange={() => handleToggle(p.id)}
-                className="mt-0.5 shrink-0 rounded bg-zinc-750 border-zinc-650 text-gold focus:ring-gold"
+                className="mt-0.5 shrink-0 rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold"
               />
             </div>
             {p.email && <p className="text-gray-400 text-xs line-clamp-1">{p.email}</p>}

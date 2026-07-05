@@ -13,9 +13,10 @@ interface Props {
   attendance: Attendance[];
   semesters: Semester[];
   batches: Batch[];
+  onNavigateToTab: (tab: string) => void;
 }
 
-export default function AdminDashboard({ profiles, students, tasks, submissions, attendance, semesters, batches }: Props) {
+export default function AdminDashboard({ profiles, students, tasks, submissions, attendance, semesters, batches, onNavigateToTab }: Props) {
   const [semFilter, setSemFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
   const [trackFilter, setTrackFilter] = useState('');
@@ -124,16 +125,17 @@ export default function AdminDashboard({ profiles, students, tasks, submissions,
 
       {/* Stat Cards — Students/Mentors/Batch Managers/Projects/Credits are real
           backend counts; Tasks/Pending Submissions/Attendance stay mock since
-          the metrics endpoint has no data for them. */}
+          the metrics endpoint has no data for them. Each card jumps to its
+          matching sidebar tab, except Batch Managers which has no page yet. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Students" value={metrics ? metrics.studentsCount : '—'} icon={Users} />
-        <StatCard title="Mentors" value={metrics ? metrics.mentorsCount : '—'} icon={Users} />
+        <StatCard title="Students" value={metrics ? metrics.studentsCount : '—'} icon={Users} onClick={() => onNavigateToTab('students')} />
+        <StatCard title="Mentors" value={metrics ? metrics.mentorsCount : '—'} icon={Users} onClick={() => onNavigateToTab('mentors')} />
         <StatCard title="Batch Managers" value={metrics ? metrics.batchManagersCount : '—'} icon={UserCog} />
-        <StatCard title="Projects" value={metrics ? metrics.projectsCount : '—'} icon={Briefcase} />
-        <StatCard title="Cloud Credits" value={metrics ? `$${metrics.totalCreditsAvailable}` : '—'} icon={Cloud} />
-        <StatCard title="Tasks" value={taskCount} icon={CheckSquare} />
-        <StatCard title="Pending Submissions" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" />
-        <StatCard title="Attendance Records" value={attendanceCount} icon={CalendarCheck} />
+        <StatCard title="Projects" value={metrics ? metrics.projectsCount : '—'} icon={Briefcase} onClick={() => onNavigateToTab('ojts')} />
+        <StatCard title="Cloud Credits" value={metrics ? `$${metrics.totalCreditsAvailable}` : '—'} icon={Cloud} onClick={() => onNavigateToTab('credits')} />
+        <StatCard title="Tasks" value={taskCount} icon={CheckSquare} onClick={() => onNavigateToTab('tasks')} />
+        <StatCard title="Pending Submissions" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToTab('submissions')} />
+        <StatCard title="Attendance Records" value={attendanceCount} icon={CalendarCheck} onClick={() => onNavigateToTab('attendance')} />
       </div>
 
       {/* Progress Status Analytics */}

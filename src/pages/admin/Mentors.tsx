@@ -6,6 +6,7 @@ import type { Profile } from '../../lib/types';
 import { useMentors } from '../../hooks/useMentors';
 import { TRACKS } from '../../lib/constants';
 import { parseCSV as parseCSVRows, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../lib/csv';
+import { useToast } from '../../toast';
 
 interface Props {
   profiles: Profile[];
@@ -16,10 +17,11 @@ interface Props {
 }
 
 export default function AdminMentors({ profiles, addMentor, addMentors, deleteProfile, updateProfile }: Props) {
+  const { showError } = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [csvModalOpen, setCsvModalOpen] = useState(false);
   const [editingMentorId, setEditingMentorId] = useState<string | null>(null);
-  
+
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -72,7 +74,7 @@ export default function AdminMentors({ profiles, addMentor, addMentors, deletePr
 
   const parseCSV = (text: string) => {
     if (isExcelBinaryFile(text)) {
-      alert(EXCEL_FILE_WARNING);
+      showError(EXCEL_FILE_WARNING);
       return [];
     }
     const rows = parseCSVRows(text);
@@ -232,7 +234,7 @@ export default function AdminMentors({ profiles, addMentor, addMentors, deletePr
                           : [...form.tracks, t];
                         setForm({ ...form, tracks: newTracks });
                       }}
-                      className="rounded bg-zinc-750 border-zinc-650 text-gold focus:ring-gold"
+                      className="rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold"
                     />
                     {t}
                   </label>
@@ -259,7 +261,7 @@ export default function AdminMentors({ profiles, addMentor, addMentors, deletePr
                   type="checkbox"
                   checked={form.is_available}
                   onChange={(e) => setForm({ ...form, is_available: e.target.checked })}
-                  className="rounded bg-zinc-750 border-zinc-650 text-gold focus:ring-gold"
+                  className="rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold"
                 />
                 Available for Allocation
               </label>

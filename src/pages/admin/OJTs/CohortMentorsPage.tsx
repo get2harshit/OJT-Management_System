@@ -5,10 +5,12 @@ import SelectEntityGrid from './SelectEntityGrid';
 import type { ApiMentor } from '../../../lib/types';
 import { apiListMentors, apiGetCohort, apiAddMentorsToCohort } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
+import { useToast } from '../../../toast';
 
 export default function CohortMentorsPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
+  const { showSuccess, showError } = useToast();
 
   const [cohortLabel, setCohortLabel] = useState('');
   const [allMentors, setAllMentors] = useState<ApiMentor[]>([]);
@@ -33,7 +35,7 @@ export default function CohortMentorsPage() {
       setOriginalMappedMentorIds(currentlyMapped);
     } catch (err: unknown) {
       console.error(err);
-      alert('Failed to load mentors.');
+      showError('Failed to load mentors.');
       navigate(-1);
     } finally {
       setLoading(false);
@@ -79,10 +81,10 @@ export default function CohortMentorsPage() {
     setSaving(true);
     try {
       await apiAddMentorsToCohort(cohortId, newlyAdded);
-      alert('Cohort mentors updated successfully!');
+      showSuccess('Cohort mentors updated successfully!');
       navigate(-1);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to map mentors to cohort');
+      showError(err instanceof Error ? err.message : 'Failed to map mentors to cohort');
     } finally {
       setSaving(false);
     }
@@ -118,7 +120,7 @@ export default function CohortMentorsPage() {
                 type="checkbox"
                 checked={selected}
                 onChange={() => handleToggle(m.id)}
-                className="mt-0.5 shrink-0 rounded bg-zinc-750 border-zinc-650 text-gold focus:ring-gold"
+                className="mt-0.5 shrink-0 rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold"
               />
             </div>
             {m.email && <p className="text-gray-400 text-xs line-clamp-1">{m.email}</p>}

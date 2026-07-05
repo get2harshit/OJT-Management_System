@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import Students from './Students';
@@ -19,12 +19,24 @@ import { useMockData } from '../../hooks/useMockData';
 import { apiListCohorts, apiListProjects, apiCreateProject, apiDeleteProject } from '../../lib/api';
 import { useEffect, useCallback } from 'react';
 import type { Cohort, Project } from '../../lib/types';
+import { useToast } from '../../toast';
 
 export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const navigate = useNavigate();
+  const { showError } = useToast();
   const data = useMockData();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [projectsList, setProjectsList] = useState<Project[]>([]);
+
+  // Sidebar tab clicks only flip local state; while a cohort sub-page route
+  // (view/edit/select student/project/mentor) is open, that nested route
+  // still matches and keeps rendering over the tab. Navigating back to the
+  // base path here clears it so the newly picked tab actually shows.
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    navigate('/admin/dashboard');
+  };
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -56,7 +68,7 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
       });
       await fetchProjects();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to create project');
+      showError(err instanceof Error ? err.message : 'Failed to create project');
     }
   };
 
@@ -74,7 +86,7 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
       await fetchProjects();
     } catch (err) {
       console.error(err);
-      alert('Failed during bulk import of projects.');
+      showError('Failed during bulk import of projects.');
     }
   };
 
@@ -83,7 +95,7 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
       await apiDeleteProject(id);
       await fetchProjects();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete project');
+      showError(err instanceof Error ? err.message : 'Failed to delete project');
     }
   };
 
@@ -99,6 +111,7 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
             attendance={data.attendance}
             semesters={data.semesters}
             batches={data.batches}
+            onNavigateToTab={handleTabChange}
           />
         );
       case 'students':
@@ -138,13 +151,14 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
             attendance={data.attendance}
             semesters={data.semesters}
             batches={data.batches}
+            onNavigateToTab={handleTabChange}
           />
         );
     }
   };
 
   return (
-    <AppShell panel="admin" activeTab={activeTab} onTabChange={setActiveTab} onLogout={onLogout}>
+    <AppShell panel="admin" activeTab={activeTab} onTabChange={handleTabChange} onLogout={onLogout}>
       <Routes>
         <Route path="ojts/:cohortId/view" element={<ViewCohortPage />} />
         <Route path="ojts/:cohortId/students" element={<CohortStudentsPage />} />
