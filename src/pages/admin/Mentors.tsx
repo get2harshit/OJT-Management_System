@@ -1,12 +1,15 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Plus, Trash2, Upload, FileText, Edit2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
-import type { Profile } from '../../lib/types';
+import SpinnerSquare from '../../components/SpinnerSquare';
+import type { Profile, ApiMentor } from '../../lib/types';
 import { useMentors } from '../../hooks/useMentors';
 import { TRACKS } from '../../lib/constants';
 import { parseCSV as parseCSVRows, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../lib/csv';
 import { useToast } from '../../toast';
+import { apiListMentors } from '../../lib/api';
+
 
 interface Props {
   profiles: Profile[];
@@ -29,11 +32,40 @@ export default function AdminMentors({ profiles, addMentor, addMentors, deletePr
     capacity: 5,
     is_available: true
   });
-  
   const [csvText, setCsvText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const mentors = useMentors(profiles);
+  const [apiMentors, setApiMentors] = useState<ApiMentor[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    apiListMentors()
+      .then(res => {
+        setApiMentors(res);
+      })
+      .catch(err => {
+        console.error('Failed to fetch mentors from API', err);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  const localMentors = useMentors(profiles);
+  const mentors = apiMentors.length > 0
+    ? apiMentors.map(m => ({
+        id: m.id,
+        name: m.fullName || m.email || 'Unnamed Mentor',
+        email: m.email || '',
+        role: 'MENTOR' as const,
+        track: m.isExternal ? 'External Track' : 'Internal Track',
+        tracks: m.isExternal ? ['External'] : ['Internal'],
+        capacity: 5,
+        is_available: true,
+        created_at: '-',
+      }))
+    : localMentors;
 
   const handleSave = () => {
     if (!form.name || !form.email || form.tracks.length === 0) return;
@@ -141,58 +173,64 @@ export default function AdminMentors({ profiles, addMentor, addMentors, deletePr
         </div>
       </div>
 
-      <DataTable
-        columns={[
-          { key: 'name', header: 'Name' },
-          { key: 'email', header: 'Email' },
-          { key: 'tracks', header: 'Specialized Tracks', render: (row: any) => (
-            <div className="flex flex-wrap gap-1 max-w-xs">
-              {(row.tracks || (row.track ? [row.track] : [])).map((t: string) => (
-                <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold font-medium">
-                  {t}
-                </span>
-              ))}
-              {(!row.tracks && !row.track) && (
-                <span className="text-gray-500 text-xs">Unassigned</span>
-              )}
-            </div>
-          )},
-          { key: 'capacity', header: 'Capacity', render: (row: any) => (
-            <span className="text-sm font-mono text-gray-300 font-medium">
-              {row.capacity ?? 5} students
-            </span>
-          )},
-          { key: 'is_available', header: 'Availability', render: (row: any) => {
-            const isAvail = row.is_available !== false;
-            return (
-              <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${isAvail ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                {isAvail ? 'Available' : 'Unavailable'}
+      {loading ? (
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <SpinnerSquare size={48} />
+        </div>
+      ) : (
+        <DataTable
+          columns={[
+            { key: 'name', header: 'Name' },
+            { key: 'email', header: 'Email' },
+            { key: 'tracks', header: 'Specialized Tracks', render: (row: any) => (
+              <div className="flex flex-wrap gap-1 max-w-xs">
+                {(row.tracks || (row.track ? [row.track] : [])).map((t: string) => (
+                  <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold font-medium">
+                    {t}
+                  </span>
+                ))}
+                {(!row.tracks && !row.track) && (
+                  <span className="text-gray-500 text-xs">Unassigned</span>
+                )}
+              </div>
+            )},
+            { key: 'capacity', header: 'Capacity', render: (row: any) => (
+              <span className="text-sm font-mono text-gray-300 font-medium">
+                {row.capacity ?? 5} students
               </span>
-            );
-          }},
-          { key: 'created_at', header: 'Joined' },
-        ]}
-        data={mentors as unknown as Record<string, unknown>[]}
-        searchPlaceholder="Search mentors..."
-        actions={(row: any) => (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleOpenEdit(row as unknown as Profile)}
-              className="p-1.5 text-gray-400 hover:text-gold transition-colors"
-              title="Edit Mentor Profile"
-            >
-              <Edit2 size={16} />
-            </button>
-            <button
-              onClick={() => deleteProfile(row.id as string)}
-              className="p-1.5 text-gray-400 hover:text-red-400 transition-colors"
-              title="Delete Mentor"
-            >
-              <Trash2 size={16} />
-            </button>
-          </div>
-        )}
-      />
+            )},
+            { key: 'is_available', header: 'Availability', render: (row: any) => {
+              const isAvail = row.is_available !== false;
+              return (
+                <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${isAvail ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                  {isAvail ? 'Available' : 'Unavailable'}
+                </span>
+              );
+            }},
+            { key: 'created_at', header: 'Joined' },
+          ]}
+          data={mentors as unknown as Record<string, unknown>[]}
+          searchPlaceholder="Search mentors..."
+          actions={(row: any) => (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleOpenEdit(row as unknown as Profile)}
+                className="p-1.5 text-gray-400 hover:text-gold transition-colors"
+                title="Edit Mentor Profile"
+              >
+                <Edit2 size={16} />
+              </button>
+              <button
+                onClick={() => deleteProfile(row.id as string)}
+                className="p-1.5 text-gray-400 hover:text-red-400 transition-colors"
+                title="Delete Mentor"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          )}
+        />
+      )}
 
       {/* Add / Edit Mentor Modal */}
       <Modal open={modalOpen} onClose={handleCloseModal} title={editingMentorId ? 'Edit Mentor Profile' : 'Add Mentor'}>

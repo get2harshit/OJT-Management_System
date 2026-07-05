@@ -74,21 +74,19 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
 
   const tabs =
     panel === 'admin' ? adminTabs :
-    panel === 'mentor' ? mentorTabs :
-    studentTabs;
+      panel === 'mentor' ? mentorTabs :
+        studentTabs;
 
   const panelLabel =
     panel === 'admin' ? 'Admin' :
-    panel === 'mentor' ? 'Mentor' :
-    'Student';
+      panel === 'mentor' ? 'Mentor' :
+        'Student';
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-zinc-850 border-r border-zinc-750 transition-all duration-300 w-64 ${
-        mobileOpen ? 'translate-x-0' : '-translate-x-full'
-      } lg:translate-x-0 ${
-        collapsed ? 'lg:w-16' : 'lg:w-64'
-      }`}
+      className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-zinc-850 border-r border-zinc-750 transition-all duration-300 w-64 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        } lg:translate-x-0 ${collapsed ? 'lg:w-16' : 'lg:w-64'
+        }`}
     >
       <div className="flex items-center justify-between h-16 px-4 border-b border-zinc-750">
         <span className={`text-lg font-bold text-gold tracking-wider uppercase ${collapsed ? 'lg:hidden' : ''}`}>
@@ -116,11 +114,10 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
             <button
               key={tab.id}
               onClick={() => { onTabChange(tab.id); onCloseMobile(); }}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
-                isActive
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200 ${isActive
                   ? 'text-gold bg-zinc-750 border-l-2 border-gold'
                   : 'text-gray-400 hover:text-white hover:bg-zinc-750'
-              } ${collapsed ? 'lg:justify-center' : ''}`}
+                } ${collapsed ? 'lg:justify-center' : ''}`}
             >
               <Icon size={18} />
               <span className={collapsed ? 'lg:hidden' : ''}>{tab.label}</span>
@@ -152,9 +149,8 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
               window.location.reload();
             }
           }}
-          className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors w-full ${
-            collapsed ? 'lg:justify-center' : ''
-          }`}
+          className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors w-full ${collapsed ? 'lg:justify-center' : ''
+            }`}
         >
           <LogOut size={18} />
           <span className={collapsed ? 'lg:hidden' : ''}>{(onLogout || logout) ? 'Sign Out' : 'Switch Panel'}</span>
@@ -163,3 +159,4 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
     </aside>
   );
 }
+
