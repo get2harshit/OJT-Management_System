@@ -8,6 +8,7 @@ import { apiListCohorts } from '../../lib/api';
 import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 import { parseCSV as parseCSVRows, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../lib/csv';
 import { getCohortLabel } from '../../lib/cohortLabel';
+import { useToast } from '../../toast';
 
 interface Props {
   projects: Project[];
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function MentorOJTs({ projects, students, profiles, addProjects, updateStudent, deleteProject }: Props) {
+  const { showError } = useToast();
   const [csvModalOpen, setCsvModalOpen] = useState(false);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [csvText, setCsvText] = useState('');
@@ -38,7 +40,7 @@ export default function MentorOJTs({ projects, students, profiles, addProjects, 
 
   const parseCSV = (text: string) => {
     if (isExcelBinaryFile(text)) {
-      alert(EXCEL_FILE_WARNING);
+      showError(EXCEL_FILE_WARNING);
       return [];
     }
     const rows = parseCSVRows(text);

@@ -5,6 +5,7 @@ import SelectEntityGrid from './SelectEntityGrid';
 import type { Project } from '../../../lib/types';
 import { apiGetCohort, apiGetProjectsForCohort, apiAddProjectsToCohort } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
+import { useToast } from '../../../toast';
 
 interface CohortProjectsPageProps {
   projects: Project[];
@@ -13,6 +14,7 @@ interface CohortProjectsPageProps {
 export default function CohortProjectsPage({ projects }: CohortProjectsPageProps) {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
+  const { showSuccess, showError } = useToast();
 
   const [cohortLabel, setCohortLabel] = useState('');
   const [mappedProjectIds, setMappedProjectIds] = useState<string[]>([]);
@@ -32,7 +34,7 @@ export default function CohortProjectsPage({ projects }: CohortProjectsPageProps
       setMappedProjectIds(mapped.map(p => p.id));
     } catch (err: unknown) {
       console.error(err);
-      alert('Failed to load projects mapped to this cohort.');
+      showError('Failed to load projects mapped to this cohort.');
       navigate(-1);
     } finally {
       setLoading(false);
@@ -71,10 +73,10 @@ export default function CohortProjectsPage({ projects }: CohortProjectsPageProps
     setSaving(true);
     try {
       await apiAddProjectsToCohort(cohortId, mappedProjectIds);
-      alert('Cohort projects updated successfully!');
+      showSuccess('Cohort projects updated successfully!');
       navigate(-1);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to map projects to cohort');
+      showError(err instanceof Error ? err.message : 'Failed to map projects to cohort');
     } finally {
       setSaving(false);
     }
@@ -110,7 +112,7 @@ export default function CohortProjectsPage({ projects }: CohortProjectsPageProps
                 type="checkbox"
                 checked={selected}
                 onChange={() => handleToggle(p.id)}
-                className="mt-0.5 shrink-0 rounded bg-zinc-750 border-zinc-650 text-gold focus:ring-gold"
+                className="mt-0.5 shrink-0 rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold"
               />
             </div>
             <p className="text-gray-400 text-xs line-clamp-3">{p.description}</p>

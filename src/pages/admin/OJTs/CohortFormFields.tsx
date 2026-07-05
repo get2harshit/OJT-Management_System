@@ -96,7 +96,7 @@ export default function CohortFormFields({ form, onChange, eligibleBatchOptions,
             type="checkbox"
             checked={form.isActive}
             onChange={e => onChange({ ...form, isActive: e.target.checked })}
-            className="rounded bg-zinc-750 border-zinc-650 text-gold focus:ring-gold"
+            className="rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold"
           />
           Mark as Active Cohort
         </label>

@@ -36,7 +36,7 @@ export default function AdminStudents() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16">
+        <div className="min-h-[50vh] flex items-center justify-center">
           <SpinnerSquare size={48} />
         </div>
       ) : (

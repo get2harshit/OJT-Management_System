@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { ToastProvider } from './toast';
 import Login from './pages/auth/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import SpinnerSquare from './components/SpinnerSquare';
@@ -22,40 +23,42 @@ function PanelLoader() {
 export default function App() {
   return (
     <AuthProvider>
-      <Suspense fallback={<PanelLoader />}>
-        <Routes>
-          <Route path="/" element={<Login />} />
+      <ToastProvider>
+        <Suspense fallback={<PanelLoader />}>
+          <Routes>
+            <Route path="/" element={<Login />} />
 
-          <Route
-            path="/admin/dashboard/*"
-            element={
-              <ProtectedRoute role="admin">
-                <AdminPanel />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/admin/dashboard/*"
+              element={
+                <ProtectedRoute role="admin">
+                  <AdminPanel />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/mentor/dashboard/*"
-            element={
-              <ProtectedRoute role="mentor">
-                <MentorPanel />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/mentor/dashboard/*"
+              element={
+                <ProtectedRoute role="mentor">
+                  <MentorPanel />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/student/dashboard/*"
-            element={
-              <ProtectedRoute role="student">
-                <StudentPanel />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/student/dashboard/*"
+              element={
+                <ProtectedRoute role="student">
+                  <StudentPanel />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </ToastProvider>
     </AuthProvider>
   );
 }

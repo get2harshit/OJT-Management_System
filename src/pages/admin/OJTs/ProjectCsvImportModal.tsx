@@ -4,6 +4,7 @@ import Modal from '../../../components/Modal';
 import type { Project } from '../../../lib/types';
 import { parseCSV } from '../../../lib/csv';
 import { TRACKS } from '../../../lib/constants';
+import { useToast } from '../../../toast';
 
 interface ProjectCsvImportModalProps {
   open: boolean;
@@ -14,6 +15,7 @@ interface ProjectCsvImportModalProps {
 export default function ProjectCsvImportModal({ open, onClose, addProjects }: ProjectCsvImportModalProps) {
   const [csvText, setCsvText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const { showSuccess, showError } = useToast();
 
   const handleClose = () => {
     setCsvText('');
@@ -39,7 +41,7 @@ export default function ProjectCsvImportModal({ open, onClose, addProjects }: Pr
 
     if (projs.length > 0) {
       addProjects(projs);
-      alert(`Successfully imported ${projs.length} project templates!`);
+      showSuccess(`Successfully imported ${projs.length} project templates!`);
     }
 
     handleClose();
