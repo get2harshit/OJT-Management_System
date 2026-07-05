@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus, Check, X, ShieldAlert, Award } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
+import Select from '../../components/Select';
 import type { Credit, CreditRequest, Profile, Student, CloudProvider } from '../../lib/types';
 
 interface Props {
@@ -189,31 +190,25 @@ export default function AdminCredits({ credits, creditRequests, profiles, studen
         <div className="space-y-4">
           <div>
             <label className="block text-sm text-gray-400 mb-1">Student</label>
-            <select
+            <Select
               value={form.student_id}
-              onChange={(e) => setForm({ ...form, student_id: e.target.value })}
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            >
-              <option value="">Select student</option>
-              {students.map((s) => {
+              onChange={v => setForm({ ...form, student_id: v })}
+              className="w-full"
+              placeholder="Select student"
+              options={students.map(s => {
                 const p = profiles.find((pr) => pr.id === s.user_id);
-                return (
-                  <option key={s.user_id} value={s.user_id}>{p?.name ?? s.roll_number}</option>
-                );
+                return { value: s.user_id, label: p?.name ?? s.roll_number };
               })}
-            </select>
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Provider</label>
-            <select
+            <Select
               value={form.provider}
-              onChange={(e) => setForm({ ...form, provider: e.target.value })}
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            >
-              {['AWS', 'GCP', 'VULTR', 'AZURE', 'OTHER'].map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
+              onChange={v => setForm({ ...form, provider: v })}
+              className="w-full"
+              options={['AWS', 'GCP', 'VULTR', 'AZURE', 'OTHER'].map(p => ({ value: p, label: p }))}
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Amount ($)</label>

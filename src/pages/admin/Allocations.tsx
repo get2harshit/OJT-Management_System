@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { RefreshCw, Check, X, ShieldAlert } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
+import Select from '../../components/Select';
 import type { Student, Profile, Project, Cohort } from '../../lib/types';
 import { useMentors } from '../../hooks/useMentors';
 import { useStudentProfiles } from '../../hooks/useStudentProfiles';
@@ -265,69 +266,55 @@ export default function AdminAllocations({ students, profiles, projects, cohorts
           )}
           <div>
             <label className="block text-sm text-gray-400 mb-1">Track</label>
-            <select
+            <Select
               value={form.track}
-              onChange={e => setForm({ ...form, track: e.target.value })}
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            >
-              <option value="">Select Track</option>
-              {TRACKS.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
+              onChange={v => setForm({ ...form, track: v })}
+              className="w-full"
+              placeholder="Select Track"
+              options={TRACKS.map(t => ({ value: t, label: t }))}
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">OJT Cohort</label>
-            <select
+            <Select
               value={form.ojt_id}
-              onChange={e => setForm({ ...form, ojt_id: e.target.value })}
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            >
-              <option value="">Unassigned</option>
-              {cohorts.map(c => (
-                <option key={c.id} value={c.id}>{getCohortLabel(c)}</option>
-              ))}
-            </select>
+              onChange={v => setForm({ ...form, ojt_id: v })}
+              className="w-full"
+              placeholder="Unassigned"
+              options={cohorts.map(c => ({ value: c.id, label: getCohortLabel(c) }))}
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Mentor</label>
-            <select
+            <Select
               value={form.mentor_id}
-              onChange={e => setForm({ ...form, mentor_id: e.target.value })}
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            >
-              <option value="">Unassigned</option>
-              {mentors.map(m => {
+              onChange={v => setForm({ ...form, mentor_id: v })}
+              className="w-full"
+              placeholder="Unassigned"
+              options={mentors.map(m => {
                 const load = students.filter(s => s.mentor_id === m.id).length;
                 const maxCap = m.capacity ?? 5;
                 const isFull = load >= maxCap;
                 const isAvail = m.is_available !== false;
-                
+
                 let statusLabel = '';
                 if (!isAvail) statusLabel = ' [Unavailable]';
                 else if (isFull) statusLabel = ` (${load}/${maxCap}) [Full]`;
                 else statusLabel = ` (${load}/${maxCap})`;
 
-                return (
-                  <option key={m.id} value={m.id}>
-                    {m.name} - {m.tracks?.join(', ') || m.track || 'General'}{statusLabel}
-                  </option>
-                );
+                return { value: m.id, label: `${m.name} - ${m.tracks?.join(', ') || m.track || 'General'}${statusLabel}` };
               })}
-            </select>
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Project</label>
-            <select
+            <Select
               value={form.project_id}
-              onChange={e => setForm({ ...form, project_id: e.target.value })}
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            >
-              <option value="">Unassigned</option>
-              {projects.map(p => (
-                <option key={p.id} value={p.id}>{p.title} ({p.track})</option>
-              ))}
-            </select>
+              onChange={v => setForm({ ...form, project_id: v })}
+              className="w-full"
+              placeholder="Unassigned"
+              options={projects.map(p => ({ value: p.id, label: `${p.title} (${p.track})` }))}
+            />
           </div>
           <button
             onClick={handleSave}

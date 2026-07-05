@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus, Trash2, Calendar, Target, CheckSquare, Layers } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
+import Select from '../../components/Select';
 import type { Task, Profile, Student, TaskType } from '../../lib/types';
 import { useMentors } from '../../hooks/useMentors';
 import { useStudentProfiles } from '../../hooks/useStudentProfiles';
@@ -167,30 +168,24 @@ export default function AdminTasks({ tasks, profiles, students, addTask, deleteT
                 <Calendar size={14} className="text-gold" />
                 Target Week
               </label>
-              <select
+              <Select
                 value={form.week_number}
-                onChange={e => setForm({ ...form, week_number: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              >
-                {WEEKS.map(w => (
-                  <option key={w} value={w}>Week {w}</option>
-                ))}
-              </select>
+                onChange={v => setForm({ ...form, week_number: v })}
+                className="w-full"
+                options={WEEKS.map(w => ({ value: String(w), label: `Week ${w}` }))}
+              />
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1 flex items-center gap-1">
                 <Layers size={14} className="text-gold" />
                 Tech Stack/Track
               </label>
-              <select
+              <Select
                 value={form.track}
-                onChange={e => setForm({ ...form, track: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              >
-                {TRACKS.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+                onChange={v => setForm({ ...form, track: v })}
+                className="w-full"
+                options={TRACKS.map(t => ({ value: t, label: t }))}
+              />
             </div>
           </div>
 
@@ -245,10 +240,13 @@ export default function AdminTasks({ tasks, profiles, students, addTask, deleteT
 
           <div>
             <label className="block text-sm text-gray-400 mb-1">Assign To</label>
-            <select value={form.assigned_to} onChange={e => setForm({ ...form, assigned_to: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold">
-              <option value="">Select {form.type === 'STUDENT_SPECIFIC' ? 'Student' : 'Mentor'}...</option>
-              {assignableList.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
-            </select>
+            <Select
+              value={form.assigned_to}
+              onChange={v => setForm({ ...form, assigned_to: v })}
+              className="w-full"
+              placeholder={`Select ${form.type === 'STUDENT_SPECIFIC' ? 'Student' : 'Mentor'}...`}
+              options={assignableList.map(a => ({ value: a.id, label: a.label }))}
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

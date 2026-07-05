@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Users, CheckSquare, FolderOpen, CalendarCheck, TrendingUp } from 'lucide-react';
 import StatCard from '../../components/StatCard';
+import Select from '../../components/Select';
 import type { Profile, Student, Task, Submission, Attendance, Semester, Batch } from '../../lib/types';
 
 interface Props {
@@ -58,18 +59,30 @@ export default function MentorDashboard({ mentorId, profiles: _profiles, student
 
       {/* Filter Bar */}
       <div className="flex flex-wrap gap-3">
-        <select value={semFilter} onChange={e => { setSemFilter(e.target.value); setBatchFilter(''); }} className="bg-zinc-850 border border-zinc-750 text-gray-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-gold min-w-[160px]">
-          <option value="">All Semesters</option>
-          {distinctSemesters.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <select value={batchFilter} onChange={e => setBatchFilter(e.target.value)} className="bg-zinc-850 border border-zinc-750 text-gray-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-gold min-w-[160px]">
-          <option value="">All Batches</option>
-          {filteredBatches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
-        <select value={trackFilter} onChange={e => setTrackFilter(e.target.value)} className="bg-zinc-850 border border-zinc-750 text-gray-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-gold min-w-[160px]">
-          <option value="">All Tracks</option>
-          {distinctTracks.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <Select
+          variant="filter"
+          className="min-w-[160px]"
+          value={semFilter}
+          onChange={v => { setSemFilter(v); setBatchFilter(''); }}
+          placeholder="All Semesters"
+          options={distinctSemesters.map(s => ({ value: s.id, label: s.name }))}
+        />
+        <Select
+          variant="filter"
+          className="min-w-[160px]"
+          value={batchFilter}
+          onChange={setBatchFilter}
+          placeholder="All Batches"
+          options={filteredBatches.map(b => ({ value: b.id, label: b.name }))}
+        />
+        <Select
+          variant="filter"
+          className="min-w-[160px]"
+          value={trackFilter}
+          onChange={setTrackFilter}
+          placeholder="All Tracks"
+          options={distinctTracks.map(t => ({ value: t, label: t }))}
+        />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">

@@ -1,4 +1,5 @@
 import DateRangePicker from '../../../components/DateRangePicker';
+import Select from '../../../components/Select';
 import { SEMESTER_SESSION_OPTIONS, SEMESTER_SESSION_LABELS } from '../../../lib/constants';
 import { computeCohortDefaultsFromStartDate, type CohortFormState } from '../../../lib/cohortForm';
 
@@ -80,15 +81,13 @@ export default function CohortFormFields({ form, onChange, eligibleBatchOptions,
       </div>
       <div>
         <label className="block text-sm text-gray-400 mb-1">Semester <span className="text-gray-600">(auto-set from Start Date)</span></label>
-        <select
+        <Select
           value={form.sessionTerm}
+          onChange={() => {}}
           disabled
-          className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-gray-400 text-sm cursor-not-allowed opacity-70"
-        >
-          {SEMESTER_SESSION_OPTIONS.map(t => (
-            <option key={t} value={t}>{SEMESTER_SESSION_LABELS[t]}</option>
-          ))}
-        </select>
+          className="w-full"
+          options={SEMESTER_SESSION_OPTIONS.map(t => ({ value: t, label: SEMESTER_SESSION_LABELS[t] }))}
+        />
       </div>
       <div className="flex items-center pb-1">
         <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none">

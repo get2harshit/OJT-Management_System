@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
+import Select from '../../components/Select';
 import type { Task, Profile, Student, TaskType } from '../../lib/types';
 import { useMentors } from '../../hooks/useMentors';
 import { useStudentProfiles } from '../../hooks/useStudentProfiles';
@@ -126,10 +127,13 @@ export default function MentorTasks({ tasks, mentorId, profiles, students, addTa
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Assign To</label>
-            <select value={form.assigned_to} onChange={e => setForm({ ...form, assigned_to: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold">
-              <option value="">All {form.type === 'STUDENT_SPECIFIC' ? 'Students' : 'Mentors'}</option>
-              {assignableList.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
-            </select>
+            <Select
+              value={form.assigned_to}
+              onChange={v => setForm({ ...form, assigned_to: v })}
+              className="w-full"
+              placeholder={`All ${form.type === 'STUDENT_SPECIFIC' ? 'Students' : 'Mentors'}`}
+              options={assignableList.map(a => ({ value: a.id, label: a.label }))}
+            />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>

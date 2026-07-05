@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Upload, FileText, UserPlus, Trash2 } from 'lucide-react';
 import Modal from '../../components/Modal';
 import DataTable from '../../components/DataTable';
+import Select from '../../components/Select';
 import type { Project, Student, Profile, Cohort } from '../../lib/types';
 import { getDurationString, formatDateDisplay } from '../../lib/utils';
 import { apiListCohorts } from '../../lib/api';
@@ -204,22 +205,26 @@ export default function MentorOJTs({ projects, students, profiles, addProjects, 
         <div className="space-y-4">
           <div>
             <label className="block text-sm text-gray-400 mb-1">Student</label>
-            <select value={assignForm.student_id} onChange={e => setAssignForm({ ...assignForm, student_id: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold">
-              <option value="">Select student</option>
-              {students.map(s => {
+            <Select
+              value={assignForm.student_id}
+              onChange={v => setAssignForm({ ...assignForm, student_id: v })}
+              className="w-full"
+              placeholder="Select student"
+              options={students.map(s => {
                 const prof = studentProfiles.find(p => p.id === s.user_id);
-                return <option key={s.user_id} value={s.user_id}>{prof?.name ?? s.user_id} ({s.roll_number})</option>;
+                return { value: s.user_id, label: `${prof?.name ?? s.user_id} (${s.roll_number})` };
               })}
-            </select>
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">OJT Program</label>
-            <select value={assignForm.ojt_id} onChange={e => setAssignForm({ ...assignForm, ojt_id: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold">
-              <option value="">Select OJT</option>
-              {cohorts.map(c => (
-                <option key={c.id} value={c.id}>{getCohortLabel(c)}</option>
-              ))}
-            </select>
+            <Select
+              value={assignForm.ojt_id}
+              onChange={v => setAssignForm({ ...assignForm, ojt_id: v })}
+              className="w-full"
+              placeholder="Select OJT"
+              options={cohorts.map(c => ({ value: c.id, label: getCohortLabel(c) }))}
+            />
             {selectedCohort && (
               <p className="text-xs text-gray-500 mt-1">
                 Duration: {getDurationString(selectedCohort.startDate, selectedCohort.endDate)} ({formatDateDisplay(selectedCohort.startDate)} → {formatDateDisplay(selectedCohort.endDate)})
@@ -228,10 +233,13 @@ export default function MentorOJTs({ projects, students, profiles, addProjects, 
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Project</label>
-            <select value={assignForm.project_id} onChange={e => setAssignForm({ ...assignForm, project_id: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold">
-              <option value="">Select project</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.title} ({p.track})</option>)}
-            </select>
+            <Select
+              value={assignForm.project_id}
+              onChange={v => setAssignForm({ ...assignForm, project_id: v })}
+              className="w-full"
+              placeholder="Select project"
+              options={projects.map(p => ({ value: p.id, label: `${p.title} (${p.track})` }))}
+            />
           </div>
           <button onClick={handleAssign} className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors">
             Assign
