@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Upload, Eye, ArrowLeft, Send, MessageSquare } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
+import Select from '../../components/Select';
 import type { Submission, Task, Comment, Profile, SubmissionCategory } from '../../lib/types';
 
 interface Props {
@@ -283,29 +284,27 @@ export default function StudentSubmissions({
         <div className="space-y-4">
           <div>
             <label className="block text-sm text-gray-400 mb-1">Task</label>
-            <select
+            <Select
               value={form.task_id}
-              onChange={(e) => setForm({ ...form, task_id: e.target.value })}
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            >
-              <option value="">Select task</option>
-              {tasks.map((t) => (
-                <option key={t.id} value={t.id}>{t.title}</option>
-              ))}
-            </select>
+              onChange={v => setForm({ ...form, task_id: v })}
+              className="w-full"
+              placeholder="Select task"
+              options={tasks.map(t => ({ value: t.id, label: t.title }))}
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Submission Category</label>
-            <select
+            <Select
               value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value as SubmissionCategory })}
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            >
-              <option value="COMMON_TASK">Common Task</option>
-              <option value="SPECIFIC_TASK">Specific Task</option>
-              <option value="PRD">PRD Submission</option>
-              <option value="VIDEO">Video Submission</option>
-            </select>
+              onChange={v => setForm({ ...form, category: v as SubmissionCategory })}
+              className="w-full"
+              options={[
+                { value: 'COMMON_TASK', label: 'Common Task' },
+                { value: 'SPECIFIC_TASK', label: 'Specific Task' },
+                { value: 'PRD', label: 'PRD Submission' },
+                { value: 'VIDEO', label: 'Video Submission' },
+              ]}
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">File Name</label>

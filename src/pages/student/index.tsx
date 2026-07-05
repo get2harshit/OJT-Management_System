@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import ProjectPicker from './ProjectPicker';
@@ -8,9 +8,6 @@ import Credits from './Credits';
 import Attendance from './Attendance';
 import { useMockData } from '../../hooks/useMockData';
 import { useAuth } from '../../context/AuthContext';
-import SpinnerSquare from '../../components/SpinnerSquare';
-import { apiGetProjectsForCohort, apiListProjects } from '../../lib/api';
-import type { Project } from '../../lib/types';
 
 export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -26,38 +23,6 @@ export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
     // AuthProvider not present
   }
   const studentId = authUser?.id || 's1';
-
-  const [cohortProjects, setCohortProjects] = useState<Project[]>([]);
-  const [allProjects, setAllProjects] = useState<Project[]>([]);
-  const [loadingProjects, setLoadingProjects] = useState(false);
-
-  useEffect(() => {
-    apiListProjects()
-      .then(res => setAllProjects(Array.isArray(res) ? res : []))
-      .catch(err => console.error('Failed to load projects catalog fallback', err));
-  }, []);
-
-  const student = data.students.find(s => s.user_id === studentId);
-  const studentCohortId = student?.ojt_id;
-
-  useEffect(() => {
-    if (!studentCohortId) {
-      setCohortProjects([]);
-      return;
-    }
-    setLoadingProjects(true);
-    apiGetProjectsForCohort(studentCohortId)
-      .then(res => {
-        setCohortProjects(Array.isArray(res) ? res : []);
-      })
-      .catch(err => {
-        console.error('Failed to load cohort projects, falling back to all projects.', err);
-        setCohortProjects([]);
-      })
-      .finally(() => {
-        setLoadingProjects(false);
-      });
-  }, [studentCohortId]);
 
   const handleViewSubmission = (subId: string) => {
     setInitialSelectedSubId(subId);
@@ -89,27 +54,7 @@ export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
           />
         );
       case 'projects':
-        if (loadingProjects) {
-          return (
-            <div className="min-h-[50vh] flex items-center justify-center">
-              <div className="flex flex-col items-center gap-3">
-                <SpinnerSquare size={56} />
-                <p className="text-gray-400 text-sm">Loading cohort projects…</p>
-              </div>
-            </div>
-          );
-        }
-        return (
-          <ProjectPicker
-            studentId={studentId}
-            projects={cohortProjects.length > 0 ? cohortProjects : allProjects}
-            isCohortFiltered={cohortProjects.length > 0}
-            students={data.students}
-            profiles={data.profiles}
-            updateStudent={data.updateStudent}
-            addStudentChangeRequest={data.addStudentChangeRequest}
-          />
-        );
+        return <ProjectPicker />;
       case 'tasks':
         return (
           <Tasks

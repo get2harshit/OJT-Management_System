@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
+import Select from '../../components/Select';
 import type { Credit, CreditRequest, Profile, CloudProvider } from '../../lib/types';
 
 interface Props {
@@ -108,15 +109,12 @@ export default function StudentCredits({ studentId, credits, creditRequests, pro
           </p>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Provider</label>
-            <select
+            <Select
               value={form.provider}
-              onChange={(e) => setForm({ ...form, provider: e.target.value as CloudProvider })}
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            >
-              {['AWS', 'GCP', 'VULTR', 'AZURE', 'OTHER'].map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
+              onChange={(v) => setForm({ ...form, provider: v as CloudProvider })}
+              className="w-full"
+              options={['AWS', 'GCP', 'VULTR', 'AZURE', 'OTHER'].map(p => ({ value: p, label: p }))}
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Amount ($)</label>

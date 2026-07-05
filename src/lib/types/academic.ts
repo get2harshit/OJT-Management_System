@@ -22,11 +22,19 @@ export interface OJT {
   created_at: string;
 }
 
+// GET /api/v1/projects (list) only returns this trimmed shape — description,
+// endUsersDefined, batch and createdAt are only present on the single-project
+// detail response (GET /api/v1/projects/:id). description is therefore
+// optional here, not missing-by-bug.
 export interface Project {
   id: string;
   title: string;
-  description: string;
+  description?: string;
+  problemStatement?: string;
   track: string;
+  techStack?: string[];
+  endUsersDefined?: string;
+  batch?: string;
   created_at: string;
   end_goals?: string;
   related_field?: string;

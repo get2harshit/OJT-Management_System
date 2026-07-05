@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus, Trash2, Upload, Target, Code } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
+import Select from '../../../components/Select';
 import type { Project } from '../../../lib/types';
 import { TRACKS } from '../../../lib/constants';
 import ProjectCsvImportModal from './ProjectCsvImportModal';
@@ -74,8 +75,8 @@ export default function ProjectCatalogPanel({ projects, addProject, addProjects,
           { key: 'track', header: 'Related Track', render: (row: any) => (
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-gold/10 text-gold font-medium">{row.track}</span>
           )},
-          { key: 'description', header: 'Description', render: (row: any) => (
-            <p className="text-xs text-gray-400 line-clamp-2 max-w-sm">{row.description}</p>
+          { key: 'problemStatement', header: 'Problem Statement', render: (row: any) => (
+            <p className="text-xs text-gray-400 line-clamp-2 max-w-sm">{row.problemStatement || row.description || '-'}</p>
           )},
           { key: 'end_goals', header: 'Endgoals & Outcomes', render: (row: any) => (
             <p className="text-xs text-gray-300 line-clamp-1 max-w-xs">{row.end_goals || '-'}</p>
@@ -111,15 +112,12 @@ export default function ProjectCatalogPanel({ projects, addProject, addProjects,
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Track</label>
-            <select
+            <Select
               value={projectForm.track}
-              onChange={e => setProjectForm({ ...projectForm, track: e.target.value })}
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            >
-              {TRACKS.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
+              onChange={v => setProjectForm({ ...projectForm, track: v })}
+              className="w-full"
+              options={TRACKS.map(t => ({ value: t, label: t }))}
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Description</label>

@@ -54,7 +54,7 @@ export default function CohortProjectsPage({ projects }: CohortProjectsPageProps
   const filteredProjects = projects.filter(p => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.track.toLowerCase().includes(q);
+    return p.title.toLowerCase().includes(q) || (p.problemStatement || '').toLowerCase().includes(q) || p.track.toLowerCase().includes(q);
   });
 
   const allSelected = filteredProjects.length > 0 && filteredProjects.every(p => mappedProjectIds.includes(p.id));
@@ -115,7 +115,7 @@ export default function CohortProjectsPage({ projects }: CohortProjectsPageProps
                 className="mt-0.5 shrink-0 rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold"
               />
             </div>
-            <p className="text-gray-400 text-xs line-clamp-3">{p.description}</p>
+            <p className="text-gray-400 text-xs line-clamp-3">{p.problemStatement || p.description}</p>
             <span className="text-[10px] text-gold/80 self-start bg-gold/10 px-2 py-0.5 rounded-full font-medium">{p.track}</span>
           </label>
         )}

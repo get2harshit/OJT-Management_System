@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { FileText } from 'lucide-react';
 import Modal from '../../../components/Modal';
+import Select from '../../../components/Select';
 import type { Profile } from '../../../lib/types';
 import { parseCSV } from '../../../lib/csv';
 import { useMentors } from '../../../hooks/useMentors';
@@ -110,16 +111,13 @@ export default function FormCsvImportModal({ open, onClose, cohortOptions, profi
 
         <div>
           <label className="block text-sm text-gray-400 mb-1">Target OJT Cohort *</label>
-          <select
+          <Select
             value={selectedCohortId}
-            onChange={e => setSelectedCohortId(e.target.value)}
-            className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-          >
-            <option value="">Select Cohort...</option>
-            {cohortOptions.map(c => (
-              <option key={c.id} value={c.id}>{c.label}</option>
-            ))}
-          </select>
+            onChange={setSelectedCohortId}
+            className="w-full"
+            placeholder="Select Cohort..."
+            options={cohortOptions.map(c => ({ value: c.id, label: c.label }))}
+          />
         </div>
 
         <div className="bg-zinc-800/40 p-3 rounded-lg text-[10px] font-mono text-gray-400 space-y-1">
