@@ -4,6 +4,7 @@ import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import Students from './Students';
 import Mentors from './Mentors';
+import BatchManagers from './BatchManagers';
 import Allocations from './Allocations';
 import OJTs from './OJTs';
 import Tasks from './Tasks';
@@ -118,6 +119,8 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
         return <Students />;
       case 'mentors':
         return <Mentors profiles={data.profiles} addMentor={data.addMentor} addMentors={data.addMentors} deleteProfile={data.deleteProfile} updateProfile={data.updateProfile} />;
+      case 'batch-managers':
+        return <BatchManagers />;
       case 'allocations':
         return <Allocations students={data.students} profiles={data.profiles} projects={projectsList} cohorts={cohorts} updateStudent={data.updateStudent} resolveStudentChangeRequest={data.resolveStudentChangeRequest} />;
       case 'ojts':
