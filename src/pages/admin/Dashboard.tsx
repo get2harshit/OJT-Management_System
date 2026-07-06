@@ -2,9 +2,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Sparkles, Activity, UserCog, Briefcase } from 'lucide-react';
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
-import type { Profile, Student, Task, Submission, Attendance, Semester, Batch, DashboardMetrics } from '../../lib/types';
-import { useMentors } from '../../hooks/useMentors';
-import { apiGetDashboardMetrics } from '../../lib/api';
+import type { Profile, Student, Task, Submission, Attendance, Semester, Batch, DashboardMetrics, ApiMentor } from '../../lib/types';
+import { apiGetDashboardMetrics, apiListMentors } from '../../lib/api';
 
 interface Props {
   profiles: Profile[];
@@ -55,7 +54,21 @@ export default function AdminDashboard({ profiles, students, tasks, submissions,
 
   const studentIds = new Set(filteredStudents.map(s => s.user_id));
 
-  const mentors = useMentors(profiles);
+  // Real mentors from backend API
+  const [apiMentors, setApiMentors] = useState<ApiMentor[]>([]);
+  useEffect(() => {
+    apiListMentors()
+      .then(setApiMentors)
+      .catch(() => setApiMentors([]));
+  }, []);
+
+  // Shape ApiMentor to the fields used in mentorTrackerList below
+  const mentors = apiMentors.map(m => ({
+    id: m.id,
+    name: m.fullName || m.email || 'Unnamed Mentor',
+    track: m.isExternal ? 'External' : 'Internal',
+    tracks: m.isExternal ? ['External'] : ['Internal'],
+  }));
   const taskCount = tasks.length;
   const filteredSubmissions = submissions.filter(s => studentIds.has(s.student_id));
   const pendingSubmissions = filteredSubmissions.filter(s => s.status === 'PENDING').length;
