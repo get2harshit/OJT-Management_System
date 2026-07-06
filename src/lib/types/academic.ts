@@ -98,19 +98,10 @@ export interface ApiMentor {
   phoneNumber?: string;
 }
 
-// Real backend batch manager shape (from GET /api/v1/batch-managers).
-export interface ApiBatchManager {
-  id: string;
-  fullName?: string;
-  email?: string;
-  phoneNumber?: string;
-  activeStatus?: boolean;
-}
-
 export interface CohortDetails extends Cohort {
   students: ApiStudent[];
   mentors: ApiMentor[];
-  batchManagers: ApiBatchManager[];
+  batchManagers: unknown[];
 }
 
 export interface DashboardMetrics {

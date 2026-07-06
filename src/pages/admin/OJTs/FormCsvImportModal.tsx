@@ -28,7 +28,7 @@ export default function FormCsvImportModal({ open, onClose, cohortOptions, profi
   const [csvText, setCsvText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const mentors = useMentors(profiles);
-  const { showSuccess, showError } = useToast();
+  const { showSuccess } = useToast();
 
   const handleClose = () => {
     setSelectedCohortId('');

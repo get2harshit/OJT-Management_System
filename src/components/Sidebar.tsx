@@ -2,7 +2,6 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard,
   Users,
-  UserCog,
   Cloud,
   CalendarCheck,
   FolderOpen,
@@ -33,7 +32,6 @@ const adminTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'students', label: 'Students', icon: Users },
   { id: 'mentors', label: 'Mentors', icon: Users },
-  { id: 'batch-managers', label: 'Batch Managers', icon: UserCog },
   { id: 'ojts', label: 'OJT Setup', icon: Briefcase },
   { id: 'allocations', label: 'Allocations', icon: Award },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
@@ -56,7 +54,7 @@ const mentorTabs = [
 
 const studentTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'projects', label: 'Pick Project', icon: Briefcase },
+  { id: 'projects', label: 'Select Project', icon: Briefcase },
   { id: 'tasks', label: 'My Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'My Submissions', icon: Upload },
   { id: 'credits', label: 'Cloud Credits', icon: CreditCard },

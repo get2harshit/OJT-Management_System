@@ -5,5 +5,5 @@ export * from './projects';
 export * from './students';
 export * from './dashboard';
 export * from './mentors';
-export * from './batchManagers';
+
 

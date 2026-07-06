@@ -15,7 +15,7 @@ interface ProjectCsvImportModalProps {
 export default function ProjectCsvImportModal({ open, onClose, addProjects }: ProjectCsvImportModalProps) {
   const [csvText, setCsvText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
-  const { showSuccess, showError } = useToast();
+  const { showSuccess } = useToast();
 
   const handleClose = () => {
     setCsvText('');

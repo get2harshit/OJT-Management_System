@@ -109,9 +109,9 @@ export default function ProjectPicker() {
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Briefcase size={24} className="text-gold" />
-          Pick Your OJT Project
+          Select Your OJT Project
         </h1>
-        <p className="text-gray-400 text-sm mt-1">Choose a track, browse the projects available to you, and lock in your pick.</p>
+        <p className="text-gray-400 text-sm mt-1">Choose a track, browse the projects available to you, and lock in your selection.</p>
       </div>
 
       {step === 'track' && (
@@ -248,7 +248,7 @@ export default function ProjectPicker() {
               Mentor selection & final submission
             </div>
             <p className="text-gray-500 text-xs">
-              Coming soon — this step isn't available yet, so your project pick above isn't saved to the server until it is.
+              Coming soon — this step isn't available yet, so your project selection above isn't saved to the server until it is.
             </p>
           </div>
         </div>
