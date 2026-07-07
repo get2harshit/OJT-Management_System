@@ -96,6 +96,92 @@ export interface ApiMentor {
   email?: string;
   fullName?: string;
   phoneNumber?: string;
+  tracks?: string[];      // backend track enum values, e.g. 'product_development'
+  capacity?: number;      // max concurrent students
+  currentLoad?: number;   // present only when requested with ?withLoad=true
+}
+
+// The active cohort a student belongs to (GET /api/v1/teams/my-cohort).
+// Every team endpoint is scoped to this id.
+export interface MyCohort {
+  cohortId: string;
+  name: string | null;
+  sessionTerm: SemesterSession;
+  allowedBatches: string[];
+}
+
+export interface TeamMemberInfo {
+  studentId: string;
+  fullName: string | null;
+}
+
+// A formed 2-student team (GET /api/v1/teams/my-status).
+export interface Team {
+  id: string;
+  track: string;
+  isIndividual: boolean;
+  members: TeamMemberInfo[];
+}
+
+export type TeamRequestStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
+
+// This student's own outgoing invite, still awaiting the other person.
+export interface PendingSentRequest {
+  id: string;
+  receiverId: string;
+  receiverName: string | null;
+  track: string;
+  expiresAt: string;
+}
+
+// An invite this student has received and hasn't responded to yet.
+export interface PendingReceivedRequest {
+  id: string;
+  senderId: string;
+  senderName: string | null;
+  track: string;
+  expiresAt: string;
+}
+
+// A team's submitted project slots (POST /api/v1/teams/projects/preferences).
+// preference1 is the team's own proposed project, preference2 is a catalog pick.
+export interface TeamProjectPreferences {
+  id: string;
+  teamId: string;
+  preference1Id: string;
+  preference2Id: string;
+  allocatedProjectId: string | null;
+  submittedAt: string;
+}
+
+// "Where is this student in the team/project flow" — drives which screen
+// the Select Project page renders, and lets it resume after a reload.
+export interface MyTeamStatus {
+  team: Team | null;
+  pendingSentRequest: PendingSentRequest | null;
+  pendingReceivedRequest: PendingReceivedRequest | null;
+  projectPreferences: TeamProjectPreferences | null;
+}
+
+export interface AvailableTeammate {
+  studentId: string;
+  rollNumber: string;
+  batch: string;
+  fullName: string;
+}
+
+// A project available to a team — either an admin-listed catalog project
+// (projectBy 'PST') or the team's own proposed idea (projectBy 'STUDENT').
+export interface TeamProject {
+  id: string;
+  title: string;
+  description?: string;
+  track: string;
+  techStack: string[];
+  problemStatement?: string;
+  endUsersDefined?: string;
+  projectBy: 'PST' | 'STUDENT';
+  createdByTeamId: string | null;
 }
 
 export interface CohortDetails extends Cohort {
