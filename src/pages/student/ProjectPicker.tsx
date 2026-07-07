@@ -1,120 +1,192 @@
-import { useState, useCallback, useMemo } from 'react';
-import { Briefcase, ArrowLeft, CheckCircle2, Search, Layers, Sparkles, X } from 'lucide-react';
-import Modal from '../../components/Modal';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import { TRACKS } from '../../lib/constants';
-import type { Project } from '../../lib/types';
-import { apiListProjects, apiGetProject } from '../../lib/api';
+import type { MyTeamStatus, AvailableTeammate, TeamProject, Project } from '../../lib/types';
+import {
+  apiGetMyCohort,
+  apiGetMyTeamStatus,
+  apiGetAvailableTeammates,
+  apiSendTeamRequest,
+  apiRespondToTeamRequest,
+  apiGetAvailableProjects,
+  apiProposeProject,
+  apiSubmitProjectPreferences,
+  apiGetProject,
+} from '../../lib/api';
 import { useToast } from '../../toast';
 
-type Step = 'track' | 'browse' | 'locked';
+const POLL_INTERVAL_MS = 15_000;
 
-// Real flow (GET /projects?track=, GET /projects/:id — both batch/JWT-scoped
-// server-side, no cohortId needed): pick a track, browse brief cards, open
-// one for the full detail, lock it in. Mentor selection & final submission
-// are a separate step still blocked on the backend exposing a way for a
-// student to discover their own cohortId, so that step is stubbed for now
-// and nothing here is persisted to the server yet.
+function useCountdown(expiresAt: string | undefined) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!expiresAt) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  if (!expiresAt) return { label: '', expired: true };
+  const remainingMs = new Date(expiresAt).getTime() - now;
+  if (remainingMs <= 0) return { label: 'Expired', expired: true };
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return { label: `${h}h ${m}m ${s}s`, expired: false };
+}
+
 export default function ProjectPicker() {
-  const { showError } = useToast();
-  const [step, setStep] = useState<Step>('track');
-  const [track, setTrack] = useState<string | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTechStacks, setSelectedTechStacks] = useState<string[]>([]);
+  const { showError, showSuccess } = useToast();
 
-  const [detailProject, setDetailProject] = useState<Project | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [cohortId, setCohortId] = useState<string | null>(null);
+  const [cohortError, setCohortError] = useState<string | null>(null);
+  const [status, setStatus] = useState<MyTeamStatus | null>(null);
 
-  const [lockedProject, setLockedProject] = useState<Project | null>(null);
-
-  const handlePickTrack = useCallback(async (t: string) => {
-    setTrack(t);
-    setStep('browse');
-    setSearchQuery('');
-    setSelectedTechStacks([]);
-    setLoading(true);
+  const refreshStatus = useCallback(async (cid: string) => {
     try {
-      const res = await apiListProjects(t);
-      setProjects(Array.isArray(res) ? res : []);
+      const res = await apiGetMyTeamStatus(cid);
+      setStatus(res);
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to load projects');
-      setProjects([]);
-    } finally {
-      setLoading(false);
+      showError(err instanceof Error ? err.message : 'Failed to load your status');
     }
   }, [showError]);
 
-  const handleOpenDetail = async (p: Project) => {
-    setDetailModalOpen(true);
-    setLoadingDetail(true);
-    setDetailProject(null);
-    try {
-      const full = await apiGetProject(p.id);
-      setDetailProject(full);
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to load project details');
-      setDetailModalOpen(false);
-    } finally {
-      setLoadingDetail(false);
-    }
-  };
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const cohort = await apiGetMyCohort();
+        setCohortId(cohort.cohortId);
+        await refreshStatus(cohort.cohortId);
+      } catch (err) {
+        setCohortError(err instanceof Error ? err.message : 'Failed to load your cohort');
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleConfirmSelection = () => {
-    if (!detailProject) return;
-    setLockedProject(detailProject);
-    setDetailModalOpen(false);
-    setStep('locked');
-  };
+  // While waiting on the other party, poll so acceptance/rejection/expiry
+  // reflect without the student having to manually reload.
+  const isWaiting = !!status?.pendingSentRequest || !!status?.pendingReceivedRequest;
+  useEffect(() => {
+    if (!cohortId || !isWaiting) return;
+    const id = setInterval(() => refreshStatus(cohortId), POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [cohortId, isWaiting, refreshStatus]);
 
-  const handleChangeProject = () => {
-    setLockedProject(null);
-    setStep('browse');
-  };
-
-  const handleChangeTrack = () => {
-    setLockedProject(null);
-    setTrack(null);
-    setProjects([]);
-    setStep('track');
-  };
-
-  const distinctTechStacks = useMemo(() => {
-    return Array.from(new Set(projects.flatMap(p => p.techStack || []))).sort();
-  }, [projects]);
-
-  const toggleTechStack = (tech: string) => {
-    setSelectedTechStacks(prev =>
-      prev.includes(tech) ? prev.filter(t => t !== tech) : [...prev, tech]
+  if (loading) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <SpinnerSquare size={48} />
+      </div>
     );
-  };
+  }
 
-  const filteredProjects = projects.filter(p => {
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch = p.title.toLowerCase().includes(q) || (p.problemStatement || '').toLowerCase().includes(q);
-      if (!matchesSearch) return false;
-    }
-    if (selectedTechStacks.length > 0) {
-      const projectStack = p.techStack || [];
-      if (!selectedTechStacks.some(t => projectStack.includes(t))) return false;
-    }
-    return true;
-  });
+  if (cohortError || !cohortId) {
+    return (
+      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-12 text-center">
+        <Briefcase size={40} className="mx-auto text-gray-600 mb-3" />
+        <p className="text-gray-400">{cohortError || 'You are not part of any active cohort yet.'}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Briefcase size={24} className="text-gold" />
-          Select Your OJT Project
+          Select Project
         </h1>
-        <p className="text-gray-400 text-sm mt-1">Choose a track, browse the projects available to you, and lock in your selection.</p>
+        <p className="text-gray-400 text-sm mt-1">Pick a track, team up, and lock in your projects.</p>
       </div>
 
-      {step === 'track' && (
+      {status?.pendingReceivedRequest ? (
+        <IncomingRequestScreen
+          request={status.pendingReceivedRequest}
+          onDecide={async (action) => {
+            try {
+              await apiRespondToTeamRequest(status.pendingReceivedRequest!.id, action);
+              showSuccess(action === 'accept' ? 'Team formed!' : 'Request rejected.');
+              await refreshStatus(cohortId);
+            } catch (err) {
+              showError(err instanceof Error ? err.message : 'Failed to respond to request');
+            }
+          }}
+        />
+      ) : status?.team ? (
+        status.projectPreferences ? (
+          <SummaryScreen team={status.team} preferences={status.projectPreferences} />
+        ) : (
+          <ProjectSelectionScreen
+            cohortId={cohortId}
+            onSubmitted={() => refreshStatus(cohortId)}
+          />
+        )
+      ) : status?.pendingSentRequest ? (
+        <PendingSentScreen request={status.pendingSentRequest} />
+      ) : (
+        <TrackAndTeammateScreen
+          cohortId={cohortId}
+          onRequestSent={() => refreshStatus(cohortId)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Step 1 & 2: pick a track, then a teammate ────────────────────────────────
+
+function TrackAndTeammateScreen({ cohortId, onRequestSent }: { cohortId: string; onRequestSent: () => void }) {
+  const { showError, showSuccess } = useToast();
+  const [track, setTrack] = useState<string | null>(null);
+  const [teammates, setTeammates] = useState<AvailableTeammate[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sendingTo, setSendingTo] = useState<string | null>(null);
+
+  const handlePickTrack = useCallback(async (t: string) => {
+    setTrack(t);
+    setLoading(true);
+    try {
+      const res = await apiGetAvailableTeammates(cohortId);
+      setTeammates(res);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load available teammates');
+      setTeammates([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [cohortId, showError]);
+
+  const handleSendRequest = async (teammate: AvailableTeammate) => {
+    if (!track) return;
+    setSendingTo(teammate.studentId);
+    try {
+      await apiSendTeamRequest(teammate.studentId, cohortId, track);
+      showSuccess(`Request sent to ${teammate.fullName}.`);
+      onRequestSent();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to send request');
+    } finally {
+      setSendingTo(null);
+    }
+  };
+
+  const filteredTeammates = teammates.filter(t => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return t.fullName?.toLowerCase().includes(q) || t.rollNumber?.toLowerCase().includes(q);
+  });
+
+  if (!track) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-white font-semibold">Choose your track</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {TRACKS.map(t => (
             <button
@@ -129,177 +201,427 @@ export default function ProjectPicker() {
             </button>
           ))}
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {step === 'browse' && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <button onClick={handleChangeTrack} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors">
-              <ArrowLeft size={15} />
-              Change track
-            </button>
-            <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{track}</span>
-          </div>
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={() => setTrack(null)} className="text-sm text-gray-400 hover:text-white transition-colors">
+          Change track
+        </button>
+        <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{track}</span>
+      </div>
 
-          <div className="relative max-w-sm">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search projects..."
-              className="w-full bg-zinc-850 border border-zinc-750 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            />
-          </div>
+      <h2 className="text-white font-semibold flex items-center gap-2">
+        <Users size={18} className="text-gold" />
+        Choose your teammate
+      </h2>
 
-          {distinctTechStacks.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Tech stack</span>
-              {distinctTechStacks.map(tech => {
-                const selected = selectedTechStacks.includes(tech);
-                return (
-                  <button
-                    key={tech}
-                    onClick={() => toggleTechStack(tech)}
-                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors border ${
-                      selected
-                        ? 'bg-gold/10 text-gold border-gold/40'
-                        : 'bg-zinc-850 text-gray-400 border-zinc-750 hover:border-zinc-650 hover:text-white'
-                    }`}
-                  >
-                    {tech}
-                  </button>
-                );
-              })}
-              {selectedTechStacks.length > 0 && (
-                <button
-                  onClick={() => setSelectedTechStacks([])}
-                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-white transition-colors"
-                >
-                  <X size={12} />
-                  Clear
-                </button>
-              )}
+      <div className="relative max-w-sm">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search by name or roll number..."
+          className="w-full bg-zinc-850 border border-zinc-750 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+        />
+      </div>
+
+      {loading ? (
+        <div className="min-h-[30vh] flex items-center justify-center">
+          <SpinnerSquare size={40} />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredTeammates.map(t => (
+            <div
+              key={t.studentId}
+              className="bg-zinc-850 border border-zinc-750 rounded-xl p-4 flex items-center justify-between gap-3"
+            >
+              <div>
+                <p className="text-white font-semibold">{t.fullName}</p>
+                <p className="text-gray-500 text-xs">{t.rollNumber} · {t.batch}</p>
+              </div>
+              <button
+                onClick={() => handleSendRequest(t)}
+                disabled={sendingTo === t.studentId}
+                className="text-xs px-3 py-1.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+              >
+                {sendingTo === t.studentId ? 'Sending...' : 'Invite'}
+              </button>
             </div>
-          )}
-
-          {loading ? (
-            <div className="min-h-[40vh] flex items-center justify-center">
-              <SpinnerSquare size={48} />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredProjects.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => handleOpenDetail(p)}
-                  className="text-left bg-zinc-850 border border-zinc-750 rounded-xl p-5 flex flex-col gap-3 hover:border-gold/30 hover:-translate-y-0.5 transition-all duration-200"
-                >
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold font-medium self-start">{p.track}</span>
-                  <h3 className="text-white font-bold text-base">{p.title}</h3>
-                  {p.problemStatement && (
-                    <p className="text-gray-400 text-xs leading-relaxed line-clamp-3">{p.problemStatement}</p>
-                  )}
-                  {p.techStack && p.techStack.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {p.techStack.map(ts => (
-                        <span key={ts} className="text-[10px] text-gray-300 bg-zinc-750 px-2 py-0.5 rounded-full font-medium">{ts}</span>
-                      ))}
-                    </div>
-                  )}
-                </button>
-              ))}
-              {filteredProjects.length === 0 && (
-                <div className="col-span-full bg-zinc-850 border border-zinc-750 rounded-xl p-12 text-center">
-                  <Briefcase size={40} className="mx-auto text-gray-600 mb-3" />
-                  <p className="text-gray-400">No projects found for this track.</p>
-                </div>
-              )}
+          ))}
+          {filteredTeammates.length === 0 && (
+            <div className="col-span-full bg-zinc-850 border border-zinc-750 rounded-xl p-12 text-center">
+              <Users size={40} className="mx-auto text-gray-600 mb-3" />
+              <p className="text-gray-400">No available teammates right now.</p>
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
 
-      {step === 'locked' && lockedProject && (
-        <div className="space-y-4">
-          <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-6 space-y-3">
-            <div className="flex items-center gap-2 text-green-400 text-sm font-semibold">
-              <CheckCircle2 size={16} />
-              Project selected
-            </div>
-            <h2 className="text-white font-extrabold text-xl">{lockedProject.title}</h2>
-            {lockedProject.description && (
-              <p className="text-gray-300 text-sm leading-relaxed">{lockedProject.description}</p>
-            )}
-            <div className="flex flex-wrap gap-2 pt-1">
-              <span className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold font-medium">{lockedProject.track}</span>
-              {(lockedProject.techStack || []).map(t => (
-                <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-zinc-750 text-gray-300 font-medium">{t}</span>
-              ))}
-            </div>
-            <button onClick={handleChangeProject} className="text-xs text-gray-400 hover:text-white transition-colors underline underline-offset-2">
-              Change project
-            </button>
-          </div>
+// ── Step 3: waiting on the invite you sent ───────────────────────────────────
 
-          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 opacity-60">
-            <div className="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-1">
-              <Sparkles size={16} />
-              Mentor selection & final submission
-            </div>
-            <p className="text-gray-500 text-xs">
-              Coming soon — this step isn't available yet, so your project selection above isn't saved to the server until it is.
-            </p>
-          </div>
-        </div>
-      )}
+function PendingSentScreen({ request }: { request: { receiverName: string | null; track: string; expiresAt: string } }) {
+  const { label, expired } = useCountdown(request.expiresAt);
+  return (
+    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-8 text-center space-y-3">
+      <Clock size={32} className="mx-auto text-gold" />
+      <h2 className="text-white font-bold text-lg">Request Pending</h2>
+      <p className="text-gray-400 text-sm">
+        Waiting for <span className="text-white font-medium">{request.receiverName}</span> to accept your invite for{' '}
+        <span className="text-gold">{request.track}</span>.
+      </p>
+      <p className="text-xs text-gray-500">
+        {expired ? 'This request has expired.' : `Expires in ${label} if there's no response.`}
+      </p>
+    </div>
+  );
+}
 
-      {/* Full project detail, fetched on demand */}
-      <Modal open={detailModalOpen} onClose={() => setDetailModalOpen(false)} title={detailProject?.title || 'Project details'}>
-        {loadingDetail || !detailProject ? (
-          <div className="flex items-center justify-center py-10">
-            <SpinnerSquare size={40} />
+// ── Step 3b: someone invited you ─────────────────────────────────────────────
+
+function IncomingRequestScreen({
+  request,
+  onDecide,
+}: {
+  request: { senderName: string | null; track: string; expiresAt: string };
+  onDecide: (action: 'accept' | 'reject') => void;
+}) {
+  const { label, expired } = useCountdown(request.expiresAt);
+  const [deciding, setDeciding] = useState(false);
+
+  const handleDecide = async (action: 'accept' | 'reject') => {
+    setDeciding(true);
+    try {
+      await onDecide(action);
+    } finally {
+      setDeciding(false);
+    }
+  };
+
+  return (
+    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-8 text-center space-y-4">
+      <Users size={32} className="mx-auto text-gold" />
+      <h2 className="text-white font-bold text-lg">Team Invite</h2>
+      <p className="text-gray-400 text-sm">
+        <span className="text-white font-medium">{request.senderName}</span> invited you to team up for{' '}
+        <span className="text-gold">{request.track}</span>.
+      </p>
+      <p className="text-xs text-gray-500">
+        {expired ? 'This invite has expired.' : `Expires in ${label}`}
+      </p>
+      <div className="flex items-center justify-center gap-3 pt-2">
+        <button
+          onClick={() => handleDecide('reject')}
+          disabled={deciding}
+          className="flex items-center gap-1.5 text-sm px-4 py-2 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
+        >
+          <XCircle size={16} />
+          Reject
+        </button>
+        <button
+          onClick={() => handleDecide('accept')}
+          disabled={deciding}
+          className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+        >
+          <CheckCircle2 size={16} />
+          Accept
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Step 4 & 5: team picks its self project + an existing project ───────────
+
+function ProjectSelectionScreen({ cohortId, onSubmitted }: { cohortId: string; onSubmitted: () => void }) {
+  const { showError, showSuccess } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [availableProjects, setAvailableProjects] = useState<TeamProject[]>([]);
+  const [selfProject, setSelfProject] = useState<TeamProject | null>(null);
+  const [existingProjectId, setExistingProjectId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [proposing, setProposing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({ title: '', description: '', problemStatement: '', endUsersDefined: '', techStack: '' });
+
+  const loadProjects = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiGetAvailableProjects(cohortId);
+      setAvailableProjects(res);
+      const own = res.find(p => p.projectBy === 'STUDENT');
+      setSelfProject(own ?? null);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load projects');
+    } finally {
+      setLoading(false);
+    }
+  }, [cohortId, showError]);
+
+  useEffect(() => { loadProjects(); }, [loadProjects]);
+
+  const catalogProjects = useMemo(
+    () => availableProjects.filter(p => p.projectBy === 'PST'),
+    [availableProjects]
+  );
+
+  const filteredCatalog = catalogProjects.filter(p => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return p.title.toLowerCase().includes(q) || (p.problemStatement || '').toLowerCase().includes(q);
+  });
+
+  const handleProposeSelfProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim()) return;
+    setProposing(true);
+    try {
+      const created = await apiProposeProject(cohortId, {
+        title: form.title.trim(),
+        description: form.description.trim() || undefined,
+        problemStatement: form.problemStatement.trim() || undefined,
+        endUsersDefined: form.endUsersDefined.trim() || undefined,
+        techStack: form.techStack.split(',').map(t => t.trim()).filter(Boolean),
+      });
+      setSelfProject(created);
+      showSuccess('Self project created.');
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to create self project');
+    } finally {
+      setProposing(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!selfProject || !existingProjectId) return;
+    setSubmitting(true);
+    try {
+      await apiSubmitProjectPreferences(cohortId, selfProject.id, existingProjectId);
+      showSuccess('Project selections submitted!');
+      onSubmitted();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to submit project selections');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-[40vh] flex items-center justify-center">
+        <SpinnerSquare size={48} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Self Project */}
+      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
+        <h2 className="text-white font-semibold flex items-center gap-2">
+          <Sparkles size={18} className="text-gold" />
+          Self Project
+        </h2>
+
+        {selfProject ? (
+          <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 space-y-1">
+            <div className="flex items-center gap-2 text-green-400 text-xs font-semibold">
+              <CheckCircle2 size={14} />
+              Selected
+            </div>
+            <p className="text-white font-bold">{selfProject.title}</p>
+            {selfProject.description && <p className="text-gray-400 text-sm">{selfProject.description}</p>}
           </div>
         ) : (
-          <div className="space-y-4">
-            <span className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold font-medium">{detailProject.track}</span>
-            {detailProject.description && (
-              <div>
-                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Description</p>
-                <p className="text-gray-300 text-sm leading-relaxed">{detailProject.description}</p>
-              </div>
-            )}
-            {detailProject.problemStatement && (
-              <div>
-                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Problem Statement</p>
-                <p className="text-gray-300 text-sm leading-relaxed">{detailProject.problemStatement}</p>
-              </div>
-            )}
-            {detailProject.endUsersDefined && (
-              <div>
-                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">End Users</p>
-                <p className="text-gray-300 text-sm leading-relaxed">{detailProject.endUsersDefined}</p>
-              </div>
-            )}
-            {detailProject.techStack && detailProject.techStack.length > 0 && (
-              <div>
-                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Tech Stack</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {detailProject.techStack.map(t => (
-                    <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-zinc-750 text-gray-300 font-medium">{t}</span>
-                  ))}
-                </div>
-              </div>
-            )}
+          <form onSubmit={handleProposeSelfProject} className="space-y-3">
+            <input
+              type="text"
+              required
+              placeholder="Project title"
+              value={form.title}
+              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+            />
+            <textarea
+              placeholder="Description"
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              rows={2}
+              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+            />
+            <textarea
+              placeholder="Problem statement"
+              value={form.problemStatement}
+              onChange={e => setForm(f => ({ ...f, problemStatement: e.target.value }))}
+              rows={2}
+              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+            />
+            <input
+              type="text"
+              placeholder="End users"
+              value={form.endUsersDefined}
+              onChange={e => setForm(f => ({ ...f, endUsersDefined: e.target.value }))}
+              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+            />
+            <input
+              type="text"
+              placeholder="Tech stack (comma separated)"
+              value={form.techStack}
+              onChange={e => setForm(f => ({ ...f, techStack: e.target.value }))}
+              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+            />
             <button
-              onClick={handleConfirmSelection}
-              className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors"
+              type="submit"
+              disabled={proposing || !form.title.trim()}
+              className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
             >
-              Select this project
+              <Plus size={16} />
+              {proposing ? 'Creating...' : 'Create Self Project'}
             </button>
-          </div>
+          </form>
         )}
-      </Modal>
+      </div>
+
+      {/* Existing Project */}
+      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
+        <h2 className="text-white font-semibold flex items-center gap-2">
+          <Briefcase size={18} className="text-gold" />
+          Existing Project
+        </h2>
+
+        <div className="relative max-w-sm">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search projects..."
+            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {filteredCatalog.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setExistingProjectId(p.id)}
+              className={`text-left rounded-lg p-4 border transition-colors ${
+                existingProjectId === p.id
+                  ? 'bg-gold/10 border-gold/50'
+                  : 'bg-zinc-900 border-zinc-750 hover:border-zinc-650'
+              }`}
+            >
+              <p className="text-white font-semibold text-sm">{p.title}</p>
+              {p.problemStatement && (
+                <p className="text-gray-400 text-xs mt-1 line-clamp-2">{p.problemStatement}</p>
+              )}
+            </button>
+          ))}
+          {filteredCatalog.length === 0 && (
+            <div className="col-span-full text-center py-8">
+              <p className="text-gray-400 text-sm">No existing projects available for this track.</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <button
+        onClick={handleSubmit}
+        disabled={!selfProject || !existingProjectId || submitting}
+        className="w-full py-3 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-40"
+      >
+        {submitting ? 'Submitting...' : 'Confirm Project Selections'}
+      </button>
+    </div>
+  );
+}
+
+// ── Step 6: read-only summary once everything is locked in ──────────────────
+
+function SummaryScreen({
+  team,
+  preferences,
+}: {
+  team: { track: string; members: { studentId: string; fullName: string | null }[] };
+  preferences: { preference1Id: string; preference2Id: string };
+}) {
+  const [selfProject, setSelfProject] = useState<Project | null>(null);
+  const [existingProject, setExistingProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    (async () => {
+      try {
+        const [self, existing] = await Promise.all([
+          apiGetProject(preferences.preference1Id),
+          apiGetProject(preferences.preference2Id),
+        ]);
+        setSelfProject(self);
+        setExistingProject(existing);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [preferences.preference1Id, preferences.preference2Id]);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-6 space-y-4">
+        <div className="flex items-center gap-2 text-green-400 text-sm font-semibold">
+          <CheckCircle2 size={16} />
+          Your selections are locked in
+        </div>
+
+        <div>
+          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Track</p>
+          <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{team.track}</span>
+        </div>
+
+        <div>
+          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Team</p>
+          <div className="flex flex-wrap gap-2">
+            {team.members.map(m => (
+              <span key={m.studentId} className="text-sm px-2.5 py-1 rounded-full bg-zinc-750 text-white font-medium">
+                {m.fullName}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="py-6 flex justify-center"><SpinnerSquare size={32} /></div>
+        ) : (
+          <>
+            <div>
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Self Project</p>
+              <p className="text-white font-semibold">{selfProject?.title}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Existing Project</p>
+              <p className="text-white font-semibold">{existingProject?.title}</p>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 opacity-60">
+        <div className="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-1">
+          <Sparkles size={16} />
+          Mentor selection
+        </div>
+        <p className="text-gray-500 text-xs">Coming soon — mentors will show here once assigned.</p>
+      </div>
     </div>
   );
 }
