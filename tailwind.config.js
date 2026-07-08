@@ -16,16 +16,29 @@ export default {
           850: 'rgb(var(--color-zinc-850) / <alpha-value>)',
           750: 'rgb(var(--color-zinc-750) / <alpha-value>)',
         },
+        login: {
+          card: 'rgb(var(--color-login-card) / <alpha-value>)',
+          surface: 'rgb(var(--color-login-surface) / <alpha-value>)',
+          border: 'rgb(var(--color-login-border) / <alpha-value>)',
+        },
       },
       borderColor: {
         zinc: {
           750: 'rgb(var(--color-zinc-750) / <alpha-value>)',
+        },
+        login: {
+          border: 'rgb(var(--color-login-border) / <alpha-value>)',
         },
       },
       backgroundColor: {
         zinc: {
           850: 'rgb(var(--color-zinc-850) / <alpha-value>)',
           750: 'rgb(var(--color-zinc-750) / <alpha-value>)',
+        },
+        login: {
+          card: 'rgb(var(--color-login-card) / <alpha-value>)',
+          surface: 'rgb(var(--color-login-surface) / <alpha-value>)',
+          border: 'rgb(var(--color-login-border) / <alpha-value>)',
         },
       },
     },

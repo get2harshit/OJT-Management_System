@@ -80,12 +80,18 @@ export interface ApiStudent {
   id: string;
   rollNumber?: string;
   batch?: string;
+  track?: string;
   currentTier?: string;
   email?: string | null;
   fullName?: string | null;
   phoneNumber?: string | null;
   isHosteller?: boolean | null;
   activeStatus?: boolean | null;
+  // Backend has been observed sending both casings for these two fields.
+  progressStatus?: string;
+  progress_status?: string;
+  mentorId?: string | null;
+  mentor_id?: string | null;
 }
 
 // Real backend mentor shape (from GET /api/v1/mentors).

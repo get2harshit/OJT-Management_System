@@ -7,7 +7,7 @@ import Submissions from './Submissions';
 import Credits from './Credits';
 import Attendance from './Attendance';
 import { useMockData } from '../../hooks/useMockData';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 
 export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');

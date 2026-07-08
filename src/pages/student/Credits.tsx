@@ -62,13 +62,13 @@ export default function StudentCredits({ studentId, credits, creditRequests, pro
           columns={[
             { key: 'provider', header: 'Provider' },
             { key: 'amount', header: 'Amount ($)' },
-            { key: 'code', header: 'Voucher Code', render: (row: any) => (
+            { key: 'code', header: 'Voucher Code', render: (row) => (
               <span className="font-mono bg-zinc-800 text-gold px-2.5 py-0.5 rounded border border-zinc-700 font-bold text-xs">{row.code}</span>
             )},
             { key: 'expiry_date', header: 'Expiry Date' },
             { key: 'assigned_at', header: 'Assigned Date' },
           ]}
-          data={creditsData as unknown as Record<string, unknown>[]}
+          data={creditsData}
           searchPlaceholder="Search vouchers..."
         />
       </div>
@@ -80,24 +80,24 @@ export default function StudentCredits({ studentId, credits, creditRequests, pro
             { key: 'provider', header: 'Provider' },
             { key: 'amount', header: 'Requested ($)' },
             { key: 'reason', header: 'Reason Statement' },
-            { key: 'mentor_status', header: 'Mentor Vouch', render: (row: any) => (
+            { key: 'mentor_status', header: 'Mentor Vouch', render: (row) => (
               <span className={`text-xs px-2.5 py-0.5 rounded font-semibold ${
                 row.mentor_status === 'PENDING' ? 'bg-zinc-800 text-gray-400' :
                 row.mentor_status === 'VOUCHED' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
               }`}>{row.mentor_status}</span>
             )},
-            { key: 'admin_status', header: 'Admin Status', render: (row: any) => (
+            { key: 'admin_status', header: 'Admin Status', render: (row) => (
               <span className={`text-xs px-2.5 py-0.5 rounded font-semibold ${
                 row.admin_status === 'PENDING' ? 'bg-zinc-800 text-gray-400' :
                 row.admin_status === 'APPROVED' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
               }`}>{row.admin_status}</span>
             )},
-            { key: 'code', header: 'Redemption Key', render: (row: any) => (
+            { key: 'code', header: 'Redemption Key', render: (row) => (
               row.code ? <span className="font-mono text-xs text-gold">{row.code}</span> : <span className="text-gray-600 text-xs">-</span>
             )},
             { key: 'created_at', header: 'Requested At' },
           ]}
-          data={myRequests as unknown as Record<string, unknown>[]}
+          data={myRequests as (CreditRequest & Record<string, unknown>)[]}
           searchPlaceholder="Search requests..."
         />
       </div>

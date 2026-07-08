@@ -15,6 +15,11 @@
   --color-zinc-850: 24 24 27;
   --color-bg: 0 0 0;
   --color-fg: 243 244 246;
+
+  /* Near-black card palette used by the login screen's Google-style card UI. */
+  --color-login-card: 20 20 20;
+  --color-login-surface: 26 26 26;
+  --color-login-border: 42 42 42;
 }
 
 @layer base {

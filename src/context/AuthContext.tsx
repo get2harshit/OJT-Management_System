@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import type { AuthUser, ApiUserRole } from '../lib/types';
 import {
@@ -13,7 +13,7 @@ import {
 
 // ── Context shape ───────────────────────────────────────────────────────────────
 
-interface AuthContextValue {
+export interface AuthContextValue {
   user: AuthUser | null;
   token: string | null;
   loading: boolean;
@@ -22,7 +22,7 @@ interface AuthContextValue {
   logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+export const AuthContext = createContext<AuthContextValue | null>(null);
 
 // ── Provider ────────────────────────────────────────────────────────────────────
 
@@ -112,12 +112,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-// ── Hook ────────────────────────────────────────────────────────────────────────
-
-export function useAuth(): AuthContextValue {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within <AuthProvider>');
-  return ctx;
 }

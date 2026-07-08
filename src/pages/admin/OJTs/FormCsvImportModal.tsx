@@ -6,6 +6,7 @@ import type { Profile } from '../../../lib/types';
 import { parseCSV } from '../../../lib/csv';
 import { useMentors } from '../../../hooks/useMentors';
 import { useToast } from '../../../toast';
+import type { OJTBatchStudentRecord } from '../../../hooks/useMockData';
 
 interface CohortOption {
   id: string;
@@ -17,7 +18,7 @@ interface FormCsvImportModalProps {
   onClose: () => void;
   cohortOptions?: CohortOption[];
   profiles: Profile[];
-  importOJTBatch: (cohortId: string, studentRecords: any[], batchName?: string, semesterName?: string) => void;
+  importOJTBatch: (cohortId: string, studentRecords: OJTBatchStudentRecord[], batchName?: string, semesterName?: string) => void;
   defaultCohortId?: string;
   defaultBatchName?: string;
   defaultSemesterName?: string;
@@ -112,7 +113,7 @@ export default function FormCsvImportModal({
         project_description,
         tech_stack
       };
-    }).filter(Boolean);
+    }).filter((r): r is NonNullable<typeof r> => r !== null);
 
     if (records.length > 0) {
       importOJTBatch(selectedCohortId, records, defaultBatchName, defaultSemesterName);

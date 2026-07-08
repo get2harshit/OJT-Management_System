@@ -212,7 +212,7 @@ export default function AdminAllocations({ students, profiles, projects, cohorts
             <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-gray-300 font-medium">{row.track || 'Unassigned'}</span>
           )},
           { key: 'cohort_label', header: 'OJT Cohort' },
-          { key: 'preferences', header: 'Mentor Prefs', render: (row: any) => {
+          { key: 'preferences', header: 'Mentor Prefs', render: (row) => {
             if (!row.preferred_mentors || row.preferred_mentors.length === 0) {
               return <span className="text-gray-500 text-xs">None Set</span>;
             }

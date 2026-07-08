@@ -2,11 +2,10 @@ import { useState, useMemo } from 'react';
 import { Users, CheckSquare, FolderOpen, CalendarCheck, TrendingUp } from 'lucide-react';
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
-import type { Profile, Student, Task, Submission, Attendance, Semester, Batch } from '../../lib/types';
+import type { Student, Task, Submission, Attendance, Semester, Batch } from '../../lib/types';
 
 interface Props {
   mentorId: string;
-  profiles: Profile[];
   students: Student[];
   tasks: Task[];
   submissions: Submission[];
@@ -15,7 +14,7 @@ interface Props {
   batches: Batch[];
 }
 
-export default function MentorDashboard({ mentorId, profiles: _profiles, students, tasks, submissions, attendance, semesters, batches }: Props) {
+export default function MentorDashboard({ mentorId, students, tasks, submissions, attendance, semesters, batches }: Props) {
   const [semFilter, setSemFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
   const [trackFilter, setTrackFilter] = useState('');

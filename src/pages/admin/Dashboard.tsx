@@ -18,13 +18,9 @@ import { TRACKS } from '../../lib/constants';
 import { mapFrontendTrackToBackend } from '../../lib/api/trackMapping';
 
 interface Props {
-  profiles: any[];
-  students: any[];
   tasks: Task[];
   submissions: Submission[];
   attendance: Attendance[];
-  semesters: any[];
-  batches: any[];
   onNavigateToTab: (tab: string) => void;
 }
 
@@ -42,7 +38,6 @@ export default function AdminDashboard({ tasks, submissions, attendance, onNavig
   // Cohort details & projects (when semFilter/cohort is selected)
   const [selectedCohortDetails, setSelectedCohortDetails] = useState<CohortDetails | null>(null);
   const [cohortProjects, setCohortProjects] = useState<Project[]>([]);
-  const [loadingCohortDetails, setLoadingCohortDetails] = useState(false);
 
   // Real backend counts (students/mentors/batch managers/projects/credits) —
   // everything else on this page (progress tracker, mentor table, submission
@@ -70,7 +65,6 @@ export default function AdminDashboard({ tasks, submissions, attendance, onNavig
 
   useEffect(() => {
     if (semFilter) {
-      setLoadingCohortDetails(true);
       Promise.all([
         apiGetCohort(semFilter),
         apiGetProjectsForCohort(semFilter)
@@ -79,8 +73,7 @@ export default function AdminDashboard({ tasks, submissions, attendance, onNavig
           setSelectedCohortDetails(cohortDetails);
           setCohortProjects(cohortProj);
         })
-        .catch((err) => console.error('Dashboard failed to load cohort details', err))
-        .finally(() => setLoadingCohortDetails(false));
+        .catch((err) => console.error('Dashboard failed to load cohort details', err));
     } else {
       setSelectedCohortDetails(null);
       setCohortProjects([]);
@@ -112,7 +105,7 @@ export default function AdminDashboard({ tasks, submissions, attendance, onNavig
     return cohortScopedStudents.filter(s => {
       if (batchFilter && s.batch !== batchFilter) return false;
       if (trackFilter) {
-        const studentTrack = (s as any).track;
+        const studentTrack = s.track;
         if (!studentTrack || studentTrack.toLowerCase() !== trackFilter.toLowerCase()) return false;
       }
       return true;
@@ -169,10 +162,10 @@ export default function AdminDashboard({ tasks, submissions, attendance, onNavig
   const attendanceCount = filteredAttendance.length;
 
   // Progress status counts
-  const onTrackCount = useMemo(() => filteredStudents.filter(s => (s as any).progressStatus === 'ON_TRACK' || (s as any).progress_status === 'ON_TRACK').length, [filteredStudents]);
-  const delayingCount = useMemo(() => filteredStudents.filter(s => (s as any).progressStatus === 'DELAYING' || (s as any).progress_status === 'DELAYING').length, [filteredStudents]);
+  const onTrackCount = useMemo(() => filteredStudents.filter(s => s.progressStatus === 'ON_TRACK' || s.progress_status === 'ON_TRACK').length, [filteredStudents]);
+  const delayingCount = useMemo(() => filteredStudents.filter(s => s.progressStatus === 'DELAYING' || s.progress_status === 'DELAYING').length, [filteredStudents]);
   const inProcessCount = useMemo(() => filteredStudents.filter(s => {
-    const status = (s as any).progressStatus || (s as any).progress_status;
+    const status = s.progressStatus || s.progress_status;
     return status === 'IN_PROCESS' || !status;
   }).length, [filteredStudents]);
 
@@ -183,9 +176,9 @@ export default function AdminDashboard({ tasks, submissions, attendance, onNavig
   // Mentor table data calculation
   const mentorTrackerList = useMemo(() => {
     return mentors.map(m => {
-      const assigned = filteredStudents.filter(s => (s as any).mentorId === m.id || (s as any).mentor_id === m.id);
-      const onTrack = assigned.filter(s => (s as any).progressStatus === 'ON_TRACK' || (s as any).progress_status === 'ON_TRACK').length;
-      const delaying = assigned.filter(s => (s as any).progressStatus === 'DELAYING' || (s as any).progress_status === 'DELAYING').length;
+      const assigned = filteredStudents.filter(s => s.mentorId === m.id || s.mentor_id === m.id);
+      const onTrack = assigned.filter(s => s.progressStatus === 'ON_TRACK' || s.progress_status === 'ON_TRACK').length;
+      const delaying = assigned.filter(s => s.progressStatus === 'DELAYING' || s.progress_status === 'DELAYING').length;
       const inProcess = assigned.length - onTrack - delaying;
 
       // Attendance calculation for this mentor's students

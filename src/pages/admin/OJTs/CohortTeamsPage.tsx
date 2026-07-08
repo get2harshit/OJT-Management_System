@@ -36,7 +36,7 @@ export default function CohortTeamsPage() {
     } finally {
       setLoading(false);
     }
-  }, [cohortId]);
+  }, [cohortId, showError]);
 
   useEffect(() => {
     fetchData();
@@ -81,7 +81,7 @@ export default function CohortTeamsPage() {
             {
               key: 'members',
               header: 'Members',
-              render: (row: any) => (
+              render: (row) => (
                 <span className="flex items-center gap-2">
                   <Users2 size={14} className="text-gold shrink-0" />
                   {row.members}
@@ -93,7 +93,7 @@ export default function CohortTeamsPage() {
             {
               key: 'projectStatus',
               header: 'Project Preferences',
-              render: (row: any) => (
+              render: (row) => (
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
                   row.projectStatus === 'Submitted' ? 'bg-green-400/10 text-green-400' : 'bg-gray-400/10 text-gray-400'
                 }`}>
@@ -104,7 +104,7 @@ export default function CohortTeamsPage() {
           ]}
           data={data}
           searchPlaceholder="Search teams..."
-          actions={(row: any) => {
+          actions={(row) => {
             const team = teams.find(t => t.id === row.id);
             if (!team) return null;
             return (

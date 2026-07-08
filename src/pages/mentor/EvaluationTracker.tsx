@@ -67,7 +67,7 @@ export default function MentorEvaluationTracker({ profiles, students, attendance
     });
   }, [students, studentProfiles, attendance, targetDenominator]);
 
-  const handleEdit = (row: any) => {
+  const handleEdit = (row: (typeof data)[number]) => {
     const s = students.find((stud) => stud.user_id === row.user_id);
     if (!s) return;
     setEditingUserId(row.user_id);
