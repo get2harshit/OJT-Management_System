@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Edit2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import Select from '../../components/Select';
 import Modal from '../../components/Modal';
 import type { ApiStudent } from '../../lib/types';
 import { apiListStudents, apiUpdateStudentBatch } from '../../lib/api';
@@ -91,6 +92,19 @@ export default function AdminStudents() {
         <p className="text-gray-400 text-sm mt-1">All enrolled students</p>
       </div>
 
+      {!loading && batches.length > 0 && (
+        <div className="flex flex-wrap gap-3">
+          <Select
+            variant="filter"
+            className="min-w-[160px]"
+            value={selectedBatch}
+            onChange={setSelectedBatch}
+            placeholder="All Batches"
+            options={batches.map(b => ({ value: b, label: b }))}
+          />
+        </div>
+      )}
+
       {loading ? (
         <div className="min-h-[50vh] flex items-center justify-center">
           <SpinnerSquare size={48} />
@@ -101,29 +115,7 @@ export default function AdminStudents() {
             { key: 'roll_number', header: 'Roll Number' },
             { key: 'name', header: 'Name' },
             { key: 'email', header: 'Email' },
-            {
-              key: 'batch',
-              header: 'Batch',
-              // Filter dropdown lives inside the BATCH column header
-              headerRender: () => (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-gray-400 font-medium uppercase tracking-wider text-xs">Batch</span>
-                  {batches.length > 0 && (
-                    <select
-                      value={selectedBatch}
-                      onChange={e => setSelectedBatch(e.target.value)}
-                      onClick={e => e.stopPropagation()}
-                      className="bg-zinc-800 text-gray-300 text-xs border border-zinc-700 rounded px-1.5 py-0.5 focus:outline-none focus:border-gold cursor-pointer normal-case font-normal tracking-normal"
-                    >
-                      <option value="">All</option>
-                      {batches.map(b => (
-                        <option key={b} value={b}>{b}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              ),
-            },
+            { key: 'batch', header: 'Batch' },
             { key: 'currentTier', header: 'Tier' },
             {
               key: 'activeStatus',
