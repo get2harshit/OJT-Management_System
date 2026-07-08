@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Calendar, RefreshCw, Upload, Briefcase, Edit2, Eye, Users, UserCog } from 'lucide-react';
+import { Plus, Trash2, Calendar, RefreshCw, Upload, Briefcase, Edit2, UserCog, Users2 } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import ActionsMenu from '../../../components/ActionsMenu';
@@ -207,6 +207,7 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
                 { label: 'Select Project', icon: Briefcase, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/projects`) },
                 // { label: 'Select Student', icon: Users, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/students`) },
                 { label: 'Select Mentor', icon: UserCog, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/mentors`) },
+                { label: 'Manage Teams', icon: Users2, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/teams`) },
                 { label: 'Delete OJT', icon: Trash2, onClick: () => handleDeleteCohort(row.id), danger: true },
               ]}
             />
