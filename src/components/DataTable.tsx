@@ -14,6 +14,7 @@ interface DataTableProps<T> {
   searchPlaceholder?: string;
   searchKeys?: (keyof T)[];
   actions?: (row: T) => React.ReactNode;
+  onRowClick?: (row: T) => void;
 }
 
 export default function DataTable<T extends Record<string, unknown>>({
@@ -22,6 +23,7 @@ export default function DataTable<T extends Record<string, unknown>>({
   searchPlaceholder = 'Search...',
   searchKeys,
   actions,
+  onRowClick,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -69,14 +71,21 @@ export default function DataTable<T extends Record<string, unknown>>({
             {paginated.map((row, idx) => (
               <tr
                 key={typeof row.id === 'string' || typeof row.id === 'number' ? row.id : idx}
-                className="border-b border-zinc-750/50 hover:bg-zinc-750/20 transition-colors"
+                onClick={() => onRowClick && onRowClick(row)}
+                className={`border-b border-zinc-750/50 transition-colors ${
+                  onRowClick ? 'cursor-pointer hover:bg-gold/5' : 'hover:bg-zinc-750/20'
+                }`}
               >
                 {columns.map((col) => (
                   <td key={String(col.key)} className="px-4 py-3 text-gray-300">
                     {col.render ? col.render(row) : String(row[col.key as keyof T] ?? '-')}
                   </td>
                 ))}
-                {actions && <td className="px-4 py-3">{actions(row)}</td>}
+                {actions && (
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    {actions(row)}
+                  </td>
+                )}
               </tr>
             ))}
             {paginated.length === 0 && (

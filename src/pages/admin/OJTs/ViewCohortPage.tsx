@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar, Users, Briefcase, UserCog } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
+import Select from '../../../components/Select';
 import type { CohortDetails, Project } from '../../../lib/types';
 import { apiGetCohort, apiGetProjectsForCohort } from '../../../lib/api';
 import { getDurationString, formatDateDisplay } from '../../../lib/utils';
@@ -60,8 +61,20 @@ export default function ViewCohortPage() {
     <div className="space-y-6">
       <CohortPageHeader title={getCohortLabel(cohort)} subtitle="OJT cohort details" />
 
-      {/* Top stats row — 5 cards including batch filter */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      {/* Filter Bar */}
+      <div className="flex flex-wrap gap-3">
+        <Select
+          variant="filter"
+          className="min-w-[160px]"
+          value={selectedBatchFilter}
+          onChange={setSelectedBatchFilter}
+          placeholder="All Batches"
+          options={(cohort.allowedBatches || []).map(b => ({ value: b, label: b }))}
+        />
+      </div>
+
+      {/* Top stats row — 4 cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
           <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1.5">Status</p>
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
@@ -88,21 +101,6 @@ export default function ViewCohortPage() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
           <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1.5">Dates</p>
           <p className="text-white text-xs font-medium">{formatDateDisplay(cohort.startDate)} → {formatDateDisplay(cohort.endDate)}</p>
-        </div>
-
-        {/* Batch Filter as 5th card */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 col-span-2 lg:col-span-1">
-          <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1.5">Batch</p>
-          <select
-            value={selectedBatchFilter}
-            onChange={(e) => setSelectedBatchFilter(e.target.value)}
-            className="w-full bg-zinc-800 text-white text-xs border border-zinc-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition-all appearance-none cursor-pointer"
-          >
-            <option value="">All Batches</option>
-            {(cohort.allowedBatches || []).map(b => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
         </div>
       </div>
 

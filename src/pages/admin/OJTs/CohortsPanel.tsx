@@ -199,10 +199,10 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
           ]}
           data={cohortData}
           searchPlaceholder="Search cohorts..."
+          onRowClick={(row: any) => navigate(`/admin/dashboard/ojts/${row.id}/view`)}
           actions={(row: any) => (
             <ActionsMenu
               items={[
-                { label: 'View OJT', icon: Eye, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/view`) },
                 { label: 'Edit OJT', icon: Edit2, onClick: () => handleEditCohort(row.id) },
                 { label: 'Select Project', icon: Briefcase, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/projects`) },
                 // { label: 'Select Student', icon: Users, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/students`) },
