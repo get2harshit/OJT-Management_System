@@ -27,14 +27,16 @@ export async function apiGetProject(id: string): Promise<Project> {
   };
 }
 
-export async function apiCreateProject(body: {
+export interface ProjectCreateInput {
   title: string;
-  description: string;
+  description?: string;
   track: string;
   techStack?: string[];
   problemStatement?: string;
   endUsersDefined?: string;
-}): Promise<Project> {
+}
+
+export async function apiCreateProject(body: ProjectCreateInput): Promise<Project> {
   const payload = {
     ...body,
     track: mapFrontendTrackToBackend(body.track),
@@ -48,6 +50,27 @@ export async function apiCreateProject(body: {
     track: mapBackendTrackToFrontend(p.track),
     related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
   };
+}
+
+// All-or-nothing on the backend — if any row fails validation, none of the
+// batch is created. Used by the project CSV importer instead of looping
+// apiCreateProject, so a bad row can't leave a half-imported catalog.
+export async function apiCreateProjectsBulk(items: ProjectCreateInput[]): Promise<Project[]> {
+  const payload = {
+    projects: items.map(item => ({
+      ...item,
+      track: mapFrontendTrackToBackend(item.track),
+    })),
+  };
+  const res = await apiFetch<any[]>('/api/v1/projects/bulk', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return res.map(p => ({
+    ...p,
+    track: mapBackendTrackToFrontend(p.track),
+    related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
+  }));
 }
 
 export async function apiDeleteProject(id: string): Promise<void> {

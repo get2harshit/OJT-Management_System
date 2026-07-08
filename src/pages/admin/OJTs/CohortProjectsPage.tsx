@@ -11,10 +11,10 @@ import { useToast } from '../../../toast';
 
 interface CohortProjectsPageProps {
   projects: Project[];
-  addProjects: (projs: Omit<Project, 'id' | 'created_at'>[]) => void;
+  onProjectsImported: () => void;
 }
 
-export default function CohortProjectsPage({ projects, addProjects }: CohortProjectsPageProps) {
+export default function CohortProjectsPage({ projects, onProjectsImported }: CohortProjectsPageProps) {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
@@ -137,7 +137,7 @@ export default function CohortProjectsPage({ projects, addProjects }: CohortProj
       <ProjectCsvImportModal
         open={projectCsvModalOpen}
         onClose={() => setProjectCsvModalOpen(false)}
-        addProjects={addProjects}
+        onImportSuccess={onProjectsImported}
       />
     </div>
   );
