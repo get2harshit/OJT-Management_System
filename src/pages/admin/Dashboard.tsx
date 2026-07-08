@@ -2,73 +2,166 @@ import { useState, useMemo, useEffect } from 'react';
 import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Sparkles, Activity, UserCog, Briefcase } from 'lucide-react';
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
-import type { Profile, Student, Task, Submission, Attendance, Semester, Batch, DashboardMetrics, ApiMentor } from '../../lib/types';
-import { apiGetDashboardMetrics, apiListMentors } from '../../lib/api';
+import SpinnerSquare from '../../components/SpinnerSquare';
+import type { Task, Submission, Attendance, DashboardMetrics, ApiMentor, ApiStudent, Cohort, CohortDetails, Project } from '../../lib/types';
+import {
+  apiGetDashboardMetrics,
+  apiListMentors,
+  apiListCohorts,
+  apiListStudents,
+  apiGetCohort,
+  apiGetProjectsForCohort,
+  apiListProjects
+} from '../../lib/api';
+import { getCohortLabel } from '../../lib/cohortLabel';
+import { TRACKS } from '../../lib/constants';
+import { mapFrontendTrackToBackend } from '../../lib/api/trackMapping';
 
 interface Props {
-  profiles: Profile[];
-  students: Student[];
+  profiles: any[];
+  students: any[];
   tasks: Task[];
   submissions: Submission[];
   attendance: Attendance[];
-  semesters: Semester[];
-  batches: Batch[];
+  semesters: any[];
+  batches: any[];
   onNavigateToTab: (tab: string) => void;
 }
 
-export default function AdminDashboard({ students, tasks, submissions, attendance, semesters, batches, onNavigateToTab }: Props) {
+export default function AdminDashboard({ tasks, submissions, attendance, onNavigateToTab }: Props) {
   const [semFilter, setSemFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
   const [trackFilter, setTrackFilter] = useState('');
+
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [apiStudents, setApiStudents] = useState<ApiStudent[]>([]);
+  const [apiMentors, setApiMentors] = useState<ApiMentor[]>([]);
+  const [globalProjects, setGlobalProjects] = useState<Project[]>([]);
+  const [loadingReal, setLoadingReal] = useState(true);
+
+  // Cohort details & projects (when semFilter/cohort is selected)
+  const [selectedCohortDetails, setSelectedCohortDetails] = useState<CohortDetails | null>(null);
+  const [cohortProjects, setCohortProjects] = useState<Project[]>([]);
+  const [loadingCohortDetails, setLoadingCohortDetails] = useState(false);
 
   // Real backend counts (students/mentors/batch managers/projects/credits) —
   // everything else on this page (progress tracker, mentor table, submission
   // breakdown, activity feed) has no backend equivalent yet and stays mock.
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+
   useEffect(() => {
-    apiGetDashboardMetrics().then(setMetrics).catch(() => setMetrics(null));
+    Promise.all([
+      apiGetDashboardMetrics(),
+      apiListCohorts(),
+      apiListStudents(),
+      apiListMentors(),
+      apiListProjects()
+    ])
+      .then(([metricsRes, cohortsRes, studentsRes, mentorsRes, projectsRes]) => {
+        setMetrics(metricsRes);
+        setCohorts(cohortsRes);
+        setApiStudents(studentsRes);
+        setApiMentors(mentorsRes);
+        setGlobalProjects(projectsRes);
+      })
+      .catch((err) => console.error('Dashboard failed to load real data', err))
+      .finally(() => setLoadingReal(false));
   }, []);
 
-  const distinctSemesters = useMemo(() => {
-    const ids = [...new Set(students.map(s => s.semester_id).filter(Boolean))] as string[];
-    return semesters.filter(s => ids.includes(s.id));
-  }, [students, semesters]);
+  useEffect(() => {
+    if (semFilter) {
+      setLoadingCohortDetails(true);
+      Promise.all([
+        apiGetCohort(semFilter),
+        apiGetProjectsForCohort(semFilter)
+      ])
+        .then(([cohortDetails, cohortProj]) => {
+          setSelectedCohortDetails(cohortDetails);
+          setCohortProjects(cohortProj);
+        })
+        .catch((err) => console.error('Dashboard failed to load cohort details', err))
+        .finally(() => setLoadingCohortDetails(false));
+    } else {
+      setSelectedCohortDetails(null);
+      setCohortProjects([]);
+    }
+  }, [semFilter]);
 
-  const filteredBatches = useMemo(() => {
-    if (!semFilter) return batches;
-    return batches.filter(b => b.semester_id === semFilter);
-  }, [semFilter, batches]);
+  const semesterOptions = useMemo(() => {
+    return cohorts.map(c => ({ value: c.id, label: getCohortLabel(c) }));
+  }, [cohorts]);
 
-  const distinctTracks = useMemo(() => {
-    return [...new Set(students.map(s => s.track).filter(Boolean))] as string[];
-  }, [students]);
+  const batchOptions = useMemo(() => {
+    if (semFilter) {
+      const cohort = cohorts.find(c => c.id === semFilter);
+      return (cohort?.allowedBatches || []).map(b => ({ value: b, label: b }));
+    }
+    const all = cohorts.flatMap(c => c.allowedBatches || []);
+    return Array.from(new Set(all)).sort().map(b => ({ value: b, label: b }));
+  }, [semFilter, cohorts]);
+
+  // Scoped student list
+  const cohortScopedStudents = useMemo(() => {
+    if (semFilter && selectedCohortDetails) {
+      return selectedCohortDetails.students || [];
+    }
+    return apiStudents;
+  }, [semFilter, selectedCohortDetails, apiStudents]);
 
   const filteredStudents = useMemo(() => {
-    return students.filter(s => {
-      if (semFilter && s.semester_id !== semFilter) return false;
-      if (batchFilter && s.batch_id !== batchFilter) return false;
-      if (trackFilter && s.track !== trackFilter) return false;
+    return cohortScopedStudents.filter(s => {
+      if (batchFilter && s.batch !== batchFilter) return false;
+      if (trackFilter) {
+        const studentTrack = (s as any).track;
+        if (!studentTrack || studentTrack.toLowerCase() !== trackFilter.toLowerCase()) return false;
+      }
       return true;
     });
-  }, [students, semFilter, batchFilter, trackFilter]);
+  }, [cohortScopedStudents, batchFilter, trackFilter]);
 
-  const studentIds = new Set(filteredStudents.map(s => s.user_id));
+  const studentIds = new Set(filteredStudents.map(s => s.id));
 
-  // Real mentors from backend API
-  const [apiMentors, setApiMentors] = useState<ApiMentor[]>([]);
-  useEffect(() => {
-    apiListMentors()
-      .then(setApiMentors)
-      .catch(() => setApiMentors([]));
-  }, []);
+  // Scoped mentor list
+  const cohortScopedMentors = useMemo(() => {
+    if (semFilter && selectedCohortDetails) {
+      return selectedCohortDetails.mentors || [];
+    }
+    return apiMentors;
+  }, [semFilter, selectedCohortDetails, apiMentors]);
+
+  const filteredMentors = useMemo(() => {
+    return cohortScopedMentors.filter(m => {
+      if (trackFilter) {
+        const backendTrack = mapFrontendTrackToBackend(trackFilter);
+        return m.tracks?.includes(backendTrack) || m.tracks?.includes(trackFilter);
+      }
+      return true;
+    });
+  }, [cohortScopedMentors, trackFilter]);
+
+  // Scoped projects list
+  const cohortScopedProjects = useMemo(() => {
+    if (semFilter) {
+      return cohortProjects;
+    }
+    return globalProjects;
+  }, [semFilter, cohortProjects, globalProjects]);
+
+  const filteredProjects = useMemo(() => {
+    return cohortScopedProjects.filter(p => {
+      if (trackFilter && p.track !== trackFilter) return false;
+      return true;
+    });
+  }, [cohortScopedProjects, trackFilter]);
 
   // Shape ApiMentor to the fields used in mentorTrackerList below
-  const mentors = apiMentors.map(m => ({
+  const mentors = filteredMentors.map(m => ({
     id: m.id,
     name: m.fullName || m.email || 'Unnamed Mentor',
     track: m.isExternal ? 'External' : 'Internal',
-    tracks: m.isExternal ? ['External'] : ['Internal'],
+    tracks: m.tracks || (m.isExternal ? ['External'] : ['Internal']),
   }));
+
   const taskCount = tasks.length;
   const filteredSubmissions = submissions.filter(s => studentIds.has(s.student_id));
   const pendingSubmissions = filteredSubmissions.filter(s => s.status === 'PENDING').length;
@@ -76,9 +169,12 @@ export default function AdminDashboard({ students, tasks, submissions, attendanc
   const attendanceCount = filteredAttendance.length;
 
   // Progress status counts
-  const onTrackCount = useMemo(() => filteredStudents.filter(s => s.progress_status === 'ON_TRACK').length, [filteredStudents]);
-  const delayingCount = useMemo(() => filteredStudents.filter(s => s.progress_status === 'DELAYING').length, [filteredStudents]);
-  const inProcessCount = useMemo(() => filteredStudents.filter(s => s.progress_status === 'IN_PROCESS' || !s.progress_status).length, [filteredStudents]);
+  const onTrackCount = useMemo(() => filteredStudents.filter(s => (s as any).progressStatus === 'ON_TRACK' || (s as any).progress_status === 'ON_TRACK').length, [filteredStudents]);
+  const delayingCount = useMemo(() => filteredStudents.filter(s => (s as any).progressStatus === 'DELAYING' || (s as any).progress_status === 'DELAYING').length, [filteredStudents]);
+  const inProcessCount = useMemo(() => filteredStudents.filter(s => {
+    const status = (s as any).progressStatus || (s as any).progress_status;
+    return status === 'IN_PROCESS' || !status;
+  }).length, [filteredStudents]);
 
   const totalUniqueDates = useMemo(() => {
     return new Set(attendance.map((a) => a.date)).size || 5;
@@ -87,14 +183,13 @@ export default function AdminDashboard({ students, tasks, submissions, attendanc
   // Mentor table data calculation
   const mentorTrackerList = useMemo(() => {
     return mentors.map(m => {
-      const assigned = filteredStudents.filter(s => s.mentor_id === m.id);
-      const onTrack = assigned.filter(s => s.progress_status === 'ON_TRACK').length;
-      const delaying = assigned.filter(s => s.progress_status === 'DELAYING').length;
-      const inProcess = assigned.filter(s => s.progress_status === 'IN_PROCESS' || !s.progress_status).length;
+      const assigned = filteredStudents.filter(s => (s as any).mentorId === m.id || (s as any).mentor_id === m.id);
+      const onTrack = assigned.filter(s => (s as any).progressStatus === 'ON_TRACK' || (s as any).progress_status === 'ON_TRACK').length;
+      const delaying = assigned.filter(s => (s as any).progressStatus === 'DELAYING' || (s as any).progress_status === 'DELAYING').length;
+      const inProcess = assigned.length - onTrack - delaying;
 
       // Attendance calculation for this mentor's students
-      const assignedIds = new Set(assigned.map(s => s.user_id));
-      const presents = attendance.filter(a => assignedIds.has(a.student_id)).length;
+      const presents = attendance.filter(a => assigned.some(s => s.id === a.student_id)).length;
       const possiblePresents = assigned.length * totalUniqueDates;
       const rate = possiblePresents > 0 ? Math.round((presents / possiblePresents) * 100) : 0;
 
@@ -112,6 +207,20 @@ export default function AdminDashboard({ students, tasks, submissions, attendanc
     });
   }, [mentors, filteredStudents, attendance, totalUniqueDates]);
 
+  // Calculated count states for stats cards
+  const showStudentsCount = (semFilter || batchFilter || trackFilter) ? filteredStudents.length : (metrics ? metrics.studentsCount : '—');
+  const showMentorsCount = (semFilter || trackFilter) ? filteredMentors.length : (metrics ? metrics.mentorsCount : '—');
+  const showBatchManagersCount = semFilter ? (selectedCohortDetails?.batchManagers?.length || 0) : (metrics ? metrics.batchManagersCount : '—');
+  const showProjectsCount = (semFilter || trackFilter) ? filteredProjects.length : (metrics ? metrics.projectsCount : '—');
+
+  if (loadingReal) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <SpinnerSquare size={48} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -128,8 +237,8 @@ export default function AdminDashboard({ students, tasks, submissions, attendanc
           className="min-w-[160px]"
           value={semFilter}
           onChange={v => { setSemFilter(v); setBatchFilter(''); }}
-          placeholder="All Semesters"
-          options={distinctSemesters.map(s => ({ value: s.id, label: s.name }))}
+          placeholder="All Cohorts"
+          options={semesterOptions}
         />
         <Select
           variant="filter"
@@ -137,7 +246,7 @@ export default function AdminDashboard({ students, tasks, submissions, attendanc
           value={batchFilter}
           onChange={setBatchFilter}
           placeholder="All Batches"
-          options={filteredBatches.map(b => ({ value: b.id, label: b.name }))}
+          options={batchOptions}
         />
         <Select
           variant="filter"
@@ -145,7 +254,7 @@ export default function AdminDashboard({ students, tasks, submissions, attendanc
           value={trackFilter}
           onChange={setTrackFilter}
           placeholder="All Tracks"
-          options={distinctTracks.map(t => ({ value: t, label: t }))}
+          options={TRACKS.map(t => ({ value: t, label: t }))}
         />
       </div>
 
@@ -154,10 +263,10 @@ export default function AdminDashboard({ students, tasks, submissions, attendanc
           the metrics endpoint has no data for them. Each card jumps to its
           matching sidebar tab, except Batch Managers which has no page yet. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Students" value={metrics ? metrics.studentsCount : '—'} icon={Users} onClick={() => onNavigateToTab('students')} />
-        <StatCard title="Mentors" value={metrics ? metrics.mentorsCount : '—'} icon={Users} onClick={() => onNavigateToTab('mentors')} />
-        <StatCard title="Batch Managers" value={metrics ? metrics.batchManagersCount : '—'} icon={UserCog} />
-        <StatCard title="Projects" value={metrics ? metrics.projectsCount : '—'} icon={Briefcase} onClick={() => onNavigateToTab('ojts')} />
+        <StatCard title="Students" value={showStudentsCount} icon={Users} onClick={() => onNavigateToTab('students')} />
+        <StatCard title="Mentors" value={showMentorsCount} icon={Users} onClick={() => onNavigateToTab('mentors')} />
+        <StatCard title="Batch Managers" value={showBatchManagersCount} icon={UserCog} />
+        <StatCard title="Projects" value={showProjectsCount} icon={Briefcase} onClick={() => onNavigateToTab('ojts')} />
         <StatCard title="Cloud Credits" value={metrics ? `$${metrics.totalCreditsAvailable}` : '—'} icon={Cloud} onClick={() => onNavigateToTab('credits')} />
         <StatCard title="Tasks" value={taskCount} icon={CheckSquare} onClick={() => onNavigateToTab('tasks')} />
         <StatCard title="Pending Submissions" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToTab('submissions')} />
