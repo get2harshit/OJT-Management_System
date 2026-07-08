@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, Target, Code } from 'lucide-react';
+import { Plus, Trash2, Target, Code, AlertTriangle } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
@@ -10,6 +10,7 @@ interface ProjectCatalogPanelProps {
   projects: Project[];
   addProject: (proj: Omit<Project, 'id' | 'created_at'>) => void;
   deleteProject: (id: string) => void;
+  deleteAllProjects: () => Promise<void>;
 }
 
 const EMPTY_PROJECT_FORM = {
@@ -20,9 +21,12 @@ const EMPTY_PROJECT_FORM = {
   related_field: ''
 };
 
-export default function ProjectCatalogPanel({ projects, addProject, deleteProject }: ProjectCatalogPanelProps) {
+export default function ProjectCatalogPanel({ projects, addProject, deleteProject, deleteAllProjects }: ProjectCatalogPanelProps) {
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [projectForm, setProjectForm] = useState(EMPTY_PROJECT_FORM);
+  const [deleteAllModalOpen, setDeleteAllModalOpen] = useState(false);
+  const [deleteAllConfirmText, setDeleteAllConfirmText] = useState('');
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const handleSaveProject = () => {
     if (!projectForm.title || !projectForm.description) return;
@@ -44,11 +48,34 @@ export default function ProjectCatalogPanel({ projects, addProject, deleteProjec
     deleteProject(id);
   };
 
+  const closeDeleteAllModal = () => {
+    setDeleteAllModalOpen(false);
+    setDeleteAllConfirmText('');
+  };
+
+  const handleDeleteAll = async () => {
+    setDeletingAll(true);
+    try {
+      await deleteAllProjects();
+      closeDeleteAllModal();
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap justify-between items-center gap-3">
         <h2 className="text-lg font-bold text-white">Project catalog templates</h2>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setDeleteAllModalOpen(true)}
+            disabled={projects.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-850 hover:bg-red-500/10 border border-zinc-750 hover:border-red-500/50 text-gray-300 hover:text-red-400 rounded-lg transition-colors text-sm disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <Trash2 size={16} />
+            Delete All
+          </button>
           <button
             onClick={() => setProjectModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 text-sm"
@@ -150,6 +177,37 @@ export default function ProjectCatalogPanel({ projects, addProject, deleteProjec
             className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors"
           >
             Create Project Template
+          </button>
+        </div>
+      </Modal>
+
+      <Modal open={deleteAllModalOpen} onClose={closeDeleteAllModal} title="Delete All Projects">
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+            <AlertTriangle size={18} className="text-red-400 shrink-0 mt-0.5" />
+            <p className="text-sm text-red-300">
+              This permanently removes all <span className="font-bold">{projects.length}</span> project{projects.length === 1 ? '' : 's'} from
+              the catalog. This cannot be undone from the admin panel.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">
+              Type <span className="font-mono text-red-400">DELETE</span> to confirm
+            </label>
+            <input
+              type="text"
+              value={deleteAllConfirmText}
+              onChange={e => setDeleteAllConfirmText(e.target.value)}
+              placeholder="DELETE"
+              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500 font-mono"
+            />
+          </div>
+          <button
+            onClick={handleDeleteAll}
+            disabled={deleteAllConfirmText !== 'DELETE' || deletingAll}
+            className="w-full py-2.5 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+          >
+            {deletingAll ? 'Deleting...' : `Delete All ${projects.length} Projects`}
           </button>
         </div>
       </Modal>

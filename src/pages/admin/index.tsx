@@ -17,7 +17,7 @@ import CohortProjectsPage from './OJTs/CohortProjectsPage';
 import CohortMentorsPage from './OJTs/CohortMentorsPage';
 import CohortTeamsPage from './OJTs/CohortTeamsPage';
 import { useMockData } from '../../hooks/useMockData';
-import { apiListCohorts, apiListProjects, apiCreateProject, apiDeleteProject } from '../../lib/api';
+import { apiListCohorts, apiListProjects, apiCreateProject, apiDeleteProject, apiDeleteAllProjects } from '../../lib/api';
 import { useEffect, useCallback } from 'react';
 import type { Cohort, Project } from '../../lib/types';
 import { useToast } from '../../toast';
@@ -25,7 +25,7 @@ import { useToast } from '../../toast';
 export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const navigate = useNavigate();
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
   const data = useMockData();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [projectsList, setProjectsList] = useState<Project[]>([]);
@@ -82,6 +82,16 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
     }
   };
 
+  const handleDeleteAllProjects = async () => {
+    try {
+      const { deletedCount } = await apiDeleteAllProjects();
+      showSuccess(`Deleted ${deletedCount} project${deletedCount === 1 ? '' : 's'}.`);
+      await fetchProjects();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to delete all projects');
+    }
+  };
+
   const renderTab = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -109,6 +119,7 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
             projects={projectsList}
             addProject={handleAddProject}
             deleteProject={handleDeleteProject}
+            deleteAllProjects={handleDeleteAllProjects}
             profiles={data.profiles}
             importOJTBatch={data.importOJTBatch}
           />

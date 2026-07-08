@@ -8,6 +8,7 @@ interface OJTsProps {
   projects: Project[];
   addProject: (proj: Omit<Project, 'id' | 'created_at'>) => void;
   deleteProject: (id: string) => void;
+  deleteAllProjects: () => Promise<void>;
   profiles: Profile[];
   importOJTBatch: (cohortId: string, studentRecords: any[]) => void;
 }
@@ -15,6 +16,7 @@ export default function AdminOJTs({
   projects,
   addProject,
   deleteProject,
+  deleteAllProjects,
   profiles,
   importOJTBatch
 }: OJTsProps) {
@@ -65,6 +67,7 @@ export default function AdminOJTs({
           projects={projects}
           addProject={addProject}
           deleteProject={deleteProject}
+          deleteAllProjects={deleteAllProjects}
         />
       )}
     </div>
