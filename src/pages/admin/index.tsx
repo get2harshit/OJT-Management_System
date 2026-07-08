@@ -116,7 +116,6 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
       case 'ojts':
         return (
           <OJTs
-            projects={projectsList}
             addProject={handleAddProject}
             deleteProject={handleDeleteProject}
             deleteAllProjects={handleDeleteAllProjects}
