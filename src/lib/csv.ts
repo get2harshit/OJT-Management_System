@@ -1,26 +1,61 @@
-// Quote-aware CSV row parser — handles commas embedded inside quoted fields.
-// Returns one string[] per line (including the header row); callers decide
+// Quote-aware CSV parser — handles commas AND newlines embedded inside
+// quoted fields (e.g. a multi-line bullet list pasted into one cell), plus
+// "" as an escaped literal quote. Splitting on '\n' before parsing quotes
+// (the previous approach) breaks as soon as any field spans multiple
+// lines, since everything after that point in the file shifts columns.
+// Returns one string[] per row (including the header row); callers decide
 // how to map columns since that differs per import flow.
 export function parseCSV(text: string): string[][] {
-  const lines = text.trim().split('\n').filter(Boolean);
-  return lines.map(line => {
-    const cols: string[] = [];
-    let inQuotes = false;
-    let currentCol = '';
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+
+  const pushField = () => {
+    row.push(field.trim());
+    field = '';
+  };
+  const pushRow = () => {
+    pushField();
+    rows.push(row);
+    row = [];
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+
+    if (inQuotes) {
       if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        cols.push(currentCol.trim().replace(/^"|"$/g, ''));
-        currentCol = '';
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
       } else {
-        currentCol += char;
+        field += char;
       }
+      continue;
     }
-    cols.push(currentCol.trim().replace(/^"|"$/g, ''));
-    return cols;
-  });
+
+    if (char === '"') {
+      inQuotes = true;
+    } else if (char === ',') {
+      pushField();
+    } else if (char === '\r') {
+      // swallow — the paired '\n' (or EOF) ends the row
+    } else if (char === '\n') {
+      pushRow();
+    } else {
+      field += char;
+    }
+  }
+  // Final row, unless the file ended on a trailing newline
+  if (field.length > 0 || row.length > 0) {
+    pushRow();
+  }
+
+  return rows.filter(r => !(r.length === 1 && r[0] === ''));
 }
 
 // Detects an .xlsx file mistakenly uploaded where a plain .csv was expected

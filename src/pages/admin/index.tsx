@@ -73,24 +73,6 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
     }
   };
 
-  const handleBulkAddProjects = async (projs: Omit<Project, 'id' | 'created_at'>[]) => {
-    try {
-      for (const proj of projs) {
-        const techStack = proj.related_field ? proj.related_field.split(',').map(s => s.trim()).filter(Boolean) : [];
-        await apiCreateProject({
-          title: proj.title,
-          description: proj.description || '',
-          track: proj.track,
-          techStack,
-        });
-      }
-      await fetchProjects();
-    } catch (err) {
-      console.error(err);
-      showError('Failed during bulk import of projects.');
-    }
-  };
-
   const handleDeleteProject = async (id: string) => {
     try {
       await apiDeleteProject(id);
@@ -162,7 +144,7 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
       <Routes>
         <Route path="ojts/:cohortId/view" element={<ViewCohortPage profiles={data.profiles} importOJTBatch={data.importOJTBatch} />} />
         <Route path="ojts/:cohortId/students" element={<CohortStudentsPage />} />
-        <Route path="ojts/:cohortId/projects" element={<CohortProjectsPage projects={projectsList} addProjects={handleBulkAddProjects} />} />
+        <Route path="ojts/:cohortId/projects" element={<CohortProjectsPage projects={projectsList} onProjectsImported={fetchProjects} />} />
         <Route path="ojts/:cohortId/mentors" element={<CohortMentorsPage />} />
         <Route path="ojts/:cohortId/teams" element={<CohortTeamsPage />} />
         <Route path="*" element={renderTab()} />
