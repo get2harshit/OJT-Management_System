@@ -78,3 +78,9 @@ export async function apiDeleteProject(id: string): Promise<void> {
     method: 'DELETE',
   });
 }
+
+export async function apiDeleteAllProjects(): Promise<{ deletedCount: number }> {
+  return apiFetch<{ success: boolean; deletedCount: number }>('/api/v1/projects', {
+    method: 'DELETE',
+  });
+}
