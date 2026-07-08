@@ -13,7 +13,7 @@ import FormCsvImportModal from './FormCsvImportModal';
 
 interface ViewCohortPageProps {
   profiles: Profile[];
-  importOJTBatch: (cohortId: string, studentRecords: any[]) => void;
+  importOJTBatch: (cohortId: string, studentRecords: any[], batchName?: string, semesterName?: string) => void;
 }
 
 export default function ViewCohortPage({ profiles, importOJTBatch }: ViewCohortPageProps) {
@@ -228,6 +228,8 @@ export default function ViewCohortPage({ profiles, importOJTBatch }: ViewCohortP
         profiles={profiles}
         importOJTBatch={importOJTBatch}
         defaultCohortId={cohortId}
+        defaultBatchName={cohort.allowedBatches?.[0]}
+        defaultSemesterName={getCohortLabel(cohort)}
         onImportSuccess={fetchDetails}
       />
     </div>

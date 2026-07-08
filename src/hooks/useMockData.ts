@@ -31,9 +31,9 @@ const defaultSemesters: Semester[] = [
 ];
 
 const defaultBatches: Batch[] = [
-  { id: 'b1', name: 'Batch A', semester_id: 'sem1', created_at: '2024-09-01' },
-  { id: 'b2', name: 'Batch B', semester_id: 'sem1', created_at: '2024-09-01' },
-  { id: 'b3', name: 'Batch C', semester_id: 'sem2', created_at: '2025-01-15' },
+  { id: 'b1', name: '2024-2025', semester_id: 'sem1', created_at: '2024-09-01' },
+  { id: 'b2', name: '2025-2026', semester_id: 'sem1', created_at: '2024-09-01' },
+  { id: 'b3', name: '2026-2027', semester_id: 'sem2', created_at: '2025-01-15' },
 ];
 
 const defaultStudents: Student[] = [
@@ -156,8 +156,11 @@ function loadData(): StoredData {
       const hasNitin = parsed.profiles?.some((p: any) => p.name === 'Nitin Singh');
       const hasJaya = parsed.profiles?.some((p: any) => p.name === 'Jayaprasad');
       const hasRohit = parsed.profiles?.some((p: any) => p.name === 'Rohit Gupta');
+      const hasOldBatches = parsed.batches?.some((b: any) => 
+        b.name === 'Batch A' || b.name === 'Batch B' || b.name === 'Batch C'
+      );
 
-      if (hasOldTracks || hasNitin || hasJaya || !hasRohit) {
+      if (hasOldTracks || hasNitin || hasJaya || !hasRohit || hasOldBatches) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(freshDefaults));
         return freshDefaults;
       }
@@ -257,10 +260,50 @@ export function useMockData() {
     });
   }, [data, persist]);
 
-  const importOJTBatch = useCallback((cohortId: string, studentRecords: any[]) => {
+  const importOJTBatch = useCallback((cohortId: string, studentRecords: any[], batchName?: string, semesterName?: string) => {
     let currentProfiles = [...data.profiles];
     let currentStudents = [...data.students];
     let currentProjects = [...data.projects];
+    let currentBatches = [...data.batches];
+    let currentSemesters = [...data.semesters];
+
+    let semesterId: string | null = null;
+    if (semesterName) {
+      const existingSem = currentSemesters.find(s => s.name.toLowerCase() === semesterName.toLowerCase());
+      if (existingSem) {
+        semesterId = existingSem.id;
+      } else {
+        semesterId = 'sem_' + uid();
+        currentSemesters.push({
+          id: semesterId,
+          name: semesterName,
+          start_date: new Date().toISOString().slice(0, 10),
+          end_date: new Date().toISOString().slice(0, 10),
+          is_active: false,
+          created_at: new Date().toISOString().slice(0, 10)
+        });
+      }
+    } else {
+      semesterId = cohortId === 'ojt1' ? 'sem1' : cohortId === 'ojt2' ? 'sem2' : 'sem1';
+    }
+
+    let batchId: string | null = null;
+    if (batchName && semesterId) {
+      const existingBatch = currentBatches.find(b => b.name.toLowerCase() === batchName.toLowerCase() && b.semester_id === semesterId);
+      if (existingBatch) {
+        batchId = existingBatch.id;
+      } else {
+        batchId = 'b_' + uid();
+        currentBatches.push({
+          id: batchId,
+          name: batchName,
+          semester_id: semesterId,
+          created_at: new Date().toISOString().slice(0, 10)
+        });
+      }
+    } else {
+      batchId = cohortId === 'ojt1' ? 'b1' : cohortId === 'ojt2' ? 'b2' : 'b1';
+    }
 
     studentRecords.forEach(record => {
       const studentId = 's' + uid();
@@ -293,8 +336,8 @@ export function useMockData() {
       currentStudents.push({
         user_id: studentId,
         roll_number: rollNumber,
-        batch_id: null,
-        semester_id: null,
+        batch_id: batchId,
+        semester_id: semesterId,
         track: record.track,
         ojt_id: cohortId,
         project_id: projectId,
@@ -314,7 +357,9 @@ export function useMockData() {
       ...data,
       profiles: currentProfiles,
       students: currentStudents,
-      projects: currentProjects
+      projects: currentProjects,
+      batches: currentBatches,
+      semesters: currentSemesters
     });
   }, [data, persist]);
 

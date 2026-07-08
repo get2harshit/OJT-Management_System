@@ -17,8 +17,10 @@ interface FormCsvImportModalProps {
   onClose: () => void;
   cohortOptions?: CohortOption[];
   profiles: Profile[];
-  importOJTBatch: (cohortId: string, studentRecords: any[]) => void;
+  importOJTBatch: (cohortId: string, studentRecords: any[], batchName?: string, semesterName?: string) => void;
   defaultCohortId?: string;
+  defaultBatchName?: string;
+  defaultSemesterName?: string;
   onImportSuccess?: () => void;
 }
 
@@ -32,6 +34,8 @@ export default function FormCsvImportModal({
   profiles,
   importOJTBatch,
   defaultCohortId,
+  defaultBatchName,
+  defaultSemesterName,
   onImportSuccess
 }: FormCsvImportModalProps) {
   const [selectedCohortId, setSelectedCohortId] = useState(defaultCohortId || '');
@@ -111,7 +115,7 @@ export default function FormCsvImportModal({
     }).filter(Boolean);
 
     if (records.length > 0) {
-      importOJTBatch(selectedCohortId, records);
+      importOJTBatch(selectedCohortId, records, defaultBatchName, defaultSemesterName);
       showSuccess(`Successfully imported ${records.length} students from the OJT form responses!`);
       onImportSuccess?.();
     }
