@@ -21,6 +21,7 @@ interface SelectEntityGridProps<T> {
   onSave: () => void;
   onCancel: () => void;
   emptyMessage?: string;
+  rightAction?: React.ReactNode;
 }
 
 export default function SelectEntityGrid<T>({
@@ -39,6 +40,7 @@ export default function SelectEntityGrid<T>({
   onSave,
   onCancel,
   emptyMessage = 'No results found.',
+  rightAction,
 }: SelectEntityGridProps<T>) {
   return (
     <div className="space-y-4">
@@ -52,6 +54,7 @@ export default function SelectEntityGrid<T>({
           placeholder={searchPlaceholder}
           className="flex-1 bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
         />
+        {rightAction}
         <button
           onClick={onSelectAll}
           disabled={loading || items.length === 0}

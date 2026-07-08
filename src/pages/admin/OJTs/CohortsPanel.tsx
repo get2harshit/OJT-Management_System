@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Calendar, RefreshCw, Upload, Briefcase, Edit2, UserCog, Users2 } from 'lucide-react';
+import { Plus, Trash2, Calendar, RefreshCw, Briefcase, Edit2, UserCog, Users2 } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import ActionsMenu from '../../../components/ActionsMenu';
@@ -11,7 +11,6 @@ import { getDurationString, formatDateDisplay, toDateOnly } from '../../../lib/u
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import CohortFormFields from './CohortFormFields';
 import { computeCohortDefaultsFromStartDate, EMPTY_COHORT_FORM, validateCohortForm } from '../../../lib/cohortForm';
-import FormCsvImportModal from './FormCsvImportModal';
 import { useToast } from '../../../toast';
 
 interface CohortsPanelProps {
@@ -28,7 +27,6 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
   const [cohortModalOpen, setCohortModalOpen] = useState(false);
   const [cohortForm, setCohortForm] = useState(EMPTY_COHORT_FORM);
   const [eligibleBatchOptions, setEligibleBatchOptions] = useState<string[]>([]);
-  const [formCsvModalOpen, setFormCsvModalOpen] = useState(false);
 
   const fetchCohorts = useCallback(async () => {
     setLoading(true);
@@ -138,13 +136,6 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
             Refresh
           </button>
           <button
-            onClick={() => setFormCsvModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"
-          >
-            <Upload size={16} />
-            Upload OJT Form CSV
-          </button>
-          <button
             onClick={() => setCohortModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 text-sm"
           >
@@ -236,14 +227,6 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
           </button>
         </div>
       </Modal>
-
-      <FormCsvImportModal
-        open={formCsvModalOpen}
-        onClose={() => setFormCsvModalOpen(false)}
-        cohortOptions={cohortData.map(c => ({ id: c.id, label: c.label }))}
-        profiles={profiles}
-        importOJTBatch={importOJTBatch}
-      />
     </div>
   );
 }

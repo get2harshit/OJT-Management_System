@@ -1,16 +1,14 @@
 import { useState } from 'react';
-import { Plus, Trash2, Upload, Target, Code } from 'lucide-react';
+import { Plus, Trash2, Target, Code } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
 import type { Project } from '../../../lib/types';
 import { TRACKS } from '../../../lib/constants';
-import ProjectCsvImportModal from './ProjectCsvImportModal';
 
 interface ProjectCatalogPanelProps {
   projects: Project[];
   addProject: (proj: Omit<Project, 'id' | 'created_at'>) => void;
-  addProjects: (projs: Omit<Project, 'id' | 'created_at'>[]) => void;
   deleteProject: (id: string) => void;
 }
 
@@ -22,9 +20,8 @@ const EMPTY_PROJECT_FORM = {
   related_field: ''
 };
 
-export default function ProjectCatalogPanel({ projects, addProject, addProjects, deleteProject }: ProjectCatalogPanelProps) {
+export default function ProjectCatalogPanel({ projects, addProject, deleteProject }: ProjectCatalogPanelProps) {
   const [projectModalOpen, setProjectModalOpen] = useState(false);
-  const [projectCsvModalOpen, setProjectCsvModalOpen] = useState(false);
   const [projectForm, setProjectForm] = useState(EMPTY_PROJECT_FORM);
 
   const handleSaveProject = () => {
@@ -52,13 +49,6 @@ export default function ProjectCatalogPanel({ projects, addProject, addProjects,
       <div className="flex flex-wrap justify-between items-center gap-3">
         <h2 className="text-lg font-bold text-white">Project catalog templates</h2>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setProjectCsvModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"
-          >
-            <Upload size={16} />
-            Upload Projects CSV
-          </button>
           <button
             onClick={() => setProjectModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 text-sm"
@@ -163,12 +153,6 @@ export default function ProjectCatalogPanel({ projects, addProject, addProjects,
           </button>
         </div>
       </Modal>
-
-      <ProjectCsvImportModal
-        open={projectCsvModalOpen}
-        onClose={() => setProjectCsvModalOpen(false)}
-        addProjects={addProjects}
-      />
     </div>
   );
 }

@@ -7,7 +7,6 @@ import ProjectCatalogPanel from './ProjectCatalogPanel';
 interface OJTsProps {
   projects: Project[];
   addProject: (proj: Omit<Project, 'id' | 'created_at'>) => void;
-  addProjects: (projs: Omit<Project, 'id' | 'created_at'>[]) => void;
   deleteProject: (id: string) => void;
   profiles: Profile[];
   importOJTBatch: (cohortId: string, studentRecords: any[]) => void;
@@ -15,7 +14,6 @@ interface OJTsProps {
 export default function AdminOJTs({
   projects,
   addProject,
-  addProjects,
   deleteProject,
   profiles,
   importOJTBatch
@@ -66,7 +64,6 @@ export default function AdminOJTs({
         <ProjectCatalogPanel
           projects={projects}
           addProject={addProject}
-          addProjects={addProjects}
           deleteProject={deleteProject}
         />
       )}

@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Upload } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SelectEntityGrid from './SelectEntityGrid';
+import ProjectCsvImportModal from './ProjectCsvImportModal';
 import type { Project } from '../../../lib/types';
 import { apiGetCohort, apiGetProjectsForCohort, apiAddProjectsToCohort } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
@@ -9,9 +11,10 @@ import { useToast } from '../../../toast';
 
 interface CohortProjectsPageProps {
   projects: Project[];
+  addProjects: (projs: Omit<Project, 'id' | 'created_at'>[]) => void;
 }
 
-export default function CohortProjectsPage({ projects }: CohortProjectsPageProps) {
+export default function CohortProjectsPage({ projects, addProjects }: CohortProjectsPageProps) {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
@@ -21,6 +24,7 @@ export default function CohortProjectsPage({ projects }: CohortProjectsPageProps
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [projectCsvModalOpen, setProjectCsvModalOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!cohortId) return;
@@ -100,6 +104,15 @@ export default function CohortProjectsPage({ projects }: CohortProjectsPageProps
         onSave={handleSave}
         onCancel={() => navigate(-1)}
         emptyMessage="No projects found."
+        rightAction={
+          <button
+            onClick={() => setProjectCsvModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm whitespace-nowrap"
+          >
+            <Upload size={16} />
+            Upload Projects CSV
+          </button>
+        }
         renderCard={(p, selected) => (
           <label
             className={`flex flex-col gap-2 p-4 rounded-lg cursor-pointer transition-all border-2 ${
@@ -119,6 +132,12 @@ export default function CohortProjectsPage({ projects }: CohortProjectsPageProps
             <span className="text-[10px] text-gold/80 self-start bg-gold/10 px-2 py-0.5 rounded-full font-medium">{p.track}</span>
           </label>
         )}
+      />
+
+      <ProjectCsvImportModal
+        open={projectCsvModalOpen}
+        onClose={() => setProjectCsvModalOpen(false)}
+        addProjects={addProjects}
       />
     </div>
   );

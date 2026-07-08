@@ -126,7 +126,6 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
           <OJTs
             projects={projectsList}
             addProject={handleAddProject}
-            addProjects={handleBulkAddProjects}
             deleteProject={handleDeleteProject}
             profiles={data.profiles}
             importOJTBatch={data.importOJTBatch}
@@ -161,9 +160,9 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
   return (
     <AppShell panel="admin" activeTab={activeTab} onTabChange={handleTabChange} onLogout={onLogout}>
       <Routes>
-        <Route path="ojts/:cohortId/view" element={<ViewCohortPage />} />
+        <Route path="ojts/:cohortId/view" element={<ViewCohortPage profiles={data.profiles} importOJTBatch={data.importOJTBatch} />} />
         <Route path="ojts/:cohortId/students" element={<CohortStudentsPage />} />
-        <Route path="ojts/:cohortId/projects" element={<CohortProjectsPage projects={projectsList} />} />
+        <Route path="ojts/:cohortId/projects" element={<CohortProjectsPage projects={projectsList} addProjects={handleBulkAddProjects} />} />
         <Route path="ojts/:cohortId/mentors" element={<CohortMentorsPage />} />
         <Route path="ojts/:cohortId/teams" element={<CohortTeamsPage />} />
         <Route path="*" element={renderTab()} />

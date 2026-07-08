@@ -1,16 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Calendar, Users, Briefcase, UserCog } from 'lucide-react';
+import { Calendar, Users, Briefcase, UserCog, Upload } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
-import type { CohortDetails, Project } from '../../../lib/types';
+import type { CohortDetails, Project, Profile } from '../../../lib/types';
 import { apiGetCohort, apiGetProjectsForCohort } from '../../../lib/api';
 import { getDurationString, formatDateDisplay } from '../../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
+import FormCsvImportModal from './FormCsvImportModal';
 
-export default function ViewCohortPage() {
+interface ViewCohortPageProps {
+  profiles: Profile[];
+  importOJTBatch: (cohortId: string, studentRecords: any[]) => void;
+}
+
+export default function ViewCohortPage({ profiles, importOJTBatch }: ViewCohortPageProps) {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
   const { showError } = useToast();
@@ -18,6 +24,7 @@ export default function ViewCohortPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBatchFilter, setSelectedBatchFilter] = useState('');
+  const [formCsvModalOpen, setFormCsvModalOpen] = useState(false);
 
   const fetchDetails = useCallback(async () => {
     if (!cohortId) return;
@@ -62,7 +69,7 @@ export default function ViewCohortPage() {
       <CohortPageHeader title={getCohortLabel(cohort)} subtitle="OJT cohort details" />
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Select
           variant="filter"
           className="min-w-[160px]"
@@ -71,6 +78,13 @@ export default function ViewCohortPage() {
           placeholder="All Batches"
           options={(cohort.allowedBatches || []).map(b => ({ value: b, label: b }))}
         />
+        <button
+          onClick={() => setFormCsvModalOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"
+        >
+          <Upload size={16} />
+          Upload OJT Form CSV
+        </button>
       </div>
 
       {/* Top stats row — 4 cards */}
@@ -207,6 +221,15 @@ export default function ViewCohortPage() {
         </div>
 
       </div>
+
+      <FormCsvImportModal
+        open={formCsvModalOpen}
+        onClose={() => setFormCsvModalOpen(false)}
+        profiles={profiles}
+        importOJTBatch={importOJTBatch}
+        defaultCohortId={cohortId}
+        onImportSuccess={fetchDetails}
+      />
     </div>
   );
 }

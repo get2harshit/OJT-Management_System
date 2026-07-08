@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FileText } from 'lucide-react';
 import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
@@ -15,23 +15,39 @@ interface CohortOption {
 interface FormCsvImportModalProps {
   open: boolean;
   onClose: () => void;
-  cohortOptions: CohortOption[];
+  cohortOptions?: CohortOption[];
   profiles: Profile[];
   importOJTBatch: (cohortId: string, studentRecords: any[]) => void;
+  defaultCohortId?: string;
+  onImportSuccess?: () => void;
 }
 
 // Imports the "OJT student choices" Google Form CSV export: one row per
 // student response, fuzzy-matched against existing mentors by name to
 // pre-fill their preferred mentor.
-export default function FormCsvImportModal({ open, onClose, cohortOptions, profiles, importOJTBatch }: FormCsvImportModalProps) {
-  const [selectedCohortId, setSelectedCohortId] = useState('');
+export default function FormCsvImportModal({
+  open,
+  onClose,
+  cohortOptions = [],
+  profiles,
+  importOJTBatch,
+  defaultCohortId,
+  onImportSuccess
+}: FormCsvImportModalProps) {
+  const [selectedCohortId, setSelectedCohortId] = useState(defaultCohortId || '');
   const [csvText, setCsvText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const mentors = useMentors(profiles);
   const { showSuccess } = useToast();
 
+  useEffect(() => {
+    if (open) {
+      setSelectedCohortId(defaultCohortId || '');
+    }
+  }, [open, defaultCohortId]);
+
   const handleClose = () => {
-    setSelectedCohortId('');
+    setSelectedCohortId(defaultCohortId || '');
     setCsvText('');
     onClose();
   };
@@ -97,6 +113,7 @@ export default function FormCsvImportModal({ open, onClose, cohortOptions, profi
     if (records.length > 0) {
       importOJTBatch(selectedCohortId, records);
       showSuccess(`Successfully imported ${records.length} students from the OJT form responses!`);
+      onImportSuccess?.();
     }
 
     handleClose();
@@ -106,19 +123,23 @@ export default function FormCsvImportModal({ open, onClose, cohortOptions, profi
     <Modal open={open} onClose={handleClose} title="Import OJT Student Responses (Google Form CSV)">
       <div className="space-y-4">
         <p className="text-sm text-gray-400">
-          Select a target cohort, and upload/paste your OJT student choices Google Form CSV report.
+          {defaultCohortId
+            ? "Upload or paste your OJT student choices Google Form CSV report."
+            : "Select a target cohort, and upload/paste your OJT student choices Google Form CSV report."}
         </p>
 
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Target OJT Cohort *</label>
-          <Select
-            value={selectedCohortId}
-            onChange={setSelectedCohortId}
-            className="w-full"
-            placeholder="Select Cohort..."
-            options={cohortOptions.map(c => ({ value: c.id, label: c.label }))}
-          />
-        </div>
+        {!defaultCohortId && (
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Target OJT Cohort *</label>
+            <Select
+              value={selectedCohortId}
+              onChange={setSelectedCohortId}
+              className="w-full"
+              placeholder="Select Cohort..."
+              options={cohortOptions.map(c => ({ value: c.id, label: c.label }))}
+            />
+          </div>
+        )}
 
         <div className="bg-zinc-800/40 p-3 rounded-lg text-[10px] font-mono text-gray-400 space-y-1">
           <span className="text-gold font-bold">Expected Headers:</span>
