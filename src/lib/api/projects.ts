@@ -2,18 +2,70 @@ import type { Project } from '../types';
 import { apiFetch } from './client';
 import { mapFrontendTrackToBackend, mapBackendTrackToFrontend } from './trackMapping';
 
-// Returns the trimmed list shape (id/title/problemStatement/track/techStack
-// — no description). When called as a student, the backend also silently
-// scopes results to that student's own batch year.
-export async function apiListProjects(track?: string): Promise<Project[]> {
-  const apiTrack = track ? mapFrontendTrackToBackend(track) : undefined;
-  const url = apiTrack ? `/api/v1/projects?track=${apiTrack}` : '/api/v1/projects';
-  const res = await apiFetch<any[]>(url);
-  return res.map(p => ({
+export interface ProjectsPage {
+  data: Project[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+interface ListProjectsParams {
+  track?: string;
+  page?: number;
+  limit?: number;
+  search?: string;
+}
+
+interface RawProject {
+  id: string;
+  title: string;
+  problemStatement?: string;
+  track: string;
+  techStack?: string[];
+  related_field?: string;
+}
+
+// The trimmed list endpoint doesn't return created_at (only the single-project
+// GET does), so this cast reflects the same gap the old `any`-typed mapping
+// silently had — not something introduced by this change.
+function toFrontendProject(p: RawProject): Project {
+  return {
     ...p,
     track: mapBackendTrackToFrontend(p.track),
     related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
-  }));
+  } as Project;
+}
+
+function buildListUrl({ track, page, limit, search }: ListProjectsParams): string {
+  const params = new URLSearchParams();
+  const apiTrack = track ? mapFrontendTrackToBackend(track) : undefined;
+  if (apiTrack) params.set('track', apiTrack);
+  if (page) params.set('page', String(page));
+  if (limit) params.set('limit', String(limit));
+  if (search) params.set('search', search);
+  const qs = params.toString();
+  return qs ? `/api/v1/projects?${qs}` : '/api/v1/projects';
+}
+
+// Returns the trimmed list shape (id/title/problemStatement/track/techStack
+// — no description). When called as a student, the backend also silently
+// scopes results to that student's own batch year.
+//
+// Fetches the whole catalog in one page (backend defaults to 20/page) —
+// used by callers that need every project at once (e.g. the Allocations
+// dropdown). For a paginated table view, use apiListProjectsPage instead.
+export async function apiListProjects(track?: string): Promise<Project[]> {
+  const url = buildListUrl({ track, limit: 1000 });
+  const res = await apiFetch<{ data: RawProject[] }>(url);
+  return res.data.map(toFrontendProject);
+}
+
+// Server-paginated project list for the admin catalog table.
+export async function apiListProjectsPage(params: ListProjectsParams = {}): Promise<ProjectsPage> {
+  const url = buildListUrl(params);
+  const res = await apiFetch<{ data: RawProject[]; pagination: ProjectsPage['pagination'] }>(url);
+  return {
+    data: res.data.map(toFrontendProject),
+    pagination: res.pagination,
+  };
 }
 
 // Full project record (description, endUsersDefined, batch, createdAt) —

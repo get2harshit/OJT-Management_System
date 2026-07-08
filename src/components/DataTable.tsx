@@ -8,6 +8,14 @@ interface Column<T> {
   render?: (row: T) => React.ReactNode;
 }
 
+interface ServerPagination {
+  page: number;
+  limit: number;
+  totalPages: number;
+  total: number;
+  onPageChange: (page: number) => void;
+}
+
 interface DataTableProps<T> {
   columns: Column<T>[];
   data: T[];
@@ -15,6 +23,13 @@ interface DataTableProps<T> {
   searchKeys?: (keyof T)[];
   actions?: (row: T) => React.ReactNode;
   onRowClick?: (row: T) => void;
+  // When set, `data` is treated as already being the current page (fetched
+  // from the server) — local slicing/pagination is skipped and page changes
+  // are delegated to the caller instead of tracked in local state.
+  serverPagination?: ServerPagination;
+  // When set alongside serverPagination, the search box reports its value
+  // here instead of filtering `data` locally (the server only holds one page).
+  onSearchChange?: (search: string) => void;
 }
 
 export default function DataTable<T extends Record<string, unknown>>({
@@ -24,12 +39,23 @@ export default function DataTable<T extends Record<string, unknown>>({
   searchKeys,
   actions,
   onRowClick,
+  serverPagination,
+  onSearchChange,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 12;
 
-  const filtered = search
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (serverPagination) {
+      onSearchChange?.(value);
+    } else {
+      setPage(1);
+    }
+  };
+
+  const filtered = !serverPagination && search
     ? data.filter((row) => {
         const keys = searchKeys || (Object.keys(row) as (keyof T)[]);
         return keys.some((k) => {
@@ -39,8 +65,17 @@ export default function DataTable<T extends Record<string, unknown>>({
       })
     : data;
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = serverPagination ? serverPagination.totalPages : Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = serverPagination ? serverPagination.page : page;
+  const paginated = serverPagination ? filtered : filtered.slice((page - 1) * pageSize, page * pageSize);
+  const totalCount = serverPagination ? serverPagination.total : filtered.length;
+  const goToPage = (p: number) => {
+    if (serverPagination) {
+      serverPagination.onPageChange(p);
+    } else {
+      setPage(p);
+    }
+  };
 
   return (
     <div className="bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden">
@@ -49,7 +84,7 @@ export default function DataTable<T extends Record<string, unknown>>({
         <input
           type="text"
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          onChange={(e) => handleSearchChange(e.target.value)}
           placeholder={searchPlaceholder}
           className="bg-transparent text-sm text-white placeholder-gray-500 outline-none flex-1"
         />
@@ -99,23 +134,25 @@ export default function DataTable<T extends Record<string, unknown>>({
         </table>
       </div>
 
-      {filtered.length > pageSize && (
+      {(serverPagination ? serverPagination.totalPages > 1 : filtered.length > pageSize) && (
         <div className="p-4 border-t border-zinc-750 flex items-center justify-between">
           <span className="text-xs text-gray-500">
-            Showing {(page - 1) * pageSize + 1} - {Math.min(page * pageSize, filtered.length)} of {filtered.length}
+            {serverPagination
+              ? `Showing ${(currentPage - 1) * serverPagination.limit + 1} - ${Math.min(currentPage * serverPagination.limit, totalCount)} of ${totalCount}`
+              : `Showing ${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}`}
           </span>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
+              onClick={() => goToPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
               className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
             >
               <ChevronLeft size={16} />
             </button>
-            <span className="text-sm text-gray-400">{page} / {totalPages}</span>
+            <span className="text-sm text-gray-400">{currentPage} / {totalPages}</span>
             <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
+              onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
               className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
             >
               <ChevronRight size={16} />
