@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, GraduationCap, User, Eye, EyeOff } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import { apiForgotPassword } from '../../lib/api';
 import type { ApiUserRole } from '../../lib/types';
 import { useToast } from '../../toast';
@@ -47,7 +47,7 @@ function PasswordField({ label, value, onChange, placeholder, show, onToggle }: 
           type={show ? 'text' : 'password'} required value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full bg-[#1a1a1a] border border-[#2a2a2a] focus:border-yellow-500 rounded-lg px-3 py-2 pr-9 text-white text-xs outline-none transition-colors placeholder-gray-600"
+          className="w-full bg-login-surface border border-login-border focus:border-yellow-500 rounded-lg px-3 py-2 pr-9 text-white text-xs outline-none transition-colors placeholder-gray-600"
         />
         <button
           type="button"
@@ -162,8 +162,8 @@ export default function Login() {
           <p className="text-gray-500 text-sm">{headings[view].sub}</p>
         </div>
 
-        <div className="bg-[#141414] border border-[#2a2a2a] rounded-2xl w-full">
-          <div className="px-6 pt-5 pb-4 border-b border-[#2a2a2a]">
+        <div className="bg-login-card border border-login-border rounded-2xl w-full">
+          <div className="px-6 pt-5 pb-4 border-b border-login-border">
             <p className="text-white font-bold text-base">{headings[view].title}</p>
           </div>
 
@@ -174,7 +174,7 @@ export default function Login() {
               <>
                 <button
                   onClick={handleGoogle}
-                  className="w-full flex items-center justify-center gap-2.5 py-2 bg-[#1a1a1a] border border-[#2a2a2a] hover:border-gray-500 rounded-lg text-white text-xs font-medium transition-colors"
+                  className="w-full flex items-center justify-center gap-2.5 py-2 bg-login-surface border border-login-border hover:border-gray-500 rounded-lg text-white text-xs font-medium transition-colors"
                 >
                   <svg width="16" height="16" viewBox="0 0 48 48">
                     <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.6 33.1 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 19.6-8 19.6-20 0-1.3-.1-2.7-.4-4z"/>
@@ -186,9 +186,9 @@ export default function Login() {
                 </button>
 
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 h-px bg-[#2a2a2a]" />
+                  <div className="flex-1 h-px bg-login-border" />
                   <span className="text-gray-600 text-xs">or</span>
-                  <div className="flex-1 h-px bg-[#2a2a2a]" />
+                  <div className="flex-1 h-px bg-login-border" />
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-2.5">
@@ -198,7 +198,7 @@ export default function Login() {
                       type="email" required value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="you@example.com"
-                      className="w-full bg-[#1a1a1a] border border-[#2a2a2a] focus:border-yellow-500 rounded-lg px-3 py-2 text-white text-xs outline-none transition-colors placeholder-gray-600"
+                      className="w-full bg-login-surface border border-login-border focus:border-yellow-500 rounded-lg px-3 py-2 text-white text-xs outline-none transition-colors placeholder-gray-600"
                     />
                   </div>
                   <PasswordField
@@ -254,7 +254,7 @@ export default function Login() {
                           className={`flex flex-col items-center gap-1 py-2 rounded-lg border text-[11px] font-medium transition-colors ${
                             signupRole === value
                               ? 'bg-gold/10 border-gold/40 text-gold'
-                              : 'bg-[#1a1a1a] border-[#2a2a2a] text-gray-400 hover:border-gray-500'
+                              : 'bg-login-surface border-login-border text-gray-400 hover:border-gray-500'
                           }`}
                         >
                           <Icon size={16} />
@@ -270,7 +270,7 @@ export default function Login() {
                       type="text" required value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Your full name"
-                      className="w-full bg-[#1a1a1a] border border-[#2a2a2a] focus:border-yellow-500 rounded-lg px-3 py-2 text-white text-xs outline-none transition-colors placeholder-gray-600"
+                      className="w-full bg-login-surface border border-login-border focus:border-yellow-500 rounded-lg px-3 py-2 text-white text-xs outline-none transition-colors placeholder-gray-600"
                     />
                   </div>
                   <div>
@@ -279,7 +279,7 @@ export default function Login() {
                       type="email" required value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="you@example.com"
-                      className="w-full bg-[#1a1a1a] border border-[#2a2a2a] focus:border-yellow-500 rounded-lg px-3 py-2 text-white text-xs outline-none transition-colors placeholder-gray-600"
+                      className="w-full bg-login-surface border border-login-border focus:border-yellow-500 rounded-lg px-3 py-2 text-white text-xs outline-none transition-colors placeholder-gray-600"
                     />
                   </div>
                   <PasswordField
@@ -346,7 +346,7 @@ export default function Login() {
                         type="email" required value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="you@example.com"
-                        className="w-full bg-[#1a1a1a] border border-[#2a2a2a] focus:border-yellow-500 rounded-lg px-3 py-2 text-white text-xs outline-none transition-colors placeholder-gray-600"
+                        className="w-full bg-login-surface border border-login-border focus:border-yellow-500 rounded-lg px-3 py-2 text-white text-xs outline-none transition-colors placeholder-gray-600"
                       />
                     </div>
 
