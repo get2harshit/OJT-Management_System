@@ -2,6 +2,7 @@ import type {
   MyCohort,
   MyTeamStatus,
   Team,
+  AdminTeam,
   PendingSentRequest,
   PendingReceivedRequest,
   TeamProjectPreferences,
@@ -20,6 +21,14 @@ function mapTeam(t: any): Team {
       studentId: m.studentId,
       fullName: m.fullName ?? null,
     })),
+  };
+}
+
+function mapAdminTeam(t: any): AdminTeam {
+  return {
+    ...mapTeam(t),
+    createdAt: t.createdAt,
+    hasSubmittedProjectPreferences: !!t.hasSubmittedProjectPreferences,
   };
 }
 
@@ -141,4 +150,16 @@ export async function apiSubmitProjectPreferences(
     body: JSON.stringify({ cohortId, preference1Id, preference2Id }),
   });
   return mapPreferences(res);
+}
+
+// Admin — lists every team formed within a cohort.
+export async function apiListTeamsForCohort(cohortId: string): Promise<AdminTeam[]> {
+  const res = await apiFetch<any[]>(`/api/v1/teams/cohort/${cohortId}`);
+  return res.map(mapAdminTeam);
+}
+
+// Admin — disbands a team, dropping its members back to the teammate-invite
+// step. Used to reset test accounts without a manual DB query.
+export async function apiBreakTeam(teamId: string): Promise<void> {
+  await apiFetch<void>(`/api/v1/teams/${teamId}`, { method: 'DELETE' });
 }

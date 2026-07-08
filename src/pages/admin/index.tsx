@@ -15,6 +15,7 @@ import ViewCohortPage from './OJTs/ViewCohortPage';
 import CohortStudentsPage from './OJTs/CohortStudentsPage';
 import CohortProjectsPage from './OJTs/CohortProjectsPage';
 import CohortMentorsPage from './OJTs/CohortMentorsPage';
+import CohortTeamsPage from './OJTs/CohortTeamsPage';
 import { useMockData } from '../../hooks/useMockData';
 import { apiListCohorts, apiListProjects, apiCreateProject, apiDeleteProject } from '../../lib/api';
 import { useEffect, useCallback } from 'react';
@@ -164,6 +165,7 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
         <Route path="ojts/:cohortId/students" element={<CohortStudentsPage />} />
         <Route path="ojts/:cohortId/projects" element={<CohortProjectsPage projects={projectsList} />} />
         <Route path="ojts/:cohortId/mentors" element={<CohortMentorsPage />} />
+        <Route path="ojts/:cohortId/teams" element={<CohortTeamsPage />} />
         <Route path="*" element={renderTab()} />
       </Routes>
     </AppShell>
