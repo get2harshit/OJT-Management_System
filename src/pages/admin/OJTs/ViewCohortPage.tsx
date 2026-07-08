@@ -51,9 +51,10 @@ export default function ViewCohortPage() {
     );
   }
 
+  const cohortStudents = cohort.students || [];
   const filteredStudents = selectedBatchFilter
-    ? cohort.students.filter(s => s.batch === selectedBatchFilter)
-    : cohort.students;
+    ? cohortStudents.filter(s => s.batch === selectedBatchFilter)
+    : cohortStudents;
 
   return (
     <div className="space-y-6">
@@ -98,7 +99,7 @@ export default function ViewCohortPage() {
             className="w-full bg-zinc-800 text-white text-xs border border-zinc-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition-all appearance-none cursor-pointer"
           >
             <option value="">All Batches</option>
-            {cohort.allowedBatches.map(b => (
+            {(cohort.allowedBatches || []).map(b => (
               <option key={b} value={b}>{b}</option>
             ))}
           </select>
@@ -120,15 +121,15 @@ export default function ViewCohortPage() {
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-bold text-gold">{filteredStudents.length}</span>
               {selectedBatchFilter && (
-                <span className="text-xs text-gray-500">/ {cohort.students.length}</span>
+                <span className="text-xs text-gray-500">/ {cohortStudents.length}</span>
               )}
             </div>
           </div>
           <div className="p-3 max-h-72 overflow-y-auto space-y-1 custom-scroll">
-            {cohort.students.length === 0 && (
+            {cohortStudents.length === 0 && (
               <p className="text-gray-500 text-xs text-center py-4">No students mapped yet.</p>
             )}
-            {filteredStudents.length === 0 && cohort.students.length > 0 && (
+            {filteredStudents.length === 0 && cohortStudents.length > 0 && (
               <p className="text-gray-500 text-xs text-center py-4">No students in batch "{selectedBatchFilter}".</p>
             )}
             {filteredStudents.map((s, i) => (
@@ -187,13 +188,13 @@ export default function ViewCohortPage() {
               </div>
               <span className="text-white text-sm font-semibold">Mentors</span>
             </div>
-            <span className="text-xs font-bold text-gold">{cohort.mentors.length}</span>
+            <span className="text-xs font-bold text-gold">{(cohort.mentors || []).length}</span>
           </div>
           <div className="p-3 max-h-72 overflow-y-auto space-y-1">
-            {cohort.mentors.length === 0 && (
+            {(cohort.mentors || []).length === 0 && (
               <p className="text-gray-500 text-xs text-center py-4">No mentors mapped yet.</p>
             )}
-            {cohort.mentors.map((m, i) => (
+            {(cohort.mentors || []).map((m, i) => (
               <div key={m.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors group">
                 <div className="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center shrink-0">
                   <span className="text-[9px] text-gray-400 font-bold">{(m.fullName || m.email || '?')[0].toUpperCase()}</span>

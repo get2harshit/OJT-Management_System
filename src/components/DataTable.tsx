@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 interface Column<T> {
   key: keyof T | string;
   header: string;
+  headerRender?: () => React.ReactNode;
   render?: (row: T) => React.ReactNode;
 }
 
@@ -58,7 +59,7 @@ export default function DataTable<T extends Record<string, unknown>>({
             <tr className="border-b border-zinc-750 bg-zinc-750/30">
               {columns.map((col) => (
                 <th key={String(col.key)} className="text-left px-4 py-3 text-gray-400 font-medium uppercase tracking-wider text-xs">
-                  {col.header}
+                  {col.headerRender ? col.headerRender() : col.header}
                 </th>
               ))}
               {actions && <th className="px-4 py-3" />}

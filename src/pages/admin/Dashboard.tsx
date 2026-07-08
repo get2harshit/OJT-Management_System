@@ -16,7 +16,7 @@ interface Props {
   onNavigateToTab: (tab: string) => void;
 }
 
-export default function AdminDashboard({ profiles, students, tasks, submissions, attendance, semesters, batches, onNavigateToTab }: Props) {
+export default function AdminDashboard({ students, tasks, submissions, attendance, semesters, batches, onNavigateToTab }: Props) {
   const [semFilter, setSemFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
   const [trackFilter, setTrackFilter] = useState('');
@@ -261,9 +261,8 @@ export default function AdminDashboard({ profiles, students, tasks, submissions,
                   </div>
                   <div className="h-2 bg-zinc-750 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        status === 'PENDING' ? 'bg-yellow-500' : status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
-                      }`}
+                      className={`h-full rounded-full transition-all duration-500 ${status === 'PENDING' ? 'bg-yellow-500' : status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
+                        }`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -280,9 +279,8 @@ export default function AdminDashboard({ profiles, students, tasks, submissions,
           <div className="space-y-3">
             {filteredSubmissions.slice(-5).reverse().map(sub => (
               <div key={sub.id} className="flex items-center gap-3 text-sm">
-                <div className={`w-2 h-2 rounded-full ${
-                  sub.status === 'PENDING' ? 'bg-yellow-500' : sub.status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
-                }`} />
+                <div className={`w-2 h-2 rounded-full ${sub.status === 'PENDING' ? 'bg-yellow-500' : sub.status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
+                  }`} />
                 <span className="text-gray-300 flex-1">{sub.file_name}</span>
                 <span className="text-gray-500 text-xs">{sub.submitted_at}</span>
               </div>

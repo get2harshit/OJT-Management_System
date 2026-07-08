@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import DataTable from '../../components/DataTable';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import type { ApiStudent } from '../../lib/types';
@@ -10,6 +10,7 @@ import { apiListStudents } from '../../lib/api';
 export default function AdminStudents() {
   const [students, setStudents] = useState<ApiStudent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedBatch, setSelectedBatch] = useState('');
 
   useEffect(() => {
     apiListStudents()
@@ -18,7 +19,19 @@ export default function AdminStudents() {
       .finally(() => setLoading(false));
   }, []);
 
-  const data = students.map(s => ({
+  // Unique sorted batch values from the API data
+  const batches = useMemo(() => {
+    const vals = students.map(s => s.batch).filter((b): b is string => !!b && b !== '-');
+    return Array.from(new Set(vals)).sort();
+  }, [students]);
+
+  const filtered = useMemo(() => {
+    return selectedBatch
+      ? students.filter(s => s.batch === selectedBatch)
+      : students;
+  }, [students, selectedBatch]);
+
+  const data = filtered.map(s => ({
     id: s.id,
     roll_number: s.rollNumber ?? '-',
     name: s.fullName ?? '-',
@@ -45,7 +58,29 @@ export default function AdminStudents() {
             { key: 'roll_number', header: 'Roll Number' },
             { key: 'name', header: 'Name' },
             { key: 'email', header: 'Email' },
-            { key: 'batch', header: 'Batch' },
+            {
+              key: 'batch',
+              header: 'Batch',
+              // Filter dropdown lives inside the BATCH column header
+              headerRender: () => (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-gray-400 font-medium uppercase tracking-wider text-xs">Batch</span>
+                  {batches.length > 0 && (
+                    <select
+                      value={selectedBatch}
+                      onChange={e => setSelectedBatch(e.target.value)}
+                      onClick={e => e.stopPropagation()}
+                      className="bg-zinc-800 text-gray-300 text-xs border border-zinc-700 rounded px-1.5 py-0.5 focus:outline-none focus:border-gold cursor-pointer normal-case font-normal tracking-normal"
+                    >
+                      <option value="">All</option>
+                      {batches.map(b => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ),
+            },
             { key: 'currentTier', header: 'Tier' },
             {
               key: 'activeStatus',

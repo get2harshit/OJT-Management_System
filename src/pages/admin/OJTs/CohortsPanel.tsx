@@ -190,9 +190,8 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
               key: 'isActive',
               header: 'Status',
               render: (row) => (
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                  row.isActive ? 'bg-green-400/10 text-green-400' : 'bg-gray-400/10 text-gray-400'
-                }`}>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${row.isActive ? 'bg-green-400/10 text-green-400' : 'bg-gray-400/10 text-gray-400'
+                  }`}>
                   {row.isActive ? 'Active' : 'Inactive'}
                 </span>
               ),
@@ -206,7 +205,7 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
                 { label: 'View OJT', icon: Eye, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/view`) },
                 { label: 'Edit OJT', icon: Edit2, onClick: () => handleEditCohort(row.id) },
                 { label: 'Select Project', icon: Briefcase, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/projects`) },
-                { label: 'Select Student', icon: Users, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/students`) },
+                // { label: 'Select Student', icon: Users, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/students`) },
                 { label: 'Select Mentor', icon: UserCog, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/mentors`) },
                 { label: 'Delete OJT', icon: Trash2, onClick: () => handleDeleteCohort(row.id), danger: true },
               ]}

@@ -12,7 +12,6 @@ interface OJTsProps {
   profiles: Profile[];
   importOJTBatch: (cohortId: string, studentRecords: any[]) => void;
 }
-
 export default function AdminOJTs({
   projects,
   addProject,
@@ -36,22 +35,20 @@ export default function AdminOJTs({
       <div className="flex border-b border-zinc-800">
         <button
           onClick={() => setActiveTab('cohorts')}
-          className={`px-5 py-2.5 font-semibold text-sm flex items-center gap-2 border-b-2 transition-all duration-200 ${
-            activeTab === 'cohorts'
+          className={`px-5 py-2.5 font-semibold text-sm flex items-center gap-2 border-b-2 transition-all duration-200 ${activeTab === 'cohorts'
               ? 'border-gold text-gold bg-gold/5'
               : 'border-transparent text-gray-400 hover:text-white'
-          }`}
+            }`}
         >
           <Layers size={16} />
           OJT Cohorts & Batches
         </button>
         <button
           onClick={() => setActiveTab('catalog')}
-          className={`px-5 py-2.5 font-semibold text-sm flex items-center gap-2 border-b-2 transition-all duration-200 ${
-            activeTab === 'catalog'
+          className={`px-5 py-2.5 font-semibold text-sm flex items-center gap-2 border-b-2 transition-all duration-200 ${activeTab === 'catalog'
               ? 'border-gold text-gold bg-gold/5'
               : 'border-transparent text-gray-400 hover:text-white'
-          }`}
+            }`}
         >
           <Briefcase size={16} />
           Project Catalog Templates

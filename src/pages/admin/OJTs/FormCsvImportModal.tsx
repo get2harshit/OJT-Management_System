@@ -139,8 +139,15 @@ export default function FormCsvImportModal({ open, onClose, cohortOptions, profi
               reader.onload = ev => setCsvText(ev.target?.result as string);
               reader.readAsText(file);
             }}
-            className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gold/10 file:text-gold hover:file:bg-gold/20"
+            className="hidden"
           />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-gold border border-zinc-700 rounded-lg text-sm font-semibold transition-colors"
+          >
+            Choose File
+          </button>
         </div>
 
         <div>
