@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Calendar, RefreshCw, Upload, Briefcase, Edit2, Eye, UserCog, Users2 } from 'lucide-react';
+import { Plus, Trash2, Calendar, RefreshCw, Upload, Briefcase, Edit2, UserCog, Users2 } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import ActionsMenu from '../../../components/ActionsMenu';
