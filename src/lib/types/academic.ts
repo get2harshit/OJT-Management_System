@@ -143,6 +143,13 @@ export interface PendingReceivedRequest {
   expiresAt: string;
 }
 
+// Admin-only view of a team (GET /api/v1/teams/cohort/:cohortId) — same
+// shape as the student-facing Team, plus fields only the admin panel needs.
+export interface AdminTeam extends Team {
+  createdAt: string;
+  hasSubmittedProjectPreferences: boolean;
+}
+
 // A team's submitted project slots (POST /api/v1/teams/projects/preferences).
 // preference1 is the team's own proposed project, preference2 is a catalog pick.
 export interface TeamProjectPreferences {

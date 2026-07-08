@@ -1,23 +1,66 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Edit2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import Modal from '../../components/Modal';
 import type { ApiStudent } from '../../lib/types';
-import { apiListStudents } from '../../lib/api';
+import { apiListStudents, apiUpdateStudentBatch } from '../../lib/api';
+import { useToast } from '../../toast';
 
-// Real backend roster (GET /api/v1/students, unfiltered). The backend has no
-// create/update/delete endpoints for students yet — only self-signup creates
-// one — so this page is read-only until those exist.
+const BATCH_FORMAT = /^[0-9]{4}-[0-9]{4}$/;
+
+// Real backend roster (GET /api/v1/students, unfiltered). The backend only
+// exposes a batch-update endpoint so far — no full student edit/delete yet —
+// so batch is the one editable field here.
 export default function AdminStudents() {
+  const { showSuccess, showError } = useToast();
   const [students, setStudents] = useState<ApiStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBatch, setSelectedBatch] = useState('');
+  const [editingStudent, setEditingStudent] = useState<ApiStudent | null>(null);
+  const [batchInput, setBatchInput] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    apiListStudents()
+  const fetchStudents = useCallback(() => {
+    setLoading(true);
+    return apiListStudents()
       .then(setStudents)
       .catch(() => setStudents([]))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
+
+  const openEditBatch = (student: ApiStudent) => {
+    setEditingStudent(student);
+    setBatchInput(student.batch && student.batch !== '-' ? student.batch : '');
+  };
+
+  const closeEditBatch = () => {
+    setEditingStudent(null);
+    setBatchInput('');
+  };
+
+  const handleSaveBatch = async () => {
+    if (!editingStudent) return;
+    if (!BATCH_FORMAT.test(batchInput)) {
+      showError('Batch must be in format YYYY-YYYY (e.g. 2025-2026)');
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiUpdateStudentBatch(editingStudent.id, batchInput);
+      showSuccess('Batch updated successfully!');
+      closeEditBatch();
+      await fetchStudents();
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to update batch');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Unique sorted batch values from the API data
   const batches = useMemo(() => {
@@ -96,8 +139,46 @@ export default function AdminStudents() {
           ]}
           data={data}
           searchPlaceholder="Search students..."
+          actions={(row: any) => {
+            const student = students.find(s => s.id === row.id);
+            if (!student) return null;
+            return (
+              <button
+                onClick={() => openEditBatch(student)}
+                className="p-1.5 text-gray-400 hover:text-white hover:bg-zinc-750 rounded-md transition-colors"
+                title="Edit batch"
+              >
+                <Edit2 size={15} />
+              </button>
+            );
+          }}
         />
       )}
+
+      <Modal open={!!editingStudent} onClose={closeEditBatch} title="Edit Batch">
+        <div className="space-y-4">
+          <p className="text-gray-400 text-sm">
+            Updating batch for <span className="text-white font-semibold">{editingStudent?.fullName || editingStudent?.email}</span>
+          </p>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5">Batch (YYYY-YYYY)</label>
+            <input
+              type="text"
+              value={batchInput}
+              onChange={e => setBatchInput(e.target.value)}
+              placeholder="2025-2026"
+              className="w-full bg-zinc-800 text-white text-sm border border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold/30"
+            />
+          </div>
+          <button
+            onClick={handleSaveBatch}
+            disabled={saving}
+            className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save Batch'}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
