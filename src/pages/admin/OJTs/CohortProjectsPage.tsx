@@ -43,7 +43,7 @@ export default function CohortProjectsPage({ projects, onProjectsImported }: Coh
     } finally {
       setLoading(false);
     }
-  }, [cohortId, navigate]);
+  }, [cohortId, navigate, showError]);
 
   useEffect(() => {
     fetchData();

@@ -120,20 +120,20 @@ export default function ProjectCatalogPanel({ addProject, deleteProject, deleteA
       <DataTable
         columns={[
           { key: 'title', header: 'Project Title' },
-          { key: 'track', header: 'Related Track', render: (row: any) => (
+          { key: 'track', header: 'Related Track', render: (row) => (
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-gold/10 text-gold font-medium">{row.track}</span>
           )},
-          { key: 'problemStatement', header: 'Problem Statement', render: (row: any) => (
+          { key: 'problemStatement', header: 'Problem Statement', render: (row) => (
             <p className="text-xs text-gray-400 line-clamp-2 max-w-sm">{row.problemStatement || row.description || '-'}</p>
           )},
-          { key: 'end_goals', header: 'Endgoals & Outcomes', render: (row: any) => (
+          { key: 'end_goals', header: 'Endgoals & Outcomes', render: (row) => (
             <p className="text-xs text-gray-300 line-clamp-1 max-w-xs">{row.end_goals || '-'}</p>
           )},
-          { key: 'related_field', header: 'Tech / Stack', render: (row: any) => (
+          { key: 'related_field', header: 'Tech / Stack', render: (row) => (
             <span className="text-xs text-gray-300 font-mono">{row.related_field || '-'}</span>
           )},
         ]}
-        data={projects as unknown as Record<string, unknown>[]}
+        data={projects as (Project & Record<string, unknown>)[]}
         searchPlaceholder="Search projects catalog..."
         serverPagination={{
           page: pagination.page,
@@ -143,7 +143,7 @@ export default function ProjectCatalogPanel({ addProject, deleteProject, deleteA
           onPageChange: setPage,
         }}
         onSearchChange={handleSearchChange}
-        actions={(row: any) => (
+        actions={(row) => (
           <button
             onClick={() => handleDeleteProject(row.id)}
             className="p-1.5 text-gray-400 hover:text-red-400 transition-colors"

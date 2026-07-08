@@ -5,7 +5,7 @@ import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import ActionsMenu from '../../../components/ActionsMenu';
 import SpinnerSquare from '../../../components/SpinnerSquare';
-import type { Cohort, Profile } from '../../../lib/types';
+import type { Cohort } from '../../../lib/types';
 import { apiListCohorts, apiCreateCohort, apiUpdateCohort, apiGetCohort, apiDeleteCohort } from '../../../lib/api';
 import { getDurationString, formatDateDisplay, toDateOnly } from '../../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
@@ -13,12 +13,7 @@ import CohortFormFields from './CohortFormFields';
 import { computeCohortDefaultsFromStartDate, EMPTY_COHORT_FORM, validateCohortForm } from '../../../lib/cohortForm';
 import { useToast } from '../../../toast';
 
-interface CohortsPanelProps {
-  profiles: Profile[];
-  importOJTBatch: (cohortId: string, studentRecords: any[]) => void;
-}
-
-export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelProps) {
+export default function CohortsPanel() {
   const navigate = useNavigate();
   const { showError } = useToast();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
@@ -38,7 +33,7 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showError]);
 
   useEffect(() => {
     fetchCohorts();
@@ -190,8 +185,8 @@ export default function CohortsPanel({ profiles, importOJTBatch }: CohortsPanelP
           ]}
           data={cohortData}
           searchPlaceholder="Search cohorts..."
-          onRowClick={(row: any) => navigate(`/admin/dashboard/ojts/${row.id}/view`)}
-          actions={(row: any) => (
+          onRowClick={(row) => navigate(`/admin/dashboard/ojts/${row.id}/view`)}
+          actions={(row) => (
             <ActionsMenu
               items={[
                 { label: 'Edit OJT', icon: Edit2, onClick: () => handleEditCohort(row.id) },

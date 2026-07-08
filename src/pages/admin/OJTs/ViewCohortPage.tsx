@@ -10,10 +10,11 @@ import { getDurationString, formatDateDisplay } from '../../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import FormCsvImportModal from './FormCsvImportModal';
+import type { OJTBatchStudentRecord } from '../../../hooks/useMockData';
 
 interface ViewCohortPageProps {
   profiles: Profile[];
-  importOJTBatch: (cohortId: string, studentRecords: any[], batchName?: string, semesterName?: string) => void;
+  importOJTBatch: (cohortId: string, studentRecords: OJTBatchStudentRecord[], batchName?: string, semesterName?: string) => void;
 }
 
 export default function ViewCohortPage({ profiles, importOJTBatch }: ViewCohortPageProps) {
@@ -42,7 +43,7 @@ export default function ViewCohortPage({ profiles, importOJTBatch }: ViewCohortP
     } finally {
       setLoading(false);
     }
-  }, [cohortId, navigate]);
+  }, [cohortId, navigate, showError]);
 
   useEffect(() => {
     fetchDetails();

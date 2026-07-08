@@ -37,8 +37,14 @@ export async function apiAddProjectsToCohort(cohortId: string, projectIds: strin
   });
 }
 
+type RawCohortProject = Omit<Project, 'track' | 'related_field'> & {
+  track: string;
+  techStack?: string[];
+  related_field?: string;
+};
+
 export async function apiGetProjectsForCohort(cohortId: string): Promise<Project[]> {
-  const res = await apiFetch<any[]>(`/api/v1/cohorts/${cohortId}/projects`);
+  const res = await apiFetch<RawCohortProject[]>(`/api/v1/cohorts/${cohortId}/projects`);
   return res.map(p => ({
     ...p,
     track: mapBackendTrackToFrontend(p.track),

@@ -97,20 +97,16 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
       case 'dashboard':
         return (
           <Dashboard
-            profiles={data.profiles}
-            students={data.students}
             tasks={data.tasks}
             submissions={data.submissions}
             attendance={data.attendance}
-            semesters={data.semesters}
-            batches={data.batches}
             onNavigateToTab={handleTabChange}
           />
         );
       case 'students':
         return <Students />;
       case 'mentors':
-        return <Mentors profiles={data.profiles} addMentor={data.addMentor} addMentors={data.addMentors} deleteProfile={data.deleteProfile} updateProfile={data.updateProfile} />;
+        return <Mentors updateProfile={data.updateProfile} />;
       case 'allocations':
         return <Allocations students={data.students} profiles={data.profiles} projects={projectsList} cohorts={cohorts} updateStudent={data.updateStudent} resolveStudentChangeRequest={data.resolveStudentChangeRequest} />;
       case 'ojts':
@@ -119,8 +115,6 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
             addProject={handleAddProject}
             deleteProject={handleDeleteProject}
             deleteAllProjects={handleDeleteAllProjects}
-            profiles={data.profiles}
-            importOJTBatch={data.importOJTBatch}
           />
         );
       case 'tasks':
@@ -136,13 +130,9 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
       default:
         return (
           <Dashboard
-            profiles={data.profiles}
-            students={data.students}
             tasks={data.tasks}
             submissions={data.submissions}
             attendance={data.attendance}
-            semesters={data.semesters}
-            batches={data.batches}
             onNavigateToTab={handleTabChange}
           />
         );

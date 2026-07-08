@@ -40,7 +40,7 @@ export default function CohortMentorsPage() {
     } finally {
       setLoading(false);
     }
-  }, [cohortId, navigate]);
+  }, [cohortId, navigate, showError]);
 
   useEffect(() => {
     fetchData();

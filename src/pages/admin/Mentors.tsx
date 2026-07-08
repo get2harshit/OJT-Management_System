@@ -3,16 +3,12 @@ import { Edit2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import SpinnerSquare from '../../components/SpinnerSquare';
-import type { ApiMentor } from '../../lib/types';
+import type { ApiMentor, Profile } from '../../lib/types';
 import { TRACKS } from '../../lib/constants';
 import { apiListMentors } from '../../lib/api';
 
 interface Props {
-  profiles: unknown[];
-  addMentor: (...args: any[]) => void;
-  addMentors: (...args: any[]) => void;
-  deleteProfile: (id: string) => void;
-  updateProfile: (id: string, patch: any) => void;
+  updateProfile: (id: string, patch: Partial<Profile>) => void;
 }
 
 interface MentorRow extends ApiMentor {
@@ -83,7 +79,7 @@ export default function AdminMentors({ updateProfile }: Props) {
             {
               key: 'type',
               header: 'Type',
-              render: (row: any) => (
+              render: (row) => (
                 <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${row.type === 'External'
                     ? 'bg-blue-500/10 text-blue-400'
                     : 'bg-gold/10 text-gold'
@@ -95,10 +91,10 @@ export default function AdminMentors({ updateProfile }: Props) {
             {
               key: 'assignedTracks',
               header: 'Specialized Tracks',
-              render: (row: any) => (
+              render: (row) => (
                 <div className="flex flex-wrap gap-1 max-w-xs">
                   {row.assignedTracks && row.assignedTracks.length > 0
-                    ? row.assignedTracks.map((t: string) => (
+                    ? row.assignedTracks.map((t) => (
                       <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold font-medium">
                         {t}
                       </span>
@@ -109,11 +105,11 @@ export default function AdminMentors({ updateProfile }: Props) {
               ),
             },
           ]}
-          data={tableData as unknown as Record<string, unknown>[]}
+          data={tableData}
           searchPlaceholder="Search mentors..."
-          actions={(row: any) => (
+          actions={(row) => (
             <button
-              onClick={() => handleOpenEdit(row._raw as MentorRow)}
+              onClick={() => handleOpenEdit(row._raw)}
               className="p-1.5 text-gray-400 hover:text-gold transition-colors"
               title="Assign Tracks"
             >

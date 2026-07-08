@@ -9,7 +9,7 @@ import Attendance from './Attendance';
 import EvaluationTracker from './EvaluationTracker';
 import Credits from './Credits';
 import { useMockData } from '../../hooks/useMockData';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 
 export default function MentorPanel({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -29,7 +29,6 @@ export default function MentorPanel({ onLogout }: { onLogout?: () => void }) {
         return (
           <Dashboard
             mentorId={mentorId}
-            profiles={data.profiles}
             students={data.students}
             tasks={data.tasks}
             submissions={data.submissions}
@@ -56,7 +55,6 @@ export default function MentorPanel({ onLogout }: { onLogout?: () => void }) {
         return (
           <Dashboard
             mentorId={mentorId}
-            profiles={data.profiles}
             students={data.students}
             tasks={data.tasks}
             submissions={data.submissions}

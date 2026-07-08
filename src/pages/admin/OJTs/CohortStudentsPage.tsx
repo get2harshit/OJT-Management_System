@@ -40,7 +40,7 @@ export default function CohortStudentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [cohortId, navigate]);
+  }, [cohortId, navigate, showError]);
 
   useEffect(() => {
     fetchData();

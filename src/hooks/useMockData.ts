@@ -105,6 +105,20 @@ const defaultComments: Comment[] = [
   { id: 'com3', submission_id: 'sub3', author_id: 's1', content: 'Fixed the rules, uploading v2 now.', created_at: '2024-09-24' },
 ];
 
+// One row of a parsed OJT form-response CSV, shaped by FormCsvImportModal
+// and consumed by importOJTBatch below.
+export interface OJTBatchStudentRecord {
+  name: string;
+  email?: string;
+  contact_no?: string;
+  track: string;
+  preferred_mentors?: string[];
+  is_own_project?: boolean;
+  project_title?: string;
+  project_description?: string;
+  tech_stack?: string;
+}
+
 // ─── LocalStorage helpers ───────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'ojt-management-data';
@@ -143,20 +157,20 @@ function loadData(): StoredData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as Partial<StoredData>;
       if (!parsed.creditRequests) parsed.creditRequests = defaultCreditRequests;
-      
+
       // Auto-reset local storage when outdated tracks are found
-      const hasOldTracks = parsed.students?.some((s: any) => 
+      const hasOldTracks = parsed.students?.some((s) =>
         s.track === 'Cloud Computing' || s.track === 'DevOps' || s.track === 'Full Stack'
-      ) || parsed.projects?.some((p: any) => 
+      ) || parsed.projects?.some((p) =>
         p.track === 'Cloud Computing' || p.track === 'DevOps' || p.track === 'Full Stack'
       );
 
-      const hasNitin = parsed.profiles?.some((p: any) => p.name === 'Nitin Singh');
-      const hasJaya = parsed.profiles?.some((p: any) => p.name === 'Jayaprasad');
-      const hasRohit = parsed.profiles?.some((p: any) => p.name === 'Rohit Gupta');
-      const hasOldBatches = parsed.batches?.some((b: any) => 
+      const hasNitin = parsed.profiles?.some((p) => p.name === 'Nitin Singh');
+      const hasJaya = parsed.profiles?.some((p) => p.name === 'Jayaprasad');
+      const hasRohit = parsed.profiles?.some((p) => p.name === 'Rohit Gupta');
+      const hasOldBatches = parsed.batches?.some((b) =>
         b.name === 'Batch A' || b.name === 'Batch B' || b.name === 'Batch C'
       );
 
@@ -260,12 +274,12 @@ export function useMockData() {
     });
   }, [data, persist]);
 
-  const importOJTBatch = useCallback((cohortId: string, studentRecords: any[], batchName?: string, semesterName?: string) => {
-    let currentProfiles = [...data.profiles];
-    let currentStudents = [...data.students];
-    let currentProjects = [...data.projects];
-    let currentBatches = [...data.batches];
-    let currentSemesters = [...data.semesters];
+  const importOJTBatch = useCallback((cohortId: string, studentRecords: OJTBatchStudentRecord[], batchName?: string, semesterName?: string) => {
+    const currentProfiles = [...data.profiles];
+    const currentStudents = [...data.students];
+    const currentProjects = [...data.projects];
+    const currentBatches = [...data.batches];
+    const currentSemesters = [...data.semesters];
 
     let semesterId: string | null = null;
     if (semesterName) {
@@ -517,7 +531,7 @@ export function useMockData() {
     const target = data.creditRequests.find(r => r.id === id);
     if (!target) return;
 
-    let updatedCredits = [...data.credits];
+    const updatedCredits = [...data.credits];
     if (status === 'APPROVED' && code) {
       updatedCredits.push({
         id: 'c' + uid(),

@@ -23,10 +23,21 @@ interface RawProject {
   related_field?: string;
 }
 
+// The single-project GET (and the create/bulk-create responses) return the
+// full record — the trimmed list endpoint only returns RawProject's fields.
+interface RawFullProject extends RawProject {
+  description?: string;
+  endUsersDefined?: string;
+  batch?: string;
+  created_at: string;
+  end_goals?: string;
+  source?: 'Own' | 'Listed';
+}
+
 // The trimmed list endpoint doesn't return created_at (only the single-project
 // GET does), so this cast reflects the same gap the old `any`-typed mapping
 // silently had — not something introduced by this change.
-function toFrontendProject(p: RawProject): Project {
+function toFrontendProject(p: RawProject | RawFullProject): Project {
   return {
     ...p,
     track: mapBackendTrackToFrontend(p.track),
@@ -71,12 +82,8 @@ export async function apiListProjectsPage(params: ListProjectsParams = {}): Prom
 // Full project record (description, endUsersDefined, batch, createdAt) —
 // only available one at a time, via this endpoint.
 export async function apiGetProject(id: string): Promise<Project> {
-  const p = await apiFetch<any>(`/api/v1/projects/${id}`);
-  return {
-    ...p,
-    track: mapBackendTrackToFrontend(p.track),
-    related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
-  };
+  const p = await apiFetch<RawFullProject>(`/api/v1/projects/${id}`);
+  return toFrontendProject(p);
 }
 
 export interface ProjectCreateInput {
@@ -93,15 +100,11 @@ export async function apiCreateProject(body: ProjectCreateInput): Promise<Projec
     ...body,
     track: mapFrontendTrackToBackend(body.track),
   };
-  const p = await apiFetch<any>('/api/v1/projects', {
+  const p = await apiFetch<RawFullProject>('/api/v1/projects', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return {
-    ...p,
-    track: mapBackendTrackToFrontend(p.track),
-    related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
-  };
+  return toFrontendProject(p);
 }
 
 // All-or-nothing on the backend — if any row fails validation, none of the
@@ -114,15 +117,11 @@ export async function apiCreateProjectsBulk(items: ProjectCreateInput[]): Promis
       track: mapFrontendTrackToBackend(item.track),
     })),
   };
-  const res = await apiFetch<any[]>('/api/v1/projects/bulk', {
+  const res = await apiFetch<RawFullProject[]>('/api/v1/projects/bulk', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return res.map(p => ({
-    ...p,
-    track: mapBackendTrackToFrontend(p.track),
-    related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
-  }));
+  return res.map(toFrontendProject);
 }
 
 export async function apiDeleteProject(id: string): Promise<void> {
