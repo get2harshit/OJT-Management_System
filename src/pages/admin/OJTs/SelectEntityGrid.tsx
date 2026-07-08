@@ -1,5 +1,8 @@
-import { CheckSquare, Square } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CheckSquare, Square, ChevronLeft, ChevronRight } from 'lucide-react';
 import SpinnerSquare from '../../../components/SpinnerSquare';
+
+const PAGE_SIZE = 24;
 
 // Generic multi-select grid: the Select Project/Student/Mentor pages are all
 // the same search + select-all + card-grid + save shell around different
@@ -42,6 +45,17 @@ export default function SelectEntityGrid<T>({
   emptyMessage = 'No results found.',
   rightAction,
 }: SelectEntityGridProps<T>) {
+  // Select All still acts on the full `items` list (all filtered results) —
+  // only the on-screen grid is paginated, so it never limits what gets selected.
+  const [page, setPage] = useState(1);
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedItems = items.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-400">{description}</p>
@@ -74,11 +88,36 @@ export default function SelectEntityGrid<T>({
           {items.length === 0 && (
             <p className="text-sm text-gray-500 col-span-full text-center py-6">{emptyMessage}</p>
           )}
-          {items.map(item => {
+          {paginatedItems.map(item => {
             const id = getId(item);
             const selected = selectedIds.includes(id);
             return <div key={id}>{renderCard(item, selected)}</div>;
           })}
+        </div>
+      )}
+
+      {!loading && items.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-500">
+            Showing {(currentPage - 1) * PAGE_SIZE + 1} - {Math.min(currentPage * PAGE_SIZE, items.length)} of {items.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-sm text-gray-400">{currentPage} / {totalPages}</span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       )}
 

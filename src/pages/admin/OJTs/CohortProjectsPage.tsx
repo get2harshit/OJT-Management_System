@@ -129,7 +129,12 @@ export default function CohortProjectsPage({ projects, onProjectsImported }: Coh
               />
             </div>
             <p className="text-gray-400 text-xs line-clamp-3">{p.problemStatement || p.description}</p>
-            <span className="text-[10px] text-gold/80 self-start bg-gold/10 px-2 py-0.5 rounded-full font-medium">{p.track}</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] text-gold/80 self-start bg-gold/10 px-2 py-0.5 rounded-full font-medium">{p.track}</span>
+              {p.related_field && (
+                <span className="text-[10px] text-gray-300 font-mono">{p.related_field}</span>
+              )}
+            </div>
           </label>
         )}
       />

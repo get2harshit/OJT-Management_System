@@ -40,6 +40,7 @@ function parseRows(parsed: string[][]): ParsedRow[] {
   const coreLearningIdx = headers.findIndex(h => h.includes('core learning'));
   const expectedOutputIdx = headers.findIndex(h => h.includes('expected output'));
   const featuresIdx = headers.findIndex(h => h.includes('must have') || h.includes('features and functionalities'));
+  const techStackIdx = headers.findIndex(h => h.includes('tech stack') || h.includes('tech_stack') || h.includes('techstack'));
 
   return parsed.slice(1).map((cols, i) => {
     const rowNumber = i + 2; // +1 for 0-index, +1 for the header row
@@ -54,6 +55,9 @@ function parseRows(parsed: string[][]): ParsedRow[] {
       return { rowNumber, project: null, error: `Row ${rowNumber}: Project Track "${trackRaw || '(blank)'}" is missing or unrecognized` };
     }
 
+    const techStackRaw = techStackIdx !== -1 ? cols[techStackIdx]?.trim() : '';
+    const techStack = techStackRaw ? techStackRaw.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+
     return {
       rowNumber,
       error: null,
@@ -63,6 +67,7 @@ function parseRows(parsed: string[][]): ParsedRow[] {
         problemStatement: coreLearningIdx !== -1 ? cols[coreLearningIdx]?.trim() || undefined : undefined,
         endUsersDefined: expectedOutputIdx !== -1 ? cols[expectedOutputIdx]?.trim() || undefined : undefined,
         description: featuresIdx !== -1 ? cols[featuresIdx]?.trim() || undefined : undefined,
+        techStack,
       },
     };
   });
@@ -115,7 +120,7 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess }
 
         <div className="bg-zinc-800/40 p-3 rounded-lg text-xs font-mono text-gray-400 space-y-1">
           <span className="text-gold">Expected Headers:</span>
-          <div className="text-white">Project Track, Project Title, Core learning, Expected output, Must Have Features and Functionalities</div>
+          <div className="text-white">Project Track, Project Title, Core learning, Expected output, Must Have Features and Functionalities, Tech Stack (optional)</div>
           <span className="text-gray-500 block pt-1">Valid tracks:</span>
           <div>{TRACKS.join(', ')}</div>
         </div>
