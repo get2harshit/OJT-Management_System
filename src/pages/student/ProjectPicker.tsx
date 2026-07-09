@@ -43,6 +43,8 @@ export default function ProjectPicker() {
   const [cohortId, setCohortId] = useState<string | null>(null);
   const [cohortError, setCohortError] = useState<string | null>(null);
   const [status, setStatus] = useState<MyTeamStatus | null>(null);
+  const [availableProjects, setAvailableProjects] = useState<TeamProject[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
 
   const refreshStatus = useCallback(async (cid: string) => {
     try {
@@ -53,12 +55,29 @@ export default function ProjectPicker() {
     }
   }, [showError]);
 
+  // Only the team+project-preferences screen needs the project catalog, but we
+  // kick this off as soon as we know the cohort (in parallel with the status
+  // call below) instead of waiting for that screen to mount — that mount-time
+  // fetch used to add a third sequential network round-trip to the page load.
+  const loadAvailableProjects = useCallback(async (cid: string) => {
+    setProjectsLoading(true);
+    try {
+      const res = await apiGetAvailableProjects(cid);
+      setAvailableProjects(res);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load projects');
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, [showError]);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
         const cohort = await apiGetMyCohort();
         setCohortId(cohort.cohortId);
+        loadAvailableProjects(cohort.cohortId);
         await refreshStatus(cohort.cohortId);
       } catch (err) {
         setCohortError(err instanceof Error ? err.message : 'Failed to load your cohort');
@@ -124,6 +143,8 @@ export default function ProjectPicker() {
         ) : (
           <ProjectSelectionScreen
             cohortId={cohortId}
+            availableProjects={availableProjects}
+            projectsLoading={projectsLoading}
             onSubmitted={() => refreshStatus(cohortId)}
           />
         )
@@ -339,45 +360,47 @@ function IncomingRequestScreen({
   );
 }
 
-// ── Step 4 & 5: team picks its self project + an existing project ───────────
+// ── Step 4 & 5: team picks how to fill its 2 project preferences ────────────
 
-function ProjectSelectionScreen({ cohortId, onSubmitted }: { cohortId: string; onSubmitted: () => void }) {
+type SelectionMode = 'own-existing' | 'two-existing';
+
+function ProjectSelectionScreen({
+  cohortId,
+  availableProjects,
+  projectsLoading,
+  onSubmitted,
+}: {
+  cohortId: string;
+  availableProjects: TeamProject[];
+  projectsLoading: boolean;
+  onSubmitted: () => void;
+}) {
   const { showError, showSuccess } = useToast();
-  const [loading, setLoading] = useState(true);
-  const [availableProjects, setAvailableProjects] = useState<TeamProject[]>([]);
   const [selfProject, setSelfProject] = useState<TeamProject | null>(null);
+  const [mode, setMode] = useState<SelectionMode | null>(null);
   const [existingProjectId, setExistingProjectId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [existingProjectId1, setExistingProjectId1] = useState<string | null>(null);
+  const [existingProjectId2, setExistingProjectId2] = useState<string | null>(null);
   const [proposing, setProposing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', problemStatement: '', endUsersDefined: '', techStack: '' });
 
-  const loadProjects = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await apiGetAvailableProjects(cohortId);
-      setAvailableProjects(res);
-      const own = res.find(p => p.projectBy === 'STUDENT');
-      setSelfProject(own ?? null);
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to load projects');
-    } finally {
-      setLoading(false);
-    }
-  }, [cohortId, showError]);
+  useEffect(() => {
+    const own = availableProjects.find(p => p.projectBy === 'STUDENT');
+    setSelfProject(own ?? null);
+  }, [availableProjects]);
 
-  useEffect(() => { loadProjects(); }, [loadProjects]);
+  // A team that already proposed its own project (e.g. before switching
+  // devices, or a page reload mid-flow) has effectively already picked this
+  // mode — skip straight past the mode picker instead of losing their work.
+  useEffect(() => {
+    if (selfProject && mode === null) setMode('own-existing');
+  }, [selfProject, mode]);
 
   const catalogProjects = useMemo(
     () => availableProjects.filter(p => p.projectBy === 'PST'),
     [availableProjects]
   );
-
-  const filteredCatalog = catalogProjects.filter(p => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return p.title.toLowerCase().includes(q) || (p.problemStatement || '').toLowerCase().includes(q);
-  });
 
   const handleProposeSelfProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -400,11 +423,14 @@ function ProjectSelectionScreen({ cohortId, onSubmitted }: { cohortId: string; o
     }
   };
 
+  const preference1Id = mode === 'own-existing' ? (selfProject?.id ?? null) : existingProjectId1;
+  const preference2Id = mode === 'own-existing' ? existingProjectId : existingProjectId2;
+
   const handleSubmit = async () => {
-    if (!selfProject || !existingProjectId) return;
+    if (!preference1Id || !preference2Id) return;
     setSubmitting(true);
     try {
-      await apiSubmitProjectPreferences(cohortId, selfProject.id, existingProjectId);
+      await apiSubmitProjectPreferences(cohortId, preference1Id, preference2Id);
       showSuccess('Project selections submitted!');
       onSubmitted();
     } catch (err) {
@@ -414,7 +440,7 @@ function ProjectSelectionScreen({ cohortId, onSubmitted }: { cohortId: string; o
     }
   };
 
-  if (loading) {
+  if (projectsLoading) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
         <SpinnerSquare size={48} />
@@ -424,122 +450,218 @@ function ProjectSelectionScreen({ cohortId, onSubmitted }: { cohortId: string; o
 
   return (
     <div className="space-y-6">
-      {/* Self Project */}
-      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
-        <h2 className="text-white font-semibold flex items-center gap-2">
-          <Sparkles size={18} className="text-gold" />
-          Self Project
-        </h2>
+      <div className="bg-gold/5 border border-gold/20 rounded-xl px-5 py-4 flex items-center gap-3">
+        <Layers size={20} className="text-gold shrink-0" />
+        <p className="text-white text-sm font-medium">
+          You need to choose <span className="text-gold font-bold">2 projects</span> — your 1st and 2nd preference.
+        </p>
+      </div>
 
-        {selfProject ? (
-          <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 space-y-1">
-            <div className="flex items-center gap-2 text-green-400 text-xs font-semibold">
-              <CheckCircle2 size={14} />
-              Selected
-            </div>
-            <p className="text-white font-bold">{selfProject.title}</p>
-            {selfProject.description && <p className="text-gray-400 text-sm">{selfProject.description}</p>}
+      {mode === null ? (
+        <div className="space-y-4">
+          <h2 className="text-white font-semibold">How do you want to pick your projects?</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <button
+              onClick={() => setMode('own-existing')}
+              className="group flex flex-col items-start gap-3 bg-zinc-850 border border-zinc-750 rounded-xl p-5 text-left hover:border-gold/40 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-gold/5 transition-all duration-300"
+            >
+              <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
+                <Sparkles size={20} className="text-gold" />
+              </div>
+              <p className="text-white font-semibold">Own Project + Existing Project</p>
+              <p className="text-gray-400 text-sm">Propose your own project as your 1st preference, and pick one from the catalog as your 2nd.</p>
+            </button>
+            <button
+              onClick={() => setMode('two-existing')}
+              className="group flex flex-col items-start gap-3 bg-zinc-850 border border-zinc-750 rounded-xl p-5 text-left hover:border-gold/40 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-gold/5 transition-all duration-300"
+            >
+              <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
+                <Briefcase size={20} className="text-gold" />
+              </div>
+              <p className="text-white font-semibold">Two Existing Projects</p>
+              <p className="text-gray-400 text-sm">Pick two different projects from the catalog as your 1st and 2nd preference.</p>
+            </button>
           </div>
-        ) : (
-          <form onSubmit={handleProposeSelfProject} className="space-y-3">
-            <input
-              type="text"
-              required
-              placeholder="Project title"
-              value={form.title}
-              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            />
-            <textarea
-              placeholder="Description"
-              value={form.description}
-              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              rows={2}
-              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
-            />
-            <textarea
-              placeholder="Problem statement"
-              value={form.problemStatement}
-              onChange={e => setForm(f => ({ ...f, problemStatement: e.target.value }))}
-              rows={2}
-              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
-            />
-            <input
-              type="text"
-              placeholder="End users"
-              value={form.endUsersDefined}
-              onChange={e => setForm(f => ({ ...f, endUsersDefined: e.target.value }))}
-              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            />
-            <input
-              type="text"
-              placeholder="Tech stack (comma separated)"
-              value={form.techStack}
-              onChange={e => setForm(f => ({ ...f, techStack: e.target.value }))}
-              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-            />
-            <button
-              type="submit"
-              disabled={proposing || !form.title.trim()}
-              className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
-            >
-              <Plus size={16} />
-              {proposing ? 'Creating...' : 'Create Self Project'}
-            </button>
-          </form>
-        )}
-      </div>
-
-      {/* Existing Project */}
-      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
-        <h2 className="text-white font-semibold flex items-center gap-2">
-          <Briefcase size={18} className="text-gold" />
-          Existing Project
-        </h2>
-
-        <div className="relative max-w-sm">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search projects..."
-            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-          />
         </div>
+      ) : (
+        <div className="space-y-4">
+          <button
+            onClick={() => setMode(null)}
+            disabled={!!selfProject}
+            className="text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ← Change selection type
+          </button>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {filteredCatalog.map(p => (
-            <button
-              key={p.id}
-              onClick={() => setExistingProjectId(p.id)}
-              className={`text-left rounded-lg p-4 border transition-colors ${
-                existingProjectId === p.id
-                  ? 'bg-gold/10 border-gold/50'
-                  : 'bg-zinc-900 border-zinc-750 hover:border-zinc-650'
-              }`}
-            >
-              <p className="text-white font-semibold text-sm">{p.title}</p>
-              {p.problemStatement && (
-                <p className="text-gray-400 text-xs mt-1 line-clamp-2">{p.problemStatement}</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Preference 1 — left */}
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 1</p>
+              {mode === 'own-existing' ? (
+                <div className="group bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4 h-full transition-all duration-300 hover:border-gold/20 hover:shadow-lg hover:shadow-gold/5">
+                  <h2 className="text-white font-semibold flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
+                      <Sparkles size={18} className="text-gold" />
+                    </div>
+                    Self Project
+                  </h2>
+
+                  {selfProject ? (
+                    <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 space-y-1">
+                      <div className="flex items-center gap-2 text-green-400 text-xs font-semibold">
+                        <CheckCircle2 size={14} />
+                        Selected
+                      </div>
+                      <p className="text-white font-bold">{selfProject.title}</p>
+                      {selfProject.description && <p className="text-gray-400 text-sm">{selfProject.description}</p>}
+                    </div>
+                  ) : (
+                    <form onSubmit={handleProposeSelfProject} className="space-y-3">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Project title"
+                        value={form.title}
+                        onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                        className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+                      />
+                      <textarea
+                        placeholder="Description"
+                        value={form.description}
+                        onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                        rows={2}
+                        className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+                      />
+                      <textarea
+                        placeholder="Problem statement"
+                        value={form.problemStatement}
+                        onChange={e => setForm(f => ({ ...f, problemStatement: e.target.value }))}
+                        rows={2}
+                        className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+                      />
+                      <input
+                        type="text"
+                        placeholder="End users"
+                        value={form.endUsersDefined}
+                        onChange={e => setForm(f => ({ ...f, endUsersDefined: e.target.value }))}
+                        className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Tech stack (comma separated)"
+                        value={form.techStack}
+                        onChange={e => setForm(f => ({ ...f, techStack: e.target.value }))}
+                        className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+                      />
+                      <button
+                        type="submit"
+                        disabled={proposing || !form.title.trim()}
+                        className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
+                      >
+                        <Plus size={16} />
+                        {proposing ? 'Creating...' : 'Create Self Project'}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              ) : (
+                <ExistingProjectPicker
+                  catalogProjects={catalogProjects}
+                  selectedId={existingProjectId1}
+                  onSelect={setExistingProjectId1}
+                  excludeId={existingProjectId2}
+                />
               )}
-            </button>
-          ))}
-          {filteredCatalog.length === 0 && (
-            <div className="col-span-full text-center py-8">
-              <p className="text-gray-400 text-sm">No existing projects available for this track.</p>
             </div>
-          )}
+
+            {/* Preference 2 — right */}
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 2</p>
+              <ExistingProjectPicker
+                catalogProjects={catalogProjects}
+                selectedId={mode === 'own-existing' ? existingProjectId : existingProjectId2}
+                onSelect={mode === 'own-existing' ? setExistingProjectId : setExistingProjectId2}
+                excludeId={mode === 'own-existing' ? undefined : existingProjectId1}
+              />
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       <button
         onClick={handleSubmit}
-        disabled={!selfProject || !existingProjectId || submitting}
-        className="w-full py-3 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-40"
+        disabled={!preference1Id || !preference2Id || submitting}
+        className="sticky bottom-0 z-10 w-full py-3 bg-gold text-black font-semibold rounded-lg shadow-xl shadow-black/40 hover:bg-gold-hover hover:shadow-lg hover:shadow-gold/10 transition-all duration-200 disabled:opacity-40 disabled:hover:shadow-none"
       >
         {submitting ? 'Submitting...' : 'Confirm Project Selections'}
       </button>
+    </div>
+  );
+}
+
+function ExistingProjectPicker({
+  catalogProjects,
+  selectedId,
+  onSelect,
+  excludeId,
+}: {
+  catalogProjects: TeamProject[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  excludeId?: string | null;
+}) {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredCatalog = catalogProjects.filter(p => {
+    if (excludeId && p.id === excludeId) return false;
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return p.title.toLowerCase().includes(q) || (p.problemStatement || '').toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="group bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4 h-full transition-all duration-300 hover:border-gold/20 hover:shadow-lg hover:shadow-gold/5">
+      <h2 className="text-white font-semibold flex items-center gap-3">
+        <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
+          <Briefcase size={18} className="text-gold" />
+        </div>
+        Existing Project
+      </h2>
+
+      <div className="relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search projects..."
+          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 max-h-[45vh] overflow-y-auto pr-1">
+        {filteredCatalog.map(p => (
+          <button
+            key={p.id}
+            onClick={() => onSelect(p.id)}
+            className={`text-left rounded-lg p-4 border transition-all duration-200 ${
+              selectedId === p.id
+                ? 'bg-gold/10 border-gold shadow-lg shadow-gold/5'
+                : 'bg-zinc-900 border-zinc-750 hover:border-zinc-600 hover:scale-[1.01]'
+            }`}
+          >
+            <p className="text-white font-semibold text-sm">{p.title}</p>
+            {p.problemStatement && (
+              <p className="text-gray-400 text-xs mt-1 line-clamp-2">{p.problemStatement}</p>
+            )}
+          </button>
+        ))}
+        {filteredCatalog.length === 0 && (
+          <div className="text-center py-8">
+            <p className="text-gray-400 text-sm">No existing projects available for this track.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
