@@ -7,6 +7,7 @@ import type {
   PendingReceivedRequest,
   TeamProjectPreferences,
   AvailableTeammate,
+  TeamAvailableMentor,
   TeamProject,
   SemesterSession,
 } from '../types';
@@ -53,8 +54,19 @@ interface RawPreferences {
   teamId: string;
   preference1Id: string;
   preference2Id: string;
+  preference1MentorId?: string | null;
+  preference2MentorId?: string | null;
   allocatedProjectId?: string | null;
   submittedAt: string;
+}
+
+interface RawTeamMentor {
+  id: string;
+  organization?: string | null;
+  is_external: boolean;
+  track: string[];
+  full_name: string;
+  email?: string | null;
 }
 
 interface RawProject {
@@ -141,8 +153,20 @@ function mapPreferences(p: RawPreferences): TeamProjectPreferences {
     teamId: p.teamId,
     preference1Id: p.preference1Id,
     preference2Id: p.preference2Id,
+    preference1MentorId: p.preference1MentorId ?? null,
+    preference2MentorId: p.preference2MentorId ?? null,
     allocatedProjectId: p.allocatedProjectId ?? null,
     submittedAt: p.submittedAt,
+  };
+}
+
+function mapTeamMentor(m: RawTeamMentor): TeamAvailableMentor {
+  return {
+    id: m.id,
+    fullName: m.full_name,
+    email: m.email ?? undefined,
+    organization: m.organization ?? undefined,
+    isExternal: m.is_external,
   };
 }
 
@@ -224,14 +248,21 @@ export async function apiProposeProject(cohortId: string, data: {
   return mapProject(p);
 }
 
+export async function apiGetAvailableMentors(cohortId: string): Promise<TeamAvailableMentor[]> {
+  const res = await apiFetch<RawTeamMentor[]>(`/api/v1/teams/mentors/available?cohortId=${cohortId}`);
+  return res.map(mapTeamMentor);
+}
+
 export async function apiSubmitProjectPreferences(
   cohortId: string,
   preference1Id: string,
-  preference2Id: string
+  preference2Id: string,
+  preference1MentorId: string,
+  preference2MentorId: string
 ): Promise<TeamProjectPreferences> {
   const res = await apiFetch<RawPreferences>('/api/v1/teams/projects/preferences', {
     method: 'POST',
-    body: JSON.stringify({ cohortId, preference1Id, preference2Id }),
+    body: JSON.stringify({ cohortId, preference1Id, preference2Id, preference1MentorId, preference2MentorId }),
   });
   return mapPreferences(res);
 }

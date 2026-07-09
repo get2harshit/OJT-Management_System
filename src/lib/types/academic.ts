@@ -158,13 +158,26 @@ export interface AdminTeam extends Team {
 
 // A team's submitted project slots (POST /api/v1/teams/projects/preferences).
 // preference1 is the team's own proposed project, preference2 is a catalog pick.
+// Each preference carries its own mentor pick — the two must be different mentors.
 export interface TeamProjectPreferences {
   id: string;
   teamId: string;
   preference1Id: string;
   preference2Id: string;
+  preference1MentorId: string | null;
+  preference2MentorId: string | null;
   allocatedProjectId: string | null;
   submittedAt: string;
+}
+
+// A mentor eligible to supervise a team's project (GET /api/v1/teams/mentors/available)
+// — already scoped server-side to the team's cohort and track.
+export interface TeamAvailableMentor {
+  id: string;
+  fullName: string;
+  email?: string;
+  organization?: string;
+  isExternal: boolean;
 }
 
 // "Where is this student in the team/project flow" — drives which screen
