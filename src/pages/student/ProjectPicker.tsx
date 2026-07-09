@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus } from 'lucide-react';
+import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus, UserCheck } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import { TRACKS } from '../../lib/constants';
-import type { MyTeamStatus, AvailableTeammate, TeamProject, Project } from '../../lib/types';
+import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project } from '../../lib/types';
 import {
   apiGetMyCohort,
   apiGetMyTeamStatus,
@@ -10,6 +10,7 @@ import {
   apiSendTeamRequest,
   apiRespondToTeamRequest,
   apiGetAvailableProjects,
+  apiGetAvailableMentors,
   apiProposeProject,
   apiSubmitProjectPreferences,
   apiGetProject,
@@ -45,6 +46,8 @@ export default function ProjectPicker() {
   const [status, setStatus] = useState<MyTeamStatus | null>(null);
   const [availableProjects, setAvailableProjects] = useState<TeamProject[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
+  const [availableMentors, setAvailableMentors] = useState<TeamAvailableMentor[]>([]);
+  const [mentorsLoading, setMentorsLoading] = useState(true);
 
   const refreshStatus = useCallback(async (cid: string) => {
     try {
@@ -71,6 +74,21 @@ export default function ProjectPicker() {
     }
   }, [showError]);
 
+  // Mentor pool is scoped to the team's cohort + track (not to a specific
+  // project), so it's loaded once alongside the project catalog rather than
+  // re-fetched per preference.
+  const loadAvailableMentors = useCallback(async (cid: string) => {
+    setMentorsLoading(true);
+    try {
+      const res = await apiGetAvailableMentors(cid);
+      setAvailableMentors(res);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load mentors');
+    } finally {
+      setMentorsLoading(false);
+    }
+  }, [showError]);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -78,6 +96,7 @@ export default function ProjectPicker() {
         const cohort = await apiGetMyCohort();
         setCohortId(cohort.cohortId);
         loadAvailableProjects(cohort.cohortId);
+        loadAvailableMentors(cohort.cohortId);
         await refreshStatus(cohort.cohortId);
       } catch (err) {
         setCohortError(err instanceof Error ? err.message : 'Failed to load your cohort');
@@ -139,12 +158,18 @@ export default function ProjectPicker() {
         />
       ) : status?.team ? (
         status.projectPreferences ? (
-          <SummaryScreen team={status.team} preferences={status.projectPreferences} />
+          <SummaryScreen
+            team={status.team}
+            preferences={status.projectPreferences}
+            availableMentors={availableMentors}
+          />
         ) : (
           <ProjectSelectionScreen
             cohortId={cohortId}
             availableProjects={availableProjects}
             projectsLoading={projectsLoading}
+            availableMentors={availableMentors}
+            mentorsLoading={mentorsLoading}
             onSubmitted={() => refreshStatus(cohortId)}
           />
         )
@@ -368,19 +393,29 @@ function ProjectSelectionScreen({
   cohortId,
   availableProjects,
   projectsLoading,
+  availableMentors,
+  mentorsLoading,
   onSubmitted,
 }: {
   cohortId: string;
   availableProjects: TeamProject[];
   projectsLoading: boolean;
+  availableMentors: TeamAvailableMentor[];
+  mentorsLoading: boolean;
   onSubmitted: () => void;
 }) {
   const { showError, showSuccess } = useToast();
   const [selfProject, setSelfProject] = useState<TeamProject | null>(null);
   const [mode, setMode] = useState<SelectionMode | null>(null);
+  // Preference 1 (project + mentor) is picked on its own page, then the
+  // team moves to preference 2 — pairing each project with its mentor
+  // right away instead of picking both projects first and both mentors after.
+  const [step, setStep] = useState<1 | 2>(1);
   const [existingProjectId, setExistingProjectId] = useState<string | null>(null);
   const [existingProjectId1, setExistingProjectId1] = useState<string | null>(null);
   const [existingProjectId2, setExistingProjectId2] = useState<string | null>(null);
+  const [mentor1Id, setMentor1Id] = useState<string | null>(null);
+  const [mentor2Id, setMentor2Id] = useState<string | null>(null);
   const [proposing, setProposing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', problemStatement: '', endUsersDefined: '', techStack: '' });
@@ -427,10 +462,10 @@ function ProjectSelectionScreen({
   const preference2Id = mode === 'own-existing' ? existingProjectId : existingProjectId2;
 
   const handleSubmit = async () => {
-    if (!preference1Id || !preference2Id) return;
+    if (!preference1Id || !preference2Id || !mentor1Id || !mentor2Id) return;
     setSubmitting(true);
     try {
-      await apiSubmitProjectPreferences(cohortId, preference1Id, preference2Id);
+      await apiSubmitProjectPreferences(cohortId, preference1Id, preference2Id, mentor1Id, mentor2Id);
       showSuccess('Project selections submitted!');
       onSubmitted();
     } catch (err) {
@@ -468,7 +503,7 @@ function ProjectSelectionScreen({
               <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
                 <Sparkles size={20} className="text-gold" />
               </div>
-              <p className="text-white font-semibold">Own Project + Existing Project</p>
+              <p className="text-white font-semibold">Own Project + Recommended Project</p>
               <p className="text-gray-400 text-sm">Propose your own project as your 1st preference, and pick one from the catalog as your 2nd.</p>
             </button>
             <button
@@ -478,7 +513,7 @@ function ProjectSelectionScreen({
               <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
                 <Briefcase size={20} className="text-gold" />
               </div>
-              <p className="text-white font-semibold">Two Existing Projects</p>
+              <p className="text-white font-semibold">Two Recommended Projects</p>
               <p className="text-gray-400 text-sm">Pick two different projects from the catalog as your 1st and 2nd preference.</p>
             </button>
           </div>
@@ -486,115 +521,246 @@ function ProjectSelectionScreen({
       ) : (
         <div className="space-y-4">
           <button
-            onClick={() => setMode(null)}
+            onClick={() => { setMode(null); setStep(1); }}
             disabled={!!selfProject}
             className="text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             ← Change selection type
           </button>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Preference 1 — left */}
-            <div className="space-y-2">
-              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 1</p>
-              {mode === 'own-existing' ? (
-                <div className="group bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4 h-full transition-all duration-300 hover:border-gold/20 hover:shadow-lg hover:shadow-gold/5">
-                  <h2 className="text-white font-semibold flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
-                      <Sparkles size={18} className="text-gold" />
-                    </div>
-                    Self Project
-                  </h2>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+            <span className={step === 1 ? 'text-gold' : 'text-gray-600'}>1. Preference 1</span>
+            <span className="text-gray-700">—</span>
+            <span className={step === 2 ? 'text-gold' : 'text-gray-600'}>2. Preference 2</span>
+          </div>
 
-                  {selfProject ? (
-                    <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 space-y-1">
-                      <div className="flex items-center gap-2 text-green-400 text-xs font-semibold">
-                        <CheckCircle2 size={14} />
-                        Selected
+          {step === 1 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Preference 1 project — left */}
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 1 project</p>
+                {mode === 'own-existing' ? (
+                  <div className="group bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4 h-full transition-all duration-300 hover:border-gold/20 hover:shadow-lg hover:shadow-gold/5">
+                    <h2 className="text-white font-semibold flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
+                        <Sparkles size={18} className="text-gold" />
                       </div>
-                      <p className="text-white font-bold">{selfProject.title}</p>
-                      {selfProject.description && <p className="text-gray-400 text-sm">{selfProject.description}</p>}
-                    </div>
-                  ) : (
-                    <form onSubmit={handleProposeSelfProject} className="space-y-3">
-                      <input
-                        type="text"
-                        required
-                        placeholder="Project title"
-                        value={form.title}
-                        onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                        className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-                      />
-                      <textarea
-                        placeholder="Description"
-                        value={form.description}
-                        onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                        rows={2}
-                        className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
-                      />
-                      <textarea
-                        placeholder="Problem statement"
-                        value={form.problemStatement}
-                        onChange={e => setForm(f => ({ ...f, problemStatement: e.target.value }))}
-                        rows={2}
-                        className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
-                      />
-                      <input
-                        type="text"
-                        placeholder="End users"
-                        value={form.endUsersDefined}
-                        onChange={e => setForm(f => ({ ...f, endUsersDefined: e.target.value }))}
-                        className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Tech stack (comma separated)"
-                        value={form.techStack}
-                        onChange={e => setForm(f => ({ ...f, techStack: e.target.value }))}
-                        className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-                      />
-                      <button
-                        type="submit"
-                        disabled={proposing || !form.title.trim()}
-                        className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
-                      >
-                        <Plus size={16} />
-                        {proposing ? 'Creating...' : 'Create Self Project'}
-                      </button>
-                    </form>
-                  )}
-                </div>
-              ) : (
+                      Self Project
+                    </h2>
+
+                    {selfProject ? (
+                      <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 space-y-1">
+                        <div className="flex items-center gap-2 text-green-400 text-xs font-semibold">
+                          <CheckCircle2 size={14} />
+                          Selected
+                        </div>
+                        <p className="text-white font-bold">{selfProject.title}</p>
+                        {selfProject.description && <p className="text-gray-400 text-sm">{selfProject.description}</p>}
+                      </div>
+                    ) : (
+                      <form onSubmit={handleProposeSelfProject} className="space-y-3">
+                        <input
+                          type="text"
+                          required
+                          placeholder="Project title"
+                          value={form.title}
+                          onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+                        />
+                        <textarea
+                          placeholder="Description"
+                          value={form.description}
+                          onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                          rows={2}
+                          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+                        />
+                        <textarea
+                          placeholder="Problem statement"
+                          value={form.problemStatement}
+                          onChange={e => setForm(f => ({ ...f, problemStatement: e.target.value }))}
+                          rows={2}
+                          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+                        />
+                        <input
+                          type="text"
+                          placeholder="End users"
+                          value={form.endUsersDefined}
+                          onChange={e => setForm(f => ({ ...f, endUsersDefined: e.target.value }))}
+                          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Tech stack (comma separated)"
+                          value={form.techStack}
+                          onChange={e => setForm(f => ({ ...f, techStack: e.target.value }))}
+                          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+                        />
+                        <button
+                          type="submit"
+                          disabled={proposing || !form.title.trim()}
+                          className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
+                        >
+                          <Plus size={16} />
+                          {proposing ? 'Creating...' : 'Create Self Project'}
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                ) : (
+                  <ExistingProjectPicker
+                    catalogProjects={catalogProjects}
+                    selectedId={existingProjectId1}
+                    onSelect={setExistingProjectId1}
+                    excludeId={existingProjectId2}
+                  />
+                )}
+              </div>
+
+              {/* Preference 1 mentor — right */}
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 1 mentor</p>
+                <MentorPicker
+                  label="Preference 1 mentor"
+                  mentors={availableMentors}
+                  loading={mentorsLoading}
+                  selectedId={mentor1Id}
+                  onSelect={setMentor1Id}
+                  excludeId={mentor2Id}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Preference 2 project — left */}
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 2 project</p>
                 <ExistingProjectPicker
                   catalogProjects={catalogProjects}
-                  selectedId={existingProjectId1}
-                  onSelect={setExistingProjectId1}
-                  excludeId={existingProjectId2}
+                  selectedId={mode === 'own-existing' ? existingProjectId : existingProjectId2}
+                  onSelect={mode === 'own-existing' ? setExistingProjectId : setExistingProjectId2}
+                  excludeId={mode === 'own-existing' ? undefined : existingProjectId1}
                 />
-              )}
-            </div>
+              </div>
 
-            {/* Preference 2 — right */}
-            <div className="space-y-2">
-              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 2</p>
-              <ExistingProjectPicker
-                catalogProjects={catalogProjects}
-                selectedId={mode === 'own-existing' ? existingProjectId : existingProjectId2}
-                onSelect={mode === 'own-existing' ? setExistingProjectId : setExistingProjectId2}
-                excludeId={mode === 'own-existing' ? undefined : existingProjectId1}
-              />
+              {/* Preference 2 mentor — right */}
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 2 mentor</p>
+                <MentorPicker
+                  label="Preference 2 mentor"
+                  mentors={availableMentors}
+                  loading={mentorsLoading}
+                  selectedId={mentor2Id}
+                  onSelect={setMentor2Id}
+                  excludeId={mentor1Id}
+                />
+              </div>
             </div>
+          )}
+
+          <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 pt-3 pb-1 bg-gradient-to-t from-black via-black/95 to-transparent">
+            {step === 2 ? (
+              <button
+                onClick={() => setStep(1)}
+                className="text-sm text-gray-400 hover:text-white transition-colors"
+              >
+                ← Back to Preference 1
+              </button>
+            ) : (
+              <span />
+            )}
+
+            {step === 1 ? (
+              <button
+                onClick={() => setStep(2)}
+                disabled={!preference1Id || !mentor1Id}
+                className="py-3 px-6 bg-gold text-black font-semibold rounded-lg shadow-xl shadow-black/40 hover:bg-gold-hover hover:shadow-lg hover:shadow-gold/10 transition-all duration-200 disabled:opacity-40 disabled:hover:shadow-none"
+              >
+                Next: Preference 2 →
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={!preference2Id || !mentor2Id || submitting}
+                className="py-3 px-6 bg-gold text-black font-semibold rounded-lg shadow-xl shadow-black/40 hover:bg-gold-hover hover:shadow-lg hover:shadow-gold/10 transition-all duration-200 disabled:opacity-40 disabled:hover:shadow-none"
+              >
+                {submitting ? 'Submitting...' : 'Confirm & Submit'}
+              </button>
+            )}
           </div>
         </div>
       )}
+    </div>
+  );
+}
 
-      <button
-        onClick={handleSubmit}
-        disabled={!preference1Id || !preference2Id || submitting}
-        className="sticky bottom-0 z-10 w-full py-3 bg-gold text-black font-semibold rounded-lg shadow-xl shadow-black/40 hover:bg-gold-hover hover:shadow-lg hover:shadow-gold/10 transition-all duration-200 disabled:opacity-40 disabled:hover:shadow-none"
-      >
-        {submitting ? 'Submitting...' : 'Confirm Project Selections'}
-      </button>
+function MentorPicker({
+  label,
+  mentors,
+  loading,
+  selectedId,
+  onSelect,
+  excludeId,
+}: {
+  label: string;
+  mentors: TeamAvailableMentor[];
+  loading: boolean;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  excludeId?: string | null;
+}) {
+  const options = mentors.filter(m => m.id !== excludeId);
+
+  return (
+    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-4 space-y-3 h-full">
+      <label className="text-xs text-gray-500 uppercase font-bold tracking-wider">{label}</label>
+      {loading ? (
+        <div className="py-6 flex justify-center"><SpinnerSquare size={24} /></div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[45vh] overflow-y-auto pr-1">
+          {options.map(m => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onSelect(m.id)}
+              className={`flex items-center gap-2.5 text-left rounded-lg p-2.5 border transition-all duration-200 ${
+                selectedId === m.id
+                  ? 'bg-gold/10 border-gold shadow-lg shadow-gold/5'
+                  : 'bg-zinc-900 border-zinc-750 hover:border-zinc-600'
+              }`}
+            >
+              <MentorAvatar name={m.fullName} selected={selectedId === m.id} />
+              <div className="min-w-0">
+                <p className="text-white font-semibold text-xs truncate">{m.fullName}</p>
+                <p className="text-gray-500 text-[10px] truncate">
+                  {m.organization || (m.isExternal ? 'External' : 'Internal')}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      {!loading && options.length === 0 && (
+        <p className="text-gray-500 text-xs">No mentors available for this track right now.</p>
+      )}
+    </div>
+  );
+}
+
+function MentorAvatar({ name, selected }: { name: string; selected: boolean }) {
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase())
+    .join('');
+
+  return (
+    <div
+      className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold ${
+        selected ? 'bg-gold text-black' : 'bg-zinc-750 text-gray-300'
+      }`}
+    >
+      {initials || '?'}
     </div>
   );
 }
@@ -625,7 +791,7 @@ function ExistingProjectPicker({
         <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
           <Briefcase size={18} className="text-gold" />
         </div>
-        Existing Project
+        Recommended Project
       </h2>
 
       <div className="relative">
@@ -658,7 +824,7 @@ function ExistingProjectPicker({
         ))}
         {filteredCatalog.length === 0 && (
           <div className="text-center py-8">
-            <p className="text-gray-400 text-sm">No existing projects available for this track.</p>
+            <p className="text-gray-400 text-sm">No recommended projects available for this track.</p>
           </div>
         )}
       </div>
@@ -671,10 +837,19 @@ function ExistingProjectPicker({
 function SummaryScreen({
   team,
   preferences,
+  availableMentors,
 }: {
   team: { track: string; members: { studentId: string; fullName: string | null }[] };
-  preferences: { preference1Id: string; preference2Id: string };
+  preferences: {
+    preference1Id: string;
+    preference2Id: string;
+    preference1MentorId: string | null;
+    preference2MentorId: string | null;
+  };
+  availableMentors: TeamAvailableMentor[];
 }) {
+  const mentor1 = availableMentors.find(m => m.id === preferences.preference1MentorId) ?? null;
+  const mentor2 = availableMentors.find(m => m.id === preferences.preference2MentorId) ?? null;
   const [selfProject, setSelfProject] = useState<Project | null>(null);
   const [existingProject, setExistingProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -730,19 +905,42 @@ function SummaryScreen({
               <p className="text-white font-semibold">{selfProject?.title}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Existing Project</p>
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Recommended Project</p>
               <p className="text-white font-semibold">{existingProject?.title}</p>
             </div>
           </>
         )}
       </div>
 
-      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 opacity-60">
-        <div className="flex items-center gap-2 text-gray-400 text-sm font-semibold mb-1">
-          <Sparkles size={16} />
+      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
+        <div className="flex items-center gap-2 text-white text-sm font-semibold">
+          <UserCheck size={16} className="text-gold" />
           Mentor selection
         </div>
-        <p className="text-gray-500 text-xs">Coming soon — mentors will show here once assigned.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference 1 mentor</p>
+            {mentor1 ? (
+              <div className="flex items-center gap-2">
+                <MentorAvatar name={mentor1.fullName} selected />
+                <p className="text-white font-semibold">{mentor1.fullName}</p>
+              </div>
+            ) : (
+              <p className="text-white font-semibold">—</p>
+            )}
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference 2 mentor</p>
+            {mentor2 ? (
+              <div className="flex items-center gap-2">
+                <MentorAvatar name={mentor2.fullName} selected />
+                <p className="text-white font-semibold">{mentor2.fullName}</p>
+              </div>
+            ) : (
+              <p className="text-white font-semibold">—</p>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
