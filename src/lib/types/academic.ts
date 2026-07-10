@@ -184,6 +184,9 @@ export interface TeamAvailableMentor {
 // the Select Project page renders, and lets it resume after a reload.
 export interface MyTeamStatus {
   team: Team | null;
+  // False for batch-mandated individual-project students — drives whether
+  // the teammate-invite screen renders at all.
+  canInviteTeammate: boolean;
   pendingSentRequest: PendingSentRequest | null;
   pendingReceivedRequest: PendingReceivedRequest | null;
   projectPreferences: TeamProjectPreferences | null;
