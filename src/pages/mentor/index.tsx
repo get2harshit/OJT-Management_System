@@ -8,12 +8,12 @@ import Submissions from './Submissions';
 import Attendance from './Attendance';
 import EvaluationTracker from './EvaluationTracker';
 import Credits from './Credits';
-import { useMockData } from '../../hooks/useMockData';
+import { DataProvider, useData } from '../../context/DataContext';
 import { useAuth } from '../../context/useAuth';
 
-export default function MentorPanel({ onLogout }: { onLogout?: () => void }) {
+function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const data = useMockData();
+  const data = useData();
   let authUser = null;
   try {
     const auth = useAuth();
@@ -29,38 +29,26 @@ export default function MentorPanel({ onLogout }: { onLogout?: () => void }) {
         return (
           <Dashboard
             mentorId={mentorId}
-            students={data.students}
-            tasks={data.tasks}
-            submissions={data.submissions}
-            attendance={data.attendance}
-            semesters={data.semesters}
-            batches={data.batches}
           />
         );
       case 'students':
-        return <Students profiles={data.profiles} students={data.students} batches={data.batches} />;
+        return <Students />;
       case 'ojts':
-        return <OJTs projects={data.projects} students={data.students} profiles={data.profiles} addProject={data.addProject} addProjects={data.addProjects} updateStudent={data.updateStudent} deleteProject={data.deleteProject} />;
+        return <OJTs />;
       case 'tasks':
-        return <Tasks tasks={data.tasks} mentorId={mentorId} profiles={data.profiles} students={data.students} addTask={data.addTask} deleteTask={data.deleteTask} />;
+        return <Tasks mentorId={mentorId} />;
       case 'submissions':
-        return <Submissions submissions={data.submissions} tasks={data.tasks} profiles={data.profiles} students={data.students} comments={data.comments} addComment={data.addComment} updateSubmissionStatus={data.updateSubmissionStatus} mentorId={mentorId} />;
+        return <Submissions mentorId={mentorId} />;
       case 'credits':
-        return <Credits mentorId={mentorId} creditRequests={data.creditRequests} profiles={data.profiles} students={data.students} vouchCreditRequest={data.vouchCreditRequest} />;
+        return <Credits mentorId={mentorId} />;
       case 'attendance':
-        return <Attendance attendance={data.attendance} profiles={data.profiles} students={data.students} toggleAttendance={data.toggleAttendance} markAllAttendance={data.markAllAttendance} />;
+        return <Attendance />;
       case 'evaluation':
-        return <EvaluationTracker profiles={data.profiles} students={data.students} attendance={data.attendance} updateStudent={data.updateStudent} />;
+        return <EvaluationTracker />;
       default:
         return (
           <Dashboard
             mentorId={mentorId}
-            students={data.students}
-            tasks={data.tasks}
-            submissions={data.submissions}
-            attendance={data.attendance}
-            semesters={data.semesters}
-            batches={data.batches}
           />
         );
     }
@@ -70,5 +58,13 @@ export default function MentorPanel({ onLogout }: { onLogout?: () => void }) {
     <AppShell panel="mentor" activeTab={activeTab} onTabChange={setActiveTab} onLogout={onLogout}>
       {renderTab()}
     </AppShell>
+  );
+}
+
+export default function MentorPanel({ onLogout }: { onLogout?: () => void }) {
+  return (
+    <DataProvider>
+      <MentorPanelContent onLogout={onLogout} />
+    </DataProvider>
   );
 }

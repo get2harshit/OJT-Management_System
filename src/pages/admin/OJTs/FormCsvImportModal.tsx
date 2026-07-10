@@ -6,7 +6,7 @@ import type { Profile } from '../../../lib/types';
 import { parseCSV } from '../../../lib/csv';
 import { useMentors } from '../../../hooks/useMentors';
 import { useToast } from '../../../toast';
-import type { OJTBatchStudentRecord } from '../../../hooks/useMockData';
+import type { OJTBatchStudentRecord } from '../../../context/DataContext';
 
 interface CohortOption {
   id: string;

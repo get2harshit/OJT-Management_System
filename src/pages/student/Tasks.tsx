@@ -3,6 +3,9 @@ import { AlertTriangle, CheckCircle2, Clock, ListFilter, Eye, Upload } from 'luc
 import DataTable from '../../components/DataTable';
 import type { Task, Submission } from '../../lib/types';
 
+import { useTasks } from '../../hooks/useTasks';
+import { useSubmissions } from '../../hooks/useSubmissions';
+
 interface Props {
   studentId: string;
   tasks: Task[];
@@ -25,7 +28,18 @@ function getTaskStatus(task: Task, submissions: Submission[], studentId: string)
   return 'UPCOMING';
 }
 
-export default function StudentTasks({ studentId, tasks, submissions, onViewSubmission, onNewSubmission }: Props) {
+export default function StudentTasks({
+  studentId,
+  tasks: propTasks,
+  submissions: propSubmissions,
+  onViewSubmission,
+  onNewSubmission,
+}: Props) {
+  const { tasks: hookTasks } = useTasks();
+  const { submissions: hookSubmissions } = useSubmissions();
+
+  const tasks = propTasks ?? hookTasks;
+  const submissions = propSubmissions ?? hookSubmissions;
   const [filter, setFilter] = useState<TaskFilter>('ALL');
 
   const taskData = useMemo(() => {

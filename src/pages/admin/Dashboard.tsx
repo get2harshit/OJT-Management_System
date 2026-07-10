@@ -17,6 +17,10 @@ import { getCohortLabel } from '../../lib/cohortLabel';
 import { TRACKS } from '../../lib/constants';
 import { mapFrontendTrackToBackend } from '../../lib/api/trackMapping';
 
+import { useTasks } from '../../hooks/useTasks';
+import { useSubmissions } from '../../hooks/useSubmissions';
+import { useAttendance } from '../../hooks/useAttendance';
+
 interface Props {
   tasks: Task[];
   submissions: Submission[];
@@ -24,7 +28,19 @@ interface Props {
   onNavigateToTab: (tab: string) => void;
 }
 
-export default function AdminDashboard({ tasks, submissions, attendance, onNavigateToTab }: Props) {
+export default function AdminDashboard({
+  tasks: propTasks,
+  submissions: propSubmissions,
+  attendance: propAttendance,
+  onNavigateToTab,
+}: Props) {
+  const { tasks: hookTasks } = useTasks();
+  const { submissions: hookSubmissions } = useSubmissions();
+  const { attendance: hookAttendance } = useAttendance();
+
+  const tasks = propTasks ?? hookTasks;
+  const submissions = propSubmissions ?? hookSubmissions;
+  const attendance = propAttendance ?? hookAttendance;
   const [semFilter, setSemFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
   const [trackFilter, setTrackFilter] = useState('');

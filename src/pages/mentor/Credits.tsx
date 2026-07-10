@@ -3,6 +3,9 @@ import { Cloud, Check, X, ShieldAlert, Award } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import type { CreditRequest, Profile, Student } from '../../lib/types';
 
+import { useCredits } from '../../hooks/useCredits';
+import { useData } from '../../context/DataContext';
+
 interface Props {
   mentorId: string;
   creditRequests: CreditRequest[];
@@ -11,7 +14,20 @@ interface Props {
   vouchCreditRequest: (id: string, status: 'VOUCHED' | 'REJECTED') => void;
 }
 
-export default function MentorCredits({ mentorId, creditRequests, profiles, students, vouchCreditRequest }: Props) {
+export default function MentorCredits({
+  mentorId,
+  creditRequests: propCreditRequests,
+  profiles: propProfiles,
+  students: propStudents,
+  vouchCreditRequest: propVouchCreditRequest,
+}: Props) {
+  const { creditRequests: hookCreditRequests, vouchCreditRequest: hookVouchCreditRequest } = useCredits();
+  const { profiles: hookProfiles, students: hookStudents } = useData();
+
+  const creditRequests = propCreditRequests ?? hookCreditRequests;
+  const profiles = propProfiles ?? hookProfiles;
+  const students = propStudents ?? hookStudents;
+  const vouchCreditRequest = propVouchCreditRequest ?? hookVouchCreditRequest;
   // Find all students assigned to this mentor
   const myStudentIds = useMemo(() => {
     return new Set(students.filter(s => s.mentor_id === mentorId).map(s => s.user_id));

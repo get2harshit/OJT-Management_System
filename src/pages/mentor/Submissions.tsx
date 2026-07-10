@@ -3,6 +3,10 @@ import { Eye, CheckCircle2, RotateCcw, ArrowLeft, Send, MessageSquare } from 'lu
 import DataTable from '../../components/DataTable';
 import type { Submission, Task, Profile, Student, Comment, SubmissionCategory, SubmissionStatus } from '../../lib/types';
 
+import { useSubmissions } from '../../hooks/useSubmissions';
+import { useTasks } from '../../hooks/useTasks';
+import { useData } from '../../context/DataContext';
+
 interface Props {
   submissions: Submission[];
   tasks: Task[];
@@ -15,15 +19,26 @@ interface Props {
 }
 
 export default function MentorSubmissions({
-  submissions,
-  tasks,
-  profiles,
-  students,
-  comments,
-  addComment,
-  updateSubmissionStatus,
   mentorId,
+  submissions: propSubmissions,
+  tasks: propTasks,
+  profiles: propProfiles,
+  students: propStudents,
+  comments: propComments,
+  addComment: propAddComment,
+  updateSubmissionStatus: propUpdateSubmissionStatus,
 }: Props) {
+  const { submissions: hookSubmissions, comments: hookComments, addComment: hookAddComment, updateSubmissionStatus: hookUpdateSubmissionStatus } = useSubmissions();
+  const { tasks: hookTasks } = useTasks();
+  const { profiles: hookProfiles, students: hookStudents } = useData();
+
+  const submissions = propSubmissions ?? hookSubmissions;
+  const tasks = propTasks ?? hookTasks;
+  const profiles = propProfiles ?? hookProfiles;
+  const students = propStudents ?? hookStudents;
+  const comments = propComments ?? hookComments;
+  const addComment = propAddComment ?? hookAddComment;
+  const updateSubmissionStatus = propUpdateSubmissionStatus ?? hookUpdateSubmissionStatus;
   const [filterType, setFilterType] = useState<'ALL' | 'STUDENT' | 'MENTOR'>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<SubmissionCategory | 'ALL'>('ALL');
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);

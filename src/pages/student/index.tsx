@@ -6,14 +6,14 @@ import Tasks from './Tasks';
 import Submissions from './Submissions';
 import Credits from './Credits';
 import Attendance from './Attendance';
-import { useMockData } from '../../hooks/useMockData';
+import { DataProvider, useData } from '../../context/DataContext';
 import { useAuth } from '../../context/useAuth';
 
-export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
+function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [initialSelectedSubId, setInitialSelectedSubId] = useState<string | null>(null);
   const [initialNewSubTaskId, setInitialNewSubTaskId] = useState<string | null>(null);
-  const data = useMockData();
+  const data = useData();
 
   let authUser = null;
   try {
@@ -47,10 +47,6 @@ export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
         return (
           <Dashboard
             studentId={studentId}
-            tasks={data.tasks}
-            submissions={data.submissions}
-            credits={data.credits}
-            attendance={data.attendance}
           />
         );
       case 'projects':
@@ -59,8 +55,6 @@ export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
         return (
           <Tasks
             studentId={studentId}
-            tasks={data.tasks}
-            submissions={data.submissions}
             onViewSubmission={handleViewSubmission}
             onNewSubmission={handleNewSubmission}
           />
@@ -69,12 +63,6 @@ export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
         return (
           <Submissions
             studentId={studentId}
-            submissions={data.submissions}
-            tasks={data.tasks}
-            comments={data.comments}
-            profiles={data.profiles}
-            addComment={data.addComment}
-            addSubmission={data.addSubmission}
             initialSelectedSubId={initialSelectedSubId}
             initialNewSubTaskId={initialNewSubTaskId}
             onClearInitialState={handleClearInitialState}
@@ -84,22 +72,14 @@ export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
         return (
           <Credits
             studentId={studentId}
-            credits={data.credits}
-            creditRequests={data.creditRequests}
-            profiles={data.profiles}
-            addCreditRequest={data.addCreditRequest}
           />
         );
       case 'attendance':
-        return <Attendance studentId={studentId} attendance={data.attendance} profiles={data.profiles} />;
+        return <Attendance studentId={studentId} />;
       default:
         return (
           <Dashboard
             studentId={studentId}
-            tasks={data.tasks}
-            submissions={data.submissions}
-            credits={data.credits}
-            attendance={data.attendance}
           />
         );
     }
@@ -109,5 +89,13 @@ export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
     <AppShell panel="student" activeTab={activeTab} onTabChange={setActiveTab} onLogout={onLogout}>
       {renderTab()}
     </AppShell>
+  );
+}
+
+export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
+  return (
+    <DataProvider>
+      <StudentPanelContent onLogout={onLogout} />
+    </DataProvider>
   );
 }

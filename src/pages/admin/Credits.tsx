@@ -5,6 +5,9 @@ import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import type { Credit, CreditRequest, Profile, Student, CloudProvider } from '../../lib/types';
 
+import { useCredits } from '../../hooks/useCredits';
+import { useData } from '../../context/DataContext';
+
 interface Props {
   credits: Credit[];
   creditRequests: CreditRequest[];
@@ -14,7 +17,23 @@ interface Props {
   approveCreditRequest: (id: string, status: 'APPROVED' | 'REJECTED', code?: string) => void;
 }
 
-export default function AdminCredits({ credits, creditRequests, profiles, students, addCredit, approveCreditRequest }: Props) {
+export default function AdminCredits({
+  credits: propCredits,
+  creditRequests: propCreditRequests,
+  profiles: propProfiles,
+  students: propStudents,
+  addCredit: propAddCredit,
+  approveCreditRequest: propApproveCreditRequest,
+}: Partial<Props> = {}) {
+  const { credits: hookCredits, creditRequests: hookCreditRequests, addCredit: hookAddCredit, approveCreditRequest: hookApproveCreditRequest } = useCredits();
+  const { profiles: hookProfiles, students: hookStudents } = useData();
+
+  const credits = propCredits ?? hookCredits;
+  const creditRequests = propCreditRequests ?? hookCreditRequests;
+  const profiles = propProfiles ?? hookProfiles;
+  const students = propStudents ?? hookStudents;
+  const addCredit = propAddCredit ?? hookAddCredit;
+  const approveCreditRequest = propApproveCreditRequest ?? hookApproveCreditRequest;
   const [modalOpen, setModalOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [selectedReqId, setSelectedReqId] = useState<string | null>(null);

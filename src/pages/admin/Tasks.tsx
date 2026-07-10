@@ -8,6 +8,9 @@ import { useMentors } from '../../hooks/useMentors';
 import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 import { TRACKS } from '../../lib/constants';
 
+import { useTasks } from '../../hooks/useTasks';
+import { useData } from '../../context/DataContext';
+
 interface Props {
   tasks: Task[];
   profiles: Profile[];
@@ -18,7 +21,21 @@ interface Props {
 
 const WEEKS = Array.from({ length: 12 }, (_, i) => i + 1);
 
-export default function AdminTasks({ tasks, profiles, students, addTask, deleteTask }: Props) {
+export default function AdminTasks({
+  tasks: propTasks,
+  profiles: propProfiles,
+  students: propStudents,
+  addTask: propAddTask,
+  deleteTask: propDeleteTask,
+}: Partial<Props> = {}) {
+  const { tasks: hookTasks, addTask: hookAddTask, deleteTask: hookDeleteTask } = useTasks();
+  const { profiles: hookProfiles, students: hookStudents } = useData();
+
+  const tasks = propTasks ?? hookTasks;
+  const profiles = propProfiles ?? hookProfiles;
+  const students = propStudents ?? hookStudents;
+  const addTask = propAddTask ?? hookAddTask;
+  const deleteTask = propDeleteTask ?? hookDeleteTask;
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
     title: '',

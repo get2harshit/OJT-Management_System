@@ -2,13 +2,24 @@ import DataTable from '../../components/DataTable';
 import type { Profile, Student, Batch } from '../../lib/types';
 import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 
+import { useData } from '../../context/DataContext';
+
 interface Props {
   profiles: Profile[];
   students: Student[];
   batches: Batch[];
 }
 
-export default function MentorStudents({ profiles, students, batches }: Props) {
+export default function MentorStudents({
+  profiles: propProfiles,
+  students: propStudents,
+  batches: propBatches,
+}: Partial<Props> = {}) {
+  const { profiles: hookProfiles, students: hookStudents, batches: hookBatches } = useData();
+
+  const profiles = propProfiles ?? hookProfiles;
+  const students = propStudents ?? hookStudents;
+  const batches = propBatches ?? hookBatches;
   const studentProfiles = useStudentProfiles(profiles);
 
   const data = students.map((s) => {
