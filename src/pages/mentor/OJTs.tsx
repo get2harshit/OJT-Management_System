@@ -11,6 +11,8 @@ import { parseCSV as parseCSVRows, isExcelBinaryFile, EXCEL_FILE_WARNING } from 
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
 
+import { useData } from '../../context/DataContext';
+
 interface Props {
   projects: Project[];
   students: Student[];
@@ -21,7 +23,22 @@ interface Props {
   deleteProject: (id: string) => void;
 }
 
-export default function MentorOJTs({ projects, students, profiles, addProjects, updateStudent, deleteProject }: Props) {
+export default function MentorOJTs({
+  projects: propProjects,
+  students: propStudents,
+  profiles: propProfiles,
+  addProjects: propAddProjects,
+  updateStudent: propUpdateStudent,
+  deleteProject: propDeleteProject,
+}: Partial<Props> = {}) {
+  const { projects: hookProjects, students: hookStudents, profiles: hookProfiles, addProjects: hookAddProjects, updateStudent: hookUpdateStudent, deleteProject: hookDeleteProject } = useData();
+
+  const projects = propProjects ?? hookProjects;
+  const students = propStudents ?? hookStudents;
+  const profiles = propProfiles ?? hookProfiles;
+  const addProjects = propAddProjects ?? hookAddProjects;
+  const updateStudent = propUpdateStudent ?? hookUpdateStudent;
+  const deleteProject = propDeleteProject ?? hookDeleteProject;
   const { showError } = useToast();
   const [csvModalOpen, setCsvModalOpen] = useState(false);
   const [assignModalOpen, setAssignModalOpen] = useState(false);

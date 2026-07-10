@@ -10,14 +10,23 @@ import { getDurationString, formatDateDisplay } from '../../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import FormCsvImportModal from './FormCsvImportModal';
-import type { OJTBatchStudentRecord } from '../../../hooks/useMockData';
+import type { OJTBatchStudentRecord } from '../../../context/DataContext';
+
+import { useData } from '../../../context/DataContext';
 
 interface ViewCohortPageProps {
   profiles: Profile[];
   importOJTBatch: (cohortId: string, studentRecords: OJTBatchStudentRecord[], batchName?: string, semesterName?: string) => void;
 }
 
-export default function ViewCohortPage({ profiles, importOJTBatch }: ViewCohortPageProps) {
+export default function ViewCohortPage({
+  profiles: propProfiles,
+  importOJTBatch: propImportOJTBatch,
+}: Partial<ViewCohortPageProps> = {}) {
+  const { profiles: hookProfiles, importOJTBatch: hookImportOJTBatch } = useData();
+
+  const profiles = propProfiles ?? hookProfiles;
+  const importOJTBatch = propImportOJTBatch ?? hookImportOJTBatch;
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
   const { showError } = useToast();

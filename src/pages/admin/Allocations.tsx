@@ -9,6 +9,8 @@ import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 import { TRACKS } from '../../lib/constants';
 import { getCohortLabel } from '../../lib/cohortLabel';
 
+import { useData } from '../../context/DataContext';
+
 interface Props {
   students: Student[];
   profiles: Profile[];
@@ -18,7 +20,22 @@ interface Props {
   resolveStudentChangeRequest: (studentId: string, status: 'APPROVED' | 'REJECTED') => void;
 }
 
-export default function AdminAllocations({ students, profiles, projects, cohorts, updateStudent, resolveStudentChangeRequest }: Props) {
+export default function AdminAllocations({
+  students: propStudents,
+  profiles: propProfiles,
+  projects: propProjects,
+  cohorts: propCohorts,
+  updateStudent: propUpdateStudent,
+  resolveStudentChangeRequest: propResolveStudentChangeRequest,
+}: Partial<Props> = {}) {
+  const { students: hookStudents, profiles: hookProfiles, projects: hookProjects, ojts: hookCohorts, updateStudent: hookUpdateStudent, resolveStudentChangeRequest: hookResolveStudentChangeRequest } = useData();
+
+  const students = propStudents ?? hookStudents;
+  const profiles = propProfiles ?? hookProfiles;
+  const projects = propProjects ?? hookProjects;
+  const cohorts = (propCohorts ?? hookCohorts) as any[];
+  const updateStudent = propUpdateStudent ?? hookUpdateStudent;
+  const resolveStudentChangeRequest = propResolveStudentChangeRequest ?? hookResolveStudentChangeRequest;
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [form, setForm] = useState({ mentor_id: '', project_id: '', ojt_id: '', track: '' });

@@ -5,6 +5,10 @@ import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import type { Submission, Task, Comment, Profile, SubmissionCategory } from '../../lib/types';
 
+import { useSubmissions } from '../../hooks/useSubmissions';
+import { useTasks } from '../../hooks/useTasks';
+import { useData } from '../../context/DataContext';
+
 interface Props {
   studentId: string;
   submissions: Submission[];
@@ -20,16 +24,26 @@ interface Props {
 
 export default function StudentSubmissions({
   studentId,
-  submissions,
-  tasks,
-  comments,
-  profiles,
-  addComment,
-  addSubmission,
+  submissions: propSubmissions,
+  tasks: propTasks,
+  comments: propComments,
+  profiles: propProfiles,
+  addComment: propAddComment,
+  addSubmission: propAddSubmission,
   initialSelectedSubId,
   initialNewSubTaskId,
   onClearInitialState,
-}: Props) {
+}: Partial<Props> & { studentId: string }) {
+  const { submissions: hookSubmissions, comments: hookComments, addSubmission: hookAddSubmission, addComment: hookAddComment } = useSubmissions();
+  const { tasks: hookTasks } = useTasks();
+  const { profiles: hookProfiles } = useData();
+
+  const submissions = propSubmissions ?? hookSubmissions;
+  const tasks = propTasks ?? hookTasks;
+  const comments = propComments ?? hookComments;
+  const profiles = propProfiles ?? hookProfiles;
+  const addComment = propAddComment ?? hookAddComment;
+  const addSubmission = propAddSubmission ?? hookAddSubmission;
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<SubmissionCategory | 'ALL'>('ALL');

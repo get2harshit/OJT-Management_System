@@ -2,6 +2,11 @@ import { CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Clock } from
 import StatCard from '../../components/StatCard';
 import type { Task, Submission, Credit, Attendance } from '../../lib/types';
 
+import { useTasks } from '../../hooks/useTasks';
+import { useSubmissions } from '../../hooks/useSubmissions';
+import { useCredits } from '../../hooks/useCredits';
+import { useAttendance } from '../../hooks/useAttendance';
+
 interface Props {
   studentId: string;
   tasks: Task[];
@@ -10,7 +15,22 @@ interface Props {
   attendance: Attendance[];
 }
 
-export default function StudentDashboard({ studentId, tasks, submissions, credits, attendance }: Props) {
+export default function StudentDashboard({
+  studentId,
+  tasks: propTasks,
+  submissions: propSubmissions,
+  credits: propCredits,
+  attendance: propAttendance,
+}: Partial<Props> & { studentId: string }) {
+  const { tasks: hookTasks } = useTasks();
+  const { submissions: hookSubmissions } = useSubmissions();
+  const { credits: hookCredits } = useCredits();
+  const { attendance: hookAttendance } = useAttendance();
+
+  const tasks = propTasks ?? hookTasks;
+  const submissions = propSubmissions ?? hookSubmissions;
+  const credits = propCredits ?? hookCredits;
+  const attendance = propAttendance ?? hookAttendance;
   const mySubmissions = submissions.filter((s) => s.student_id === studentId);
   const myCredits = credits.filter((c) => c.student_id === studentId);
   const myAttendance = attendance.filter((a) => a.student_id === studentId);

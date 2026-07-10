@@ -16,17 +16,17 @@ import CohortStudentsPage from './OJTs/CohortStudentsPage';
 import CohortProjectsPage from './OJTs/CohortProjectsPage';
 import CohortMentorsPage from './OJTs/CohortMentorsPage';
 import CohortTeamsPage from './OJTs/CohortTeamsPage';
-import { useMockData } from '../../hooks/useMockData';
+import { DataProvider, useData } from '../../context/DataContext';
 import { apiListCohorts, apiListProjects, apiCreateProject, apiDeleteProject, apiDeleteAllProjects } from '../../lib/api';
 import { useEffect, useCallback } from 'react';
 import type { Cohort, Project } from '../../lib/types';
 import { useToast } from '../../toast';
 
-export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
+function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
-  const data = useMockData();
+  const data = useData();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [projectsList, setProjectsList] = useState<Project[]>([]);
 
@@ -97,18 +97,15 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
       case 'dashboard':
         return (
           <Dashboard
-            tasks={data.tasks}
-            submissions={data.submissions}
-            attendance={data.attendance}
             onNavigateToTab={handleTabChange}
           />
         );
       case 'students':
         return <Students />;
       case 'mentors':
-        return <Mentors updateProfile={data.updateProfile} />;
+        return <Mentors />;
       case 'allocations':
-        return <Allocations students={data.students} profiles={data.profiles} projects={projectsList} cohorts={cohorts} updateStudent={data.updateStudent} resolveStudentChangeRequest={data.resolveStudentChangeRequest} />;
+        return <Allocations projects={projectsList} cohorts={cohorts} />;
       case 'ojts':
         return (
           <OJTs
@@ -118,21 +115,18 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
           />
         );
       case 'tasks':
-        return <Tasks tasks={data.tasks} profiles={data.profiles} students={data.students} addTask={data.addTask} deleteTask={data.deleteTask} />;
+        return <Tasks />;
       case 'submissions':
-        return <Submissions submissions={data.submissions} tasks={data.tasks} profiles={data.profiles} students={data.students} comments={data.comments} addComment={data.addComment} updateSubmissionStatus={data.updateSubmissionStatus} />;
+        return <Submissions />;
       case 'credits':
-        return <Credits credits={data.credits} creditRequests={data.creditRequests} profiles={data.profiles} students={data.students} addCredit={data.addCredit} approveCreditRequest={data.approveCreditRequest} />;
+        return <Credits />;
       case 'attendance':
-        return <Attendance attendance={data.attendance} profiles={data.profiles} students={data.students} toggleAttendance={data.toggleAttendance} markAllAttendance={data.markAllAttendance} />;
+        return <Attendance />;
       case 'evaluation':
-        return <EvaluationTracker profiles={data.profiles} students={data.students} attendance={data.attendance} updateStudent={data.updateStudent} />;
+        return <EvaluationTracker />;
       default:
         return (
           <Dashboard
-            tasks={data.tasks}
-            submissions={data.submissions}
-            attendance={data.attendance}
             onNavigateToTab={handleTabChange}
           />
         );
@@ -150,5 +144,13 @@ export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
         <Route path="*" element={renderTab()} />
       </Routes>
     </AppShell>
+  );
+}
+
+export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
+  return (
+    <DataProvider>
+      <AdminPanelContent onLogout={onLogout} />
+    </DataProvider>
   );
 }

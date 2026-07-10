@@ -8,6 +8,10 @@ import { useMentors } from '../../hooks/useMentors';
 import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 import { TRACKS } from '../../lib/constants';
 
+import { useTasks } from '../../hooks/useTasks';
+import { useData } from '../../context/DataContext';
+import Button from '../../components/Button';
+
 interface Props {
   tasks: Task[];
   profiles: Profile[];
@@ -18,7 +22,21 @@ interface Props {
 
 const WEEKS = Array.from({ length: 12 }, (_, i) => i + 1);
 
-export default function AdminTasks({ tasks, profiles, students, addTask, deleteTask }: Props) {
+export default function AdminTasks({
+  tasks: propTasks,
+  profiles: propProfiles,
+  students: propStudents,
+  addTask: propAddTask,
+  deleteTask: propDeleteTask,
+}: Partial<Props> = {}) {
+  const { tasks: hookTasks, addTask: hookAddTask, deleteTask: hookDeleteTask } = useTasks();
+  const { profiles: hookProfiles, students: hookStudents } = useData();
+
+  const tasks = propTasks ?? hookTasks;
+  const profiles = propProfiles ?? hookProfiles;
+  const students = propStudents ?? hookStudents;
+  const addTask = propAddTask ?? hookAddTask;
+  const deleteTask = propDeleteTask ?? hookDeleteTask;
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
     title: '',
@@ -94,10 +112,9 @@ export default function AdminTasks({ tasks, profiles, students, addTask, deleteT
           <h1 className="text-2xl font-bold text-white">Week-wise Goals & Tasks</h1>
           <p className="text-gray-400 text-sm mt-1">Map out structured goals, viva checkpoints, and sub-tasks for each tech stack track</p>
         </div>
-        <button onClick={() => setModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200">
-          <Plus size={18} />
+        <Button onClick={() => setModalOpen(true)} leftIcon={<Plus size={18} />} className="hover:scale-105">
           Create Task / Goal
-        </button>
+        </Button>
       </div>
 
       <DataTable
@@ -154,9 +171,9 @@ export default function AdminTasks({ tasks, profiles, students, addTask, deleteT
         data={tableData}
         searchPlaceholder="Search weekly goals..."
         actions={(row) => (
-          <button onClick={() => deleteTask(row.id)} className="p-1.5 text-gray-400 hover:text-red-400 transition-colors">
+          <Button variant="ghost" size="sm" onClick={() => deleteTask(row.id)} className="p-1.5 hover:text-red-400">
             <Trash2 size={16} />
-          </button>
+          </Button>
         )}
       />
 
@@ -229,12 +246,20 @@ export default function AdminTasks({ tasks, profiles, students, addTask, deleteT
           <div>
             <label className="block text-sm text-gray-400 mb-1">Task Type</label>
             <div className="flex gap-2">
-              <button onClick={() => setForm({ ...form, type: 'STUDENT_SPECIFIC', assigned_to: '' })} className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${form.type === 'STUDENT_SPECIFIC' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-zinc-750 text-gray-400 border border-zinc-700'}`}>
+              <Button
+                variant={form.type === 'STUDENT_SPECIFIC' ? 'blue' : 'secondary'}
+                onClick={() => setForm({ ...form, type: 'STUDENT_SPECIFIC', assigned_to: '' })}
+                className="flex-1"
+              >
                 Student-Specific
-              </button>
-              <button onClick={() => setForm({ ...form, type: 'MENTOR_SPECIFIC', assigned_to: '' })} className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${form.type === 'MENTOR_SPECIFIC' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' : 'bg-zinc-750 text-gray-400 border border-zinc-700'}`}>
+              </Button>
+              <Button
+                variant={form.type === 'MENTOR_SPECIFIC' ? 'purple' : 'secondary'}
+                onClick={() => setForm({ ...form, type: 'MENTOR_SPECIFIC', assigned_to: '' })}
+                className="flex-1"
+              >
                 Mentor-Specific
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -260,9 +285,9 @@ export default function AdminTasks({ tasks, profiles, students, addTask, deleteT
             </div>
           </div>
 
-          <button onClick={handleSave} className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors">
+          <Button onClick={handleSave} fullWidth size="lg">
             Create Goal & Task
-          </button>
+          </Button>
         </div>
       </Modal>
     </div>

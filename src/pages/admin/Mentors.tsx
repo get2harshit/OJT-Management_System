@@ -7,6 +7,8 @@ import type { ApiMentor, Profile } from '../../lib/types';
 import { TRACKS } from '../../lib/constants';
 import { apiListMentors } from '../../lib/api';
 
+import { useData } from '../../context/DataContext';
+
 interface Props {
   updateProfile: (id: string, patch: Partial<Profile>) => void;
 }
@@ -15,7 +17,9 @@ interface MentorRow extends ApiMentor {
   assignedTracks: string[];
 }
 
-export default function AdminMentors({ updateProfile }: Props) {
+export default function AdminMentors({ updateProfile: propUpdateProfile }: Partial<Props> = {}) {
+  const { updateProfile: hookUpdateProfile } = useData();
+  const updateProfile = propUpdateProfile ?? hookUpdateProfile;
   const [mentors, setMentors] = useState<MentorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingMentor, setEditingMentor] = useState<MentorRow | null>(null);

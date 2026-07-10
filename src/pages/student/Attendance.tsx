@@ -2,13 +2,25 @@ import { CalendarCheck } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import type { Attendance, Profile } from '../../lib/types';
 
+import { useAttendance } from '../../hooks/useAttendance';
+import { useData } from '../../context/DataContext';
+
 interface Props {
   studentId: string;
   attendance: Attendance[];
   profiles: Profile[];
 }
 
-export default function StudentAttendance({ studentId, attendance, profiles }: Props) {
+export default function StudentAttendance({
+  studentId,
+  attendance: propAttendance,
+  profiles: propProfiles,
+}: Partial<Props> & { studentId: string }) {
+  const { attendance: hookAttendance } = useAttendance();
+  const { profiles: hookProfiles } = useData();
+
+  const attendance = propAttendance ?? hookAttendance;
+  const profiles = propProfiles ?? hookProfiles;
   const myAttendance = attendance.filter((a) => a.student_id === studentId);
 
   const data = myAttendance.map((a) => {

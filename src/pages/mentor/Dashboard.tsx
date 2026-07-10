@@ -4,6 +4,11 @@ import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
 import type { Student, Task, Submission, Attendance, Semester, Batch } from '../../lib/types';
 
+import { useTasks } from '../../hooks/useTasks';
+import { useSubmissions } from '../../hooks/useSubmissions';
+import { useAttendance } from '../../hooks/useAttendance';
+import { useData } from '../../context/DataContext';
+
 interface Props {
   mentorId: string;
   students: Student[];
@@ -14,7 +19,26 @@ interface Props {
   batches: Batch[];
 }
 
-export default function MentorDashboard({ mentorId, students, tasks, submissions, attendance, semesters, batches }: Props) {
+export default function MentorDashboard({
+  mentorId,
+  students: propStudents,
+  tasks: propTasks,
+  submissions: propSubmissions,
+  attendance: propAttendance,
+  semesters: propSemesters,
+  batches: propBatches,
+}: Partial<Props> & { mentorId: string }) {
+  const { students: hookStudents, semesters: hookSemesters, batches: hookBatches } = useData();
+  const { tasks: hookTasks } = useTasks();
+  const { submissions: hookSubmissions } = useSubmissions();
+  const { attendance: hookAttendance } = useAttendance();
+
+  const students = propStudents ?? hookStudents;
+  const tasks = propTasks ?? hookTasks;
+  const submissions = propSubmissions ?? hookSubmissions;
+  const attendance = propAttendance ?? hookAttendance;
+  const semesters = propSemesters ?? hookSemesters;
+  const batches = propBatches ?? hookBatches;
   const [semFilter, setSemFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
   const [trackFilter, setTrackFilter] = useState('');

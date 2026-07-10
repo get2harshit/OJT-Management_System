@@ -3,6 +3,9 @@ import { Check, X, AlertTriangle, Search, Calendar, Users, CheckCircle, XCircle 
 import type { Attendance, Profile, Student } from '../../lib/types';
 import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 
+import { useAttendance } from '../../hooks/useAttendance';
+import { useData } from '../../context/DataContext';
+
 interface Props {
   attendance: Attendance[];
   profiles: Profile[];
@@ -12,12 +15,20 @@ interface Props {
 }
 
 export default function AdminAttendance({
-  attendance,
-  profiles,
-  students,
-  toggleAttendance,
-  markAllAttendance,
-}: Props) {
+  attendance: propAttendance,
+  profiles: propProfiles,
+  students: propStudents,
+  toggleAttendance: propToggleAttendance,
+  markAllAttendance: propMarkAllAttendance,
+}: Partial<Props> = {}) {
+  const { attendance: hookAttendance, toggleAttendance: hookToggleAttendance, markAllAttendance: hookMarkAllAttendance } = useAttendance();
+  const { profiles: hookProfiles, students: hookStudents } = useData();
+
+  const attendance = propAttendance ?? hookAttendance;
+  const profiles = propProfiles ?? hookProfiles;
+  const students = propStudents ?? hookStudents;
+  const toggleAttendance = propToggleAttendance ?? hookToggleAttendance;
+  const markAllAttendance = propMarkAllAttendance ?? hookMarkAllAttendance;
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [searchQuery, setSearchQuery] = useState('');
 

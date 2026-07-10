@@ -5,6 +5,9 @@ import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import type { Credit, CreditRequest, Profile, CloudProvider } from '../../lib/types';
 
+import { useCredits } from '../../hooks/useCredits';
+import { useData } from '../../context/DataContext';
+
 interface Props {
   studentId: string;
   credits: Credit[];
@@ -13,7 +16,20 @@ interface Props {
   addCreditRequest: (req: Omit<CreditRequest, 'id' | 'mentor_status' | 'admin_status' | 'created_at'>) => void;
 }
 
-export default function StudentCredits({ studentId, credits, creditRequests, profiles, addCreditRequest }: Props) {
+export default function StudentCredits({
+  studentId,
+  credits: propCredits,
+  creditRequests: propCreditRequests,
+  profiles: propProfiles,
+  addCreditRequest: propAddCreditRequest,
+}: Partial<Props> & { studentId: string }) {
+  const { credits: hookCredits, creditRequests: hookCreditRequests, addCreditRequest: hookAddCreditRequest } = useCredits();
+  const { profiles: hookProfiles } = useData();
+
+  const credits = propCredits ?? hookCredits;
+  const creditRequests = propCreditRequests ?? hookCreditRequests;
+  const profiles = propProfiles ?? hookProfiles;
+  const addCreditRequest = propAddCreditRequest ?? hookAddCreditRequest;
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({ provider: 'AWS' as CloudProvider, amount: '', reason: '' });
 

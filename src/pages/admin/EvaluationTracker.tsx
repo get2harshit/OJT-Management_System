@@ -5,6 +5,9 @@ import Modal from '../../components/Modal';
 import type { Profile, Student, Attendance } from '../../lib/types';
 import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 
+import { useData } from '../../context/DataContext';
+import { useAttendance } from '../../hooks/useAttendance';
+
 interface Props {
   profiles: Profile[];
   students: Student[];
@@ -12,7 +15,19 @@ interface Props {
   updateStudent: (userId: string, patch: Partial<Student>) => void;
 }
 
-export default function AdminEvaluationTracker({ profiles, students, attendance, updateStudent }: Props) {
+export default function AdminEvaluationTracker({
+  profiles: propProfiles,
+  students: propStudents,
+  attendance: propAttendance,
+  updateStudent: propUpdateStudent,
+}: Partial<Props> = {}) {
+  const { profiles: hookProfiles, students: hookStudents, updateStudent: hookUpdateStudent } = useData();
+  const { attendance: hookAttendance } = useAttendance();
+
+  const profiles = propProfiles ?? hookProfiles;
+  const students = propStudents ?? hookStudents;
+  const attendance = propAttendance ?? hookAttendance;
+  const updateStudent = propUpdateStudent ?? hookUpdateStudent;
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [form, setForm] = useState({

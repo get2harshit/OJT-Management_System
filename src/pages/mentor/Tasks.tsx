@@ -7,6 +7,9 @@ import type { Task, Profile, Student, TaskType } from '../../lib/types';
 import { useMentors } from '../../hooks/useMentors';
 import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 
+import { useTasks } from '../../hooks/useTasks';
+import { useData } from '../../context/DataContext';
+
 interface Props {
   tasks: Task[];
   mentorId: string;
@@ -16,7 +19,22 @@ interface Props {
   deleteTask: (id: string) => void;
 }
 
-export default function MentorTasks({ tasks, mentorId, profiles, students, addTask, deleteTask }: Props) {
+export default function MentorTasks({
+  mentorId,
+  tasks: propTasks,
+  profiles: propProfiles,
+  students: propStudents,
+  addTask: propAddTask,
+  deleteTask: propDeleteTask,
+}: Partial<Props> & { mentorId: string }) {
+  const { tasks: hookTasks, addTask: hookAddTask, deleteTask: hookDeleteTask } = useTasks();
+  const { profiles: hookProfiles, students: hookStudents } = useData();
+
+  const tasks = propTasks ?? hookTasks;
+  const profiles = propProfiles ?? hookProfiles;
+  const students = propStudents ?? hookStudents;
+  const addTask = propAddTask ?? hookAddTask;
+  const deleteTask = propDeleteTask ?? hookDeleteTask;
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
     title: '', description: '', start_date: '', due_date: '',
