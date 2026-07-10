@@ -21,7 +21,7 @@ export default function StudentDashboard({
   submissions: propSubmissions,
   credits: propCredits,
   attendance: propAttendance,
-}: Props) {
+}: Partial<Props> & { studentId: string }) {
   const { tasks: hookTasks } = useTasks();
   const { submissions: hookSubmissions } = useSubmissions();
   const { credits: hookCredits } = useCredits();

@@ -28,12 +28,12 @@ export default function AdminAllocations({
   updateStudent: propUpdateStudent,
   resolveStudentChangeRequest: propResolveStudentChangeRequest,
 }: Partial<Props> = {}) {
-  const { students: hookStudents, profiles: hookProfiles, projects: hookProjects, cohorts: hookCohorts, updateStudent: hookUpdateStudent, resolveStudentChangeRequest: hookResolveStudentChangeRequest } = useData();
+  const { students: hookStudents, profiles: hookProfiles, projects: hookProjects, ojts: hookCohorts, updateStudent: hookUpdateStudent, resolveStudentChangeRequest: hookResolveStudentChangeRequest } = useData();
 
   const students = propStudents ?? hookStudents;
   const profiles = propProfiles ?? hookProfiles;
   const projects = propProjects ?? hookProjects;
-  const cohorts = propCohorts ?? hookCohorts;
+  const cohorts = (propCohorts ?? hookCohorts) as any[];
   const updateStudent = propUpdateStudent ?? hookUpdateStudent;
   const resolveStudentChangeRequest = propResolveStudentChangeRequest ?? hookResolveStudentChangeRequest;
   const [editModalOpen, setEditModalOpen] = useState(false);

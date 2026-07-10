@@ -22,7 +22,7 @@ export default function StudentCredits({
   creditRequests: propCreditRequests,
   profiles: propProfiles,
   addCreditRequest: propAddCreditRequest,
-}: Props) {
+}: Partial<Props> & { studentId: string }) {
   const { credits: hookCredits, creditRequests: hookCreditRequests, addCreditRequest: hookAddCreditRequest } = useCredits();
   const { profiles: hookProfiles } = useData();
 

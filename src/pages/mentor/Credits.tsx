@@ -20,7 +20,7 @@ export default function MentorCredits({
   profiles: propProfiles,
   students: propStudents,
   vouchCreditRequest: propVouchCreditRequest,
-}: Props) {
+}: Partial<Props> & { mentorId: string }) {
   const { creditRequests: hookCreditRequests, vouchCreditRequest: hookVouchCreditRequest } = useCredits();
   const { profiles: hookProfiles, students: hookStudents } = useData();
 

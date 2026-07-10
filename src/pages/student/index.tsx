@@ -6,14 +6,13 @@ import Tasks from './Tasks';
 import Submissions from './Submissions';
 import Credits from './Credits';
 import Attendance from './Attendance';
-import { DataProvider, useData } from '../../context/DataContext';
+import { DataProvider } from '../../context/DataContext';
 import { useAuth } from '../../context/useAuth';
 
 function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [initialSelectedSubId, setInitialSelectedSubId] = useState<string | null>(null);
   const [initialNewSubTaskId, setInitialNewSubTaskId] = useState<string | null>(null);
-  const data = useData();
 
   let authUser = null;
   try {

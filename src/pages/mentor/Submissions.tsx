@@ -27,7 +27,7 @@ export default function MentorSubmissions({
   comments: propComments,
   addComment: propAddComment,
   updateSubmissionStatus: propUpdateSubmissionStatus,
-}: Props) {
+}: Partial<Props> & { mentorId: string }) {
   const { submissions: hookSubmissions, comments: hookComments, addComment: hookAddComment, updateSubmissionStatus: hookUpdateSubmissionStatus } = useSubmissions();
   const { tasks: hookTasks } = useTasks();
   const { profiles: hookProfiles, students: hookStudents } = useData();

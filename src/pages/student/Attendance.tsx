@@ -15,7 +15,7 @@ export default function StudentAttendance({
   studentId,
   attendance: propAttendance,
   profiles: propProfiles,
-}: Props) {
+}: Partial<Props> & { studentId: string }) {
   const { attendance: hookAttendance } = useAttendance();
   const { profiles: hookProfiles } = useData();
 

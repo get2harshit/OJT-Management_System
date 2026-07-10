@@ -11,6 +11,7 @@ import { getDurationString, formatDateDisplay, toDateOnly } from '../../../lib/u
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import CohortFormFields from './CohortFormFields';
 import { computeCohortDefaultsFromStartDate, EMPTY_COHORT_FORM, validateCohortForm } from '../../../lib/cohortForm';
+import Button from '../../../components/Button';
 import { useToast } from '../../../toast';
 
 export default function CohortsPanel() {
@@ -122,21 +123,21 @@ export default function CohortsPanel() {
       <div className="flex flex-wrap justify-between items-center gap-3">
         <h2 className="text-lg font-bold text-white">Cohorts & Batches</h2>
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <Button
+            variant="secondary"
             onClick={fetchCohorts}
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 bg-zinc-850 hover:bg-zinc-800 border border-zinc-750 text-gray-300 rounded-lg transition-colors text-sm"
+            leftIcon={<RefreshCw size={16} className={loading ? 'animate-spin' : ''} />}
           >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             Refresh
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => setCohortModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 text-sm"
+            leftIcon={<Plus size={16} />}
+            className="hover:scale-105"
           >
-            <Plus size={16} />
             Create Cohort
-          </button>
+          </Button>
         </div>
       </div>
 

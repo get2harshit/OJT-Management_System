@@ -8,12 +8,11 @@ import Submissions from './Submissions';
 import Attendance from './Attendance';
 import EvaluationTracker from './EvaluationTracker';
 import Credits from './Credits';
-import { DataProvider, useData } from '../../context/DataContext';
+import { DataProvider } from '../../context/DataContext';
 import { useAuth } from '../../context/useAuth';
 
 function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const data = useData();
   let authUser = null;
   try {
     const auth = useAuth();

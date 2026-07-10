@@ -33,7 +33,7 @@ export default function StudentSubmissions({
   initialSelectedSubId,
   initialNewSubTaskId,
   onClearInitialState,
-}: Props) {
+}: Partial<Props> & { studentId: string }) {
   const { submissions: hookSubmissions, comments: hookComments, addSubmission: hookAddSubmission, addComment: hookAddComment } = useSubmissions();
   const { tasks: hookTasks } = useTasks();
   const { profiles: hookProfiles } = useData();

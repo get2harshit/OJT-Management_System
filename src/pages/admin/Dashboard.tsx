@@ -33,7 +33,7 @@ export default function AdminDashboard({
   submissions: propSubmissions,
   attendance: propAttendance,
   onNavigateToTab,
-}: Props) {
+}: Partial<Props> & Pick<Props, 'onNavigateToTab'>) {
   const { tasks: hookTasks } = useTasks();
   const { submissions: hookSubmissions } = useSubmissions();
   const { attendance: hookAttendance } = useAttendance();

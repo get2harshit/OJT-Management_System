@@ -26,7 +26,7 @@ export default function MentorTasks({
   students: propStudents,
   addTask: propAddTask,
   deleteTask: propDeleteTask,
-}: Props) {
+}: Partial<Props> & { mentorId: string }) {
   const { tasks: hookTasks, addTask: hookAddTask, deleteTask: hookDeleteTask } = useTasks();
   const { profiles: hookProfiles, students: hookStudents } = useData();
 

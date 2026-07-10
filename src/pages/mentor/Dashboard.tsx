@@ -27,7 +27,7 @@ export default function MentorDashboard({
   attendance: propAttendance,
   semesters: propSemesters,
   batches: propBatches,
-}: Props) {
+}: Partial<Props> & { mentorId: string }) {
   const { students: hookStudents, semesters: hookSemesters, batches: hookBatches } = useData();
   const { tasks: hookTasks } = useTasks();
   const { submissions: hookSubmissions } = useSubmissions();

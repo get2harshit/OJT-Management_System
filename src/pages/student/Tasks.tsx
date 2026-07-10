@@ -34,7 +34,7 @@ export default function StudentTasks({
   submissions: propSubmissions,
   onViewSubmission,
   onNewSubmission,
-}: Props) {
+}: Partial<Props> & Pick<Props, 'studentId' | 'onViewSubmission' | 'onNewSubmission'>) {
   const { tasks: hookTasks } = useTasks();
   const { submissions: hookSubmissions } = useSubmissions();
 
