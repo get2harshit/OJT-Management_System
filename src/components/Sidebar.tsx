@@ -13,6 +13,7 @@ import {
   CreditCard,
   Briefcase,
   Award,
+  Percent,
   X,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
@@ -45,6 +46,7 @@ const mentorTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'students', label: 'My Students', icon: Users },
   { id: 'ojts', label: 'OJTs & Projects', icon: Briefcase },
+  { id: 'capacity', label: 'My Capacity', icon: Percent },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
   { id: 'credits', label: 'Credit Requests', icon: Cloud },

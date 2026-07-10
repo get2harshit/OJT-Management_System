@@ -6,6 +6,12 @@ export async function apiListCohorts(): Promise<Cohort[]> {
   return apiFetch<Cohort[]>('/api/v1/cohorts');
 }
 
+// Any authenticated role — cohorts the current user is a member of (mentors
+// can't call apiListCohorts, that's admin-only).
+export async function apiListMyCohorts(): Promise<Cohort[]> {
+  return apiFetch<Cohort[]>('/api/v1/cohorts/mine');
+}
+
 export async function apiGetCohort(id: string): Promise<CohortDetails> {
   return apiFetch<CohortDetails>(`/api/v1/cohorts/${id}`);
 }

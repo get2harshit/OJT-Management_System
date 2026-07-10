@@ -16,6 +16,7 @@ import CohortStudentsPage from './OJTs/CohortStudentsPage';
 import CohortProjectsPage from './OJTs/CohortProjectsPage';
 import CohortMentorsPage from './OJTs/CohortMentorsPage';
 import CohortTeamsPage from './OJTs/CohortTeamsPage';
+import CohortAllocationsPage from './OJTs/CohortAllocationsPage';
 import { DataProvider, useData } from '../../context/DataContext';
 import { apiListCohorts, apiListProjects, apiCreateProject, apiDeleteProject, apiDeleteAllProjects } from '../../lib/api';
 import { useEffect, useCallback } from 'react';
@@ -141,6 +142,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route path="ojts/:cohortId/projects" element={<CohortProjectsPage projects={projectsList} onProjectsImported={fetchProjects} />} />
         <Route path="ojts/:cohortId/mentors" element={<CohortMentorsPage />} />
         <Route path="ojts/:cohortId/teams" element={<CohortTeamsPage />} />
+        <Route path="ojts/:cohortId/allocations" element={<CohortAllocationsPage />} />
         <Route path="*" element={renderTab()} />
       </Routes>
     </AppShell>
