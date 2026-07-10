@@ -95,6 +95,7 @@ interface RawMyCohort {
 
 interface RawMyTeamStatus {
   team: RawTeam | null;
+  canInviteTeammate: boolean;
   pendingSentRequest: RawSentRequest | null;
   pendingReceivedRequest: RawReceivedRequest | null;
   projectPreferences: RawPreferences | null;
@@ -199,6 +200,7 @@ export async function apiGetMyTeamStatus(cohortId: string): Promise<MyTeamStatus
   const res = await apiFetch<RawMyTeamStatus>(`/api/v1/teams/my-status?cohortId=${cohortId}`);
   return {
     team: res.team ? mapTeam(res.team) : null,
+    canInviteTeammate: res.canInviteTeammate,
     pendingSentRequest: res.pendingSentRequest ? mapSentRequest(res.pendingSentRequest) : null,
     pendingReceivedRequest: res.pendingReceivedRequest ? mapReceivedRequest(res.pendingReceivedRequest) : null,
     projectPreferences: res.projectPreferences ? mapPreferences(res.projectPreferences) : null,
@@ -226,6 +228,25 @@ export async function apiRespondToTeamRequest(requestId: string, action: 'accept
   await apiFetch<void>(`/api/v1/teams/request/${requestId}/respond`, {
     method: 'POST',
     body: JSON.stringify({ action }),
+  });
+}
+
+// Used by students who can't invite a teammate (batch-mandated individual,
+// or an admin-granted override) to form their own single-member team.
+export async function apiCreateIndividualTeam(cohortId: string, track: string): Promise<Team> {
+  const res = await apiFetch<RawTeam>('/api/v1/teams/individual', {
+    method: 'POST',
+    body: JSON.stringify({ cohortId, track: mapFrontendTrackToBackend(track) }),
+  });
+  return mapTeam(res);
+}
+
+// Admin — grants or revokes a specific student's permission to form an
+// individual team within a cohort, independent of their batch.
+export async function apiSetIndividualOverride(studentId: string, cohortId: string, allowed: boolean): Promise<void> {
+  await apiFetch<void>(`/api/v1/teams/individual-override/${studentId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ cohortId, allowed }),
   });
 }
 

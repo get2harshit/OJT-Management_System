@@ -9,6 +9,7 @@ import {
   apiGetAvailableTeammates,
   apiSendTeamRequest,
   apiRespondToTeamRequest,
+  apiCreateIndividualTeam,
   apiGetAvailableProjects,
   apiGetAvailableMentors,
   apiProposeProject,
@@ -53,15 +54,17 @@ export default function ProjectPicker() {
     try {
       const res = await apiGetMyTeamStatus(cid);
       setStatus(res);
+      return res;
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load your status');
+      return null;
     }
   }, [showError]);
 
-  // Only the team+project-preferences screen needs the project catalog, but we
-  // kick this off as soon as we know the cohort (in parallel with the status
-  // call below) instead of waiting for that screen to mount — that mount-time
-  // fetch used to add a third sequential network round-trip to the page load.
+  // Only the team+project-preferences screen needs the project catalog — the
+  // backend requires team membership to serve it, so this is only worth
+  // kicking off once we know the student actually has a team (see the
+  // initial-load effect below), otherwise it always 400s.
   const loadAvailableProjects = useCallback(async (cid: string) => {
     setProjectsLoading(true);
     try {
@@ -95,8 +98,6 @@ export default function ProjectPicker() {
       try {
         const cohort = await apiGetMyCohort();
         setCohortId(cohort.cohortId);
-        loadAvailableProjects(cohort.cohortId);
-        loadAvailableMentors(cohort.cohortId);
         await refreshStatus(cohort.cohortId);
       } catch (err) {
         setCohortError(err instanceof Error ? err.message : 'Failed to load your cohort');
@@ -106,6 +107,19 @@ export default function ProjectPicker() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The project catalog / mentor pool require team membership server-side
+  // (a pre-team student always gets a 400 from both), so fetch them only
+  // once we know the student has a team — covers both the initial load
+  // (already teamed on reload) and forming one mid-session (accepting an
+  // invite, or going individual).
+  const teamProjectsFetchedRef = useRef(false);
+  useEffect(() => {
+    if (!cohortId || !status?.team || teamProjectsFetchedRef.current) return;
+    teamProjectsFetchedRef.current = true;
+    loadAvailableProjects(cohortId);
+    loadAvailableMentors(cohortId);
+  }, [cohortId, status?.team, loadAvailableProjects, loadAvailableMentors]);
 
   // While waiting on the other party, poll so acceptance/rejection/expiry
   // reflect without the student having to manually reload.
@@ -178,7 +192,8 @@ export default function ProjectPicker() {
       ) : (
         <TrackAndTeammateScreen
           cohortId={cohortId}
-          onRequestSent={() => refreshStatus(cohortId)}
+          canInviteTeammate={status?.canInviteTeammate ?? true}
+          onTeamFormed={() => refreshStatus(cohortId)}
         />
       )}
     </div>
@@ -187,16 +202,26 @@ export default function ProjectPicker() {
 
 // ── Step 1 & 2: pick a track, then a teammate ────────────────────────────────
 
-function TrackAndTeammateScreen({ cohortId, onRequestSent }: { cohortId: string; onRequestSent: () => void }) {
+function TrackAndTeammateScreen({
+  cohortId,
+  canInviteTeammate,
+  onTeamFormed,
+}: {
+  cohortId: string;
+  canInviteTeammate: boolean;
+  onTeamFormed: () => void;
+}) {
   const { showError, showSuccess } = useToast();
   const [track, setTrack] = useState<string | null>(null);
   const [teammates, setTeammates] = useState<AvailableTeammate[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sendingTo, setSendingTo] = useState<string | null>(null);
+  const [creatingIndividual, setCreatingIndividual] = useState(false);
 
   const handlePickTrack = useCallback(async (t: string) => {
     setTrack(t);
+    if (!canInviteTeammate) return;
     setLoading(true);
     try {
       const res = await apiGetAvailableTeammates(cohortId);
@@ -207,7 +232,7 @@ function TrackAndTeammateScreen({ cohortId, onRequestSent }: { cohortId: string;
     } finally {
       setLoading(false);
     }
-  }, [cohortId, showError]);
+  }, [cohortId, canInviteTeammate, showError]);
 
   const handleSendRequest = async (teammate: AvailableTeammate) => {
     if (!track) return;
@@ -215,11 +240,25 @@ function TrackAndTeammateScreen({ cohortId, onRequestSent }: { cohortId: string;
     try {
       await apiSendTeamRequest(teammate.studentId, cohortId, track);
       showSuccess(`Request sent to ${teammate.fullName}.`);
-      onRequestSent();
+      onTeamFormed();
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to send request');
     } finally {
       setSendingTo(null);
+    }
+  };
+
+  const handleCreateIndividualTeam = async () => {
+    if (!track) return;
+    setCreatingIndividual(true);
+    try {
+      await apiCreateIndividualTeam(cohortId, track);
+      showSuccess('Individual project set up.');
+      onTeamFormed();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to set up your individual project');
+    } finally {
+      setCreatingIndividual(false);
     }
   };
 
@@ -246,6 +285,34 @@ function TrackAndTeammateScreen({ cohortId, onRequestSent }: { cohortId: string;
               <p className="text-white font-semibold">{t}</p>
             </button>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!canInviteTeammate) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <button onClick={() => setTrack(null)} className="text-sm text-gray-400 hover:text-white transition-colors">
+            Change track
+          </button>
+          <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{track}</span>
+        </div>
+
+        <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-8 text-center space-y-4">
+          <Sparkles size={32} className="mx-auto text-gold" />
+          <h2 className="text-white font-bold text-lg">You're on an individual project</h2>
+          <p className="text-gray-400 text-sm">
+            Students in your batch complete this OJT individually and can't invite a teammate.
+          </p>
+          <button
+            onClick={handleCreateIndividualTeam}
+            disabled={creatingIndividual}
+            className="text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+          >
+            {creatingIndividual ? 'Setting up...' : 'Continue as Individual'}
+          </button>
         </div>
       </div>
     );
