@@ -6,6 +6,18 @@ export async function apiListMentors(type?: 'internal' | 'external'): Promise<Ap
   return apiFetch<ApiMentor[]>(url);
 }
 
+// Admin or self — updates mutable mentor fields (organization, isExternal, track).
+// `track` values must already be backend enum strings (e.g. 'product_development').
+export async function apiUpdateMentor(
+  mentorId: string,
+  patch: { organization?: string; isExternal?: boolean; track?: string[] }
+): Promise<ApiMentor> {
+  return apiFetch<ApiMentor>(`/api/v1/mentors/${mentorId}`, {
+    method: 'PUT',
+    body: JSON.stringify(patch),
+  });
+}
+
 export async function apiGetMentorCapacity(mentorId: string, cohortId: string): Promise<MentorCapacitySummary> {
   return apiFetch<MentorCapacitySummary>(`/api/v1/mentors/${mentorId}/capacity?cohortId=${cohortId}`);
 }

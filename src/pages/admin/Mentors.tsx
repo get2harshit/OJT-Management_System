@@ -3,32 +3,31 @@ import { Edit2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import SpinnerSquare from '../../components/SpinnerSquare';
-import type { ApiMentor, Profile } from '../../lib/types';
+import type { ApiMentor } from '../../lib/types';
 import { TRACKS } from '../../lib/constants';
-import { apiListMentors } from '../../lib/api';
-
-import { useData } from '../../context/DataContext';
-
-interface Props {
-  updateProfile: (id: string, patch: Partial<Profile>) => void;
-}
+import { apiListMentors, apiUpdateMentor } from '../../lib/api';
+import { mapBackendTrackToFrontend, mapFrontendTrackToBackend } from '../../lib/api/trackMapping';
+import { useToast } from '../../toast';
 
 interface MentorRow extends ApiMentor {
   assignedTracks: string[];
 }
 
-export default function AdminMentors({ updateProfile: propUpdateProfile }: Partial<Props> = {}) {
-  const { updateProfile: hookUpdateProfile } = useData();
-  const updateProfile = propUpdateProfile ?? hookUpdateProfile;
+export default function AdminMentors() {
+  const { showSuccess, showError } = useToast();
   const [mentors, setMentors] = useState<MentorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingMentor, setEditingMentor] = useState<MentorRow | null>(null);
   const [selectedTracks, setSelectedTracks] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setLoading(true);
     apiListMentors()
-      .then(res => setMentors(res.map(m => ({ ...m, assignedTracks: [] }))))
+      .then(res => setMentors(res.map(m => ({
+        ...m,
+        assignedTracks: (m.tracks ?? []).map(mapBackendTrackToFrontend),
+      }))))
       .catch(() => setMentors([]))
       .finally(() => setLoading(false));
   }, []);
@@ -38,16 +37,24 @@ export default function AdminMentors({ updateProfile: propUpdateProfile }: Parti
     setSelectedTracks([...mentor.assignedTracks]);
   };
 
-  const handleSaveTracks = () => {
+  const handleSaveTracks = async () => {
     if (!editingMentor) return;
-    // Update local mentor list
-    setMentors(prev =>
-      prev.map(m => m.id === editingMentor.id ? { ...m, assignedTracks: selectedTracks } : m)
-    );
-    // Persist to local profile store
-    updateProfile(editingMentor.id, { tracks: selectedTracks, track: selectedTracks[0] });
-    setEditingMentor(null);
-    setSelectedTracks([]);
+    setSaving(true);
+    try {
+      await apiUpdateMentor(editingMentor.id, {
+        track: selectedTracks.map(mapFrontendTrackToBackend),
+      });
+      setMentors(prev =>
+        prev.map(m => m.id === editingMentor.id ? { ...m, assignedTracks: selectedTracks } : m)
+      );
+      showSuccess('Tracks assigned successfully');
+      setEditingMentor(null);
+      setSelectedTracks([]);
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Failed to assign tracks');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const toggleTrack = (track: string) => {
@@ -161,10 +168,10 @@ export default function AdminMentors({ updateProfile: propUpdateProfile }: Parti
 
           <button
             onClick={handleSaveTracks}
-            disabled={selectedTracks.length === 0}
+            disabled={selectedTracks.length === 0 || saving}
             className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
           >
-            Save Track Assignment
+            {saving ? 'Saving...' : 'Save Track Assignment'}
           </button>
         </div>
       </Modal>
