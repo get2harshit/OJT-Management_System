@@ -54,15 +54,17 @@ export default function ProjectPicker() {
     try {
       const res = await apiGetMyTeamStatus(cid);
       setStatus(res);
+      return res;
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load your status');
+      return null;
     }
   }, [showError]);
 
-  // Only the team+project-preferences screen needs the project catalog, but we
-  // kick this off as soon as we know the cohort (in parallel with the status
-  // call below) instead of waiting for that screen to mount — that mount-time
-  // fetch used to add a third sequential network round-trip to the page load.
+  // Only the team+project-preferences screen needs the project catalog — the
+  // backend requires team membership to serve it, so this is only worth
+  // kicking off once we know the student actually has a team (see the
+  // initial-load effect below), otherwise it always 400s.
   const loadAvailableProjects = useCallback(async (cid: string) => {
     setProjectsLoading(true);
     try {
@@ -96,8 +98,6 @@ export default function ProjectPicker() {
       try {
         const cohort = await apiGetMyCohort();
         setCohortId(cohort.cohortId);
-        loadAvailableProjects(cohort.cohortId);
-        loadAvailableMentors(cohort.cohortId);
         await refreshStatus(cohort.cohortId);
       } catch (err) {
         setCohortError(err instanceof Error ? err.message : 'Failed to load your cohort');
@@ -107,6 +107,19 @@ export default function ProjectPicker() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The project catalog / mentor pool require team membership server-side
+  // (a pre-team student always gets a 400 from both), so fetch them only
+  // once we know the student has a team — covers both the initial load
+  // (already teamed on reload) and forming one mid-session (accepting an
+  // invite, or going individual).
+  const teamProjectsFetchedRef = useRef(false);
+  useEffect(() => {
+    if (!cohortId || !status?.team || teamProjectsFetchedRef.current) return;
+    teamProjectsFetchedRef.current = true;
+    loadAvailableProjects(cohortId);
+    loadAvailableMentors(cohortId);
+  }, [cohortId, status?.team, loadAvailableProjects, loadAvailableMentors]);
 
   // While waiting on the other party, poll so acceptance/rejection/expiry
   // reflect without the student having to manually reload.
