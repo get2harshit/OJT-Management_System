@@ -159,6 +159,8 @@ export interface AdminTeam extends Team {
 // A team's submitted project slots (POST /api/v1/teams/projects/preferences).
 // preference1 is the team's own proposed project, preference2 is a catalog pick.
 // Each preference carries its own mentor pick — the two must be different mentors.
+export type TeamAllocationStatus = 'pending' | 'allocated' | 'needs_review';
+
 export interface TeamProjectPreferences {
   id: string;
   teamId: string;
@@ -167,7 +169,36 @@ export interface TeamProjectPreferences {
   preference1MentorId: string | null;
   preference2MentorId: string | null;
   allocatedProjectId: string | null;
+  allocationStatus: TeamAllocationStatus;
   submittedAt: string;
+}
+
+export interface MentorTrackRatio {
+  track: string;
+  ratioPercent: number;
+}
+
+// A mentor's computed/effective capacity for a cohort (GET /api/v1/mentors/:id/capacity).
+export interface MentorCapacitySummary {
+  mentorId: string;
+  computedBaseline: number;
+  override: number | null;
+  effectiveTotal: number;
+  ratios: (MentorTrackRatio & { threshold: number })[];
+}
+
+// Full per-team preference detail for the admin allocation panel
+// (GET /api/v1/teams/cohort/:cohortId/detail).
+export interface TeamAllocationDetail {
+  teamId: string;
+  track: string;
+  members: { studentId: string; fullName: string | null }[];
+  tier: string;
+  submittedAt: string;
+  preference1: { projectId: string; projectTitle: string; mentorId: string | null; mentorName: string | null };
+  preference2: { projectId: string; projectTitle: string; mentorId: string | null; mentorName: string | null };
+  allocationStatus: TeamAllocationStatus;
+  allocatedProjectId: string | null;
 }
 
 // A mentor eligible to supervise a team's project (GET /api/v1/teams/mentors/available)
