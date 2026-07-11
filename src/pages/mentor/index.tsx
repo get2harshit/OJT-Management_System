@@ -4,6 +4,7 @@ import Dashboard from './Dashboard';
 import Students from './Students';
 import OJTs from './OJTs';
 import MentorCapacity from './MentorCapacity';
+import ProjectProposals from './ProjectProposals';
 import Tasks from './Tasks';
 import Submissions from './Submissions';
 import Attendance from './Attendance';
@@ -37,6 +38,8 @@ function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
         return <OJTs />;
       case 'capacity':
         return <MentorCapacity />;
+      case 'proposals':
+        return <ProjectProposals />;
       case 'tasks':
         return <Tasks mentorId={mentorId} />;
       case 'submissions':

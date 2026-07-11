@@ -6,6 +6,8 @@ import type {
   PendingSentRequest,
   PendingReceivedRequest,
   TeamProjectPreferences,
+  PreferenceReviewStatus,
+  PendingProposal,
   AvailableTeammate,
   TeamAvailableMentor,
   TeamProject,
@@ -58,7 +60,24 @@ interface RawPreferences {
   preference2MentorId?: string | null;
   allocatedProjectId?: string | null;
   allocationStatus: 'pending' | 'allocated' | 'needs_review';
+  preference1ReviewStatus: PreferenceReviewStatus;
+  preference1ReviewNote?: string | null;
   submittedAt: string;
+}
+
+interface RawPendingProposal {
+  preferenceId: string;
+  teamId: string;
+  track: string;
+  submittedAt: string;
+  members: { studentId: string; fullName: string | null }[];
+  project: {
+    id: string;
+    title: string;
+    description: string | null;
+    problemStatement: string | null;
+    techStack: string[];
+  };
 }
 
 interface RawTeamMentor {
@@ -159,7 +178,20 @@ function mapPreferences(p: RawPreferences): TeamProjectPreferences {
     preference2MentorId: p.preference2MentorId ?? null,
     allocatedProjectId: p.allocatedProjectId ?? null,
     allocationStatus: p.allocationStatus,
+    preference1ReviewStatus: p.preference1ReviewStatus,
+    preference1ReviewNote: p.preference1ReviewNote ?? null,
     submittedAt: p.submittedAt,
+  };
+}
+
+function mapPendingProposal(p: RawPendingProposal): PendingProposal {
+  return {
+    preferenceId: p.preferenceId,
+    teamId: p.teamId,
+    track: mapBackendTrackToFrontend(p.track),
+    submittedAt: p.submittedAt,
+    members: p.members,
+    project: p.project,
   };
 }
 
@@ -288,6 +320,30 @@ export async function apiSubmitProjectPreferences(
     body: JSON.stringify({ cohortId, preference1Id, preference2Id, preference1MentorId, preference2MentorId }),
   });
   return mapPreferences(res);
+}
+
+// Team — replaces a mentor-rejected preference-1 with a new project and/or
+// mentor, looping it back to pending review.
+export async function apiResubmitPreference1(cohortId: string, projectId: string, mentorId: string): Promise<TeamProjectPreferences> {
+  const res = await apiFetch<RawPreferences>('/api/v1/teams/projects/preferences/resubmit', {
+    method: 'POST',
+    body: JSON.stringify({ cohortId, projectId, mentorId }),
+  });
+  return mapPreferences(res);
+}
+
+// Mentor — self-proposed preference-1 projects awaiting this mentor's decision.
+export async function apiGetPendingProposals(): Promise<PendingProposal[]> {
+  const res = await apiFetch<RawPendingProposal[]>('/api/v1/teams/proposals/pending');
+  return res.map(mapPendingProposal);
+}
+
+// Mentor — approves or rejects a self-proposed preference-1, with an optional note.
+export async function apiDecideOnProposal(preferenceId: string, action: 'approve' | 'reject', note?: string): Promise<void> {
+  await apiFetch<void>(`/api/v1/teams/proposals/${preferenceId}/decide`, {
+    method: 'POST',
+    body: JSON.stringify({ action, note }),
+  });
 }
 
 // Admin — lists every team formed within a cohort.
