@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus, UserCheck } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import { TRACKS } from '../../lib/constants';
-import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project } from '../../lib/types';
+import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project, PreferenceReviewStatus } from '../../lib/types';
 import {
   apiGetMyCohort,
   apiGetMyTeamStatus,
@@ -14,6 +14,7 @@ import {
   apiGetAvailableMentors,
   apiProposeProject,
   apiSubmitProjectPreferences,
+  apiResubmitPreference1,
   apiGetProject,
 } from '../../lib/api';
 import { useToast } from '../../toast';
@@ -173,9 +174,12 @@ export default function ProjectPicker() {
       ) : status?.team ? (
         status.projectPreferences ? (
           <SummaryScreen
+            cohortId={cohortId}
             team={status.team}
             preferences={status.projectPreferences}
             availableMentors={availableMentors}
+            mentorsLoading={mentorsLoading}
+            onResubmitted={() => refreshStatus(cohortId)}
           />
         ) : (
           <ProjectSelectionScreen
@@ -483,9 +487,7 @@ function ProjectSelectionScreen({
   const [existingProjectId2, setExistingProjectId2] = useState<string | null>(null);
   const [mentor1Id, setMentor1Id] = useState<string | null>(null);
   const [mentor2Id, setMentor2Id] = useState<string | null>(null);
-  const [proposing, setProposing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', problemStatement: '', endUsersDefined: '', techStack: '' });
 
   useEffect(() => {
     const own = availableProjects.find(p => p.projectBy === 'STUDENT');
@@ -503,27 +505,6 @@ function ProjectSelectionScreen({
     () => availableProjects.filter(p => p.projectBy === 'PST'),
     [availableProjects]
   );
-
-  const handleProposeSelfProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.title.trim()) return;
-    setProposing(true);
-    try {
-      const created = await apiProposeProject(cohortId, {
-        title: form.title.trim(),
-        description: form.description.trim() || undefined,
-        problemStatement: form.problemStatement.trim() || undefined,
-        endUsersDefined: form.endUsersDefined.trim() || undefined,
-        techStack: form.techStack.split(',').map(t => t.trim()).filter(Boolean),
-      });
-      setSelfProject(created);
-      showSuccess('Self project created.');
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to create self project');
-    } finally {
-      setProposing(false);
-    }
-  };
 
   const preference1Id = mode === 'own-existing' ? (selfProject?.id ?? null) : existingProjectId1;
   const preference2Id = mode === 'own-existing' ? existingProjectId : existingProjectId2;
@@ -614,72 +595,7 @@ function ProjectSelectionScreen({
               <div className="space-y-2">
                 <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 1 project</p>
                 {mode === 'own-existing' ? (
-                  <div className="group bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4 h-full transition-all duration-300 hover:border-gold/20 hover:shadow-lg hover:shadow-gold/5">
-                    <h2 className="text-white font-semibold flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
-                        <Sparkles size={18} className="text-gold" />
-                      </div>
-                      Self Project
-                    </h2>
-
-                    {selfProject ? (
-                      <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 space-y-1">
-                        <div className="flex items-center gap-2 text-green-400 text-xs font-semibold">
-                          <CheckCircle2 size={14} />
-                          Selected
-                        </div>
-                        <p className="text-white font-bold">{selfProject.title}</p>
-                        {selfProject.description && <p className="text-gray-400 text-sm">{selfProject.description}</p>}
-                      </div>
-                    ) : (
-                      <form onSubmit={handleProposeSelfProject} className="space-y-3">
-                        <input
-                          type="text"
-                          required
-                          placeholder="Project title"
-                          value={form.title}
-                          onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-                        />
-                        <textarea
-                          placeholder="Description"
-                          value={form.description}
-                          onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                          rows={2}
-                          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
-                        />
-                        <textarea
-                          placeholder="Problem statement"
-                          value={form.problemStatement}
-                          onChange={e => setForm(f => ({ ...f, problemStatement: e.target.value }))}
-                          rows={2}
-                          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
-                        />
-                        <input
-                          type="text"
-                          placeholder="End users"
-                          value={form.endUsersDefined}
-                          onChange={e => setForm(f => ({ ...f, endUsersDefined: e.target.value }))}
-                          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Tech stack (comma separated)"
-                          value={form.techStack}
-                          onChange={e => setForm(f => ({ ...f, techStack: e.target.value }))}
-                          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-                        />
-                        <button
-                          type="submit"
-                          disabled={proposing || !form.title.trim()}
-                          className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
-                        >
-                          <Plus size={16} />
-                          {proposing ? 'Creating...' : 'Create Self Project'}
-                        </button>
-                      </form>
-                    )}
-                  </div>
+                  <SelfProjectProposer cohortId={cohortId} selfProject={selfProject} onCreated={setSelfProject} />
                 ) : (
                   <ExistingProjectPicker
                     catalogProjects={catalogProjects}
@@ -906,21 +822,204 @@ function ExistingProjectPicker({
   );
 }
 
-// ── Step 6: read-only summary once everything is locked in ──────────────────
+// Reusable "propose your own project" form — used both for the initial
+// preference-1 pick (ProjectSelectionScreen) and for resubmitting a fresh
+// preference-1 after a mentor rejection (ResubmitPreference1Panel).
+function SelfProjectProposer({
+  cohortId,
+  selfProject,
+  onCreated,
+}: {
+  cohortId: string;
+  selfProject: TeamProject | null;
+  onCreated: (project: TeamProject) => void;
+}) {
+  const { showError, showSuccess } = useToast();
+  const [proposing, setProposing] = useState(false);
+  const [form, setForm] = useState({ title: '', description: '', problemStatement: '', endUsersDefined: '', techStack: '' });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim()) return;
+    setProposing(true);
+    try {
+      const created = await apiProposeProject(cohortId, {
+        title: form.title.trim(),
+        description: form.description.trim() || undefined,
+        problemStatement: form.problemStatement.trim() || undefined,
+        endUsersDefined: form.endUsersDefined.trim() || undefined,
+        techStack: form.techStack.split(',').map(t => t.trim()).filter(Boolean),
+      });
+      onCreated(created);
+      showSuccess('Self project created.');
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to create self project');
+    } finally {
+      setProposing(false);
+    }
+  };
+
+  return (
+    <div className="group bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4 h-full transition-all duration-300 hover:border-gold/20 hover:shadow-lg hover:shadow-gold/5">
+      <h2 className="text-white font-semibold flex items-center gap-3">
+        <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
+          <Sparkles size={18} className="text-gold" />
+        </div>
+        Self Project
+      </h2>
+
+      {selfProject ? (
+        <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 space-y-1">
+          <div className="flex items-center gap-2 text-green-400 text-xs font-semibold">
+            <CheckCircle2 size={14} />
+            Selected
+          </div>
+          <p className="text-white font-bold">{selfProject.title}</p>
+          {selfProject.description && <p className="text-gray-400 text-sm">{selfProject.description}</p>}
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            type="text"
+            required
+            placeholder="Project title"
+            value={form.title}
+            onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+          />
+          <textarea
+            placeholder="Description"
+            value={form.description}
+            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+            rows={2}
+            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+          />
+          <textarea
+            placeholder="Problem statement"
+            value={form.problemStatement}
+            onChange={e => setForm(f => ({ ...f, problemStatement: e.target.value }))}
+            rows={2}
+            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+          />
+          <input
+            type="text"
+            placeholder="End users"
+            value={form.endUsersDefined}
+            onChange={e => setForm(f => ({ ...f, endUsersDefined: e.target.value }))}
+            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+          />
+          <input
+            type="text"
+            placeholder="Tech stack (comma separated)"
+            value={form.techStack}
+            onChange={e => setForm(f => ({ ...f, techStack: e.target.value }))}
+            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+          />
+          <button
+            type="submit"
+            disabled={proposing || !form.title.trim()}
+            className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
+          >
+            <Plus size={16} />
+            {proposing ? 'Creating...' : 'Create Self Project'}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// A fresh preference-1 proposal after a mentor rejection — propose a new
+// self project and pick a mentor for it, then resubmit for review.
+// Preference 2 is untouched; only preference 1 is ever replaced this way.
+function ResubmitPreference1Panel({
+  cohortId,
+  availableMentors,
+  mentorsLoading,
+  preference2MentorId,
+  onResubmitted,
+}: {
+  cohortId: string;
+  availableMentors: TeamAvailableMentor[];
+  mentorsLoading: boolean;
+  preference2MentorId: string | null;
+  onResubmitted: () => void;
+}) {
+  const { showError, showSuccess } = useToast();
+  const [newProject, setNewProject] = useState<TeamProject | null>(null);
+  const [newMentorId, setNewMentorId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleResubmit = async () => {
+    if (!newProject || !newMentorId) return;
+    setSubmitting(true);
+    try {
+      await apiResubmitPreference1(cohortId, newProject.id, newMentorId);
+      showSuccess('New proposal submitted for review.');
+      onResubmitted();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to resubmit your project preference');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <SelfProjectProposer cohortId={cohortId} selfProject={newProject} onCreated={setNewProject} />
+        <MentorPicker
+          label="New preference 1 mentor"
+          mentors={availableMentors}
+          loading={mentorsLoading}
+          selectedId={newMentorId}
+          onSelect={setNewMentorId}
+          excludeId={preference2MentorId}
+        />
+      </div>
+      <button
+        onClick={handleResubmit}
+        disabled={!newProject || !newMentorId || submitting}
+        className="py-3 px-6 bg-gold text-black font-semibold rounded-lg shadow-xl shadow-black/40 hover:bg-gold-hover hover:shadow-lg hover:shadow-gold/10 transition-all duration-200 disabled:opacity-40 disabled:hover:shadow-none"
+      >
+        {submitting ? 'Submitting...' : 'Resubmit for Review'}
+      </button>
+    </div>
+  );
+}
+
+// ── Step 6: read-only summary once preferences are submitted ────────────────
+// Preference 1's own-project status can be pending_review, rejected (with a
+// resubmit form shown below), or approved — preference 2 (always a catalog
+// pick) is locked in from the moment of submission regardless.
+
+const REVIEW_BANNER: Record<PreferenceReviewStatus, { icon: typeof CheckCircle2; className: string; label: string }> = {
+  approved: { icon: CheckCircle2, className: 'text-green-400', label: 'Your selections are locked in' },
+  pending_review: { icon: Clock, className: 'text-amber-400', label: 'Preference 1 is under review by your mentor' },
+  rejected: { icon: XCircle, className: 'text-red-400', label: 'Preference 1 was rejected — resubmit below' },
+};
 
 function SummaryScreen({
+  cohortId,
   team,
   preferences,
   availableMentors,
+  mentorsLoading,
+  onResubmitted,
 }: {
+  cohortId: string;
   team: { track: string; members: { studentId: string; fullName: string | null }[] };
   preferences: {
     preference1Id: string;
     preference2Id: string;
     preference1MentorId: string | null;
     preference2MentorId: string | null;
+    preference1ReviewStatus: PreferenceReviewStatus;
+    preference1ReviewNote: string | null;
   };
   availableMentors: TeamAvailableMentor[];
+  mentorsLoading: boolean;
+  onResubmitted: () => void;
 }) {
   const mentor1 = availableMentors.find(m => m.id === preferences.preference1MentorId) ?? null;
   const mentor2 = availableMentors.find(m => m.id === preferences.preference2MentorId) ?? null;
@@ -930,8 +1029,13 @@ function SummaryScreen({
   const fetchedRef = useRef(false);
 
   useEffect(() => {
+    fetchedRef.current = false;
+  }, [preferences.preference1Id]);
+
+  useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
+    setLoading(true);
     (async () => {
       try {
         const [self, existing] = await Promise.all([
@@ -946,12 +1050,17 @@ function SummaryScreen({
     })();
   }, [preferences.preference1Id, preferences.preference2Id]);
 
+  const banner = REVIEW_BANNER[preferences.preference1ReviewStatus];
+  const BannerIcon = banner.icon;
+  const isRejected = preferences.preference1ReviewStatus === 'rejected';
+  const isPending = preferences.preference1ReviewStatus === 'pending_review';
+
   return (
     <div className="space-y-4">
       <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-6 space-y-4">
-        <div className="flex items-center gap-2 text-green-400 text-sm font-semibold">
-          <CheckCircle2 size={16} />
-          Your selections are locked in
+        <div className={`flex items-center gap-2 text-sm font-semibold ${banner.className}`}>
+          <BannerIcon size={16} />
+          {banner.label}
         </div>
 
         <div>
@@ -976,7 +1085,22 @@ function SummaryScreen({
           <>
             <div>
               <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Self Project</p>
-              <p className="text-white font-semibold">{selfProject?.title}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-white font-semibold">{selfProject?.title}</p>
+                {isPending && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-semibold uppercase tracking-wider">
+                    Under Review
+                  </span>
+                )}
+                {isRejected && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 font-semibold uppercase tracking-wider">
+                    Rejected
+                  </span>
+                )}
+              </div>
+              {isRejected && preferences.preference1ReviewNote && (
+                <p className="text-red-400 text-xs mt-1">Mentor's note: {preferences.preference1ReviewNote}</p>
+              )}
             </div>
             <div>
               <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Recommended Project</p>
@@ -1016,6 +1140,24 @@ function SummaryScreen({
           </div>
         </div>
       </div>
+
+      {isRejected && (
+        <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
+          <div>
+            <h2 className="text-white font-semibold">Submit a new preference 1</h2>
+            <p className="text-gray-400 text-sm mt-1">
+              Your mentor rejected this project. Propose a new one and pick a mentor to resubmit for review.
+            </p>
+          </div>
+          <ResubmitPreference1Panel
+            cohortId={cohortId}
+            availableMentors={availableMentors}
+            mentorsLoading={mentorsLoading}
+            preference2MentorId={preferences.preference2MentorId}
+            onResubmitted={onResubmitted}
+          />
+        </div>
+      )}
     </div>
   );
 }

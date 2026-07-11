@@ -161,6 +161,11 @@ export interface AdminTeam extends Team {
 // Each preference carries its own mentor pick — the two must be different mentors.
 export type TeamAllocationStatus = 'pending' | 'allocated' | 'needs_review';
 
+// Gates preference1 into allocation when it's a self-proposed project — the
+// chosen mentor must approve it first. Always 'approved' for a catalog (PST)
+// preference1, which needs no review.
+export type PreferenceReviewStatus = 'pending_review' | 'approved' | 'rejected';
+
 export interface TeamProjectPreferences {
   id: string;
   teamId: string;
@@ -170,7 +175,26 @@ export interface TeamProjectPreferences {
   preference2MentorId: string | null;
   allocatedProjectId: string | null;
   allocationStatus: TeamAllocationStatus;
+  preference1ReviewStatus: PreferenceReviewStatus;
+  preference1ReviewNote: string | null;
   submittedAt: string;
+}
+
+// A team's self-proposed preference-1 project awaiting the chosen mentor's
+// approve/reject decision (GET /api/v1/teams/proposals/pending).
+export interface PendingProposal {
+  preferenceId: string;
+  teamId: string;
+  track: string;
+  submittedAt: string;
+  members: { studentId: string; fullName: string | null }[];
+  project: {
+    id: string;
+    title: string;
+    description: string | null;
+    problemStatement: string | null;
+    techStack: string[];
+  };
 }
 
 export interface MentorTrackRatio {
@@ -197,6 +221,8 @@ export interface TeamAllocationDetail {
   submittedAt: string;
   preference1: { projectId: string; projectTitle: string; mentorId: string | null; mentorName: string | null };
   preference2: { projectId: string; projectTitle: string; mentorId: string | null; mentorName: string | null };
+  preference1ReviewStatus: PreferenceReviewStatus;
+  preference1ReviewNote: string | null;
   allocationStatus: TeamAllocationStatus;
   allocatedProjectId: string | null;
 }

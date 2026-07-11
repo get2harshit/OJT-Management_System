@@ -14,6 +14,7 @@ import {
   Briefcase,
   Award,
   Percent,
+  ClipboardCheck,
   X,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
@@ -47,6 +48,7 @@ const mentorTabs = [
   { id: 'students', label: 'My Students', icon: Users },
   { id: 'ojts', label: 'OJTs & Projects', icon: Briefcase },
   { id: 'capacity', label: 'My Capacity', icon: Percent },
+  { id: 'proposals', label: 'Project Proposals', icon: ClipboardCheck },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
   { id: 'credits', label: 'Credit Requests', icon: Cloud },
