@@ -536,7 +536,14 @@ function ProjectSelectionScreen({
       showSuccess('Project selections submitted!');
       onSubmitted();
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to submit project selections');
+      const message = err instanceof Error ? err.message : 'Failed to submit project selections';
+      showError(message);
+      // A teammate can win this same race a moment earlier — refresh status
+      // so this member lands on the summary screen showing what was
+      // actually saved, instead of staying stuck on a now-stale form.
+      if (message.includes('already been submitted')) {
+        onSubmitted();
+      }
     } finally {
       setSubmitting(false);
     }
