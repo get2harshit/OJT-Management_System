@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import type {
   Profile, Semester, Batch, Student, Task, Submission, Credit, Attendance, Comment,
   OJT, Project, CreditRequest
@@ -529,7 +529,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     persist({ ...data, students: updatedStudents });
   }, [data, persist]);
 
-  const contextValue: DataContextType = {
+  // Memoized so a re-render of DataProvider that isn't caused by `data`
+  // changing (e.g. a parent provider above it re-rendering, now that this
+  // sits at the App root) doesn't hand every useData() consumer a new
+  // object identity and force them all to re-render for nothing.
+  const contextValue: DataContextType = useMemo(() => ({
     ...data,
     addOJT,
     deleteOJT,
@@ -558,7 +562,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
     approveCreditRequest,
     addStudentChangeRequest,
     resolveStudentChangeRequest,
-  };
+  }), [
+    data,
+    addOJT,
+    deleteOJT,
+    addProject,
+    addProjects,
+    deleteProject,
+    addMentor,
+    addMentors,
+    updateProfile,
+    importOJTBatch,
+    addStudentRecord,
+    addStudentRecords,
+    deleteProfile,
+    updateStudent,
+    addTask,
+    deleteTask,
+    addSubmission,
+    updateSubmissionStatus,
+    addComment,
+    addAttendance,
+    toggleAttendance,
+    markAllAttendance,
+    addCredit,
+    addCreditRequest,
+    vouchCreditRequest,
+    approveCreditRequest,
+    addStudentChangeRequest,
+    resolveStudentChangeRequest,
+  ]);
 
   return (
     <DataContext.Provider value={contextValue}>

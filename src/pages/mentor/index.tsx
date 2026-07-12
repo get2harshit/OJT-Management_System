@@ -10,7 +10,6 @@ import Submissions from './Submissions';
 import Attendance from './Attendance';
 import EvaluationTracker from './EvaluationTracker';
 import Credits from './Credits';
-import { DataProvider } from '../../context/DataContext';
 import { useAuth } from '../../context/useAuth';
 
 function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
@@ -67,9 +66,5 @@ function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
 }
 
 export default function MentorPanel({ onLogout }: { onLogout?: () => void }) {
-  return (
-    <DataProvider>
-      <MentorPanelContent onLogout={onLogout} />
-    </DataProvider>
-  );
+  return <MentorPanelContent onLogout={onLogout} />;
 }

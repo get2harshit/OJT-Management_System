@@ -6,7 +6,6 @@ import Tasks from './Tasks';
 import Submissions from './Submissions';
 import Credits from './Credits';
 import Attendance from './Attendance';
-import { DataProvider } from '../../context/DataContext';
 import { useAuth } from '../../context/useAuth';
 
 function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
@@ -92,9 +91,5 @@ function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
 }
 
 export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
-  return (
-    <DataProvider>
-      <StudentPanelContent onLogout={onLogout} />
-    </DataProvider>
-  );
+  return <StudentPanelContent onLogout={onLogout} />;
 }

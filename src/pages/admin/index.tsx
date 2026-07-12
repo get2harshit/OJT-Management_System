@@ -17,7 +17,7 @@ import CohortProjectsPage from './OJTs/CohortProjectsPage';
 import CohortMentorsPage from './OJTs/CohortMentorsPage';
 import CohortTeamsPage from './OJTs/CohortTeamsPage';
 import CohortAllocationsPage from './OJTs/CohortAllocationsPage';
-import { DataProvider, useData } from '../../context/DataContext';
+import { useData } from '../../context/DataContext';
 import { apiListCohorts, apiListProjects, apiCreateProject, apiDeleteProject, apiDeleteAllProjects } from '../../lib/api';
 import { useEffect, useCallback } from 'react';
 import type { Cohort, Project } from '../../lib/types';
@@ -150,9 +150,5 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
 }
 
 export default function AdminPanel({ onLogout }: { onLogout?: () => void }) {
-  return (
-    <DataProvider>
-      <AdminPanelContent onLogout={onLogout} />
-    </DataProvider>
-  );
+  return <AdminPanelContent onLogout={onLogout} />;
 }
