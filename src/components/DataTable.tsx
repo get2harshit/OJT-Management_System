@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 
 interface Column<T> {
@@ -55,19 +55,23 @@ export default function DataTable<T extends Record<string, unknown>>({
     }
   };
 
-  const filtered = !serverPagination && search
-    ? data.filter((row) => {
-        const keys = searchKeys || (Object.keys(row) as (keyof T)[]);
-        return keys.some((k) => {
-          const val = row[k];
-          return val != null && String(val).toLowerCase().includes(search.toLowerCase());
-        });
-      })
-    : data;
+  const filtered = useMemo(() => {
+    if (serverPagination || !search) return data;
+    return data.filter((row) => {
+      const keys = searchKeys || (Object.keys(row) as (keyof T)[]);
+      return keys.some((k) => {
+        const val = row[k];
+        return val != null && String(val).toLowerCase().includes(search.toLowerCase());
+      });
+    });
+  }, [data, search, searchKeys, serverPagination]);
 
   const totalPages = serverPagination ? serverPagination.totalPages : Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = serverPagination ? serverPagination.page : page;
-  const paginated = serverPagination ? filtered : filtered.slice((page - 1) * pageSize, page * pageSize);
+  const paginated = useMemo(
+    () => (serverPagination ? filtered : filtered.slice((page - 1) * pageSize, page * pageSize)),
+    [filtered, serverPagination, page]
+  );
   const totalCount = serverPagination ? serverPagination.total : filtered.length;
   const goToPage = (p: number) => {
     if (serverPagination) {

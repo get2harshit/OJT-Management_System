@@ -1,6 +1,8 @@
 import type { Project } from '../types';
-import { apiFetch } from './client';
+import { apiFetch, cachedFetch, invalidateCached } from './client';
 import { mapFrontendTrackToBackend, mapBackendTrackToFrontend } from './trackMapping';
+
+const PROJECTS_TTL = 15_000;
 
 export interface ProjectsPage {
   data: Project[];
@@ -63,10 +65,16 @@ function buildListUrl({ track, page, limit, search }: ListProjectsParams): strin
 // Fetches the whole catalog in one page (backend defaults to 20/page) —
 // used by callers that need every project at once (e.g. the Allocations
 // dropdown). For a paginated table view, use apiListProjectsPage instead.
+//
+// Cached: the admin panel shell and the Dashboard tab both call this on
+// mount at the same time, so the dedup here collapses that into one
+// request instead of two.
 export async function apiListProjects(track?: string): Promise<Project[]> {
   const url = buildListUrl({ track, limit: 1000 });
-  const res = await apiFetch<{ data: RawProject[] }>(url);
-  return res.data.map(toFrontendProject);
+  return cachedFetch(`projects:list:${track || 'all'}`, PROJECTS_TTL, async () => {
+    const res = await apiFetch<{ data: RawProject[] }>(url);
+    return res.data.map(toFrontendProject);
+  });
 }
 
 // Server-paginated project list for the admin catalog table.
@@ -104,6 +112,7 @@ export async function apiCreateProject(body: ProjectCreateInput): Promise<Projec
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  invalidateCached('projects:list');
   return toFrontendProject(p);
 }
 
@@ -121,17 +130,21 @@ export async function apiCreateProjectsBulk(items: ProjectCreateInput[]): Promis
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  invalidateCached('projects:list');
   return res.map(toFrontendProject);
 }
 
 export async function apiDeleteProject(id: string): Promise<void> {
-  return apiFetch<void>(`/api/v1/projects/${id}`, {
+  await apiFetch<void>(`/api/v1/projects/${id}`, {
     method: 'DELETE',
   });
+  invalidateCached('projects:list');
 }
 
 export async function apiDeleteAllProjects(): Promise<{ deletedCount: number }> {
-  return apiFetch<{ success: boolean; deletedCount: number }>('/api/v1/projects', {
+  const result = await apiFetch<{ success: boolean; deletedCount: number }>('/api/v1/projects', {
     method: 'DELETE',
   });
+  invalidateCached('projects:list');
+  return result;
 }

@@ -1,9 +1,9 @@
 import type { ApiMentor, MentorCapacitySummary, MentorTrackRatio } from '../types';
-import { apiFetch } from './client';
+import { apiFetch, cachedFetch, invalidateCached } from './client';
 
 export async function apiListMentors(type?: 'internal' | 'external'): Promise<ApiMentor[]> {
   const url = type ? `/api/v1/mentors?type=${type}` : '/api/v1/mentors';
-  return apiFetch<ApiMentor[]>(url);
+  return cachedFetch(`mentors:list:${type || 'all'}`, 15_000, () => apiFetch<ApiMentor[]>(url));
 }
 
 // Admin or self — updates mutable mentor fields (organization, isExternal, track).
@@ -12,10 +12,12 @@ export async function apiUpdateMentor(
   mentorId: string,
   patch: { organization?: string; isExternal?: boolean; track?: string[] }
 ): Promise<ApiMentor> {
-  return apiFetch<ApiMentor>(`/api/v1/mentors/${mentorId}`, {
+  const mentor = await apiFetch<ApiMentor>(`/api/v1/mentors/${mentorId}`, {
     method: 'PUT',
     body: JSON.stringify(patch),
   });
+  invalidateCached('mentors:list');
+  return mentor;
 }
 
 export async function apiGetMentorCapacity(mentorId: string, cohortId: string): Promise<MentorCapacitySummary> {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { RefreshCw, Check, X, ShieldAlert } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
@@ -43,7 +43,7 @@ export default function AdminAllocations({
   const mentors = useMentors(profiles);
   const studentProfiles = useStudentProfiles(profiles);
 
-  const studentData = students.map(s => {
+  const studentData = useMemo(() => students.map(s => {
     const p = studentProfiles.find(pr => pr.id === s.user_id);
     const mentor = mentors.find(m => m.id === s.mentor_id);
     const proj = projects.find(pr => pr.id === s.project_id);
@@ -57,9 +57,9 @@ export default function AdminAllocations({
       project_title: proj?.title ?? 'Not Assigned',
       cohort_label: cohort ? getCohortLabel(cohort) : 'Not Assigned',
     };
-  });
+  }), [students, studentProfiles, mentors, projects, cohorts]);
 
-  const changeRequests = students
+  const changeRequests = useMemo(() => students
     .filter(s => s.change_request && s.change_request.status === 'PENDING')
     .map(s => {
       const p = studentProfiles.find(pr => pr.id === s.user_id);
@@ -82,7 +82,7 @@ export default function AdminAllocations({
         count: req.count,
         status: req.status,
       };
-    });
+    }), [students, studentProfiles, mentors, projects]);
 
   const handleOpenEdit = (studentId: string) => {
     const s = students.find(x => x.user_id === studentId);
