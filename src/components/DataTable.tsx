@@ -111,8 +111,16 @@ export default function DataTable<T extends Record<string, unknown>>({
               <tr
                 key={typeof row.id === 'string' || typeof row.id === 'number' ? row.id : idx}
                 onClick={() => onRowClick && onRowClick(row)}
+                tabIndex={onRowClick ? 0 : undefined}
+                role={onRowClick ? 'button' : undefined}
+                onKeyDown={onRowClick ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onRowClick(row);
+                  }
+                } : undefined}
                 className={`border-b border-zinc-750/50 transition-colors ${
-                  onRowClick ? 'cursor-pointer hover:bg-gold/5' : 'hover:bg-zinc-750/20'
+                  onRowClick ? 'cursor-pointer hover:bg-gold/5 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-gold/50' : 'hover:bg-zinc-750/20'
                 }`}
               >
                 {columns.map((col) => (

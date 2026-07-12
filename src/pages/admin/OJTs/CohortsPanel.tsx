@@ -13,10 +13,12 @@ import CohortFormFields from './CohortFormFields';
 import { computeCohortDefaultsFromStartDate, EMPTY_COHORT_FORM, validateCohortForm } from '../../../lib/cohortForm';
 import Button from '../../../components/Button';
 import { useToast } from '../../../toast';
+import { useConfirm } from '../../../confirm';
 
 export default function CohortsPanel() {
   const navigate = useNavigate();
   const { showError } = useToast();
+  const confirm = useConfirm();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingCohortId, setEditingCohortId] = useState<string | null>(null);
@@ -101,7 +103,12 @@ export default function CohortsPanel() {
   };
 
   const handleDeleteCohort = async (id: string) => {
-    const confirmDelete = window.confirm("Are you sure you want to delete this OJT cohort?");
+    const confirmDelete = await confirm({
+      title: 'Delete OJT cohort',
+      message: 'Are you sure you want to delete this OJT cohort? This cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
     if (!confirmDelete) return;
     try {
       await apiDeleteCohort(id);
