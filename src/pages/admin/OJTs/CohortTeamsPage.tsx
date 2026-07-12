@@ -8,6 +8,7 @@ import type { AdminTeam } from '../../../lib/types';
 import { apiListTeamsForCohort, apiBreakTeam, apiGetCohort } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
+import { useConfirm } from '../../../confirm';
 
 // Admin view of every team formed within a cohort, with a Break action that
 // disbands a team so its members drop back to the teammate-invite step —
@@ -15,6 +16,7 @@ import { useToast } from '../../../toast';
 export default function CohortTeamsPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const { showSuccess, showError } = useToast();
+  const confirm = useConfirm();
 
   const [cohortLabel, setCohortLabel] = useState('');
   const [teams, setTeams] = useState<AdminTeam[]>([]);
@@ -44,7 +46,12 @@ export default function CohortTeamsPage() {
 
   const handleBreakTeam = async (team: AdminTeam) => {
     const memberNames = team.members.map(m => m.fullName || m.studentId).join(', ');
-    const confirmBreak = window.confirm(`Break this team (${memberNames})? Members will drop back to the teammate-invite step.`);
+    const confirmBreak = await confirm({
+      title: 'Break team',
+      message: `Break this team (${memberNames})? Members will drop back to the teammate-invite step.`,
+      confirmLabel: 'Break Team',
+      variant: 'danger',
+    });
     if (!confirmBreak) return;
 
     setBreakingTeamId(team.id);

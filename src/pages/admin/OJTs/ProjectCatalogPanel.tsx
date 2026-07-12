@@ -6,6 +6,7 @@ import Select from '../../../components/Select';
 import type { Project } from '../../../lib/types';
 import { TRACKS } from '../../../lib/constants';
 import { apiListProjectsPage } from '../../../lib/api';
+import { useConfirm } from '../../../confirm';
 
 interface ProjectCatalogPanelProps {
   addProject: (proj: Omit<Project, 'id' | 'created_at'>) => Promise<void>;
@@ -25,6 +26,7 @@ const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
 export default function ProjectCatalogPanel({ addProject, deleteProject, deleteAllProjects }: ProjectCatalogPanelProps) {
+  const confirm = useConfirm();
   const [projects, setProjects] = useState<Project[]>([]);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -71,7 +73,12 @@ export default function ProjectCatalogPanel({ addProject, deleteProject, deleteA
   };
 
   const handleDeleteProject = async (id: string) => {
-    const confirmDelete = window.confirm("Are you sure you want to delete this project template from the catalog?");
+    const confirmDelete = await confirm({
+      title: 'Delete project template',
+      message: 'Are you sure you want to delete this project template from the catalog?',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
     if (!confirmDelete) return;
     await deleteProject(id);
     await fetchCatalogPage(page, search);

@@ -8,6 +8,7 @@ import { useMentors } from '../../hooks/useMentors';
 import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 import { TRACKS } from '../../lib/constants';
 import { getCohortLabel } from '../../lib/cohortLabel';
+import { useConfirm } from '../../confirm';
 
 import { useData } from '../../context/DataContext';
 
@@ -39,6 +40,7 @@ export default function AdminAllocations({
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [form, setForm] = useState({ mentor_id: '', project_id: '', ojt_id: '', track: '' });
+  const confirm = useConfirm();
 
   const mentors = useMentors(profiles);
   const studentProfiles = useStudentProfiles(profiles);
@@ -99,7 +101,7 @@ export default function AdminAllocations({
 
   const selectedStudent = students.find(s => s.user_id === selectedStudentId);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedStudentId) return;
 
     const selectedMentor = mentors.find(m => m.id === form.mentor_id);
@@ -111,9 +113,12 @@ export default function AdminAllocations({
 
       if (!isAvail || isFull) {
         const reason = !isAvail ? 'unavailable' : 'over capacity';
-        const confirmSave = window.confirm(
-          `Warning: Selected mentor ${selectedMentor.name} is currently ${reason}.\n\nDo you want to override and proceed with this assignment?`
-        );
+        const confirmSave = await confirm({
+          title: 'Mentor unavailable',
+          message: `Selected mentor ${selectedMentor.name} is currently ${reason}.\n\nDo you want to override and proceed with this assignment?`,
+          confirmLabel: 'Override & Save',
+          variant: 'danger',
+        });
         if (!confirmSave) return;
       }
     }

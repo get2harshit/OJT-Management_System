@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ToastProvider } from './toast';
+import { ConfirmProvider } from './confirm';
 import Login from './pages/auth/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import SpinnerSquare from './components/SpinnerSquare';
@@ -25,42 +26,44 @@ export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <DataProvider>
-          <Suspense fallback={<PanelLoader />}>
-            <Routes>
-              <Route path="/" element={<Login />} />
+        <ConfirmProvider>
+          <DataProvider>
+            <Suspense fallback={<PanelLoader />}>
+              <Routes>
+                <Route path="/" element={<Login />} />
 
-              <Route
-                path="/admin/dashboard/*"
-                element={
-                  <ProtectedRoute role="admin">
-                    <AdminPanel />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/admin/dashboard/*"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <AdminPanel />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/mentor/dashboard/*"
-                element={
-                  <ProtectedRoute role="mentor">
-                    <MentorPanel />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/mentor/dashboard/*"
+                  element={
+                    <ProtectedRoute role="mentor">
+                      <MentorPanel />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/student/dashboard/*"
-                element={
-                  <ProtectedRoute role="student">
-                    <StudentPanel />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/student/dashboard/*"
+                  element={
+                    <ProtectedRoute role="student">
+                      <StudentPanel />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-        </DataProvider>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </DataProvider>
+        </ConfirmProvider>
       </ToastProvider>
     </AuthProvider>
   );
