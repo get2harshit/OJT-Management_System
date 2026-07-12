@@ -53,6 +53,7 @@ function PasswordField({ label, value, onChange, placeholder, show, onToggle }: 
           type="button"
           onClick={onToggle}
           tabIndex={-1}
+          aria-label={show ? 'Hide password' : 'Show password'}
           className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
         >
           {show ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -153,13 +154,13 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-6">
+    <main className="min-h-screen bg-black flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-extrabold text-white tracking-tight mb-1">
             OJT <span className="text-gold">Management</span>
           </h1>
-          <p className="text-gray-500 text-sm">{headings[view].sub}</p>
+          <p className="text-gray-400 text-sm">{headings[view].sub}</p>
         </div>
 
         <div className="bg-login-card border border-login-border rounded-2xl w-full">
@@ -187,7 +188,7 @@ export default function Login() {
 
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-px bg-login-border" />
-                  <span className="text-gray-600 text-xs">or</span>
+                  <span className="text-gray-400 text-xs">or</span>
                   <div className="flex-1 h-px bg-login-border" />
                 </div>
 
@@ -225,13 +226,13 @@ export default function Login() {
                 <div className="flex items-center justify-between pt-1">
                   <button
                     onClick={() => switchView('reset')}
-                    className="text-xs text-gray-500 hover:text-yellow-400 transition-colors"
+                    className="text-xs text-gray-400 hover:text-yellow-400 transition-colors"
                   >
                     Forgot password?
                   </button>
                   <button
                     onClick={() => switchView('signup')}
-                    className="text-xs text-gray-500 hover:text-yellow-400 transition-colors"
+                    className="text-xs text-gray-400 hover:text-yellow-400 transition-colors"
                   >
                     Create account
                   </button>
@@ -314,7 +315,7 @@ export default function Login() {
                 <div className="flex justify-center pt-1">
                   <button
                     onClick={() => switchView('login')}
-                    className="text-xs text-gray-500 hover:text-yellow-400 transition-colors"
+                    className="text-xs text-gray-400 hover:text-yellow-400 transition-colors"
                   >
                     Already have an account? Sign in
                   </button>
@@ -365,7 +366,7 @@ export default function Login() {
                 <div className="flex justify-center pt-1">
                   <button
                     onClick={() => switchView('login')}
-                    className="text-xs text-gray-500 hover:text-yellow-400 transition-colors"
+                    className="text-xs text-gray-400 hover:text-yellow-400 transition-colors"
                   >
                     ← Back to sign in
                   </button>
@@ -376,6 +377,6 @@ export default function Login() {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
