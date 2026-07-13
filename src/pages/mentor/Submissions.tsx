@@ -134,6 +134,48 @@ export default function MentorSubmissions({ mentorId }: Partial<Props> & { mento
     }
   };
 
+  // Shared between the normal panel position and the PdfViewer's fullscreen
+  // mode, so a mentor can review from inside the expanded reader without
+  // switching back to the compact view first.
+  const reviewControls = activeSub && (
+    <div className="space-y-3 pt-2">
+      <textarea
+        value={reviewFeedback}
+        onChange={e => setReviewFeedback(e.target.value)}
+        placeholder="Feedback for the student (optional)..."
+        rows={3}
+        className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+      />
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      <div className="flex gap-3">
+        <button
+          onClick={() => handleReview(activeSub, 'under_review')}
+          disabled={reviewing}
+          className="flex-1 flex items-center justify-center gap-2 py-2 bg-zinc-700 text-white font-semibold rounded-lg hover:bg-zinc-600 transition-colors text-sm disabled:opacity-50"
+        >
+          <Clock size={16} />
+          Mark Under Review
+        </button>
+        <button
+          onClick={() => handleReview(activeSub, 'approved')}
+          disabled={reviewing}
+          className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50"
+        >
+          <CheckCircle2 size={16} />
+          Approve
+        </button>
+        <button
+          onClick={() => handleReview(activeSub, 'changes_requested')}
+          disabled={reviewing}
+          className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-650 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors text-sm disabled:opacity-50"
+        >
+          <RotateCcw size={16} />
+          Request Changes
+        </button>
+      </div>
+    </div>
+  );
+
   if (activeSub) {
     return (
       <div className="space-y-6">
@@ -193,44 +235,9 @@ export default function MentorSubmissions({ mentorId }: Partial<Props> & { mento
               </div>
               {downloadError && <p className="text-xs text-red-400">{downloadError}</p>}
 
-              {viewerUrl && <PdfViewer url={viewerUrl} />}
+              {viewerUrl && <PdfViewer url={viewerUrl} fullscreenExtra={reviewControls} />}
 
-              <div className="space-y-3 pt-2">
-                <textarea
-                  value={reviewFeedback}
-                  onChange={e => setReviewFeedback(e.target.value)}
-                  placeholder="Feedback for the student (optional)..."
-                  rows={3}
-                  className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
-                />
-                {error && <p className="text-xs text-red-400">{error}</p>}
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => handleReview(activeSub, 'under_review')}
-                    disabled={reviewing}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 bg-zinc-700 text-white font-semibold rounded-lg hover:bg-zinc-600 transition-colors text-sm disabled:opacity-50"
-                  >
-                    <Clock size={16} />
-                    Mark Under Review
-                  </button>
-                  <button
-                    onClick={() => handleReview(activeSub, 'approved')}
-                    disabled={reviewing}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50"
-                  >
-                    <CheckCircle2 size={16} />
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => handleReview(activeSub, 'changes_requested')}
-                    disabled={reviewing}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-650 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors text-sm disabled:opacity-50"
-                  >
-                    <RotateCcw size={16} />
-                    Request Changes
-                  </button>
-                </div>
-              </div>
+              {reviewControls}
             </div>
           </div>
 
