@@ -26,7 +26,7 @@ export default function AdminTasks() {
     description: '',
     due_date: '',
     targetRole: 'student' as 'student' | 'mentor' | 'batch_manager',
-    assigned_to: '',
+    assigned_to: [] as string[],
     week_number: '1',
     track: TRACKS[0],
     sub_tasks_raw: '',
@@ -49,6 +49,15 @@ export default function AdminTasks() {
     setLoading(false);
   };
 
+  const fetchTasksOnly = async () => {
+    try {
+      const res = await apiListTasks();
+      setTasks(res.data || []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -67,7 +76,7 @@ export default function AdminTasks() {
       title: form.title,
       description: form.description || undefined,
       targetRole: form.targetRole,
-      assignees: form.assigned_to ? [form.assigned_to] : undefined,
+      assignees: form.assigned_to.length > 0 ? form.assigned_to : undefined,
       deadline: form.due_date ? new Date(form.due_date).toISOString() : undefined,
       week: `Week ${form.week_number}`,
       track: form.track,
@@ -79,30 +88,26 @@ export default function AdminTasks() {
       description: '',
       due_date: '',
       targetRole: 'student',
-      assigned_to: '',
+      assigned_to: [],
       week_number: '1',
       track: TRACKS[0],
       sub_tasks_raw: '',
     });
     setModalOpen(false);
-    fetchData();
+    fetchTasksOnly();
   };
 
   const handleDelete = async (id: string) => {
     await apiDeleteTask(id);
-    fetchData();
+    fetchTasksOnly();
   };
 
   const tableData = tasks.map(t => {
-    let assignedName = 'All';
+    let assignedNames = ['All'];
     if (t.assignments && t.assignments.length > 0) {
-      const first = t.assignments[0];
-      assignedName = first.assignee ? first.assignee.full_name : first.assignee_id;
-      if (t.assignments.length > 1) {
-        assignedName += ` (+${t.assignments.length - 1} more)`;
-      }
+      assignedNames = t.assignments.map(a => a.assignee ? a.assignee.full_name : a.assignee_id);
     }
-    return { ...t, assigned_name: assignedName };
+    return { ...t, assigned_names: assignedNames };
   });
 
   return (
@@ -166,7 +171,19 @@ export default function AdminTasks() {
               </span>
             ),
           },
-          { key: 'assigned_name', header: 'Assigned To' },
+          { 
+            key: 'assigned_names', 
+            header: 'Assigned To',
+            render: (row) => (
+              <div className="max-w-[250px] flex flex-wrap gap-1.5 py-1">
+                {row.assigned_names.map((name: string, i: number) => (
+                  <span key={i} className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap">
+                    {name}
+                  </span>
+                ))}
+              </div>
+            )
+          },
           {
             key: 'deadline', header: 'Deadline', render: (row) => (
               <span className="text-xs text-gray-300 font-mono">
@@ -186,7 +203,7 @@ export default function AdminTasks() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add Task / Weekly Goal">
         <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-gray-400 mb-1 flex items-center gap-1">
                 <Calendar size={14} className="text-gold" />
@@ -215,12 +232,12 @@ export default function AdminTasks() {
 
           <div>
             <label className="block text-sm text-gray-400 mb-1">Goal / Task Title</label>
-            <input type="text" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g., Set up Database Architecture" className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
+            <input type="text" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g., Set up Database Architecture" className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold transition-colors" />
           </div>
 
           <div>
             <label className="block text-sm text-gray-400 mb-1">Detailed Description</label>
-            <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Describe expectations or provide reference links..." rows={3} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
+            <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Describe expectations or provide reference links..." rows={3} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold transition-colors resize-none" />
           </div>
 
           <div>
@@ -233,7 +250,7 @@ export default function AdminTasks() {
               value={form.sub_tasks_raw}
               onChange={e => setForm({ ...form, sub_tasks_raw: e.target.value })}
               placeholder="e.g. Design DB Schema, Create migrations, Host locally"
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold transition-colors"
             />
           </div>
 
@@ -242,21 +259,21 @@ export default function AdminTasks() {
             <div className="flex gap-2">
               <Button
                 variant={form.targetRole === 'student' ? 'blue' : 'secondary'}
-                onClick={() => setForm({ ...form, targetRole: 'student', assigned_to: '' })}
+                onClick={() => setForm({ ...form, targetRole: 'student', assigned_to: [] })}
                 className="flex-1"
               >
                 Student
               </Button>
               <Button
                 variant={form.targetRole === 'mentor' ? 'purple' : 'secondary'}
-                onClick={() => setForm({ ...form, targetRole: 'mentor', assigned_to: '' })}
+                onClick={() => setForm({ ...form, targetRole: 'mentor', assigned_to: [] })}
                 className="flex-1"
               >
                 Mentor
               </Button>
               <Button
                 variant={form.targetRole === 'batch_manager' ? 'purple' : 'secondary'}
-                onClick={() => setForm({ ...form, targetRole: 'batch_manager', assigned_to: '' })}
+                onClick={() => setForm({ ...form, targetRole: 'batch_manager', assigned_to: [] })}
                 className="flex-1"
               >
                 Batch Manager
@@ -264,20 +281,30 @@ export default function AdminTasks() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Assign To</label>
-            <Select
-              value={form.assigned_to}
-              onChange={v => setForm({ ...form, assigned_to: v })}
-              className="w-full"
-              placeholder={`Select ${form.targetRole}...`}
-              options={assignableList.map(a => ({ value: a.id, label: a.label }))}
-            />
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Assign To</label>
+              <Select
+                isMulti
+                isSearchable
+                value={form.assigned_to}
+                onChange={v => setForm({ ...form, assigned_to: v })}
+                className="w-full"
+                placeholder={`Select ${form.targetRole}(s)...`}
+                options={assignableList.map(a => ({ value: a.id, label: a.label }))}
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Due Date</label>
-            <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Due Date</label>
+              <input 
+                type="date" 
+                style={{ colorScheme: 'dark' }}
+                value={form.due_date} 
+                onChange={e => setForm({ ...form, due_date: e.target.value })} 
+                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer" 
+              />
+            </div>
           </div>
 
           <Button onClick={handleSave} fullWidth size="lg">

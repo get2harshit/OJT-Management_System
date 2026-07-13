@@ -1,72 +1,62 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { AlertTriangle, CheckCircle2, Clock, ListFilter, Eye, Upload } from 'lucide-react';
 import DataTable from '../../components/DataTable';
-import type { Task, Submission } from '../../lib/types';
-
-import { useTasks } from '../../hooks/useTasks';
-import { useSubmissions } from '../../hooks/useSubmissions';
-
-interface Props {
-  studentId: string;
-  tasks: Task[];
-  submissions: Submission[];
-  onViewSubmission: (submissionId: string) => void;
-  onNewSubmission: (taskId: string) => void;
-}
+import { apiListTasks } from '../../lib/api/tasks';
+import type { ApiTask } from '../../lib/api/tasks';
 
 type TaskFilter = 'ALL' | 'MISSED' | 'IN_PROGRESS' | 'COMPLETED' | 'UPCOMING';
 
-function getTaskStatus(task: Task, submissions: Submission[], studentId: string) {
-  const mySubs = submissions.filter(s => s.task_id === task.id && s.student_id === studentId);
-  const hasAccepted = mySubs.some(s => s.status === 'ACCEPTED');
-  const hasPendingOrReturned = mySubs.some(s => s.status === 'PENDING' || s.status === 'RETURNED');
-  const isPastDue = task.due_date ? new Date(task.due_date) < new Date() : false;
+function getTaskStatus(task: ApiTask, studentId: string) {
+  const myAssignment = task.assignments?.find(a => a.assignee_id === studentId);
+  const status = myAssignment?.status;
 
-  if (hasAccepted) return 'COMPLETED';
-  if (hasPendingOrReturned) return 'IN_PROGRESS';
-  if (isPastDue && !hasAccepted) return 'MISSED';
+  const isPastDue = task.deadline ? new Date(task.deadline) < new Date() : false;
+
+  if (status === 'completed') return 'COMPLETED';
+  if (status === 'progress' || status === 'pending') return 'IN_PROGRESS'; // Pending usually means they started but haven't finished, or they just got it.
+  if (isPastDue && status !== 'completed') return 'MISSED';
   return 'UPCOMING';
 }
 
 export default function StudentTasks({
   studentId,
-  tasks: propTasks,
-  submissions: propSubmissions,
   onViewSubmission,
   onNewSubmission,
-}: Partial<Props> & Pick<Props, 'studentId' | 'onViewSubmission' | 'onNewSubmission'>) {
-  const { tasks: hookTasks } = useTasks();
-  const { submissions: hookSubmissions } = useSubmissions();
-
-  const tasks = propTasks ?? hookTasks;
-  const submissions = propSubmissions ?? hookSubmissions;
+}: {
+  studentId: string;
+  onViewSubmission: (taskId: string) => void;
+  onNewSubmission: (taskId: string) => void;
+}) {
+  const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [filter, setFilter] = useState<TaskFilter>('ALL');
+
+  useEffect(() => {
+    apiListTasks().then(res => setTasks(res.data || [])).catch(console.error);
+  }, []);
 
   const taskData = useMemo(() => {
     return tasks.map((task) => {
-      const mySubs = submissions.filter(s => s.task_id === task.id && s.student_id === studentId);
-      const latestSub = mySubs.length > 0 ? mySubs[mySubs.length - 1] : null;
-      const status = getTaskStatus(task, submissions, studentId);
+      const status = getTaskStatus(task, studentId);
+      const myAssignment = task.assignments?.find(a => a.assignee_id === studentId);
 
       return {
         id: task.id,
         title: task.title,
-        description: task.description ?? '-',
-        start_date: task.start_date ?? '-',
-        due_date: task.due_date ?? '-',
+        description: task.description || '-',
+        start_date: '-', 
+        due_date: task.deadline ? new Date(task.deadline).toLocaleDateString() : '-',
         status,
-        submission_status: latestSub?.status ?? 'NOT_SUBMITTED',
-        version: latestSub?.version ?? '-',
+        submission_status: myAssignment?.status ? myAssignment.status.toUpperCase() : 'NOT_SUBMITTED',
+        version: '-', // Assuming versions are handled in submissions API
       };
     });
-  }, [tasks, submissions, studentId]);
+  }, [tasks, studentId]);
 
   const filteredData = useMemo(() => {
     if (filter === 'ALL') return taskData;
     return taskData.filter(t => t.status === filter);
   }, [taskData, filter]);
 
-  // Progress stats
   const completed = taskData.filter(t => t.status === 'COMPLETED').length;
   const missed = taskData.filter(t => t.status === 'MISSED').length;
   const inProgress = taskData.filter(t => t.status === 'IN_PROGRESS').length;
@@ -91,7 +81,6 @@ export default function StudentTasks({
         <p className="text-gray-400 text-sm mt-1">Track your assigned tasks and identify missed deadlines</p>
       </div>
 
-      {/* Progress Summary Bar */}
       <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Task Progress</h3>
@@ -116,7 +105,6 @@ export default function StudentTasks({
         </div>
       </div>
 
-      {/* Filter Bar */}
       <div className="flex gap-1.5 p-1 bg-zinc-850 border border-zinc-750 rounded-xl w-full sm:w-fit overflow-x-auto">
         {filters.map((f) => (
           <button
@@ -166,22 +154,18 @@ export default function StudentTasks({
             render: (row) => {
               const s = row.submission_status as string;
               if (s === 'NOT_SUBMITTED') return <span className="text-xs text-gray-500">Not Submitted</span>;
-              const color = s === 'ACCEPTED' ? 'text-green-400' : s === 'PENDING' ? 'text-yellow-400' : 'text-red-400';
+              const color = s === 'COMPLETED' ? 'text-green-400' : s === 'PROGRESS' || s === 'PENDING' ? 'text-yellow-400' : 'text-red-400';
               return <span className={`text-xs font-semibold ${color}`}>{s}</span>;
             },
           },
-          { key: 'version', header: 'Version' },
         ]}
         data={filteredData}
         searchPlaceholder="Search tasks..."
         actions={(row) => {
-          const mySubs = submissions.filter(s => s.task_id === row.id && s.student_id === studentId);
-          const latestSub = mySubs.length > 0 ? mySubs[mySubs.length - 1] : null;
-
-          if (latestSub) {
+          if (row.submission_status === 'COMPLETED' || row.submission_status === 'PROGRESS' || row.submission_status === 'PENDING') {
             return (
               <button
-                onClick={() => onViewSubmission(latestSub.id)}
+                onClick={() => onViewSubmission(row.id)}
                 className="p-1 px-2.5 bg-gold/10 hover:bg-gold/20 text-gold text-xs font-semibold rounded transition-all flex items-center gap-1 border border-gold/25"
                 title="View Comments & Discussion"
               >
