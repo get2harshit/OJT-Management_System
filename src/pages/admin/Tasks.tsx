@@ -25,7 +25,7 @@ export default function AdminTasks() {
     title: '',
     description: '',
     due_date: '',
-    targetRole: 'student' as 'student' | 'mentor' | 'batch_manager',
+    targetRole: 'student' as 'student' | 'mentor',
     assigned_to: [] as string[],
     week_number: '1',
     track: TRACKS[0],
@@ -167,7 +167,7 @@ export default function AdminTasks() {
             header: 'Target',
             render: (row) => (
               <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${row.target_role === 'student' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/25' : 'bg-purple-500/10 text-purple-400 border border-purple-500/25'}`}>
-                {row.target_role === 'student' ? 'Student' : row.target_role === 'mentor' ? 'Mentor' : 'Batch Manager'}
+                {row.target_role === 'student' ? 'Student' : 'Mentor'}
               </span>
             ),
           },
@@ -270,13 +270,6 @@ export default function AdminTasks() {
                 className="flex-1"
               >
                 Mentor
-              </Button>
-              <Button
-                variant={form.targetRole === 'batch_manager' ? 'purple' : 'secondary'}
-                onClick={() => setForm({ ...form, targetRole: 'batch_manager', assigned_to: [] })}
-                className="flex-1"
-              >
-                Batch Manager
               </Button>
             </div>
           </div>
