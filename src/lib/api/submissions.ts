@@ -1,4 +1,4 @@
-import type { PrdSubmission, PrdStatus } from '../types';
+import type { PrdSubmission, PrdStatus, DocumentType } from '../types';
 import { apiFetch } from './client';
 
 // Student — all PRD versions submitted for a given project allocation, latest first.
@@ -17,11 +17,11 @@ export async function apiGetPrdSubmission(id: string): Promise<PrdSubmission> {
 }
 
 // Student — uploads the PDF to GCS and creates the versioned submission record in one call.
-export async function apiUploadPrd(file: File, allocationId: string): Promise<PrdSubmission> {
+export async function apiUploadPrd(file: File, allocationId: string, docType: DocumentType = 'prd'): Promise<PrdSubmission> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('allocationId', allocationId);
-  formData.append('docType', 'prd');
+  formData.append('docType', docType);
   const res = await apiFetch<{ message: string; submission: PrdSubmission }>('/api/v1/submissions/upload', {
     method: 'POST',
     body: formData,
