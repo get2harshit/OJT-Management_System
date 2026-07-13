@@ -101,11 +101,10 @@ export default function AdminSubmissions({
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
               <div>
-                <span className={`text-xs px-2.5 py-0.5 rounded-full ${
-                  activeSub.status === 'PENDING' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' :
-                  activeSub.status === 'ACCEPTED' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
-                  'bg-red-500/10 text-red-400 border border-red-500/20'
-                }`}>
+                <span className={`text-xs px-2.5 py-0.5 rounded-full ${activeSub.status === 'PENDING' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' :
+                    activeSub.status === 'ACCEPTED' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
+                      'bg-red-500/10 text-red-400 border border-red-500/20'
+                  }`}>
                   {activeSub.status}
                 </span>
                 <h2 className="text-xl font-bold text-white mt-2">{activeSub.task_title}</h2>
@@ -229,9 +228,8 @@ export default function AdminSubmissions({
           <button
             key={type}
             onClick={() => setFilterType(type)}
-            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-              filterType === type ? 'bg-gold text-black' : 'text-gray-400 hover:text-white'
-            }`}
+            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${filterType === type ? 'bg-gold text-black' : 'text-gray-400 hover:text-white'
+              }`}
           >
             {type === 'ALL' ? 'All Submissions' : type === 'STUDENT' ? 'Student Submissions' : 'Mentor Submissions'}
           </button>
@@ -248,9 +246,8 @@ export default function AdminSubmissions({
             <button
               key={cat}
               onClick={() => setSelectedCategory(isSelected ? 'ALL' : cat)}
-              className={`bg-zinc-850 border rounded-xl p-5 text-left transition-all hover:scale-[1.02] ${
-                isSelected ? 'border-gold shadow-lg shadow-gold/5' : 'border-zinc-750 hover:border-zinc-600'
-              }`}
+              className={`bg-zinc-850 border rounded-xl p-5 text-left transition-all hover:scale-[1.02] ${isSelected ? 'border-gold shadow-lg shadow-gold/5' : 'border-zinc-750 hover:border-zinc-600'
+                }`}
             >
               <h4 className="text-gray-400 text-xs font-semibold uppercase tracking-wider">{label}</h4>
               <p className="text-3xl font-bold text-white mt-2">{count}</p>
@@ -271,11 +268,10 @@ export default function AdminSubmissions({
             key: 'status',
             header: 'Status',
             render: (row) => (
-              <span className={`text-xs px-2 py-0.5 rounded-full ${
-                row.status === 'PENDING' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' :
-                row.status === 'ACCEPTED' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
-                'bg-red-500/10 text-red-400 border border-red-500/20'
-              }`}>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${row.status === 'PENDING' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' :
+                  row.status === 'ACCEPTED' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
+                    'bg-red-500/10 text-red-400 border border-red-500/20'
+                }`}>
                 {row.status}
               </span>
             ),

@@ -46,9 +46,9 @@ export default function MentorTasks({
 
   const assignableList = form.type === 'STUDENT_SPECIFIC'
     ? students.map(s => {
-        const prof = studentProfiles.find(p => p.id === s.user_id);
-        return { id: s.user_id, label: `${prof?.name ?? s.user_id} (${s.roll_number})` };
-      })
+      const prof = studentProfiles.find(p => p.id === s.user_id);
+      return { id: s.user_id, label: `${prof?.name ?? s.user_id} (${s.roll_number})` };
+    })
     : mentors.map(m => ({ id: m.id, label: m.name }));
 
   // Mentor sees tasks assigned to them or unassigned

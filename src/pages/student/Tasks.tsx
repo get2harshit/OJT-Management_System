@@ -122,9 +122,8 @@ export default function StudentTasks({
           <button
             key={f.key}
             onClick={() => setFilter(f.key)}
-            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-              filter === f.key ? 'bg-gold text-black' : 'text-gray-400 hover:text-white'
-            }`}
+            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${filter === f.key ? 'bg-gold text-black' : 'text-gray-400 hover:text-white'
+              }`}
           >
             {f.key === 'ALL' && <ListFilter size={13} />}
             {f.key === 'MISSED' && <AlertTriangle size={13} />}

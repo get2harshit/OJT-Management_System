@@ -1,106 +1,106 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Trash2, Calendar, Target, CheckSquare, Layers } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
-import type { Task, Profile, Student, TaskType } from '../../lib/types';
-import { useMentors } from '../../hooks/useMentors';
-import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 import { TRACKS } from '../../lib/constants';
 
-import { useTasks } from '../../hooks/useTasks';
-import { useData } from '../../context/DataContext';
+import { apiListTasks, apiCreateTask, apiDeleteTask } from '../../lib/api/tasks';
+import { apiListMentors } from '../../lib/api/mentors';
+import { apiListStudents } from '../../lib/api/students';
+import type { ApiTask } from '../../lib/api/tasks';
+import type { ApiMentor, ApiStudent } from '../../lib/types';
 import Button from '../../components/Button';
-
-interface Props {
-  tasks: Task[];
-  profiles: Profile[];
-  students: Student[];
-  addTask: (task: Omit<Task, 'id' | 'created_at'>) => void;
-  deleteTask: (id: string) => void;
-}
 
 const WEEKS = Array.from({ length: 12 }, (_, i) => i + 1);
 
-export default function AdminTasks({
-  tasks: propTasks,
-  profiles: propProfiles,
-  students: propStudents,
-  addTask: propAddTask,
-  deleteTask: propDeleteTask,
-}: Partial<Props> = {}) {
-  const { tasks: hookTasks, addTask: hookAddTask, deleteTask: hookDeleteTask } = useTasks();
-  const { profiles: hookProfiles, students: hookStudents } = useData();
+export default function AdminTasks() {
+  const [tasks, setTasks] = useState<ApiTask[]>([]);
+  const [mentors, setMentors] = useState<ApiMentor[]>([]);
+  const [students, setStudents] = useState<ApiStudent[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const tasks = propTasks ?? hookTasks;
-  const profiles = propProfiles ?? hookProfiles;
-  const students = propStudents ?? hookStudents;
-  const addTask = propAddTask ?? hookAddTask;
-  const deleteTask = propDeleteTask ?? hookDeleteTask;
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
     title: '',
     description: '',
-    start_date: '',
     due_date: '',
-    type: 'STUDENT_SPECIFIC' as TaskType,
+    targetRole: 'student' as 'student' | 'mentor' | 'batch_manager',
     assigned_to: '',
     week_number: '1',
-    is_viva: false,
     track: TRACKS[0],
     sub_tasks_raw: '',
   });
 
-  const mentors = useMentors(profiles);
-  const studentProfiles = useStudentProfiles(profiles);
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [tasksRes, mentorsRes, studentsRes] = await Promise.all([
+        apiListTasks(),
+        apiListMentors(),
+        apiListStudents(),
+      ]);
+      setTasks(tasksRes.data || []);
+      setMentors(mentorsRes || []);
+      setStudents(studentsRes || []);
+    } catch (e) {
+      console.error(e);
+    }
+    setLoading(false);
+  };
 
-  const assignableList = form.type === 'STUDENT_SPECIFIC'
-    ? students.map(s => {
-        const prof = studentProfiles.find(p => p.id === s.user_id);
-        return { id: s.user_id, label: `${prof?.name ?? s.user_id} (${s.roll_number})` };
-      })
-    : mentors.map(m => ({ id: m.id, label: m.name }));
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-  const handleSave = () => {
+  const assignableList = form.targetRole === 'student'
+    ? students.map(s => ({ id: s.id, label: `${s.fullName || s.email} (${s.rollNumber || 'N/A'})` }))
+    : mentors.map(m => ({ id: m.id, label: m.fullName || m.email || m.id }));
+
+  const handleSave = async () => {
     if (!form.title) return;
     const subTasks = form.sub_tasks_raw
       ? form.sub_tasks_raw.split(',').map(s => s.trim()).filter(Boolean)
       : [];
 
-    addTask({
+    await apiCreateTask({
       title: form.title,
-      description: form.description || null,
-      type: form.type,
-      assigned_to: form.assigned_to || null,
-      mentor_id: null,
-      start_date: form.start_date || null,
-      due_date: form.due_date || null,
-      week_number: Number(form.week_number),
-      is_viva: form.is_viva,
+      description: form.description || undefined,
+      targetRole: form.targetRole,
+      assignees: form.assigned_to ? [form.assigned_to] : undefined,
+      deadline: form.due_date ? new Date(form.due_date).toISOString() : undefined,
+      week: `Week ${form.week_number}`,
       track: form.track,
-      sub_tasks: subTasks,
+      subtasks: subTasks,
     });
 
     setForm({
       title: '',
       description: '',
-      start_date: '',
       due_date: '',
-      type: 'STUDENT_SPECIFIC',
+      targetRole: 'student',
       assigned_to: '',
       week_number: '1',
-      is_viva: false,
       track: TRACKS[0],
       sub_tasks_raw: '',
     });
     setModalOpen(false);
+    fetchData();
+  };
+
+  const handleDelete = async (id: string) => {
+    await apiDeleteTask(id);
+    fetchData();
   };
 
   const tableData = tasks.map(t => {
     let assignedName = 'All';
-    if (t.assigned_to) {
-      const prof = profiles.find(p => p.id === t.assigned_to);
-      assignedName = prof?.name ?? t.assigned_to;
+    if (t.assignments && t.assignments.length > 0) {
+      const first = t.assignments[0];
+      assignedName = first.assignee ? first.assignee.full_name : first.assignee_id;
+      if (t.assignments.length > 1) {
+        assignedName += ` (+${t.assignments.length - 1} more)`;
+      }
     }
     return { ...t, assigned_name: assignedName };
   });
@@ -119,59 +119,66 @@ export default function AdminTasks({
 
       <DataTable
         columns={[
-          { key: 'week_number', header: 'Timeline', render: (row) => (
-            <span className="text-xs font-bold text-gold flex items-center gap-1">
-              <Calendar size={13} />
-              Week {row.week_number || '-'}
-            </span>
-          )},
-          { key: 'track', header: 'Tech Stack/Track', render: (row) => (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-gray-300 font-medium border border-zinc-700">
-              {row.track || 'All'}
-            </span>
-          )},
-          { key: 'title', header: 'Task Title', render: (row) => (
-            <div>
-              <span className="font-semibold text-white text-sm">{row.title}</span>
-              {row.is_viva && (
-                <span className="ml-2 text-[10px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
-                  Viva Checkpoint
-                </span>
-              )}
-            </div>
-          )},
-          { key: 'sub_tasks', header: 'Sub-tasks (Checklist)', render: (row) => (
-            <div className="max-w-xs space-y-1">
-              {row.sub_tasks && row.sub_tasks.length > 0 ? (
-                row.sub_tasks.map((st: string, idx: number) => (
-                  <div key={idx} className="flex items-center gap-1.5 text-xs text-gray-400">
-                    <CheckSquare size={10} className="text-gold shrink-0" />
-                    <span className="truncate">{st}</span>
-                  </div>
-                ))
-              ) : (
-                <span className="text-gray-600 text-xs">-</span>
-              )}
-            </div>
-          )},
           {
-            key: 'type',
+            key: 'week', header: 'Timeline', render: (row) => (
+              <span className="text-xs font-bold text-gold flex items-center gap-1">
+                <Calendar size={13} />
+                {row.week || '-'}
+              </span>
+            )
+          },
+          {
+            key: 'track', header: 'Tech Stack/Track', render: (row) => (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-gray-300 font-medium border border-zinc-700">
+                {row.track || 'All'}
+              </span>
+            )
+          },
+          {
+            key: 'title', header: 'Task Title', render: (row) => (
+              <div>
+                <span className="font-semibold text-white text-sm">{row.title}</span>
+              </div>
+            )
+          },
+          {
+            key: 'sub_tasks', header: 'Sub-tasks (Checklist)', render: (row) => (
+              <div className="max-w-xs space-y-1">
+                {row.subtasks && row.subtasks.length > 0 ? (
+                  row.subtasks.map((st: any, idx: number) => (
+                    <div key={idx} className="flex items-center gap-1.5 text-xs text-gray-400">
+                      <CheckSquare size={10} className="text-gold shrink-0" />
+                      <span className="truncate">{st.title}</span>
+                    </div>
+                  ))
+                ) : (
+                  <span className="text-gray-600 text-xs">-</span>
+                )}
+              </div>
+            )
+          },
+          {
+            key: 'target_role',
             header: 'Target',
             render: (row) => (
-              <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${row.type === 'STUDENT_SPECIFIC' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/25' : 'bg-purple-500/10 text-purple-400 border border-purple-500/25'}`}>
-                {row.type === 'STUDENT_SPECIFIC' ? 'Student' : 'Mentor'}
+              <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${row.target_role === 'student' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/25' : 'bg-purple-500/10 text-purple-400 border border-purple-500/25'}`}>
+                {row.target_role === 'student' ? 'Student' : row.target_role === 'mentor' ? 'Mentor' : 'Batch Manager'}
               </span>
             ),
           },
           { key: 'assigned_name', header: 'Assigned To' },
-          { key: 'due_date', header: 'Deadline', render: (row) => (
-            <span className="text-xs text-gray-300 font-mono">{row.due_date || '-'}</span>
-          )},
+          {
+            key: 'deadline', header: 'Deadline', render: (row) => (
+              <span className="text-xs text-gray-300 font-mono">
+                {row.deadline ? new Date(row.deadline).toLocaleDateString() : '-'}
+              </span>
+            )
+          },
         ]}
         data={tableData}
         searchPlaceholder="Search weekly goals..."
         actions={(row) => (
-          <Button variant="ghost" size="sm" onClick={() => deleteTask(row.id)} className="p-1.5 hover:text-red-400">
+          <Button variant="ghost" size="sm" onClick={() => handleDelete(row.id)} className="p-1.5 hover:text-red-400">
             <Trash2 size={16} />
           </Button>
         )}
@@ -230,35 +237,29 @@ export default function AdminTasks({
             />
           </div>
 
-          <div className="flex items-center gap-2 py-1">
-            <input
-              type="checkbox"
-              id="is_viva"
-              checked={form.is_viva}
-              onChange={e => setForm({ ...form, is_viva: e.target.checked })}
-              className="w-4 h-4 rounded border-zinc-700 bg-zinc-750 text-gold focus:ring-gold"
-            />
-            <label htmlFor="is_viva" className="text-sm text-gray-300 cursor-pointer">
-              Mark as Viva Evaluation Checkpoint
-            </label>
-          </div>
-
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Task Type</label>
+            <label className="block text-sm text-gray-400 mb-1">Task Target Role</label>
             <div className="flex gap-2">
               <Button
-                variant={form.type === 'STUDENT_SPECIFIC' ? 'blue' : 'secondary'}
-                onClick={() => setForm({ ...form, type: 'STUDENT_SPECIFIC', assigned_to: '' })}
+                variant={form.targetRole === 'student' ? 'blue' : 'secondary'}
+                onClick={() => setForm({ ...form, targetRole: 'student', assigned_to: '' })}
                 className="flex-1"
               >
-                Student-Specific
+                Student
               </Button>
               <Button
-                variant={form.type === 'MENTOR_SPECIFIC' ? 'purple' : 'secondary'}
-                onClick={() => setForm({ ...form, type: 'MENTOR_SPECIFIC', assigned_to: '' })}
+                variant={form.targetRole === 'mentor' ? 'purple' : 'secondary'}
+                onClick={() => setForm({ ...form, targetRole: 'mentor', assigned_to: '' })}
                 className="flex-1"
               >
-                Mentor-Specific
+                Mentor
+              </Button>
+              <Button
+                variant={form.targetRole === 'batch_manager' ? 'purple' : 'secondary'}
+                onClick={() => setForm({ ...form, targetRole: 'batch_manager', assigned_to: '' })}
+                className="flex-1"
+              >
+                Batch Manager
               </Button>
             </div>
           </div>
@@ -269,20 +270,14 @@ export default function AdminTasks({
               value={form.assigned_to}
               onChange={v => setForm({ ...form, assigned_to: v })}
               className="w-full"
-              placeholder={`Select ${form.type === 'STUDENT_SPECIFIC' ? 'Student' : 'Mentor'}...`}
+              placeholder={`Select ${form.targetRole}...`}
               options={assignableList.map(a => ({ value: a.id, label: a.label }))}
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Start Date</label>
-              <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Due Date</label>
-              <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
-            </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Due Date</label>
+            <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
           </div>
 
           <Button onClick={handleSave} fullWidth size="lg">

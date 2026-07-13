@@ -134,9 +134,8 @@ export default function MentorDashboard({
                   </div>
                   <div className="h-2 bg-zinc-750 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        status === 'PENDING' ? 'bg-yellow-500' : status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
-                      }`}
+                      className={`h-full rounded-full transition-all duration-500 ${status === 'PENDING' ? 'bg-yellow-500' : status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
+                        }`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
