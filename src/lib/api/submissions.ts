@@ -21,6 +21,7 @@ export async function apiUploadPrd(file: File, allocationId: string): Promise<Pr
   const formData = new FormData();
   formData.append('file', file);
   formData.append('allocationId', allocationId);
+  formData.append('docType', 'prd');
   const res = await apiFetch<{ message: string; submission: PrdSubmission }>('/api/v1/submissions/upload', {
     method: 'POST',
     body: formData,

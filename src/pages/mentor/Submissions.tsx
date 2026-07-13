@@ -127,7 +127,7 @@ export default function MentorSubmissions({
             student_name: student?.fullName ?? '-',
             roll_number: student?.rollNumber ?? '-',
             track: student?.track ?? '-',
-            file_name: fileNameFromGcsUri(p.prdDocumentLink),
+            file_name: fileNameFromGcsUri(p.documentLink),
             version: p.versionNumber,
             status: p.status.replace(/_/g, ' ').toUpperCase(),
             category: 'PRD',
