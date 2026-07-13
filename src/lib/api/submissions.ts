@@ -21,7 +21,7 @@ export async function apiUploadPrd(file: File, allocationId: string): Promise<Pr
   const formData = new FormData();
   formData.append('file', file);
   formData.append('allocationId', allocationId);
-  const res = await apiFetch<{ message: string; submission: PrdSubmission }>('/api/v1/submissions/prd/upload', {
+  const res = await apiFetch<{ message: string; submission: PrdSubmission }>('/api/v1/submissions/upload', {
     method: 'POST',
     body: formData,
   });
@@ -42,6 +42,6 @@ export async function apiReviewPrdSubmission(
 
 // Generates a short-lived signed URL to view/download the PRD PDF.
 export async function apiGetPrdDownloadUrl(id: string): Promise<string> {
-  const res = await apiFetch<{ url: string }>(`/api/v1/submissions/prd/${id}/download-url`);
+  const res = await apiFetch<{ url: string }>(`/api/v1/submissions/${id}/download-url`);
   return res.url;
 }
