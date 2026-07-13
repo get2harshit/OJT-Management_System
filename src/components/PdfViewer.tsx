@@ -100,13 +100,10 @@ export default function PdfViewer({ url, fullscreenExtra }: PdfViewerProps) {
   };
 
   if (isFullscreen) {
-    const fullscreenPageWidth = Math.min(900, viewportWidth - 80);
+    const fullscreenPageWidth = Math.min(680, viewportWidth - 240);
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-750 shrink-0">
-          <span className="text-xs text-gray-400 font-medium">
-            {numPages ? `Page ${pageNumber} of ${numPages}` : ''}
-          </span>
+        <div className="flex items-center justify-end px-4 py-3 border-b border-zinc-750 shrink-0">
           <button
             onClick={() => setIsFullscreen(false)}
             className="p-1.5 text-gray-400 hover:text-white transition-colors"
