@@ -51,7 +51,8 @@ export interface PrdSubmission {
   id: string;
   allocationId: string;
   versionNumber: number;
-  prdDocumentLink: string;
+  documentType: string;
+  documentLink: string;
   status: PrdStatus;
   mentorFeedback?: string;
   reviewedBy?: string;

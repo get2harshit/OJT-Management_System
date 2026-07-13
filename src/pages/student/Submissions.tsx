@@ -169,7 +169,7 @@ export default function StudentSubmissions({
     id: p.id,
     task_title: `PRD Document v${p.versionNumber}`,
     task_desc: 'Product Requirements Document for your allocated project.',
-    file_name: fileNameFromGcsUri(p.prdDocumentLink),
+    file_name: fileNameFromGcsUri(p.documentLink),
     version: p.versionNumber,
     status: p.status.replace(/_/g, ' ').toUpperCase(),
     category: 'PRD',
