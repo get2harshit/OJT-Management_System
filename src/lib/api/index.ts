@@ -7,3 +7,4 @@ export * from './dashboard';
 export * from './mentors';
 export * from './teams';
 export * from './allocations';
+export * from './submissions';

@@ -117,13 +117,14 @@ export default function StudentTasks({
       </div>
 
       {/* Filter Bar */}
-      <div className="flex gap-1.5 p-1 bg-zinc-850 border border-zinc-750 rounded-xl w-fit">
+      <div className="flex gap-1.5 p-1 bg-zinc-850 border border-zinc-750 rounded-xl w-full sm:w-fit overflow-x-auto">
         {filters.map((f) => (
           <button
             key={f.key}
             onClick={() => setFilter(f.key)}
-            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${filter === f.key ? 'bg-gold text-black' : 'text-gray-400 hover:text-white'
-              }`}
+            className={`shrink-0 px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+              filter === f.key ? 'bg-gold text-black' : 'text-gray-400 hover:text-white'
+            }`}
           >
             {f.key === 'ALL' && <ListFilter size={13} />}
             {f.key === 'MISSED' && <AlertTriangle size={13} />}
