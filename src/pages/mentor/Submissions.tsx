@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Eye, CheckCircle2, RotateCcw, ArrowLeft, MessageSquare, Loader2, Clock } from 'lucide-react';
+import { Eye, CheckCircle2, RotateCcw, ArrowLeft, History, Loader2, Clock, Download } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import Modal from '../../components/Modal';
 import PdfViewer from '../../components/PdfViewer';
 import type { PrdSubmission, StudentAllocation, DocumentType } from '../../lib/types';
 import { DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS } from '../../lib/types';
@@ -48,6 +49,7 @@ export default function MentorSubmissions({ mentorId }: Partial<Props> & { mento
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
   const loadSubmissions = async () => {
     setLoading(true);
@@ -187,78 +189,66 @@ export default function MentorSubmissions({ mentorId }: Partial<Props> & { mento
           Back to Submissions
         </button>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
-              <div>
-                <span className={`text-xs px-2.5 py-0.5 rounded-full ${statusBadgeClass(activeSub.status)}`}>
-                  {activeSub.status.replace(/_/g, ' ').toUpperCase()}
-                </span>
-                <h2 className="text-xl font-bold text-white mt-2">
-                  {DOCUMENT_TYPE_LABELS[activeSub.documentType]} Document v{activeSub.versionNumber}
-                </h2>
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${statusBadgeClass(activeSub.status)}`}>
+                    {activeSub.status.replace(/_/g, ' ').toUpperCase()}
+                  </span>
+                  <h2 className="text-base font-bold text-white">
+                    {DOCUMENT_TYPE_LABELS[activeSub.documentType]} Document v{activeSub.versionNumber}
+                  </h2>
+                </div>
+                <p className="text-xs text-gray-500 mt-1.5 truncate">
+                  {activeSub.studentName} ({activeSub.rollNumber}) · {activeSub.track} · Submitted {activeSub.updatedAt.slice(0, 10)}
+                </p>
               </div>
 
-              <hr className="border-zinc-750" />
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500 block">Submitted By</span>
-                  <span className="text-gray-300 font-semibold">{activeSub.studentName} ({activeSub.rollNumber})</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">Technology Track</span>
-                  <span className="text-gray-300 font-semibold">{activeSub.track}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">Version</span>
-                  <span className="text-gray-300 font-semibold">v{activeSub.versionNumber}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">Submitted Date</span>
-                  <span className="text-gray-300 font-semibold">{activeSub.updatedAt.slice(0, 10)}</span>
-                </div>
-              </div>
-
-              <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4 flex items-center justify-between">
-                <div>
-                  <span className="text-xs text-gray-500 uppercase tracking-wider block">Attachment</span>
-                  <span className="text-sm text-gray-300 font-medium">{fileNameFromGcsUri(activeSub.documentLink)}</span>
-                </div>
-                <button
-                  onClick={() => handleDownload(activeSub)}
-                  disabled={downloadingId === activeSub.id}
-                  className="px-3.5 py-1.5 bg-gold text-black font-semibold rounded-lg text-xs hover:bg-gold-hover hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
-                >
-                  {downloadingId === activeSub.id ? 'Generating link…' : 'Download File'}
-                </button>
-              </div>
-              {downloadError && <p className="text-xs text-red-400">{downloadError}</p>}
-
-              {viewerUrl && <PdfViewer url={viewerUrl} fullscreenExtra={reviewControls} />}
-
-              {reviewControls}
+              <button
+                onClick={() => setHistoryModalOpen(true)}
+                className="relative flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-750 text-gray-300 hover:text-white hover:border-zinc-600 rounded-lg text-xs font-medium transition-colors shrink-0"
+              >
+                <History size={14} />
+                Review History
+                {activeSub.mentorFeedback && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-gold rounded-full" />
+                )}
+              </button>
             </div>
-          </div>
 
-          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5 flex flex-col h-[500px]">
-            <div className="flex items-center gap-2 border-b border-zinc-750 pb-3 mb-4">
-              <MessageSquare size={18} className="text-gold" />
-              <h3 className="text-lg font-semibold text-white">Review History</h3>
+            <hr className="border-zinc-750" />
+
+            <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-3 flex items-center justify-between gap-3">
+              <span className="text-sm text-gray-300 font-medium truncate">{fileNameFromGcsUri(activeSub.documentLink)}</span>
+              <button
+                onClick={() => handleDownload(activeSub)}
+                disabled={downloadingId === activeSub.id}
+                className="p-1.5 text-gray-400 hover:text-gold transition-colors disabled:opacity-50 shrink-0"
+                title="Download file"
+                aria-label="Download file"
+              >
+                {downloadingId === activeSub.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+              </button>
             </div>
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-              {activeSub.mentorFeedback ? (
-                <div className="p-3 rounded-lg bg-zinc-750 text-gray-200 text-sm">
-                  {activeSub.mentorFeedback}
-                </div>
-              ) : (
-                <div className="h-full flex items-center justify-center text-gray-500 text-sm text-center px-4">
-                  No feedback submitted yet for this version.
-                </div>
-              )}
-            </div>
+            {downloadError && <p className="text-xs text-red-400">{downloadError}</p>}
+
+            {viewerUrl && <PdfViewer url={viewerUrl} fullscreenExtra={reviewControls} />}
+
+            {reviewControls}
           </div>
         </div>
+
+        <Modal open={historyModalOpen} onClose={() => setHistoryModalOpen(false)} title="Review History">
+          {activeSub.mentorFeedback ? (
+            <div className="p-3 rounded-lg bg-zinc-750 text-gray-200 text-sm">
+              {activeSub.mentorFeedback}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm text-center py-6">No feedback submitted yet for this version.</p>
+          )}
+        </Modal>
       </div>
     );
   }

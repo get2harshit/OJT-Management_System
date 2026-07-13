@@ -14,7 +14,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-const COMPACT_PAGE_WIDTH = 640;
+const COMPACT_PAGE_WIDTH = 760;
 
 interface PdfViewerProps {
   url: string;
