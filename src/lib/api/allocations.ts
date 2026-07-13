@@ -1,5 +1,16 @@
-import type { TeamAllocationDetail } from '../types';
+import type { TeamAllocationDetail, StudentAllocation } from '../types';
 import { apiFetch } from './client';
+
+// Student — the logged-in student's own project allocation, if any.
+export async function apiGetMyAllocation(): Promise<StudentAllocation> {
+  return apiFetch<StudentAllocation>('/api/v1/allocations/me');
+}
+
+// All authenticated roles — a single allocation by ID (used to resolve which
+// student a PRD submission belongs to on the mentor/admin review screens).
+export async function apiGetAllocation(id: string): Promise<StudentAllocation> {
+  return apiFetch<StudentAllocation>(`/api/v1/allocations/${id}`);
+}
 
 // Admin — full per-team preference detail for the allocation review panel.
 export async function apiGetTeamsForCohortDetailed(cohortId: string): Promise<TeamAllocationDetail[]> {

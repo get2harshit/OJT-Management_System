@@ -315,7 +315,7 @@ export default function AdminDashboard({
             Mentor Progress Tracker (Sorted by Mentor)
           </h3>
         </div>
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead>
               <tr className="border-b border-zinc-750 bg-zinc-750/30 text-gray-400 text-xs font-semibold uppercase tracking-wider">
@@ -358,6 +358,35 @@ export default function AdminDashboard({
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile: stacked cards instead of a wide scrolling table */}
+        <div className="md:hidden divide-y divide-zinc-750/50">
+          {mentorTrackerList.map(m => (
+            <div key={m.id} className="py-3 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-semibold text-white text-sm">{m.name}</p>
+                <span className="text-gray-300 font-mono text-xs">{m.attendanceRate} attendance</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {m.tracks.map((t: string) => (
+                  <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold font-medium">
+                    {t}
+                  </span>
+                ))}
+                {m.tracks.length === 0 && <span className="text-gray-500 text-xs">General</span>}
+              </div>
+              <div className="flex items-center gap-4 text-xs font-mono">
+                <span className="text-gray-400">Total <span className="text-gray-200 font-bold">{m.totalStudents}</span></span>
+                <span className="text-green-400">On Track {m.onTrack}</span>
+                <span className="text-yellow-500">In Process {m.inProcess}</span>
+                <span className="text-red-400">Delaying {m.delaying}</span>
+              </div>
+            </div>
+          ))}
+          {mentorTrackerList.length === 0 && (
+            <div className="py-8 text-center text-gray-500 text-sm">No mentors configured</div>
+          )}
         </div>
       </div>
 

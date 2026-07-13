@@ -206,8 +206,8 @@ export default function MentorAttendance({
           />
         </div>
 
-        {/* Unified Single Data Table */}
-        <div className="overflow-x-auto border border-zinc-750 rounded-lg bg-zinc-900">
+        {/* Unified Single Data Table — desktop/tablet */}
+        <div className="hidden md:block overflow-x-auto border border-zinc-750 rounded-lg bg-zinc-900">
           <table className="w-full text-sm text-left">
             <thead className="bg-zinc-800 text-gray-400 border-b border-zinc-750 uppercase tracking-wider text-xs">
               <tr>
@@ -278,6 +278,62 @@ export default function MentorAttendance({
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile: stacked cards instead of a wide scrolling table */}
+        <div className="md:hidden border border-zinc-750 rounded-lg bg-zinc-900 divide-y divide-zinc-750/50">
+          {filteredDailyList.map((row) => (
+            <div key={row.user_id} className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-white font-semibold text-sm truncate">{row.name}</p>
+                  <p className="text-gray-500 font-mono text-xs mt-0.5">{row.roll_number}</p>
+                </div>
+                <span className={`font-semibold text-sm shrink-0 ${row.isLowAttendance ? 'text-amber-500' : 'text-green-400'}`}>
+                  {row.percentage}%
+                </span>
+              </div>
+              {row.isLowAttendance ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                  <AlertTriangle size={12} />
+                  Low Attendance Alert
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-green-500/10 text-green-400 border border-green-500/20">
+                  Good Standing
+                </span>
+              )}
+              <div className="flex rounded-lg p-0.5 bg-zinc-950 border border-zinc-850 gap-0.5">
+                <button
+                  onClick={() => toggleAttendance(row.user_id, selectedDate, true)}
+                  className={`flex-1 px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-1 ${
+                    row.isPresent
+                      ? 'bg-green-600 text-white shadow-sm'
+                      : 'text-gray-400 hover:text-white hover:bg-zinc-850'
+                  }`}
+                >
+                  <Check size={12} />
+                  Present
+                </button>
+                <button
+                  onClick={() => toggleAttendance(row.user_id, selectedDate, false)}
+                  className={`flex-1 px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-1 ${
+                    !row.isPresent
+                      ? 'bg-zinc-750 text-red-400 shadow-sm border border-red-500/20'
+                      : 'text-gray-400 hover:text-white hover:bg-zinc-850'
+                  }`}
+                >
+                  <X size={12} />
+                  Absent
+                </button>
+              </div>
+            </div>
+          ))}
+          {filteredDailyList.length === 0 && (
+            <div className="px-6 py-12 text-center text-gray-500 text-sm">
+              No students match the current search query or date.
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -39,6 +39,34 @@ export interface Comment {
   created_at: string;
 }
 
+// ── Real backend-backed PRD submission flow ─────────────────────────────────
+// Unlike Submission above (mock/local, covers all categories), these mirror
+// the live `/api/v1/submissions` and `/api/v1/allocations/me` endpoints —
+// today the backend only persists PRD document reviews, versioned per
+// project allocation.
+
+export type PrdStatus = 'draft' | 'submitted' | 'under_review' | 'changes_requested' | 'approved';
+
+export interface PrdSubmission {
+  id: string;
+  allocationId: string;
+  versionNumber: number;
+  prdDocumentLink: string;
+  status: PrdStatus;
+  mentorFeedback?: string;
+  reviewedBy?: string;
+  updatedAt: string;
+}
+
+export interface StudentAllocation {
+  id: string;
+  studentId: string;
+  projectId?: string;
+  primaryMentorId?: string;
+  secondaryMentorId?: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
 export type CloudProvider = 'AWS' | 'GCP' | 'VULTR' | 'AZURE' | 'OTHER';
 
 export interface Credit {

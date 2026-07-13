@@ -56,8 +56,11 @@ export async function apiFetch<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const token = getStoredToken();
+  // FormData bodies must let the browser set their own multipart boundary —
+  // forcing application/json here would break file uploads.
+  const isFormData = options.body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers as Record<string, string> || {}),
   };
   if (token) {

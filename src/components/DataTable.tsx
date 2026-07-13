@@ -94,7 +94,8 @@ export default function DataTable<T extends Record<string, unknown>>({
         />
       </div>
 
-      <div className="overflow-x-auto">
+      {/* Desktop/tablet: the usual scrollable table. */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-750 bg-zinc-750/30">
@@ -144,6 +145,50 @@ export default function DataTable<T extends Record<string, unknown>>({
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile: one stacked card per row instead of a horizontally-scrolling
+          table — nothing gets clipped, and there's nothing to swipe sideways. */}
+      <div className="md:hidden divide-y divide-zinc-750/50">
+        {paginated.map((row, idx) => (
+          <div
+            key={typeof row.id === 'string' || typeof row.id === 'number' ? row.id : idx}
+            onClick={() => onRowClick && onRowClick(row)}
+            tabIndex={onRowClick ? 0 : undefined}
+            role={onRowClick ? 'button' : undefined}
+            onKeyDown={onRowClick ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onRowClick(row);
+              }
+            } : undefined}
+            className={`p-4 space-y-2 transition-colors ${
+              onRowClick ? 'cursor-pointer hover:bg-gold/5 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-gold/50' : ''
+            }`}
+          >
+            {columns.map((col) => (
+              <div key={String(col.key)} className="flex items-start justify-between gap-3">
+                <span className="text-gray-500 text-xs uppercase tracking-wider shrink-0 pt-0.5">
+                  {col.headerRender ? col.headerRender() : col.header}
+                </span>
+                <span className="text-gray-200 text-sm text-right min-w-0">
+                  {col.render ? col.render(row) : String(row[col.key as keyof T] ?? '-')}
+                </span>
+              </div>
+            ))}
+            {actions && (
+              <div
+                className="flex items-center justify-end gap-2 pt-2 mt-2 border-t border-zinc-800"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {actions(row)}
+              </div>
+            )}
+          </div>
+        ))}
+        {paginated.length === 0 && (
+          <div className="px-4 py-8 text-center text-gray-500 text-sm">No records found</div>
+        )}
       </div>
 
       {(serverPagination ? serverPagination.totalPages > 1 : filtered.length > pageSize) && (
