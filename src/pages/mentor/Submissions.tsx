@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Eye, CheckCircle2, RotateCcw, ArrowLeft, Send, MessageSquare, Loader2, Clock } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PdfViewer from '../../components/PdfViewer';
 import type { Submission, Task, Profile, Student, Comment, SubmissionCategory, SubmissionStatus, PrdSubmission, StudentAllocation } from '../../lib/types';
 import {
   apiGetAllPrdSubmissions,
@@ -97,6 +98,7 @@ export default function MentorSubmissions({
   const [reviewing, setReviewing] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
   const loadPrdSubmissions = async () => {
     setPrdLoading(true);
@@ -193,6 +195,20 @@ export default function MentorSubmissions({
 
   const activeSub = allRows.find(s => s.id === selectedSubId);
   const activeComments = comments.filter(c => c.submission_id === selectedSubId);
+
+  // Load the embedded preview automatically when a PRD row opens (separate
+  // from handleDownloadPrd below, which is the manual "Download File" button).
+  useEffect(() => {
+    if (!activeSub?.isPrd || !activeSub.prd) {
+      setViewerUrl(null);
+      return;
+    }
+    let cancelled = false;
+    apiGetPrdDownloadUrl(activeSub.prd.id)
+      .then((url) => { if (!cancelled) setViewerUrl(url); })
+      .catch(() => { if (!cancelled) setViewerUrl(null); });
+    return () => { cancelled = true; };
+  }, [activeSub?.id, activeSub?.isPrd, activeSub?.prd]);
 
   const handleSendComment = () => {
     if (!newComment.trim() || !selectedSubId) return;
@@ -297,6 +313,8 @@ export default function MentorSubmissions({
                 )}
               </div>
               {activeSub.isPrd && downloadError && <p className="text-xs text-red-400">{downloadError}</p>}
+
+              {activeSub.isPrd && viewerUrl && <PdfViewer url={viewerUrl} />}
 
               {activeSub.isPrd ? (
                 <div className="space-y-3 pt-2">
