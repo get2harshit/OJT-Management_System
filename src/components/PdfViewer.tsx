@@ -45,7 +45,7 @@ export default function PdfViewer({ url }: PdfViewerProps) {
 
   return (
     <div className="bg-zinc-900 border border-zinc-750 rounded-lg overflow-hidden">
-      <div className="flex justify-center items-center max-h-[600px] overflow-auto p-3">
+      <div className="flex justify-center items-start max-h-[600px] overflow-auto p-3">
         <Document
           file={url}
           onLoadSuccess={({ numPages: n }) => {
