@@ -7,6 +7,7 @@ import Mentors from './Mentors';
 import Allocations from './Allocations';
 import OJTs from './OJTs';
 import Tasks from './Tasks';
+import CreateTaskPage from './CreateTaskPage';
 import Submissions from './Submissions';
 import Credits from './Credits';
 import Attendance from './Attendance';
@@ -143,6 +144,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route path="ojts/:cohortId/mentors" element={<CohortMentorsPage />} />
         <Route path="ojts/:cohortId/teams" element={<CohortTeamsPage />} />
         <Route path="ojts/:cohortId/allocations" element={<CohortAllocationsPage />} />
+        <Route path="tasks/create" element={<CreateTaskPage />} />
         <Route path="*" element={renderTab()} />
       </Routes>
     </AppShell>
