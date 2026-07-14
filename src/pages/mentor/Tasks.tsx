@@ -2,29 +2,14 @@ import { useState, useEffect } from 'react';
 import DataTable from '../../components/DataTable';
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask } from '../../lib/api/tasks';
-import type { Profile } from '../../lib/types';
 
-interface Props {
-  mentorId: string;
-  profiles: Profile[];
-}
-
-export default function MentorTasks({
-  mentorId,
-  profiles: propProfiles,
-}: Partial<Props> & { mentorId: string }) {
+export default function MentorTasks() {
   const [tasks, setTasks] = useState<ApiTask[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Fallback to propProfiles if provided (useful for mock contexts or testing)
-  const profiles = propProfiles ?? [];
 
   useEffect(() => {
-    setLoading(true);
     apiListTasks()
       .then(res => setTasks(res.data || []))
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch(console.error);
   }, []);
 
   const tableData = tasks.map(t => {
