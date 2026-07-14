@@ -1,16 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Calendar, RefreshCw, Briefcase, Edit2, UserCog, Users2, Shuffle } from 'lucide-react';
+import { Plus, Trash2, Calendar, RefreshCw, Briefcase, Edit2, UserCog, Users, Users2, Shuffle } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import ActionsMenu from '../../../components/ActionsMenu';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import type { Cohort } from '../../../lib/types';
-import { apiListCohorts, apiCreateCohort, apiUpdateCohort, apiGetCohort, apiDeleteCohort } from '../../../lib/api';
+import { apiListCohorts, apiCreateCohort, apiUpdateCohort, apiGetCohort, apiDeleteCohort, apiListStudentBatches } from '../../../lib/api';
 import { getDurationString, formatDateDisplay, toDateOnly } from '../../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import CohortFormFields from './CohortFormFields';
-import { computeCohortDefaultsFromStartDate, EMPTY_COHORT_FORM, validateCohortForm } from '../../../lib/cohortForm';
+import { EMPTY_COHORT_FORM, validateCohortForm } from '../../../lib/cohortForm';
 import Button from '../../../components/Button';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
@@ -24,6 +24,9 @@ export default function CohortsPanel() {
   const [editingCohortId, setEditingCohortId] = useState<string | null>(null);
   const [cohortModalOpen, setCohortModalOpen] = useState(false);
   const [cohortForm, setCohortForm] = useState(EMPTY_COHORT_FORM);
+  // Real batch codes in use across students (e.g. "2025 A") — fetched once,
+  // independent of the cohort's start date, and offered as the "Allowed
+  // Batches" checkbox options.
   const [eligibleBatchOptions, setEligibleBatchOptions] = useState<string[]>([]);
 
   const fetchCohorts = useCallback(async () => {
@@ -42,11 +45,16 @@ export default function CohortsPanel() {
     fetchCohorts();
   }, [fetchCohorts]);
 
+  useEffect(() => {
+    apiListStudentBatches()
+      .then(setEligibleBatchOptions)
+      .catch(() => setEligibleBatchOptions([]));
+  }, []);
+
   const closeCohortModal = () => {
     setCohortModalOpen(false);
     setEditingCohortId(null);
     setCohortForm(EMPTY_COHORT_FORM);
-    setEligibleBatchOptions([]);
   };
 
   const handleSaveCohort = async () => {
@@ -83,11 +91,10 @@ export default function CohortsPanel() {
       const cohort = await apiGetCohort(id);
       const allowedBatches = Array.isArray(cohort.allowedBatches) ? cohort.allowedBatches : [cohort.allowedBatches].filter(Boolean) as string[];
       const startDate = toDateOnly(cohort.startDate);
-      // Union with the recomputed eligible options so existing selections
-      // outside the formula (e.g. from data saved before this logic existed)
-      // still show up as checked options instead of silently vanishing.
-      const computedOptions = startDate ? computeCohortDefaultsFromStartDate(startDate).eligibleBatchOptions : [];
-      setEligibleBatchOptions(Array.from(new Set([...computedOptions, ...allowedBatches])));
+      // Union with the fetched batch list so an already-selected batch that
+      // no longer has any active student (or predates this format) still
+      // shows up as a checked option instead of silently vanishing.
+      setEligibleBatchOptions(prev => Array.from(new Set([...prev, ...allowedBatches])));
       setCohortForm({
         name: cohort.name ?? '',
         allowedBatches,
@@ -199,7 +206,7 @@ export default function CohortsPanel() {
               items={[
                 { label: 'Edit OJT', icon: Edit2, onClick: () => handleEditCohort(row.id) },
                 { label: 'Select Project', icon: Briefcase, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/projects`) },
-                // { label: 'Select Student', icon: Users, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/students`) },
+                { label: 'Select Student', icon: Users, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/students`) },
                 { label: 'Select Mentor', icon: UserCog, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/mentors`) },
                 { label: 'Manage Teams', icon: Users2, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/teams`) },
                 { label: 'Allocate Projects', icon: Shuffle, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/allocations`) },
@@ -221,7 +228,6 @@ export default function CohortsPanel() {
             form={cohortForm}
             onChange={setCohortForm}
             eligibleBatchOptions={eligibleBatchOptions}
-            onEligibleBatchOptionsChange={setEligibleBatchOptions}
           />
           <button
             onClick={handleSaveCohort}

@@ -22,22 +22,17 @@ export const EMPTY_COHORT_FORM: CohortFormState = {
   isActive: true,
 };
 
-// Derives Allowed Batches / Semester / Cohort Name from the OJT Start Date.
-// A B.Tech program runs 4 years and the academic year turns over every
-// August, so of the 5 batches whose span overlaps the start year Y, the
-// (Y-4)-Y batch has already graduated (finishes before an August start).
-// The remaining 4 — the 3 already mid-program plus the just-starting
-// Y-(Y+4) batch — are offered as selectable options; only the 3 mid-program
-// batches are auto-checked, the newly-starting batch is left for the admin
-// to opt into manually.
+// Derives Semester / Cohort Name from the OJT Start Date. Allowed Batches are
+// no longer guessed from the start date — batches follow the college's own
+// "YYYY <Section>" codes (e.g. "2025 A"), which have no fixed relationship
+// to a cohort's start year, so the admin picks them from the real list of
+// batches in use (see apiListStudentBatches) instead.
 //
 // Semester: the backend only *enforces* Jun-Aug -> ODD and Jan-Apr -> EVEN
 // (May and Sep-Dec aren't validated), so Jan-May -> EVEN / Jun-Dec -> ODD is
 // the split that satisfies the backend's hard constraints while still
 // picking something sensible for the unconstrained months.
 export function computeCohortDefaultsFromStartDate(startDate: string): {
-  eligibleBatchOptions: string[];
-  allowedBatches: string[];
   sessionTerm: SemesterSession;
   name: string;
 } {
@@ -45,18 +40,11 @@ export function computeCohortDefaultsFromStartDate(startDate: string): {
   const year = Number(yearStr);
   const month = Number(monthStr); // 1-12
 
-  const allowedBatches = [
-    `${year - 3}-${year + 1}`,
-    `${year - 2}-${year + 2}`,
-    `${year - 1}-${year + 3}`,
-  ];
-  const eligibleBatchOptions = [...allowedBatches, `${year}-${year + 4}`];
-
   const sessionTerm: SemesterSession = month <= 5 ? 'EVEN' : 'ODD';
 
   const name = `OJT ${MONTH_NAMES[month - 1]} ${year}`;
 
-  return { eligibleBatchOptions, allowedBatches, sessionTerm, name };
+  return { sessionTerm, name };
 }
 
 // Mirrors the backend's own minimum-duration rule (CohortService.ts):
@@ -79,12 +67,9 @@ export function validateCohortForm(form: CohortFormState): string | null {
   if (!COHORT_NAME_REGEX.test(form.name)) {
     return 'Cohort Name must be in the format "OJT <Month> <Year>", e.g. OJT August 2026';
   }
-  const invalidBatch = form.allowedBatches.find(batch => {
-    const match = batch.match(/^(\d{4})-(\d{4})$/);
-    return !match || Number(match[2]) - Number(match[1]) !== 4;
-  });
+  const invalidBatch = form.allowedBatches.find(batch => !/^\d{4} [A-Z]$/.test(batch));
   if (invalidBatch) {
-    return 'Allowed Batches must be 4-year B.Tech spans in the format YYYY-YYYY, e.g. 2024-2028';
+    return 'Allowed Batches must be in the format "YYYY X", e.g. 2025 A';
   }
   if (form.startDate >= form.endDate) {
     return 'End Date must be strictly after Start Date';
