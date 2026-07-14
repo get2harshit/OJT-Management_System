@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Upload, Eye, ArrowLeft, MessageSquare, Loader2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Upload, Eye, ArrowLeft, MessageSquare, Loader2, CheckCircle2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
@@ -12,7 +12,8 @@ import {
   apiUploadPrd,
   apiGetPrdDownloadUrl,
 } from '../../lib/api';
-import { apiGetTask } from '../../lib/api/tasks';
+import { apiGetTask, apiListTasks } from '../../lib/api/tasks';
+import type { ApiTask, ApiTaskType } from '../../lib/api/tasks';
 
 interface Props {
   studentId: string;
@@ -61,6 +62,45 @@ export default function StudentSubmissions({
   // button — locks the document type to what that task requires.
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [lockedDocType, setLockedDocType] = useState<DocumentType | null>(null);
+
+  const [myTasks, setMyTasks] = useState<ApiTask[]>([]);
+
+  useEffect(() => {
+    if (!studentId) return;
+    apiListTasks().then((res) => setMyTasks(res.data || [])).catch(console.error);
+  }, [studentId]);
+
+  // Per document type: is there a task of that type still needing a
+  // submission (never submitted, or the mentor requested changes), or is
+  // every task of that type already completed? Drives which types the
+  // standalone "New Submission" picker allows, and the green-tick tiles.
+  const typeStatus = useMemo(() => {
+    const map: Partial<Record<DocumentType, { status: 'open' | 'done'; taskId: string }>> = {};
+    for (const task of myTasks) {
+      const type = task.task_type as ApiTaskType | null | undefined;
+      if (!type) continue;
+      const myAssignment = task.assignments?.find((a) => a.assignee_id === studentId);
+      const isOpen = myAssignment?.status !== 'completed';
+      const existing = map[type];
+      if (!existing || (isOpen && existing.status === 'done')) {
+        map[type] = { status: isOpen ? 'open' : 'done', taskId: task.id };
+      }
+    }
+    return map;
+  }, [myTasks, studentId]);
+
+  const openTypeOptions = DOCUMENT_TYPES
+    .filter((t) => typeStatus[t]?.status === 'open')
+    .map((t) => ({ value: t, label: DOCUMENT_TYPE_LABELS[t] }));
+
+  const openManualUpload = () => {
+    const firstOpen = DOCUMENT_TYPES.find((t) => typeStatus[t]?.status === 'open');
+    if (firstOpen) {
+      setUploadDocType(firstOpen);
+      setActiveTaskId(typeStatus[firstOpen]!.taskId);
+    }
+    setUploadModalOpen(true);
+  };
 
   const loadSubmissions = async (allocationId: string) => {
     const subs = await apiGetPrdSubmissionsByAllocation(allocationId);
@@ -290,7 +330,7 @@ export default function StudentSubmissions({
           <p className="text-gray-400 text-sm mt-1">Upload and track your project documents</p>
         </div>
         <button
-          onClick={() => setUploadModalOpen(true)}
+          onClick={openManualUpload}
           className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200"
         >
           <Upload size={18} />
@@ -309,6 +349,7 @@ export default function StudentSubmissions({
         {DOCUMENT_TYPES.map((type) => {
           const isSelected = selectedType === type;
           const count = submissions.filter((s) => s.documentType === type).length;
+          const isDone = typeStatus[type]?.status === 'done';
           return (
             <button
               key={type}
@@ -316,7 +357,10 @@ export default function StudentSubmissions({
               className={`bg-zinc-850 border rounded-xl p-5 text-left transition-all hover:scale-[1.02] ${isSelected ? 'border-gold shadow-lg shadow-gold/5' : 'border-zinc-750 hover:border-zinc-600'
                 }`}
             >
-              <h4 className="text-gray-400 text-xs font-semibold uppercase tracking-wider">{DOCUMENT_TYPE_LABELS[type]}</h4>
+              <h4 className="text-gray-400 text-xs font-semibold uppercase tracking-wider flex items-center gap-1">
+                {DOCUMENT_TYPE_LABELS[type]}
+                {isDone && <CheckCircle2 size={13} className="text-green-400" />}
+              </h4>
               <p className="text-3xl font-bold text-white mt-2 flex items-center gap-2">
                 {loading ? <Loader2 size={22} className="animate-spin text-gray-500" /> : count}
               </p>
@@ -368,16 +412,24 @@ export default function StudentSubmissions({
             <div className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm rounded-lg px-3 py-2.5">
               You don't have a project allocation yet — submissions open once you're allocated to a project.
             </div>
+          ) : !lockedDocType && openTypeOptions.length === 0 ? (
+            <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-lg px-3 py-2.5 flex items-center gap-2">
+              <CheckCircle2 size={16} />
+              Nothing needs your submission right now — every assigned document is already submitted.
+            </div>
           ) : (
             <>
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Document Type</label>
                 <Select
                   value={uploadDocType}
-                  onChange={(v) => setUploadDocType(v as DocumentType)}
+                  onChange={(v) => {
+                    setUploadDocType(v as DocumentType);
+                    setActiveTaskId(typeStatus[v as DocumentType]?.taskId ?? null);
+                  }}
                   className="w-full"
                   disabled={!!lockedDocType}
-                  options={DOCUMENT_TYPES.map((t) => ({ value: t, label: DOCUMENT_TYPE_LABELS[t] }))}
+                  options={lockedDocType ? DOCUMENT_TYPES.map((t) => ({ value: t, label: DOCUMENT_TYPE_LABELS[t] })) : openTypeOptions}
                 />
                 {lockedDocType && (
                   <p className="text-xs text-gray-500 mt-1">This task requires a {DOCUMENT_TYPE_LABELS[lockedDocType]} submission.</p>
@@ -414,14 +466,16 @@ export default function StudentSubmissions({
             </>
           )}
           {error && <p className="text-xs text-red-400">{error}</p>}
-          <button
-            onClick={handleUpload}
-            disabled={!canUpload || uploading}
-            className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50 disabled:hover:bg-gold flex items-center justify-center gap-2"
-          >
-            {uploading && <Loader2 size={16} className="animate-spin" />}
-            {uploading ? 'Uploading…' : 'Submit'}
-          </button>
+          {(lockedDocType || openTypeOptions.length > 0) && (
+            <button
+              onClick={handleUpload}
+              disabled={!canUpload || uploading}
+              className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50 disabled:hover:bg-gold flex items-center justify-center gap-2"
+            >
+              {uploading && <Loader2 size={16} className="animate-spin" />}
+              {uploading ? 'Uploading…' : 'Submit'}
+            </button>
+          )}
         </div>
       </Modal>
     </div>

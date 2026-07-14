@@ -87,17 +87,19 @@ export default function MentorTasks() {
   };
 
   const tableData = tasks.map(t => {
-    let assignedNames = ['All'];
-    if (t.assignments && t.assignments.length > 0) {
-      assignedNames = t.assignments.map(a => a.assignee ? a.assignee.full_name : a.assignee_id);
-    }
+    const assignees = (t.assignments && t.assignments.length > 0)
+      ? t.assignments.map(a => ({
+        name: a.assignee ? a.assignee.full_name : a.assignee_id,
+        status: a.status,
+      }))
+      : [{ name: 'All', status: undefined as string | undefined }];
 
     return {
       id: t.id,
       title: t.title,
       description: t.description || '-',
       type: t.target_role === 'student' ? 'Student' : 'Mentor',
-      assigned_names: assignedNames,
+      assignees,
       start_date: t.start_date ? new Date(t.start_date).toLocaleDateString() : '-',
       due_date: t.deadline ? new Date(t.deadline).toLocaleDateString() : '-',
     };
@@ -129,15 +131,23 @@ export default function MentorTasks() {
             ),
           },
           {
-            key: 'assigned_names',
+            key: 'assignees',
             header: 'Assigned To',
             render: (row) => (
               <div className="max-w-[250px] flex flex-wrap gap-1.5 py-1">
-                {row.assigned_names.map((name: string, i: number) => (
-                  <span key={i} className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap">
-                    {name}
-                  </span>
-                ))}
+                {row.assignees.map((a: { name: string; status?: string }, i: number) => {
+                  const dotColor = a.status === 'completed' ? 'bg-green-400' : a.status === 'progress' ? 'bg-yellow-400' : 'bg-gray-500';
+                  return (
+                    <span
+                      key={i}
+                      title={a.status ? `${a.status[0].toUpperCase()}${a.status.slice(1)}` : undefined}
+                      className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap flex items-center gap-1"
+                    >
+                      {a.status && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />}
+                      {a.name}
+                    </span>
+                  );
+                })}
               </div>
             )
           },
