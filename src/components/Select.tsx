@@ -64,13 +64,18 @@ export default function Select({ value, onChange, options, placeholder, disabled
       }
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') {
+        // Capture phase + stopPropagation so this only closes the dropdown,
+        // not a parent Modal/Drawer also listening for Escape on window.
+        e.stopPropagation();
+        setOpen(false);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('keydown', handleKey);
+    window.addEventListener('keydown', handleKey, true);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('keydown', handleKey);
+      window.removeEventListener('keydown', handleKey, true);
     };
   }, [open]);
 
