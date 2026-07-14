@@ -92,6 +92,9 @@ export default function CohortAllocationsPage() {
     submittedAt: formatDateDisplay(t.submittedAt),
     pref1: `${t.preference1.projectTitle}${t.preference1.mentorName ? ` · ${t.preference1.mentorName}` : ''}`,
     pref2: `${t.preference2.projectTitle}${t.preference2.mentorName ? ` · ${t.preference2.mentorName}` : ''}`,
+    pref1ProjectId: t.preference1.projectId,
+    pref2ProjectId: t.preference2.projectId,
+    allocatedProjectId: t.allocatedProjectId,
     status: t.allocationStatus,
     allocated:
       t.allocatedProjectId === t.preference1.projectId
@@ -135,8 +138,24 @@ export default function CohortAllocationsPage() {
             { key: 'track', header: 'Track' },
             { key: 'tier', header: 'Tier' },
             { key: 'submittedAt', header: 'Submitted' },
-            { key: 'pref1', header: 'Preference 1' },
-            { key: 'pref2', header: 'Preference 2' },
+            {
+              key: 'pref1',
+              header: 'Preference 1',
+              render: (row) => (
+                <span className={row.allocatedProjectId && row.pref1ProjectId === row.allocatedProjectId ? 'text-green-400 font-medium' : undefined}>
+                  {row.pref1}
+                </span>
+              ),
+            },
+            {
+              key: 'pref2',
+              header: 'Preference 2',
+              render: (row) => (
+                <span className={row.allocatedProjectId && row.pref2ProjectId === row.allocatedProjectId ? 'text-green-400 font-medium' : undefined}>
+                  {row.pref2}
+                </span>
+              ),
+            },
             {
               key: 'status',
               header: 'Status',

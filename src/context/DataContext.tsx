@@ -329,7 +329,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         currentProjects.push({
           id: newProjId, title: record.project_title || `Own Project - ${record.name}`,
           description: record.project_description || '', track: record.track, created_at: new Date().toISOString().slice(0, 10),
-          related_field: record.tech_stack || '', source: 'Own'
+          related_field: record.tech_stack || ''
         });
         projectId = newProjId;
       }

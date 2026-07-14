@@ -7,12 +7,14 @@ interface CohortFormFieldsProps {
   form: CohortFormState;
   onChange: (form: CohortFormState) => void;
   eligibleBatchOptions: string[];
-  onEligibleBatchOptionsChange: (options: string[]) => void;
 }
 
 // Field markup for the cohort form, shared by the Create and Edit flows of
-// the cohort modal in CohortsPanel.
-export default function CohortFormFields({ form, onChange, eligibleBatchOptions, onEligibleBatchOptionsChange }: CohortFormFieldsProps) {
+// the cohort modal in CohortsPanel. `eligibleBatchOptions` is the real list
+// of batch codes currently in use by students (see apiListStudentBatches) —
+// batches have no fixed relationship to the cohort's start date, so this
+// list is fetched once by the parent rather than derived here.
+export default function CohortFormFields({ form, onChange, eligibleBatchOptions }: CohortFormFieldsProps) {
   return (
     <div className="space-y-4">
       <div>
@@ -27,14 +29,11 @@ export default function CohortFormFields({ form, onChange, eligibleBatchOptions,
                 ...form,
                 startDate,
                 endDate,
-                allowedBatches: defaults.allowedBatches,
                 sessionTerm: defaults.sessionTerm,
                 name: defaults.name,
               });
-              onEligibleBatchOptionsChange(defaults.eligibleBatchOptions);
             } else if (!startDate) {
-              onChange({ ...form, startDate: '', endDate: '', allowedBatches: [] });
-              onEligibleBatchOptionsChange([]);
+              onChange({ ...form, startDate: '', endDate: '' });
             } else {
               onChange({ ...form, endDate });
             }
@@ -55,7 +54,7 @@ export default function CohortFormFields({ form, onChange, eligibleBatchOptions,
         <label className="block text-sm text-gray-400 mb-1">Allowed Batches</label>
         <div className="flex flex-wrap gap-3 bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 min-h-[42px] items-center">
           {eligibleBatchOptions.length === 0 ? (
-            <span className="text-sm text-gray-500">Select a Start Date to see eligible batches</span>
+            <span className="text-sm text-gray-500">No student batches found</span>
           ) : (
             eligibleBatchOptions.map(batch => {
               const checked = form.allowedBatches.includes(batch);

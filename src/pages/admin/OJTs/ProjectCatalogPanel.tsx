@@ -65,7 +65,6 @@ export default function ProjectCatalogPanel({ addProject, deleteProject, deleteA
       track: projectForm.track,
       end_goals: projectForm.end_goals,
       related_field: projectForm.related_field,
-      source: 'Listed'
     });
     setProjectForm(EMPTY_PROJECT_FORM);
     setProjectModalOpen(false);
