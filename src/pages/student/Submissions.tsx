@@ -12,6 +12,7 @@ import {
   apiUploadPrd,
   apiGetPrdDownloadUrl,
 } from '../../lib/api';
+import { apiGetTask } from '../../lib/api/tasks';
 
 interface Props {
   studentId: string;
@@ -37,6 +38,7 @@ function statusBadgeClass(status: string): string {
 export default function StudentSubmissions({
   studentId,
   initialSelectedSubId,
+  initialNewSubTaskId,
   onClearInitialState,
 }: Partial<Props> & { studentId: string }) {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -49,10 +51,16 @@ export default function StudentSubmissions({
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadDocType, setUploadDocType] = useState<DocumentType>('prd');
+  const [uploadMessage, setUploadMessage] = useState('');
   const [uploading, setUploading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+
+  // Set when the upload modal was opened from a specific task's "Submit"
+  // button — locks the document type to what that task requires.
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [lockedDocType, setLockedDocType] = useState<DocumentType | null>(null);
 
   const loadSubmissions = async (allocationId: string) => {
     const subs = await apiGetPrdSubmissionsByAllocation(allocationId);
@@ -95,6 +103,37 @@ export default function StudentSubmissions({
     }
   }, [initialSelectedSubId, onClearInitialState]);
 
+  useEffect(() => {
+    if (!initialNewSubTaskId) return;
+    let cancelled = false;
+
+    (async () => {
+      setActiveTaskId(initialNewSubTaskId);
+      try {
+        const res = await apiGetTask(initialNewSubTaskId);
+        if (cancelled) return;
+        const taskType = res.data.task_type as DocumentType | null | undefined;
+        if (taskType) {
+          setLockedDocType(taskType);
+          setUploadDocType(taskType);
+        } else {
+          setLockedDocType(null);
+        }
+      } catch {
+        if (!cancelled) setLockedDocType(null);
+      } finally {
+        if (!cancelled) {
+          setUploadModalOpen(true);
+          onClearInitialState?.();
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialNewSubTaskId, onClearInitialState]);
+
   const filteredSubmissions = submissions.filter((s) => selectedType === 'ALL' || s.documentType === selectedType);
   const activeSub = submissions.find((s) => s.id === selectedSubId);
 
@@ -124,15 +163,32 @@ export default function StudentSubmissions({
     }
   };
 
+  const isMessageType = uploadDocType === 'others';
+  const canUpload = !!allocation && (isMessageType ? !!uploadMessage.trim() : !!selectedFile);
+
+  const closeUploadModal = () => {
+    setUploadModalOpen(false);
+    setSelectedFile(null);
+    setUploadMessage('');
+    setActiveTaskId(null);
+    setLockedDocType(null);
+    setUploadDocType('prd');
+  };
+
   const handleUpload = async () => {
-    if (!allocation || !selectedFile) return;
+    if (!allocation || !canUpload) return;
     setUploading(true);
     setError(null);
     try {
-      await apiUploadPrd(selectedFile, allocation.id, uploadDocType);
+      await apiUploadPrd({
+        allocationId: allocation.id,
+        docType: uploadDocType,
+        file: isMessageType ? undefined : selectedFile ?? undefined,
+        message: isMessageType ? uploadMessage.trim() : undefined,
+        taskId: activeTaskId ?? undefined,
+      });
       await loadSubmissions(allocation.id);
-      setSelectedFile(null);
-      setUploadModalOpen(false);
+      closeUploadModal();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload document');
     } finally {
@@ -176,22 +232,31 @@ export default function StudentSubmissions({
                 </div>
               </div>
 
-              <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4 flex items-center justify-between">
-                <div>
-                  <span className="text-xs text-gray-500 uppercase tracking-wider block">Attachment</span>
-                  <span className="text-sm text-gray-300 font-medium">{fileNameFromGcsUri(activeSub.documentLink)}</span>
-                </div>
-                <button
-                  onClick={() => handleDownload(activeSub)}
-                  disabled={downloadingId === activeSub.id}
-                  className="px-3.5 py-1.5 bg-gold text-black font-semibold rounded-lg text-xs hover:bg-gold-hover hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
-                >
-                  {downloadingId === activeSub.id ? 'Generating link…' : 'Download File'}
-                </button>
-              </div>
-              {downloadError && <p className="text-xs text-red-400">{downloadError}</p>}
+              {activeSub.documentLink ? (
+                <>
+                  <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs text-gray-500 uppercase tracking-wider block">Attachment</span>
+                      <span className="text-sm text-gray-300 font-medium">{fileNameFromGcsUri(activeSub.documentLink)}</span>
+                    </div>
+                    <button
+                      onClick={() => handleDownload(activeSub)}
+                      disabled={downloadingId === activeSub.id}
+                      className="px-3.5 py-1.5 bg-gold text-black font-semibold rounded-lg text-xs hover:bg-gold-hover hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
+                    >
+                      {downloadingId === activeSub.id ? 'Generating link…' : 'Download File'}
+                    </button>
+                  </div>
+                  {downloadError && <p className="text-xs text-red-400">{downloadError}</p>}
 
-              {viewerUrl && <PdfViewer url={viewerUrl} />}
+                  {viewerUrl && <PdfViewer url={viewerUrl} />}
+                </>
+              ) : (
+                <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4">
+                  <span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Message</span>
+                  <p className="text-sm text-gray-300">{activeSub.messageContent}</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -264,7 +329,14 @@ export default function StudentSubmissions({
       <DataTable
         columns={[
           { key: 'documentType', header: 'Type', render: (row) => DOCUMENT_TYPE_LABELS[row.documentType] },
-          { key: 'documentLink', header: 'File', render: (row) => fileNameFromGcsUri(row.documentLink) },
+          {
+            key: 'documentLink',
+            header: 'File',
+            render: (row) => {
+              const link = row.documentLink as string | undefined;
+              return link ? fileNameFromGcsUri(link) : <span className="italic text-gray-500">Text message</span>;
+            },
+          },
           { key: 'versionNumber', header: 'Version' },
           {
             key: 'status',
@@ -290,7 +362,7 @@ export default function StudentSubmissions({
         )}
       />
 
-      <Modal open={uploadModalOpen} onClose={() => setUploadModalOpen(false)} title="New Submission">
+      <Modal open={uploadModalOpen} onClose={closeUploadModal} title="New Submission">
         <div className="space-y-4">
           {!allocation ? (
             <div className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm rounded-lg px-3 py-2.5">
@@ -304,30 +376,47 @@ export default function StudentSubmissions({
                   value={uploadDocType}
                   onChange={(v) => setUploadDocType(v as DocumentType)}
                   className="w-full"
+                  disabled={!!lockedDocType}
                   options={DOCUMENT_TYPES.map((t) => ({ value: t, label: DOCUMENT_TYPE_LABELS[t] }))}
                 />
+                {lockedDocType && (
+                  <p className="text-xs text-gray-500 mt-1">This task requires a {DOCUMENT_TYPE_LABELS[lockedDocType]} submission.</p>
+                )}
               </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Document (PDF)</label>
-                <label className="border-2 border-dashed border-zinc-750 rounded-lg p-6 text-center hover:border-gold/40 transition-colors block cursor-pointer">
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    className="hidden"
-                    onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+              {isMessageType ? (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Message</label>
+                  <textarea
+                    value={uploadMessage}
+                    onChange={(e) => setUploadMessage(e.target.value)}
+                    placeholder="Describe what you've done..."
+                    rows={4}
+                    className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold transition-colors resize-none"
                   />
-                  <Upload size={24} className="mx-auto text-gray-500 mb-2" />
-                  <p className="text-sm text-gray-500">
-                    {selectedFile ? selectedFile.name : 'Click to select a PDF'}
-                  </p>
-                </label>
-              </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Document (PDF)</label>
+                  <label className="border-2 border-dashed border-zinc-750 rounded-lg p-6 text-center hover:border-gold/40 transition-colors block cursor-pointer">
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                    />
+                    <Upload size={24} className="mx-auto text-gray-500 mb-2" />
+                    <p className="text-sm text-gray-500">
+                      {selectedFile ? selectedFile.name : 'Click to select a PDF'}
+                    </p>
+                  </label>
+                </div>
+              )}
             </>
           )}
           {error && <p className="text-xs text-red-400">{error}</p>}
           <button
             onClick={handleUpload}
-            disabled={!allocation || !selectedFile || uploading}
+            disabled={!canUpload || uploading}
             className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50 disabled:hover:bg-gold flex items-center justify-center gap-2"
           >
             {uploading && <Loader2 size={16} className="animate-spin" />}

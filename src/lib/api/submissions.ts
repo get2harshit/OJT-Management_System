@@ -16,12 +16,24 @@ export async function apiGetPrdSubmission(id: string): Promise<PrdSubmission> {
   return apiFetch<PrdSubmission>(`/api/v1/submissions/${id}`);
 }
 
-// Student — uploads the PDF to GCS and creates the versioned submission record in one call.
-export async function apiUploadPrd(file: File, allocationId: string, docType: DocumentType = 'prd'): Promise<PrdSubmission> {
+// Student — uploads a file (or, for 'others', a plain text message) and
+// creates the versioned submission record in one call. Pass `taskId` to link
+// the submission to a specific task — the backend enforces that `docType`
+// matches that task's required type and that the student is assigned to it.
+export async function apiUploadPrd(params: {
+  allocationId: string;
+  docType: DocumentType;
+  file?: File;
+  message?: string;
+  taskId?: string;
+}): Promise<PrdSubmission> {
+  const { allocationId, docType, file, message, taskId } = params;
   const formData = new FormData();
-  formData.append('file', file);
   formData.append('allocationId', allocationId);
   formData.append('docType', docType);
+  if (file) formData.append('file', file);
+  if (message) formData.append('message', message);
+  if (taskId) formData.append('taskId', taskId);
   const res = await apiFetch<{ message: string; submission: PrdSubmission }>('/api/v1/submissions/upload', {
     method: 'POST',
     body: formData,

@@ -49,7 +49,7 @@ export type PrdStatus = 'draft' | 'submitted' | 'under_review' | 'changes_reques
 
 // Mirrors the backend's DocumentType enum (src/domain/types.ts) — the set of
 // document types the generic /api/v1/submissions/upload endpoint accepts.
-export const DOCUMENT_TYPES = ['prd', 'db_schema', 'hld', 'lld', 'api_contract'] as const;
+export const DOCUMENT_TYPES = ['prd', 'db_schema', 'hld', 'lld', 'api_contract', 'others'] as const;
 export type DocumentType = typeof DOCUMENT_TYPES[number];
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   prd: 'PRD',
@@ -57,14 +57,17 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   hld: 'HLD',
   lld: 'LLD',
   api_contract: 'API Contract',
+  others: 'Others',
 };
 
 export interface PrdSubmission {
   id: string;
   allocationId: string;
+  taskId?: string;
   versionNumber: number;
   documentType: DocumentType;
-  documentLink: string;
+  documentLink?: string;
+  messageContent?: string;
   status: PrdStatus;
   mentorFeedback?: string;
   reviewedBy?: string;

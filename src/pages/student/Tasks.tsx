@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, ListFilter, Eye, Upload } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, ListFilter, Upload } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask } from '../../lib/api/tasks';
@@ -162,15 +162,19 @@ export default function StudentTasks({
         data={filteredData}
         searchPlaceholder="Search tasks..."
         actions={(row) => {
-          if (row.submission_status === 'COMPLETED' || row.submission_status === 'PROGRESS' || row.submission_status === 'PENDING') {
+          // A task's assignment status is auto-synced to 'completed' by the
+          // backend the moment a submission is created for it, and reverted
+          // to 'progress' if a mentor requests changes — so this status is
+          // driven by the actual submission, not a manual toggle.
+          if (row.submission_status === 'COMPLETED') {
             return (
               <button
                 onClick={() => onViewSubmission(row.id)}
-                className="p-1 px-2.5 bg-gold/10 hover:bg-gold/20 text-gold text-xs font-semibold rounded transition-all flex items-center gap-1 border border-gold/25"
-                title="View Comments & Discussion"
+                className="p-1 px-2.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs font-semibold rounded transition-all flex items-center gap-1 border border-green-500/25"
+                title="View Submission"
               >
-                <Eye size={13} />
-                Comments
+                <CheckCircle2 size={13} />
+                View Submission
               </button>
             );
           } else {
