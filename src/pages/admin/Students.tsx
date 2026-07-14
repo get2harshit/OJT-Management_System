@@ -1,14 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Edit2 } from 'lucide-react';
+import { Edit2, UserCheck, UserX } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Select from '../../components/Select';
 import Modal from '../../components/Modal';
+import ActionsMenu from '../../components/ActionsMenu';
 import type { ApiStudent } from '../../lib/types';
-import { apiListStudents, apiUpdateStudentBatch } from '../../lib/api';
+import { apiListStudents, apiUpdateStudentBatch, apiSetIndividualOverride } from '../../lib/api';
 import { useToast } from '../../toast';
 
-const BATCH_FORMAT = /^[0-9]{4}-[0-9]{4}$/;
+const BATCH_FORMAT = /^[0-9]{4} [A-Z]$/;
 
 // Real backend roster (GET /api/v1/students, unfiltered). The backend only
 // exposes a batch-update endpoint so far — no full student edit/delete yet —
@@ -47,7 +48,7 @@ export default function AdminStudents() {
   const handleSaveBatch = async () => {
     if (!editingStudent) return;
     if (!BATCH_FORMAT.test(batchInput)) {
-      showError('Batch must be in format YYYY-YYYY (e.g. 2025-2026)');
+      showError('Batch must be in format "YYYY X" (e.g. 2025 A)');
       return;
     }
     setSaving(true);
@@ -60,6 +61,24 @@ export default function AdminStudents() {
       showError(err instanceof Error ? err.message : 'Failed to update batch');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Grants (or revokes) this student's permission to do an individual
+  // project regardless of batch — independent of the batch-mandated
+  // individual-only rule, which no admin action can override.
+  const handleToggleIndividualOverride = async (student: ApiStudent) => {
+    if (!student.activeCohortId) {
+      showError('Student is not part of any active cohort yet.');
+      return;
+    }
+    const nextAllowed = !student.allowedAsIndividual;
+    try {
+      await apiSetIndividualOverride(student.id, student.activeCohortId, nextAllowed);
+      showSuccess(nextAllowed ? 'Student allowed to do an individual project.' : 'Individual project permission revoked.');
+      await fetchStudents();
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to update individual project permission');
     }
   };
 
@@ -134,14 +153,18 @@ export default function AdminStudents() {
           actions={(row) => {
             const student = students.find(s => s.id === row.id);
             if (!student) return null;
+            const isAllowedIndividual = !!student.allowedAsIndividual;
             return (
-              <button
-                onClick={() => openEditBatch(student)}
-                className="p-1.5 text-gray-400 hover:text-white hover:bg-zinc-750 rounded-md transition-colors"
-                title="Edit batch"
-              >
-                <Edit2 size={15} />
-              </button>
+              <ActionsMenu
+                items={[
+                  { label: 'Edit Batch', icon: Edit2, onClick: () => openEditBatch(student) },
+                  {
+                    label: isAllowedIndividual ? 'Revoke Individual Project' : 'Allow Individual Project',
+                    icon: isAllowedIndividual ? UserX : UserCheck,
+                    onClick: () => handleToggleIndividualOverride(student),
+                  },
+                ]}
+              />
             );
           }}
         />
@@ -153,12 +176,12 @@ export default function AdminStudents() {
             Updating batch for <span className="text-white font-semibold">{editingStudent?.fullName || editingStudent?.email}</span>
           </p>
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Batch (YYYY-YYYY)</label>
+            <label className="block text-xs text-gray-400 mb-1.5">Batch (YYYY X)</label>
             <input
               type="text"
               value={batchInput}
               onChange={e => setBatchInput(e.target.value)}
-              placeholder="2025-2026"
+              placeholder="2025 A"
               className="w-full bg-zinc-800 text-white text-sm border border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold/30"
             />
           </div>

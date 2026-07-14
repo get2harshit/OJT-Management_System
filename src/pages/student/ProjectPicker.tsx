@@ -1084,7 +1084,9 @@ function SummaryScreen({
         ) : (
           <>
             <div>
-              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Self Project</p>
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">
+                {selfProject?.projectBy === 'STUDENT' ? 'Self Project' : 'Recommended Project'} (Preference 1)
+              </p>
               <div className="flex items-center gap-2">
                 <p className="text-white font-semibold">{selfProject?.title}</p>
                 {isPending && (
@@ -1103,7 +1105,9 @@ function SummaryScreen({
               )}
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Recommended Project</p>
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">
+                {existingProject?.projectBy === 'STUDENT' ? 'Self Project' : 'Recommended Project'} (Preference 2)
+              </p>
               <p className="text-white font-semibold">{existingProject?.title}</p>
             </div>
           </>

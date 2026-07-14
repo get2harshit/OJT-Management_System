@@ -38,7 +38,9 @@ export interface Project {
   created_at: string;
   end_goals?: string;
   related_field?: string;
-  source?: 'Own' | 'Listed';
+  // Whether this is an admin-listed catalog project ('PST') or a team's own
+  // proposed idea ('STUDENT') — only present on the single-project GET.
+  projectBy?: 'PST' | 'STUDENT';
 }
 
 export type SemesterSession = 'ODD' | 'EVEN';
@@ -87,6 +89,10 @@ export interface ApiStudent {
   phoneNumber?: string | null;
   isHosteller?: boolean | null;
   activeStatus?: boolean | null;
+  // The student's current active-cohort membership, if any — drives whether
+  // the "Allow Individual Project" action is available and its current state.
+  activeCohortId?: string;
+  allowedAsIndividual?: boolean;
   // Backend has been observed sending both casings for these two fields.
   progressStatus?: string;
   progress_status?: string;

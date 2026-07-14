@@ -33,7 +33,7 @@ interface RawFullProject extends RawProject {
   batch?: string;
   created_at: string;
   end_goals?: string;
-  source?: 'Own' | 'Listed';
+  projectBy?: 'PST' | 'STUDENT';
 }
 
 // The trimmed list endpoint doesn't return created_at (only the single-project
