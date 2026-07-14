@@ -73,16 +73,15 @@ export interface CreateTaskPayload {
   subtasks?: string[];
 }
 
+// Backend's PUT /tasks/:id only persists these fields (see updateTaskSchema in
+// task.routes.ts and TaskService.updateTask) — reassigning assignees/subtasks/
+// targetRole/batch isn't supported on update, only at creation time.
 export interface UpdateTaskPayload {
   title?: string;
   description?: string;
   week?: string;
   track?: string;
   deadline?: string;
-  targetRole?: 'student' | 'mentor' | 'batch_manager';
-  batch?: string;
-  assignees?: string[];
-  subtasks?: string[];
 }
 
 export async function apiCreateTask(payload: CreateTaskPayload): Promise<{ success: boolean; message: string; data: ApiTask }> {
