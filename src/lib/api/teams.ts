@@ -352,6 +352,13 @@ export async function apiListTeamsForCohort(cohortId: string): Promise<AdminTeam
   return res.map(mapAdminTeam);
 }
 
+// Mentor — lists the teams this mentor is currently allocated to, used by
+// the mentor task-creation flow's team picker.
+export async function apiListMyTeams(): Promise<Team[]> {
+  const res = await apiFetch<RawTeam[]>('/api/v1/teams/my-teams');
+  return res.map(mapTeam);
+}
+
 // Admin — disbands a team, dropping its members back to the teammate-invite
 // step. Used to reset test accounts without a manual DB query.
 export async function apiBreakTeam(teamId: string): Promise<void> {

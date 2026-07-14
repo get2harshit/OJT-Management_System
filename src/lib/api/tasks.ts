@@ -37,8 +37,11 @@ export interface ApiTask {
   description: string;
   week: string;
   track: string;
+  start_date?: string | null;
   deadline: string;
   target_role: 'student' | 'mentor' | 'batch_manager';
+  task_type?: ApiTaskType | null;
+  assign_mode?: ApiTaskAssignMode | null;
   assigned_by_id: string;
   created_at: string;
   updated_at: string;
@@ -51,14 +54,21 @@ export interface ApiTask {
   assignments?: ApiAssignment[];
 }
 
+export type ApiTaskType = 'prd' | 'db_schema' | 'hld' | 'lld' | 'api_contract' | 'others';
+export type ApiTaskAssignMode = 'team' | 'individual';
+
 export interface CreateTaskPayload {
   title: string;
   description?: string;
   week?: string; // e.g. "Week 1"
   track?: string; // e.g. "product_development" (will be mapped automatically)
+  startDate?: string; // ISO datetime string
   deadline?: string; // ISO datetime string
   targetRole?: 'student' | 'mentor' | 'batch_manager';
+  taskType?: ApiTaskType;
+  assignMode?: ApiTaskAssignMode;
   batch?: string;
+  teamIds?: string[];
   assignees?: string[];
   subtasks?: string[];
 }
