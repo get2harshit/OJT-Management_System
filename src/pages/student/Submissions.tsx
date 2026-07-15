@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Upload, Eye, ArrowLeft, MessageSquare, Loader2, CheckCircle2 } from 'lucide-react';
+import { Upload, Eye, ArrowLeft, MessageSquare, Loader2, CheckCircle2, Download } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
+import Drawer from '../../components/Drawer';
 import Select from '../../components/Select';
 import PdfViewer from '../../components/PdfViewer';
 import type { PrdSubmission, StudentAllocation, DocumentType } from '../../lib/types';
@@ -57,6 +58,7 @@ export default function StudentSubmissions({
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [feedbackDrawerOpen, setFeedbackDrawerOpen] = useState(false);
 
   // Set when the upload modal was opened from a specific task's "Submit"
   // button — locks the document type to what that task requires.
@@ -190,6 +192,11 @@ export default function StudentSubmissions({
     return () => { cancelled = true; };
   }, [activeSub?.id]);
 
+  // Closes the feedback drawer whenever a different submission is opened.
+  useEffect(() => {
+    setFeedbackDrawerOpen(false);
+  }, [activeSub?.id]);
+
   const handleDownload = async (sub: PrdSubmission) => {
     setDownloadError(null);
     setDownloadingId(sub.id);
@@ -247,77 +254,72 @@ export default function StudentSubmissions({
           Back to Submissions
         </button>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
-              <div>
-                <span className={`text-xs px-2.5 py-0.5 rounded-full ${statusBadgeClass(activeSub.status)}`}>
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className={`text-xs px-2.5 py-0.5 rounded-full shrink-0 ${statusBadgeClass(activeSub.status)}`}>
                   {activeSub.status.replace(/_/g, ' ').toUpperCase()}
                 </span>
-                <h2 className="text-xl font-bold text-white mt-2">
+                <h2 className="text-xl font-bold text-white">
                   {DOCUMENT_TYPE_LABELS[activeSub.documentType]} Document v{activeSub.versionNumber}
                 </h2>
+                <span className="text-sm text-gray-500">Submitted {activeSub.updatedAt.slice(0, 10)}</span>
               </div>
 
-              <hr className="border-zinc-750" />
+              <button
+                onClick={() => setFeedbackDrawerOpen(true)}
+                className="relative flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-750 text-gray-300 hover:text-white hover:border-zinc-600 rounded-lg text-xs font-medium transition-colors shrink-0"
+                title="Mentor Feedback"
+              >
+                <MessageSquare size={14} />
+                Mentor Feedback
+                {activeSub.mentorFeedback && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-gold rounded-full" />
+                )}
+              </button>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500 block">Version</span>
-                  <span className="text-gray-300 font-semibold">v{activeSub.versionNumber}</span>
+            <hr className="border-zinc-750" />
+
+            {activeSub.documentLink ? (
+              <>
+                <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-3 flex items-center justify-between gap-3">
+                  <span className="text-sm text-gray-300 font-medium truncate">{fileNameFromGcsUri(activeSub.documentLink)}</span>
+                  <button
+                    onClick={() => handleDownload(activeSub)}
+                    disabled={downloadingId === activeSub.id}
+                    className="p-1.5 text-gray-400 hover:text-gold transition-colors disabled:opacity-50 shrink-0"
+                    title="Download file"
+                    aria-label="Download file"
+                  >
+                    {downloadingId === activeSub.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                  </button>
                 </div>
-                <div>
-                  <span className="text-gray-500 block">Submitted Date</span>
-                  <span className="text-gray-300 font-semibold">{activeSub.updatedAt.slice(0, 10)}</span>
-                </div>
+                {downloadError && <p className="text-xs text-red-400">{downloadError}</p>}
+
+                {viewerUrl && <PdfViewer url={viewerUrl} />}
+              </>
+            ) : (
+              <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4">
+                <span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Message</span>
+                <p className="text-sm text-gray-300">{activeSub.messageContent}</p>
               </div>
-
-              {activeSub.documentLink ? (
-                <>
-                  <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                      <span className="text-xs text-gray-500 uppercase tracking-wider block">Attachment</span>
-                      <span className="text-sm text-gray-300 font-medium">{fileNameFromGcsUri(activeSub.documentLink)}</span>
-                    </div>
-                    <button
-                      onClick={() => handleDownload(activeSub)}
-                      disabled={downloadingId === activeSub.id}
-                      className="px-3.5 py-1.5 bg-gold text-black font-semibold rounded-lg text-xs hover:bg-gold-hover hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
-                    >
-                      {downloadingId === activeSub.id ? 'Generating link…' : 'Download File'}
-                    </button>
-                  </div>
-                  {downloadError && <p className="text-xs text-red-400">{downloadError}</p>}
-
-                  {viewerUrl && <PdfViewer url={viewerUrl} />}
-                </>
-              ) : (
-                <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4">
-                  <span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Message</span>
-                  <p className="text-sm text-gray-300">{activeSub.messageContent}</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5 flex flex-col h-[400px]">
-            <div className="flex items-center gap-2 border-b border-zinc-750 pb-3 mb-4">
-              <MessageSquare size={18} className="text-gold" />
-              <h3 className="text-lg font-semibold text-white">Mentor Feedback</h3>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-              {activeSub.mentorFeedback ? (
-                <div className="p-3 rounded-lg bg-zinc-750 text-gray-200 text-sm">
-                  {activeSub.mentorFeedback}
-                </div>
-              ) : (
-                <div className="h-full flex items-center justify-center text-gray-500 text-sm text-center px-4">
-                  No feedback yet — your submission is currently {activeSub.status.replace(/_/g, ' ')}.
-                </div>
-              )}
-            </div>
+            )}
           </div>
         </div>
+
+        <Drawer open={feedbackDrawerOpen} onClose={() => setFeedbackDrawerOpen(false)} title="Mentor Feedback">
+          {activeSub.mentorFeedback ? (
+            <div className="p-3 rounded-lg bg-zinc-750 text-gray-200 text-sm">
+              {activeSub.mentorFeedback}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm text-center py-6">
+              No feedback yet — your submission is currently {activeSub.status.replace(/_/g, ' ')}.
+            </p>
+          )}
+        </Drawer>
       </div>
     );
   }
