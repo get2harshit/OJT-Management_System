@@ -87,7 +87,7 @@ export default function AdminSubmissions() {
       const mapped: Row[] = allSubs.map(s => {
         const alloc = allocationsById.get(s.allocationId);
         const student = alloc ? studentsById.get(alloc.studentId) : undefined;
-        const mentor = alloc?.mentorId ? mentorsById.get(alloc.mentorId) : undefined;
+        const mentor = alloc?.primaryMentorId ? mentorsById.get(alloc.primaryMentorId) : undefined;
         return {
           ...s,
           studentName: student?.fullName ?? '-',
