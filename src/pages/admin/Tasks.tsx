@@ -34,7 +34,11 @@ export default function AdminTasks() {
     if (t.assignments && t.assignments.length > 0) {
       assignedNames = t.assignments.map(a => a.assignee ? a.assignee.full_name : a.assignee_id);
     }
-    return { ...t, assigned_names: assignedNames };
+    // Subtasks live on each assignment (every assignee gets their own clone),
+    // not on the task itself — the first assignment's list is representative
+    // since every clone starts identical at creation time.
+    const subtasks = t.assignments?.[0]?.subtasks ?? [];
+    return { ...t, assigned_names: assignedNames, subtasks };
   });
 
   return (
