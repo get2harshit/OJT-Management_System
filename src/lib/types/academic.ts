@@ -226,18 +226,22 @@ export interface PendingProposal {
   };
 }
 
-export interface MentorTrackRatio {
-  track: string;
-  ratioPercent: number;
-}
-
 // A mentor's computed/effective capacity for a cohort (GET /api/v1/mentors/:id/capacity).
+// A single flat number shared across every track the mentor covers.
 export interface MentorCapacitySummary {
   mentorId: string;
   computedBaseline: number;
   override: number | null;
   effectiveTotal: number;
-  ratios: (MentorTrackRatio & { threshold: number })[];
+}
+
+// One row per mentor with allocated count vs. their flat capacity
+// (GET /api/v1/teams/cohort/:cohortId/mentor-load-summary).
+export interface MentorLoadSummaryRow {
+  mentorId: string;
+  mentorName: string | null;
+  allocatedCount: number;
+  threshold: number;
 }
 
 // Full per-team preference detail for the admin allocation panel
@@ -254,6 +258,12 @@ export interface TeamAllocationDetail {
   preference1ReviewNote: string | null;
   allocationStatus: TeamAllocationStatus;
   allocatedProjectId: string | null;
+  // The team's real mentor for allocatedProjectId — an admin's mentor
+  // override wins if set, else whichever preference matches. Null until allocated.
+  allocatedMentorId: string | null;
+  allocatedMentorName: string | null;
+  // Set the moment an admin manually overrides this team (project or mentor).
+  overriddenAt: string | null;
 }
 
 // A mentor eligible to supervise a team's project (GET /api/v1/teams/mentors/available)
