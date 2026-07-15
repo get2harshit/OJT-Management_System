@@ -19,9 +19,9 @@ import CohortMentorsPage from './OJTs/CohortMentorsPage';
 import CohortTeamsPage from './OJTs/CohortTeamsPage';
 import CohortAllocationsPage from './OJTs/CohortAllocationsPage';
 import { useData } from '../../context/DataContext';
-import { apiListCohorts, apiListProjects, apiCreateProject, apiDeleteProject, apiDeleteAllProjects } from '../../lib/api';
+import { apiListProjects, apiCreateProject, apiDeleteProject, apiDeleteAllProjects } from '../../lib/api';
 import { useEffect, useCallback } from 'react';
-import type { Cohort, Project } from '../../lib/types';
+import type { Project } from '../../lib/types';
 import { useToast } from '../../toast';
 
 function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
@@ -29,7 +29,6 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
   const data = useData();
-  const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [projectsList, setProjectsList] = useState<Project[]>([]);
 
   // Sidebar tab clicks only flip local state; while a cohort sub-page route
@@ -53,12 +52,6 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
-
-  useEffect(() => {
-    if (activeTab === 'allocations') {
-      apiListCohorts().then(res => setCohorts(res)).catch(() => {});
-    }
-  }, [activeTab]);
 
   const handleAddProject = async (proj: Omit<Project, 'id' | 'created_at'>) => {
     try {
@@ -107,7 +100,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
       case 'mentors':
         return <Mentors />;
       case 'allocations':
-        return <Allocations projects={projectsList} cohorts={cohorts} />;
+        return <Allocations />;
       case 'ojts':
         return (
           <OJTs
