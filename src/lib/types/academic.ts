@@ -135,6 +135,29 @@ export interface Team {
   members: TeamMemberInfo[];
 }
 
+// A mentor's own team with its allocated project attached (GET
+// /api/v1/teams/my-teams/detailed) — project is null until allocated.
+export interface TeamMemberDetail {
+  studentId: string;
+  fullName: string | null;
+  rollNumber: string | null;
+}
+
+export interface TeamProjectSummary {
+  id: string;
+  title: string;
+  description: string | null;
+  track: string;
+}
+
+export interface TeamWithProject {
+  teamId: string;
+  track: string;
+  isIndividual: boolean;
+  members: TeamMemberDetail[];
+  project: TeamProjectSummary | null;
+}
+
 export type TeamRequestStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
 
 // This student's own outgoing invite, still awaiting the other person.
