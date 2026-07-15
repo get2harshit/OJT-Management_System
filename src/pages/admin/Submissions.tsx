@@ -95,6 +95,7 @@ export default function AdminSubmissions() {
       .then((url) => { if (!cancelled) setViewerUrl(url); })
       .catch(() => { if (!cancelled) setViewerUrl(null); });
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSub?.id]);
 
   const handleDownload = async (sub: Row) => {

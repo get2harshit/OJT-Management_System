@@ -19,6 +19,7 @@ interface SelectProps {
   variant?: 'field' | 'filter';
   isMulti?: boolean;
   isSearchable?: boolean;
+  isCreatable?: boolean;
 }
 
 const VARIANT_STYLES: Record<'field' | 'filter', string> = {
@@ -30,7 +31,7 @@ const VARIANT_STYLES: Record<'field' | 'filter', string> = {
 // dropdown list is rendered by the OS, ignoring app CSS entirely (it shows
 // up with the OS's default highlight color instead of the app's theme).
 // This renders its own portal-based list instead, styled to match.
-export default function Select({ value, onChange, options, placeholder, disabled, className = '', variant = 'field', isMulti = false, isSearchable = false }: SelectProps) {
+export default function Select({ value, onChange, options, placeholder, disabled, className = '', variant = 'field', isMulti = false, isSearchable = false, isCreatable = false }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
   const [searchQuery, setSearchQuery] = useState('');
@@ -150,8 +151,33 @@ export default function Select({ value, onChange, options, placeholder, disabled
               </span>
             </button>
           )}
-          {filteredOptions.length === 0 && (
+          {filteredOptions.length === 0 && !isCreatable && (
             <div className="px-3 py-2 text-sm text-gray-500 text-center">No results found</div>
+          )}
+          {filteredOptions.length === 0 && isCreatable && searchQuery.trim() === '' && (
+            <div className="px-3 py-2 text-sm text-gray-500 text-center">Type to create...</div>
+          )}
+          {isCreatable && searchQuery.trim() !== '' && !options.some(o => o.label.toLowerCase() === searchQuery.trim().toLowerCase()) && (
+            <button
+              type="button"
+              onClick={() => {
+                const val = searchQuery.trim();
+                if (isMulti) {
+                  const valArr = value as string[];
+                  if (!valArr.includes(val)) {
+                    onChange([...valArr, val]);
+                  }
+                } else {
+                  onChange(val);
+                  setOpen(false);
+                }
+                setSearchQuery('');
+              }}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left transition-colors text-gold hover:bg-zinc-750 font-medium border-b border-zinc-750 mb-1"
+            >
+              <span className="truncate">Create "{searchQuery.trim()}"</span>
+              <Check size={14} className="shrink-0 opacity-0" />
+            </button>
           )}
           {filteredOptions.map(opt => {
             const isSelected = isMulti ? (value as string[]).includes(opt.value) : value === opt.value;

@@ -4,18 +4,20 @@ import { ArrowLeft, Calendar, Target } from 'lucide-react';
 import Select from '../../components/Select';
 import Button from '../../components/Button';
 import { TRACKS } from '../../lib/constants';
-
 import { apiCreateTask } from '../../lib/api/tasks';
+import type { ApiTaskType } from '../../lib/api/tasks';
 import { apiListMentors } from '../../lib/api/mentors';
 import { apiListStudents } from '../../lib/api/students';
-import type { ApiMentor, ApiStudent } from '../../lib/types';
+import type { ApiMentor, ApiStudent, Cohort } from '../../lib/types';
 import { useToast } from '../../toast';
+import { apiListCohorts } from '../../lib/api';
 
 const WEEKS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 export default function CreateTaskPage() {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
   const [students, setStudents] = useState<ApiStudent[]>([]);
   
@@ -28,17 +30,40 @@ export default function CreateTaskPage() {
     targetRole: 'student' as 'student' | 'mentor',
     assigned_to: [] as string[],
     week_number: '1',
-    sub_tasks_raw: '',
+    taskType: 'others' as ApiTaskType,
+    sub_tasks: [] as string[],
   });
 
   useEffect(() => {
-    Promise.all([apiListMentors(), apiListStudents()])
-      .then(([mentorsRes, studentsRes]) => {
+    Promise.all([apiListMentors(), apiListStudents(), apiListCohorts()])
+      .then(([mentorsRes, studentsRes, cohortsRes]) => {
         setMentors(mentorsRes || []);
         setStudents(studentsRes || []);
+        setCohorts(cohortsRes || []);
       })
       .catch(console.error);
   }, []);
+
+  // Auto-calculate due date when week changes
+  useEffect(() => {
+    if (!form.week_number || cohorts.length === 0) return;
+    // We try to find the active cohort, or fallback to the first cohort
+    const activeCohort = cohorts.find(c => c.is_active || (c as { activeStatus?: boolean }).activeStatus) || cohorts[0];
+      
+    if (activeCohort && activeCohort.startDate) {
+      const start = new Date(activeCohort.startDate);
+      const weekOffset = parseInt(form.week_number, 10);
+      if (!isNaN(weekOffset)) {
+        // Due date = Start Date + (week * 7 days)
+        const due = new Date(start.getTime() + (weekOffset * 7 * 24 * 60 * 60 * 1000));
+        // Format as YYYY-MM-DD for the input
+        setForm(prev => ({
+          ...prev,
+          due_date: due.toISOString().split('T')[0]
+        }));
+      }
+    }
+  }, [form.week_number, cohorts]);
 
   const uniqueBatches = Array.from(new Set(students.map(s => s.batch).filter(Boolean))) as string[];
 
@@ -54,20 +79,18 @@ export default function CreateTaskPage() {
       showError('Task title is required');
       return;
     }
-    const subTasks = form.sub_tasks_raw
-      ? form.sub_tasks_raw.split(',').map(s => s.trim()).filter(Boolean)
-      : [];
 
     try {
       await apiCreateTask({
         title: form.title,
         description: form.description || undefined,
         targetRole: form.targetRole,
+        taskType: (form.sub_tasks.length > 0 && ['prd', 'db_schema', 'hld', 'lld', 'api_contract', 'others'].includes(form.sub_tasks[0])) ? form.sub_tasks[0] as ApiTaskType : 'others',
+        subtasks: form.sub_tasks,
         assignees: form.assigned_to.length > 0 ? form.assigned_to : undefined,
         deadline: form.due_date ? new Date(form.due_date).toISOString() : undefined,
         week: `Week ${form.week_number}`,
         track: form.targetRole === 'student' && selectedTracks.length > 0 ? selectedTracks.join(', ') : undefined,
-        subtasks: subTasks,
       });
       showSuccess('Task created successfully');
       navigate('/admin/dashboard?tab=tasks');
@@ -209,17 +232,25 @@ export default function CreateTaskPage() {
               <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Describe expectations or provide reference links..." rows={4} className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-gold transition-colors resize-none" />
             </div>
 
-            <div>
-              <label className="block text-sm text-gray-400 mb-2 flex items-center gap-2">
+            <div className="mt-6">
+              <label className="block text-sm text-gray-400 mb-1 flex items-center gap-2">
                 <Target size={14} className="text-gold" />
-                Sub-tasks (Comma separated)
+                Sub-task
               </label>
-              <input
-                type="text"
-                value={form.sub_tasks_raw}
-                onChange={e => setForm({ ...form, sub_tasks_raw: e.target.value })}
-                placeholder="e.g. Design DB Schema, Create migrations, Host locally"
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-gold transition-colors"
+              <Select
+                isMulti
+                isCreatable
+                value={form.sub_tasks}
+                onChange={v => setForm({ ...form, sub_tasks: v as string[] })}
+                options={[
+                  { value: 'prd', label: 'PRD' },
+                  { value: 'db_schema', label: 'DB Schema' },
+                  { value: 'hld', label: 'HLD' },
+                  { value: 'lld', label: 'LLD' },
+                  { value: 'api_contract', label: 'API Contract' },
+                  { value: 'others', label: 'Others' },
+                ]}
+                className="w-full"
               />
             </div>
 
