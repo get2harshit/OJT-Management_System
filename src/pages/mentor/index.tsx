@@ -3,7 +3,6 @@ import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import Students from './Students';
 import OJTs from './OJTs';
-import MentorCapacity from './MentorCapacity';
 import ProjectProposals from './ProjectProposals';
 import Tasks from './Tasks';
 import Submissions from './Submissions';
@@ -35,8 +34,6 @@ function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
         return <Students />;
       case 'ojts':
         return <OJTs />;
-      case 'capacity':
-        return <MentorCapacity />;
       case 'proposals':
         return <ProjectProposals />;
       case 'tasks':

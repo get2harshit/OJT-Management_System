@@ -47,7 +47,6 @@ const mentorTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'students', label: 'My Students', icon: Users },
   { id: 'ojts', label: 'OJTs & Projects', icon: Briefcase },
-  { id: 'capacity', label: 'My Capacity', icon: Percent },
   { id: 'proposals', label: 'Project Proposals', icon: ClipboardCheck },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },

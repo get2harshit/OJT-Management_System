@@ -17,8 +17,8 @@ export interface AuthContextValue {
   user: AuthUser | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string, allowedRoles?: ApiUserRole[]) => Promise<void>;
-  signup: (email: string, password: string, fullName: string, role: ApiUserRole, allowedRoles?: ApiUserRole[]) => Promise<void>;
+  login: (email: string, password: string, allowedRoles?: ApiUserRole[]) => Promise<AuthUser>;
+  signup: (email: string, password: string, fullName: string, role: ApiUserRole, allowedRoles?: ApiUserRole[]) => Promise<AuthUser>;
   logout: () => Promise<void>;
 }
 
@@ -80,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStoredToken(result.accessToken);
     setToken(result.accessToken);
     setUser(normalizedUser);
+    return normalizedUser;
   }, []);
 
   const signup = useCallback(async (email: string, password: string, fullName: string, role: ApiUserRole, allowedRoles?: ApiUserRole[]) => {
@@ -94,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStoredToken(result.accessToken);
     setToken(result.accessToken);
     setUser(normalizedUser);
+    return normalizedUser;
   }, []);
 
   const logout = useCallback(async () => {

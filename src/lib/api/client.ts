@@ -1,6 +1,6 @@
 // Override for local dev by setting VITE_API_BASE_URL in .env.local
 // (e.g. http://localhost:8080 to hit the backend repo running on this machine).
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://ojt-system-be-672553132888.asia-south1.run.app';
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://ojt-system-be-672553132888.asia-south1.run.app';
 
 const TOKEN_KEY = 'ojt-auth-token';
 

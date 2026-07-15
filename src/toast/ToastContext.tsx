@@ -32,7 +32,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ showSuccess, showError }}>
       {children}
-      <div className="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 items-end">
+      <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-3 items-center">
         {toasts.map(t => (
           <Toast key={t.id} message={t.message} variant={t.variant} onDismiss={() => dismissToast(t.id)} />
         ))}
