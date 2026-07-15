@@ -1,268 +1,134 @@
-import { useState, useRef, useEffect } from 'react';
-import { Upload, FileText, UserPlus, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Users, GitBranch, FolderGit2 } from 'lucide-react';
 import Modal from '../../components/Modal';
-import DataTable from '../../components/DataTable';
-import Select from '../../components/Select';
-import type { Project, Student, Profile, Cohort } from '../../lib/types';
-import { getDurationString, formatDateDisplay } from '../../lib/utils';
-import { apiListCohorts } from '../../lib/api';
-import { useStudentProfiles } from '../../hooks/useStudentProfiles';
-import { parseCSV as parseCSVRows, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../lib/csv';
-import { getCohortLabel } from '../../lib/cohortLabel';
-import { useToast } from '../../toast';
+import SpinnerSquare from '../../components/SpinnerSquare';
+import type { TeamWithProject } from '../../lib/types';
+import { apiListMyTeamsDetailed } from '../../lib/api';
 
-import { useData } from '../../context/DataContext';
+export default function MentorOJTs() {
+  const [teams, setTeams] = useState<TeamWithProject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTeam, setSelectedTeam] = useState<TeamWithProject | null>(null);
 
-interface Props {
-  projects: Project[];
-  students: Student[];
-  profiles: Profile[];
-  addProject: (proj: Omit<Project, 'id' | 'created_at'>) => void;
-  addProjects: (projs: Omit<Project, 'id' | 'created_at'>[]) => void;
-  updateStudent: (userId: string, patch: Partial<Student>) => void;
-  deleteProject: (id: string) => void;
-}
-
-export default function MentorOJTs({
-  projects: propProjects,
-  students: propStudents,
-  profiles: propProfiles,
-  addProjects: propAddProjects,
-  updateStudent: propUpdateStudent,
-  deleteProject: propDeleteProject,
-}: Partial<Props> = {}) {
-  const { projects: hookProjects, students: hookStudents, profiles: hookProfiles, addProjects: hookAddProjects, updateStudent: hookUpdateStudent, deleteProject: hookDeleteProject } = useData();
-
-  const projects = propProjects ?? hookProjects;
-  const students = propStudents ?? hookStudents;
-  const profiles = propProfiles ?? hookProfiles;
-  const addProjects = propAddProjects ?? hookAddProjects;
-  const updateStudent = propUpdateStudent ?? hookUpdateStudent;
-  const deleteProject = propDeleteProject ?? hookDeleteProject;
-  const { showError } = useToast();
-  const [csvModalOpen, setCsvModalOpen] = useState(false);
-  const [assignModalOpen, setAssignModalOpen] = useState(false);
-  const [csvText, setCsvText] = useState('');
-  const [assignForm, setAssignForm] = useState({ student_id: '', ojt_id: '', project_id: '' });
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  // Fetch cohorts from API for the OJT dropdown
-  const [cohorts, setCohorts] = useState<Cohort[]>([]);
   useEffect(() => {
-    apiListCohorts()
-      .then(data => setCohorts(Array.isArray(data) ? data : []))
-      .catch(() => setCohorts([]));
+    apiListMyTeamsDetailed()
+      .then(setTeams)
+      .catch(() => setTeams([]))
+      .finally(() => setLoading(false));
   }, []);
 
-  const studentProfiles = useStudentProfiles(profiles);
-
-  const parseCSV = (text: string) => {
-    if (isExcelBinaryFile(text)) {
-      showError(EXCEL_FILE_WARNING);
-      return [];
-    }
-    const rows = parseCSVRows(text);
-    const parsed: Omit<Project, 'id' | 'created_at'>[] = [];
-    for (let i = 1; i < rows.length; i++) {
-      const cols = rows[i];
-      if (cols.length >= 3) {
-        parsed.push({ title: cols[0], description: cols[1], track: cols[2] });
-      }
-    }
-    return parsed;
-  };
-
-  const handleCSVUpload = () => {
-    const parsed = parseCSV(csvText);
-    if (parsed.length > 0) addProjects(parsed);
-    setCsvText('');
-    setCsvModalOpen(false);
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setCsvText(ev.target?.result as string);
-    };
-    reader.readAsText(file);
-  };
-
-  const handleAssign = () => {
-    if (!assignForm.student_id) return;
-    updateStudent(assignForm.student_id, {
-      ojt_id: assignForm.ojt_id || null,
-      project_id: assignForm.project_id || null,
-    });
-    setAssignForm({ student_id: '', ojt_id: '', project_id: '' });
-    setAssignModalOpen(false);
-  };
-
-  const selectedCohort = cohorts.find(c => c.id === assignForm.ojt_id);
-
-  const projectData = projects.map(p => ({
-    ...p,
-    track_badge: p.track,
-  }));
-
-  const studentData = students.map(s => {
-    const prof = studentProfiles.find(p => p.id === s.user_id);
-    const ojt = cohorts.find(c => c.id === s.ojt_id);
-    const proj = projects.find(p => p.id === s.project_id);
-    return {
-      user_id: s.user_id,
-      name: prof?.name ?? '-',
-      roll_number: s.roll_number,
-      ojt_name: ojt ? getCohortLabel(ojt) : 'Not Assigned',
-      project_title: proj?.title ?? 'Not Assigned',
-    };
-  });
-
   return (
-    <div className="space-y-8">
-      {/* ── Projects Section ── */}
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-white">OJTs & Projects</h1>
-            <p className="text-gray-400 text-sm mt-1">Upload projects via CSV and assign OJTs/projects to students</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => setCsvModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200">
-              <Upload size={18} />
-              Upload CSV
-            </button>
-            <button onClick={() => setAssignModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 hover:scale-105 transition-all duration-200 border border-zinc-600">
-              <UserPlus size={18} />
-              Assign OJT/Project
-            </button>
-          </div>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-white">OJTs & Projects</h1>
+        <p className="text-gray-400 text-sm mt-1">Teams allocated to you — click a team to see its project</p>
+      </div>
 
-        <DataTable
-          columns={[
-            { key: 'title', header: 'Project Title' },
-            { key: 'description', header: 'Description' },
-            {
-              key: 'track_badge',
-              header: 'Track',
-              render: (row) => (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold">{row.track_badge}</span>
-              ),
-            },
-          ]}
-          data={projectData}
-          searchPlaceholder="Search projects..."
-          actions={(row) => (
+      {loading ? (
+        <div className="min-h-[40vh] flex items-center justify-center">
+          <SpinnerSquare size={48} />
+        </div>
+      ) : teams.length === 0 ? (
+        <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-8 text-center text-gray-400 text-sm">
+          No teams are allocated to you yet.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {teams.map((team) => (
             <button
-              onClick={() => deleteProject(row.id as string)}
-              className="p-1.5 text-gray-400 hover:text-red-400 transition-colors"
-              title="Delete Project"
+              key={team.teamId}
+              onClick={() => setSelectedTeam(team)}
+              className="text-left bg-zinc-850 border border-zinc-750 rounded-xl p-5 hover:border-gold/60 hover:scale-[1.02] transition-all duration-200"
             >
-              <Trash2 size={16} />
-            </button>
-          )}
-        />
-      </div>
-
-      {/* ── Student Assignments ── */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-bold text-white">Student Assignments</h2>
-        <DataTable
-          columns={[
-            { key: 'roll_number', header: 'Roll Number' },
-            { key: 'name', header: 'Student' },
-            {
-              key: 'ojt_name',
-              header: 'OJT',
-              render: (row) => (
-                <span className={`text-xs px-2 py-0.5 rounded-full ${row.ojt_name === 'Not Assigned' ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
-                  {row.ojt_name}
+              <div className="flex items-center justify-between mb-3">
+                <span className="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold">
+                  <GitBranch size={12} />
+                  {team.track}
                 </span>
-              ),
-            },
-            {
-              key: 'project_title',
-              header: 'Project',
-              render: (row) => (
-                <span className={`text-xs px-2 py-0.5 rounded-full ${row.project_title === 'Not Assigned' ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'}`}>
-                  {row.project_title}
+                <span className="flex items-center gap-1 text-xs text-gray-400">
+                  <Users size={12} />
+                  {team.members.length}
                 </span>
-              ),
-            },
-          ]}
-          data={studentData}
-          searchPlaceholder="Search students..."
-        />
-      </div>
-
-      {/* ── CSV Upload Modal ── */}
-      <Modal open={csvModalOpen} onClose={() => setCsvModalOpen(false)} title="Upload Projects via CSV">
-        <div className="space-y-4">
-          <p className="text-sm text-gray-400">
-            Upload a CSV file or paste CSV text. Format: <code className="text-gold">title,description,track</code> (with header row).
-          </p>
-          <div>
-            <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleFileUpload} className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gold/10 file:text-gold hover:file:bg-gold/20" />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Or paste CSV below</label>
-            <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={6} placeholder={'title,description,track\nAWS Lambda Functions,Build serverless functions,Product Development'} className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold font-mono" />
-          </div>
-          <button onClick={handleCSVUpload} className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors flex items-center justify-center gap-2">
-            <FileText size={18} />
-            Import Projects
-          </button>
-        </div>
-      </Modal>
-
-      {/* ── Assign OJT/Project Modal ── */}
-      <Modal open={assignModalOpen} onClose={() => setAssignModalOpen(false)} title="Assign OJT & Project to Student">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Student</label>
-            <Select
-              value={assignForm.student_id}
-              onChange={v => setAssignForm({ ...assignForm, student_id: v })}
-              className="w-full"
-              placeholder="Select student"
-              options={students.map(s => {
-                const prof = studentProfiles.find(p => p.id === s.user_id);
-                return { value: s.user_id, label: `${prof?.name ?? s.user_id} (${s.roll_number})` };
-              })}
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">OJT Program</label>
-            <Select
-              value={assignForm.ojt_id}
-              onChange={v => setAssignForm({ ...assignForm, ojt_id: v })}
-              className="w-full"
-              placeholder="Select OJT"
-              options={cohorts.map(c => ({ value: c.id, label: getCohortLabel(c) }))}
-            />
-            {selectedCohort && (
-              <p className="text-xs text-gray-500 mt-1">
-                Duration: {getDurationString(selectedCohort.startDate, selectedCohort.endDate)} ({formatDateDisplay(selectedCohort.startDate)} → {formatDateDisplay(selectedCohort.endDate)})
+              </div>
+              <p className="text-white font-semibold truncate">
+                {team.project ? team.project.title : 'No project allocated yet'}
               </p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Project</label>
-            <Select
-              value={assignForm.project_id}
-              onChange={v => setAssignForm({ ...assignForm, project_id: v })}
-              className="w-full"
-              placeholder="Select project"
-              options={projects.map(p => ({ value: p.id, label: `${p.title} (${p.track})` }))}
-            />
-          </div>
-          <button onClick={handleAssign} className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors">
-            Assign
-          </button>
+              <p className="text-gray-500 text-xs mt-1 truncate">
+                {team.members.map((m) => m.fullName ?? m.studentId).join(', ')}
+              </p>
+            </button>
+          ))}
         </div>
+      )}
+
+      <Modal
+        open={!!selectedTeam}
+        onClose={() => setSelectedTeam(null)}
+        title={selectedTeam ? `Team · ${selectedTeam.track}` : ''}
+      >
+        {selectedTeam && <TeamGraph team={selectedTeam} />}
       </Modal>
+    </div>
+  );
+}
+
+// Git-commit-graph-style drill-down: Project → branch → student(s) → branch
+// → project details, top to bottom, connected by a single spine line.
+function TeamGraph({ team }: { team: TeamWithProject }) {
+  return (
+    <div className="relative pl-7">
+      <div className="absolute left-[11px] top-2 bottom-2 w-px bg-zinc-700" />
+
+      <GraphNode dotClassName="bg-gold" label="Project">
+        <p className="text-white font-semibold">
+          {team.project ? team.project.title : 'No project allocated yet'}
+        </p>
+      </GraphNode>
+
+      {team.members.map((member) => (
+        <GraphNode key={member.studentId} dotClassName="bg-blue-400" label="Student">
+          <p className="text-white font-medium">
+            {member.fullName ?? 'Unnamed student'}
+            {member.rollNumber && <span className="text-gray-500 text-xs ml-2">{member.rollNumber}</span>}
+          </p>
+        </GraphNode>
+      ))}
+
+      <GraphNode dotClassName="bg-green-400" label="Details" last>
+        {team.project ? (
+          <div className="space-y-2">
+            <p className="text-gray-300 text-sm leading-relaxed">
+              {team.project.description || 'No description provided.'}
+            </p>
+            <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold">
+              <FolderGit2 size={12} />
+              {team.project.track}
+            </span>
+          </div>
+        ) : (
+          <p className="text-gray-500 text-sm">Once a project is allocated to this team, its details will show up here.</p>
+        )}
+      </GraphNode>
+    </div>
+  );
+}
+
+function GraphNode({
+  dotClassName,
+  label,
+  last,
+  children,
+}: {
+  dotClassName: string;
+  label: string;
+  last?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`relative ${last ? '' : 'pb-6'}`}>
+      <span className={`absolute -left-7 top-1 w-3 h-3 rounded-full ring-4 ring-zinc-850 ${dotClassName}`} />
+      <p className="text-[11px] text-gray-500 uppercase tracking-wide mb-0.5">{label}</p>
+      {children}
     </div>
   );
 }

@@ -1,77 +1,115 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Users, CheckSquare, FolderOpen, CalendarCheck, TrendingUp } from 'lucide-react';
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
-import type { Student, Task, Submission, Attendance, Semester, Batch } from '../../lib/types';
+import SpinnerSquare from '../../components/SpinnerSquare';
+import type { Task, Submission, Attendance, ApiStudent, Team } from '../../lib/types';
+import { apiListMyTeams, apiListStudents } from '../../lib/api';
 
 import { useTasks } from '../../hooks/useTasks';
 import { useSubmissions } from '../../hooks/useSubmissions';
 import { useAttendance } from '../../hooks/useAttendance';
-import { useData } from '../../context/DataContext';
 
 interface Props {
   mentorId: string;
-  students: Student[];
   tasks: Task[];
   submissions: Submission[];
   attendance: Attendance[];
-  semesters: Semester[];
-  batches: Batch[];
+}
+
+interface MentorStudent {
+  id: string;
+  name: string;
+  rollNumber: string;
+  batch: string | null;
+  track: string;
 }
 
 export default function MentorDashboard({
   mentorId,
-  students: propStudents,
   tasks: propTasks,
   submissions: propSubmissions,
   attendance: propAttendance,
-  semesters: propSemesters,
-  batches: propBatches,
 }: Partial<Props> & { mentorId: string }) {
-  const { students: hookStudents, semesters: hookSemesters, batches: hookBatches } = useData();
   const { tasks: hookTasks } = useTasks();
   const { submissions: hookSubmissions } = useSubmissions();
   const { attendance: hookAttendance } = useAttendance();
 
-  const students = propStudents ?? hookStudents;
   const tasks = propTasks ?? hookTasks;
   const submissions = propSubmissions ?? hookSubmissions;
   const attendance = propAttendance ?? hookAttendance;
-  const semesters = propSemesters ?? hookSemesters;
-  const batches = propBatches ?? hookBatches;
-  const [semFilter, setSemFilter] = useState('');
+
+  // Real roster: teams this mentor is actually allocated to (primary or
+  // secondary), joined against the student profile list for batch/roll
+  // number. Track comes from the team, not the student — the backend has no
+  // per-student track field, only a per-team one.
+  const [myTeams, setMyTeams] = useState<Team[]>([]);
+  const [apiStudents, setApiStudents] = useState<ApiStudent[]>([]);
+  const [loadingRoster, setLoadingRoster] = useState(true);
+
+  useEffect(() => {
+    Promise.all([apiListMyTeams(), apiListStudents()])
+      .then(([teams, students]) => {
+        setMyTeams(teams);
+        setApiStudents(students);
+      })
+      .catch((err) => console.error('Mentor dashboard failed to load roster', err))
+      .finally(() => setLoadingRoster(false));
+  }, []);
+
+  const myStudents = useMemo<MentorStudent[]>(() => {
+    const profileById = new Map(apiStudents.map(s => [s.id, s]));
+    return myTeams.flatMap(team =>
+      team.members
+        .map((m): MentorStudent | null => {
+          const profile = profileById.get(m.studentId);
+          if (!profile) return null;
+          return {
+            id: m.studentId,
+            name: profile.fullName ?? m.fullName ?? '-',
+            rollNumber: profile.rollNumber ?? '-',
+            batch: profile.batch ?? null,
+            track: team.track,
+          };
+        })
+        .filter((s): s is MentorStudent => s !== null)
+    );
+  }, [myTeams, apiStudents]);
+
   const [batchFilter, setBatchFilter] = useState('');
   const [trackFilter, setTrackFilter] = useState('');
 
-  const distinctSemesters = useMemo(() => {
-    const ids = [...new Set(students.map(s => s.semester_id).filter(Boolean))] as string[];
-    return semesters.filter(s => ids.includes(s.id));
-  }, [students, semesters]);
-
-  const filteredBatches = useMemo(() => {
-    if (!semFilter) return batches;
-    return batches.filter(b => b.semester_id === semFilter);
-  }, [semFilter, batches]);
+  const distinctBatches = useMemo(() => {
+    const vals = myStudents.map(s => s.batch).filter((b): b is string => !!b);
+    return Array.from(new Set(vals)).sort();
+  }, [myStudents]);
 
   const distinctTracks = useMemo(() => {
-    return [...new Set(students.map(s => s.track).filter(Boolean))] as string[];
-  }, [students]);
+    return Array.from(new Set(myStudents.map(s => s.track).filter(Boolean)));
+  }, [myStudents]);
 
   const filteredStudents = useMemo(() => {
-    return students.filter(s => {
-      if (semFilter && s.semester_id !== semFilter) return false;
-      if (batchFilter && s.batch_id !== batchFilter) return false;
+    return myStudents.filter(s => {
+      if (batchFilter && s.batch !== batchFilter) return false;
       if (trackFilter && s.track !== trackFilter) return false;
       return true;
     });
-  }, [students, semFilter, batchFilter, trackFilter]);
+  }, [myStudents, batchFilter, trackFilter]);
 
-  const studentIds = new Set(filteredStudents.map(s => s.user_id));
+  const studentIds = new Set(filteredStudents.map(s => s.id));
 
   const myTasks = tasks.filter(t => t.mentor_id === mentorId || t.assigned_to === null);
   const mySubmissions = submissions.filter(s => studentIds.has(s.student_id));
   const pendingSubmissions = mySubmissions.filter(s => s.status === 'PENDING').length;
   const filteredAttendance = attendance.filter(a => studentIds.has(a.student_id));
+
+  if (loadingRoster) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <SpinnerSquare size={48} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -85,18 +123,10 @@ export default function MentorDashboard({
         <Select
           variant="filter"
           className="min-w-[160px]"
-          value={semFilter}
-          onChange={v => { setSemFilter(v); setBatchFilter(''); }}
-          placeholder="All Semesters"
-          options={distinctSemesters.map(s => ({ value: s.id, label: s.name }))}
-        />
-        <Select
-          variant="filter"
-          className="min-w-[160px]"
           value={batchFilter}
           onChange={setBatchFilter}
           placeholder="All Batches"
-          options={filteredBatches.map(b => ({ value: b.id, label: b.name }))}
+          options={distinctBatches.map(b => ({ value: b, label: b }))}
         />
         <Select
           variant="filter"

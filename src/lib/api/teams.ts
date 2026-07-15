@@ -12,6 +12,7 @@ import type {
   TeamAvailableMentor,
   TeamProject,
   SemesterSession,
+  TeamWithProject,
 } from '../types';
 import { apiFetch } from './client';
 import { mapFrontendTrackToBackend, mapBackendTrackToFrontend } from './trackMapping';
@@ -357,6 +358,30 @@ export async function apiListTeamsForCohort(cohortId: string): Promise<AdminTeam
 export async function apiListMyTeams(): Promise<Team[]> {
   const res = await apiFetch<RawTeam[]>('/api/v1/teams/my-teams');
   return res.map(mapTeam);
+}
+
+interface RawTeamMentorDetail {
+  teamId: string;
+  track: string;
+  isIndividual: boolean;
+  members: { studentId: string; fullName: string | null; rollNumber: string | null }[];
+  project: { id: string; title: string; description: string | null; track: string } | null;
+}
+
+// Mentor — same team scope as apiListMyTeams, with each team's allocated
+// project (title/description) attached, for the OJTs & Projects page's
+// team → project drill-down.
+export async function apiListMyTeamsDetailed(): Promise<TeamWithProject[]> {
+  const res = await apiFetch<RawTeamMentorDetail[]>('/api/v1/teams/my-teams/detailed');
+  return res.map((t) => ({
+    teamId: t.teamId,
+    track: mapBackendTrackToFrontend(t.track),
+    isIndividual: t.isIndividual,
+    members: t.members,
+    project: t.project
+      ? { ...t.project, track: mapBackendTrackToFrontend(t.project.track) }
+      : null,
+  }));
 }
 
 // Admin — disbands a team, dropping its members back to the teammate-invite

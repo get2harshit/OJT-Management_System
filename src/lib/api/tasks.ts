@@ -1,19 +1,13 @@
 import { apiFetch } from './client';
 import { mapFrontendTrackToBackend } from './trackMapping';
 
-export interface ApiSubtask {
+// Subtasks live as a JSON blob on each assignment (ojt_task_assignments.subtasks),
+// not as their own table — every assignee gets their own clone of the same
+// list (same ids, independently-updatable status) at task-creation time.
+export interface ApiAssignmentSubtask {
   id: string;
-  task_id: string;
   title: string;
-  created_at: string;
-}
-
-export interface ApiSubtaskProgress {
-  id: string;
-  assignment_id: string;
-  subtask_id: string;
   status: 'pending' | 'progress' | 'completed';
-  updated_at: string;
 }
 
 export interface ApiAssignment {
@@ -28,7 +22,7 @@ export interface ApiAssignment {
     full_name: string;
     role: string;
   };
-  subtask_progress?: ApiSubtaskProgress[];
+  subtasks?: ApiAssignmentSubtask[];
 }
 
 export interface ApiTask {
@@ -50,7 +44,6 @@ export interface ApiTask {
     full_name: string;
     role: string;
   };
-  subtasks?: ApiSubtask[];
   assignments?: ApiAssignment[];
 }
 
@@ -138,13 +131,15 @@ export async function apiUpdateAssignmentStatus(
   );
 }
 
+// Backend returns the whole updated assignment (subtasks JSON included),
+// not a standalone subtask-progress record.
 export async function apiUpdateSubtaskProgressStatus(
   taskId: string,
   assignmentId: string,
   subtaskId: string,
   status: 'pending' | 'progress' | 'completed'
-): Promise<{ success: boolean; message: string; data: ApiSubtaskProgress }> {
-  return apiFetch<{ success: boolean; message: string; data: ApiSubtaskProgress }>(
+): Promise<{ success: boolean; message: string; data: ApiAssignment }> {
+  return apiFetch<{ success: boolean; message: string; data: ApiAssignment }>(
     `/api/v1/tasks/${taskId}/assignments/${assignmentId}/subtasks/${subtaskId}/status`,
     {
       method: 'PATCH',
