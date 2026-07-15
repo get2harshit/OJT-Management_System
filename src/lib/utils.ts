@@ -70,3 +70,23 @@ export const getDurationString = (startDate: string, endDate: string): string =>
 
   return parts.join(', ') || '0 Days';
 };
+
+/**
+ * Serializes rows into CSV text and triggers a browser download. Values are
+ * quoted and escaped so commas, quotes, and newlines inside a cell can't
+ * break the column structure.
+ */
+export const downloadCsv = (fileName: string, headers: string[], rows: (string | number)[][]): void => {
+  const escapeCell = (cell: string | number): string => `"${String(cell).replace(/"/g, '""')}"`;
+  const csvContent = [headers, ...rows].map(row => row.map(escapeCell).join(',')).join('\r\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};

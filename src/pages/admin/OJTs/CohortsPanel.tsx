@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Calendar, RefreshCw, Briefcase, Edit2, UserCog, Users, Users2 } from 'lucide-react';
+import { Plus, Trash2, Calendar, RefreshCw, Briefcase, Edit2, UserCog, Users, Users2, Download } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import ActionsMenu from '../../../components/ActionsMenu';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import type { Cohort } from '../../../lib/types';
-import { apiListCohorts, apiCreateCohort, apiUpdateCohort, apiGetCohort, apiDeleteCohort, apiListStudentBatches } from '../../../lib/api';
-import { getDurationString, formatDateDisplay, toDateOnly } from '../../../lib/utils';
+import { apiListCohorts, apiCreateCohort, apiUpdateCohort, apiGetCohort, apiDeleteCohort, apiListStudentBatches, apiGetProjectsForCohort } from '../../../lib/api';
+import { getDurationString, formatDateDisplay, toDateOnly, downloadCsv } from '../../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import CohortFormFields from './CohortFormFields';
 import { EMPTY_COHORT_FORM, validateCohortForm } from '../../../lib/cohortForm';
@@ -106,6 +106,23 @@ export default function CohortsPanel() {
     } catch (err: unknown) {
       showError(err instanceof Error ? err.message : 'Failed to load cohort');
       closeCohortModal();
+    }
+  };
+
+  const handleDownloadProjectsCsv = async (cohort: Cohort) => {
+    try {
+      const projects = await apiGetProjectsForCohort(cohort.id);
+      if (projects.length === 0) {
+        showError('This cohort has no projects mapped to it yet.');
+        return;
+      }
+      downloadCsv(
+        `${getCohortLabel(cohort)} - Projects.csv`,
+        ['Title', 'Track', 'Problem Statement', 'Tech Stack'],
+        projects.map(p => [p.title, p.track, p.problemStatement || '', p.related_field || ''])
+      );
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to download projects CSV');
     }
   };
 
@@ -209,6 +226,7 @@ export default function CohortsPanel() {
                 { label: 'Select Student', icon: Users, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/students`) },
                 { label: 'Select Mentor', icon: UserCog, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/mentors`) },
                 { label: 'Manage Teams', icon: Users2, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/teams`) },
+                { label: 'Download Projects CSV', icon: Download, onClick: () => handleDownloadProjectsCsv(row) },
                 { label: 'Delete OJT', icon: Trash2, onClick: () => handleDeleteCohort(row.id), danger: true },
               ]}
             />
