@@ -30,6 +30,8 @@ interface DataTableProps<T> {
   // When set alongside serverPagination, the search box reports its value
   // here instead of filtering `data` locally (the server only holds one page).
   onSearchChange?: (search: string) => void;
+  // Custom content to render on the left side of the search header (e.g., custom filters).
+  leftHeaderContent?: React.ReactNode;
 }
 
 export default function DataTable<T extends Record<string, unknown>>({
@@ -41,6 +43,7 @@ export default function DataTable<T extends Record<string, unknown>>({
   onRowClick,
   serverPagination,
   onSearchChange,
+  leftHeaderContent,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -84,14 +87,21 @@ export default function DataTable<T extends Record<string, unknown>>({
   return (
     <div className="bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden">
       <div className="p-4 border-b border-zinc-750 flex items-center gap-3">
-        <Search size={18} className="text-gray-500" />
-        <input
+        {leftHeaderContent && (
+          <div className="flex items-center gap-3 mr-auto">
+            {leftHeaderContent}
+          </div>
+        )}
+        <div className={`flex items-center gap-3 ${leftHeaderContent ? 'flex-1 max-w-sm' : 'flex-1'}`}>
+          <Search size={18} className="text-gray-500 shrink-0" />
+          <input
           type="text"
           value={search}
           onChange={(e) => handleSearchChange(e.target.value)}
           placeholder={searchPlaceholder}
-          className="bg-transparent text-sm text-white placeholder-gray-500 outline-none flex-1"
+          className="bg-transparent text-sm text-white placeholder-gray-500 outline-none flex-1 min-w-0"
         />
+        </div>
       </div>
 
       {/* Desktop/tablet: the usual scrollable table. */}

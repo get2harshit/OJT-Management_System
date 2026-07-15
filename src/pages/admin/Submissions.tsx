@@ -8,14 +8,21 @@ import {
   apiGetAllPrdSubmissions,
   apiGetAllocation,
   apiListStudents,
-  apiReviewPrdSubmission,
+  apiListMentors,
   apiGetPrdDownloadUrl,
+  apiListProjects,
+  apiReviewPrdSubmission,
 } from '../../lib/api';
+import type { ApiMentor } from '../../lib/types';
+import Select from '../../components/Select';
 
 type Row = PrdSubmission & {
   studentName: string;
   rollNumber: string;
   track: string;
+  batch: string;
+  mentorId?: string;
+  mentorName?: string;
 };
 
 // Strips the GCS upload timestamp prefix (e.g. "1783945358386_report.pdf")
@@ -45,12 +52,30 @@ export default function AdminSubmissions() {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
+  const [batchFilter, setBatchFilter] = useState('ALL');
+  const [trackFilter, setTrackFilter] = useState('ALL');
+  const [mentorFilter, setMentorFilter] = useState('ALL');
+
+  const [globalBatches, setGlobalBatches] = useState<string[]>([]);
+  const [globalTracks, setGlobalTracks] = useState<string[]>([]);
+  const [globalMentors, setGlobalMentors] = useState<ApiMentor[]>([]);
+
   const loadSubmissions = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [allSubs, allStudents] = await Promise.all([apiGetAllPrdSubmissions(), apiListStudents()]);
+      const [allSubs, allStudents, allMentors, allProjects] = await Promise.all([
+        apiGetAllPrdSubmissions(), 
+        apiListStudents(),
+        apiListMentors(),
+        apiListProjects()
+      ]);
       const studentsById = new Map(allStudents.map(s => [s.id, s]));
+      const mentorsById = new Map(allMentors.map(m => [m.id, m]));
+
+      setGlobalBatches(Array.from(new Set(allStudents.map(s => s.batch).filter(b => b && b !== '-'))).sort());
+      setGlobalTracks(Array.from(new Set(allProjects.map(p => p.track).filter(t => t && t !== '-'))).sort());
+      setGlobalMentors(allMentors);
 
       const uniqueAllocationIds = Array.from(new Set(allSubs.map(s => s.allocationId)));
       const allocations = await Promise.all(uniqueAllocationIds.map(id => apiGetAllocation(id).catch(() => null)));
@@ -62,11 +87,15 @@ export default function AdminSubmissions() {
       const mapped: Row[] = allSubs.map(s => {
         const alloc = allocationsById.get(s.allocationId);
         const student = alloc ? studentsById.get(alloc.studentId) : undefined;
+        const mentor = alloc?.mentorId ? mentorsById.get(alloc.mentorId) : undefined;
         return {
           ...s,
           studentName: student?.fullName ?? '-',
           rollNumber: student?.rollNumber ?? '-',
           track: student?.track ?? '-',
+          batch: student?.batch ?? '-',
+          mentorId: mentor?.id,
+          mentorName: mentor?.fullName ?? mentor?.email ?? 'Unassigned',
         };
       });
       setRows(mapped);
@@ -81,7 +110,14 @@ export default function AdminSubmissions() {
     loadSubmissions();
   }, []);
 
-  const filteredRows = rows.filter(r => selectedType === 'ALL' || r.documentType === selectedType);
+  const filteredRows = rows.filter(r => {
+    if (selectedType !== 'ALL' && r.documentType !== selectedType) return false;
+    if (batchFilter !== 'ALL' && r.batch !== batchFilter) return false;
+    if (trackFilter !== 'ALL' && r.track !== trackFilter) return false;
+    if (mentorFilter !== 'ALL' && r.mentorId !== mentorFilter) return false;
+    return true;
+  });
+
   const activeSub = rows.find(r => r.id === selectedSubId);
 
   // Load the embedded preview automatically when a submission opens.
@@ -283,9 +319,53 @@ export default function AdminSubmissions() {
       </div>
 
       <DataTable
+        leftHeaderContent={
+          <>
+            <Select
+              value={batchFilter}
+              onChange={(v) => setBatchFilter(v as string)}
+              variant="filter"
+              options={[
+                { value: 'ALL', label: 'All Batches' },
+                ...globalBatches.map(b => ({ value: b, label: b }))
+              ]}
+            />
+            <Select
+              value={trackFilter}
+              onChange={(v) => setTrackFilter(v as string)}
+              variant="filter"
+              options={[
+                { value: 'ALL', label: 'All Tracks' },
+                ...globalTracks.map(t => ({ value: t, label: t }))
+              ]}
+            />
+            <Select
+              value={mentorFilter}
+              onChange={(v) => setMentorFilter(v as string)}
+              variant="filter"
+              options={[
+                { value: 'ALL', label: 'All Mentors' },
+                ...globalMentors.map(m => ({ value: m.id, label: m.fullName || m.email }))
+              ]}
+            />
+          </>
+        }
         columns={[
-          { key: 'studentName', header: 'Student' },
-          { key: 'rollNumber', header: 'Roll Number' },
+          { key: 'studentName', header: 'Student', render: (row) => (
+            <div>
+              <div className="font-semibold">{row.studentName}</div>
+              <div className="text-xs text-zinc-500">{row.rollNumber}</div>
+            </div>
+          )},
+          { key: 'track', header: 'Track/Batch', render: (row) => (
+            <div>
+              <div className="text-sm truncate max-w-xs" title={row.track}>{row.track}</div>
+              <div className="text-xs text-zinc-500">{row.batch}</div>
+            </div>
+          )},
+          { key: 'mentorName', header: 'Mentor', render: (row) => (
+            <span className="text-sm">{row.mentorName || '-'}</span>
+          )},
           { key: 'documentType', header: 'Type', render: (row) => DOCUMENT_TYPE_LABELS[row.documentType] },
           { key: 'documentLink', header: 'File', render: (row) => fileNameFromGcsUri(row.documentLink) },
           { key: 'versionNumber', header: 'Version' },
@@ -301,7 +381,8 @@ export default function AdminSubmissions() {
           { key: 'updatedAt', header: 'Submitted', render: (row) => row.updatedAt.slice(0, 10) },
         ]}
         data={filteredRows}
-        searchPlaceholder="Search submissions..."
+        searchPlaceholder="Search by name or roll number..."
+        searchKeys={['studentName', 'rollNumber']}
         actions={(row) => (
           <button
             onClick={() => setSelectedSubId(row.id)}
