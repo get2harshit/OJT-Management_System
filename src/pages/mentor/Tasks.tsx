@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Plus, Calendar } from 'lucide-react';
+import { Plus, Calendar, Inbox, Send, Check, Loader2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Drawer from '../../components/Drawer';
 import Select from '../../components/Select';
 import Button from '../../components/Button';
-import { apiListTasks, apiCreateTask } from '../../lib/api/tasks';
-import type { ApiTask, ApiTaskType } from '../../lib/api/tasks';
+import {
+  apiListTasks,
+  apiCreateTask,
+  apiUpdateAssignmentStatus,
+  apiUpdateSubtaskProgressStatus,
+} from '../../lib/api/tasks';
+import type { ApiTask, ApiTaskType, ApiAssignment } from '../../lib/api/tasks';
 import { apiListMyTeams } from '../../lib/api/teams';
 import type { Team } from '../../lib/types';
 
@@ -29,11 +34,31 @@ const EMPTY_FORM = {
   dueDate: '',
 };
 
-export default function MentorTasks() {
+type TaskBucket = 'to-me' | 'to-others';
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Pending',
+  progress: 'WIP',
+  completed: 'Completed',
+};
+
+const STATUS_DOT: Record<string, string> = {
+  pending: 'bg-gray-500',
+  progress: 'bg-yellow-400',
+  completed: 'bg-green-400',
+};
+
+interface Props {
+  mentorId: string;
+}
+
+export default function MentorTasks({ mentorId }: Props) {
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [myTeams, setMyTeams] = useState<Team[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [bucket, setBucket] = useState<TaskBucket>('to-others');
+  const [statusTask, setStatusTask] = useState<ApiTask | null>(null);
 
   const fetchTasksOnly = async () => {
     try {
@@ -86,7 +111,15 @@ export default function MentorTasks() {
     fetchTasksOnly();
   };
 
-  const tableData = tasks.map(t => {
+  // Mirrors the backend's own mentor scoping for GET /tasks (assigned_by_id
+  // === me, OR I'm one of the assignees) — just split back into the two
+  // halves for the two cards instead of one merged list.
+  const assignedToMe = tasks.filter(t => t.assignments?.some(a => a.assignee_id === mentorId));
+  const assignedByMe = tasks.filter(t => t.assigned_by_id === mentorId);
+  const visibleTasks = bucket === 'to-me' ? assignedToMe : assignedByMe;
+
+  const tableData = visibleTasks.map(t => {
+    const myAssignment = t.assignments?.find(a => a.assignee_id === mentorId);
     const assignees = (t.assignments && t.assignments.length > 0)
       ? t.assignments.map(a => ({
         name: a.assignee ? a.assignee.full_name : a.assignee_id,
@@ -99,11 +132,73 @@ export default function MentorTasks() {
       title: t.title,
       description: t.description || '-',
       type: t.target_role === 'student' ? 'Student' : 'Mentor',
+      assignedBy: t.assigner?.full_name ?? '-',
+      myStatus: myAssignment?.status,
       assignees,
       start_date: t.start_date ? new Date(t.start_date).toLocaleDateString() : '-',
       due_date: t.deadline ? new Date(t.deadline).toLocaleDateString() : '-',
     };
   });
+
+  const toMeColumns = [
+    { key: 'title', header: 'Title' },
+    { key: 'description', header: 'Description' },
+    { key: 'assignedBy', header: 'Assigned By' },
+    {
+      key: 'myStatus',
+      header: 'My Status',
+      render: (row: (typeof tableData)[number]) => {
+        const status = row.myStatus || 'pending';
+        return (
+          <span className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap flex items-center gap-1.5 w-fit">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[status]}`} />
+            {STATUS_LABEL[status]}
+          </span>
+        );
+      },
+    },
+    { key: 'due_date', header: 'Due Date' },
+  ];
+
+  const toOthersColumns = [
+    { key: 'title', header: 'Title' },
+    { key: 'description', header: 'Description' },
+    {
+      key: 'type',
+      header: 'Target Role',
+      render: (row: (typeof tableData)[number]) => (
+        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${row.type === 'Student' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/25' : 'bg-purple-500/10 text-purple-400 border border-purple-500/25'}`}>
+          {row.type}
+        </span>
+      ),
+    },
+    {
+      key: 'assignees',
+      header: 'Assigned To',
+      render: (row: (typeof tableData)[number]) => (
+        <div className="max-w-[250px] flex flex-wrap gap-1.5 py-1">
+          {row.assignees.map((a: { name: string; status?: string }, i: number) => (
+            <span
+              key={i}
+              title={a.status ? STATUS_LABEL[a.status] : undefined}
+              className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap flex items-center gap-1"
+            >
+              {a.status && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[a.status]}`} />}
+              {a.name}
+            </span>
+          ))}
+        </div>
+      ),
+    },
+    { key: 'start_date', header: 'Start Date' },
+    { key: 'due_date', header: 'Due Date' },
+  ];
+
+  const handleRowClick = (row: (typeof tableData)[number]) => {
+    if (bucket !== 'to-me') return;
+    const task = tasks.find(t => t.id === row.id);
+    if (task) setStatusTask(task);
+  };
 
   return (
     <div className="space-y-4">
@@ -117,45 +212,41 @@ export default function MentorTasks() {
         </Button>
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <button
+          onClick={() => setBucket('to-me')}
+          className={`text-left bg-zinc-850 border rounded-xl p-5 transition-all duration-200 ${
+            bucket === 'to-me' ? 'border-gold' : 'border-zinc-750 hover:border-zinc-600'
+          }`}
+        >
+          <div className="flex items-center gap-2 text-gray-400 mb-2">
+            <Inbox size={16} />
+            <span className="text-sm">Assigned to Me</span>
+          </div>
+          <p className="text-2xl font-bold text-white">{assignedToMe.length}</p>
+          <p className="text-gray-500 text-xs mt-1">Tasks admin gave you</p>
+        </button>
+
+        <button
+          onClick={() => setBucket('to-others')}
+          className={`text-left bg-zinc-850 border rounded-xl p-5 transition-all duration-200 ${
+            bucket === 'to-others' ? 'border-gold' : 'border-zinc-750 hover:border-zinc-600'
+          }`}
+        >
+          <div className="flex items-center gap-2 text-gray-400 mb-2">
+            <Send size={16} />
+            <span className="text-sm">Assigned to Teams/Student</span>
+          </div>
+          <p className="text-2xl font-bold text-white">{assignedByMe.length}</p>
+          <p className="text-gray-500 text-xs mt-1">Tasks you gave your students</p>
+        </button>
+      </div>
+
       <DataTable
-        columns={[
-          { key: 'title', header: 'Title' },
-          { key: 'description', header: 'Description' },
-          {
-            key: 'type',
-            header: 'Target Role',
-            render: (row) => (
-              <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${row.type === 'Student' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/25' : 'bg-purple-500/10 text-purple-400 border border-purple-500/25'}`}>
-                {row.type}
-              </span>
-            ),
-          },
-          {
-            key: 'assignees',
-            header: 'Assigned To',
-            render: (row) => (
-              <div className="max-w-[250px] flex flex-wrap gap-1.5 py-1">
-                {row.assignees.map((a: { name: string; status?: string }, i: number) => {
-                  const dotColor = a.status === 'completed' ? 'bg-green-400' : a.status === 'progress' ? 'bg-yellow-400' : 'bg-gray-500';
-                  return (
-                    <span
-                      key={i}
-                      title={a.status ? `${a.status[0].toUpperCase()}${a.status.slice(1)}` : undefined}
-                      className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap flex items-center gap-1"
-                    >
-                      {a.status && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />}
-                      {a.name}
-                    </span>
-                  );
-                })}
-              </div>
-            )
-          },
-          { key: 'start_date', header: 'Start Date' },
-          { key: 'due_date', header: 'Due Date' },
-        ]}
+        columns={bucket === 'to-me' ? toMeColumns : toOthersColumns}
         data={tableData}
         searchPlaceholder="Search tasks..."
+        onRowClick={bucket === 'to-me' ? handleRowClick : undefined}
       />
 
       <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Create Task">
@@ -274,6 +365,157 @@ export default function MentorTasks() {
           </Button>
         </div>
       </Drawer>
+
+      <Drawer open={!!statusTask} onClose={() => setStatusTask(null)} title="Task Status">
+        {statusTask && (
+          <TaskStatusPanel
+            task={statusTask}
+            mentorId={mentorId}
+            onChanged={async () => {
+              await fetchTasksOnly();
+            }}
+          />
+        )}
+      </Drawer>
+    </div>
+  );
+}
+
+// Lets the mentor mark their own assignment (or, if the task has subtasks,
+// each subtask individually) as WIP/Completed — the approval step admin
+// needs from the mentor on tasks admin handed them.
+function TaskStatusPanel({
+  task,
+  mentorId,
+  onChanged,
+}: {
+  task: ApiTask;
+  mentorId: string;
+  onChanged: () => Promise<void>;
+}) {
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const assignment = task.assignments?.find(a => a.assignee_id === mentorId);
+
+  if (!assignment) {
+    return <p className="text-gray-500 text-sm">You're not assigned to this task.</p>;
+  }
+
+  const subtasks = assignment.subtasks || [];
+  const progressFor = (subtaskId: string) =>
+    subtasks.find(s => s.id === subtaskId)?.status ?? 'pending';
+
+  const setSubtaskStatus = async (subtaskId: string, status: 'progress' | 'completed') => {
+    setSavingKey(subtaskId);
+    try {
+      await apiUpdateSubtaskProgressStatus(task.id, assignment.id, subtaskId, status);
+      await onChanged();
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const setTaskStatus = async (status: 'progress' | 'completed') => {
+    setSavingKey('__task__');
+    try {
+      await apiUpdateAssignmentStatus(task.id, assignment.id, status);
+      await onChanged();
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const completedCount = subtasks.filter(s => progressFor(s.id) === 'completed').length;
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h4 className="text-white font-semibold">{task.title}</h4>
+        {task.description && <p className="text-gray-400 text-sm mt-1">{task.description}</p>}
+        {task.deadline && (
+          <p className="text-gray-500 text-xs mt-2 flex items-center gap-1">
+            <Calendar size={12} />
+            Due {new Date(task.deadline).toLocaleDateString()}
+          </p>
+        )}
+      </div>
+
+      {subtasks.length > 0 ? (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h5 className="text-sm font-medium text-gray-300">Subtasks</h5>
+            <span className="text-xs text-gray-500">{completedCount}/{subtasks.length} completed</span>
+          </div>
+          <div className="space-y-2">
+            {subtasks.map(subtask => {
+              const status = progressFor(subtask.id);
+              const saving = savingKey === subtask.id;
+              return (
+                <div
+                  key={subtask.id}
+                  className="flex items-center justify-between gap-3 bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-2.5"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[status]}`} />
+                    <span className="text-sm text-gray-200 truncate">{subtask.title}</span>
+                  </div>
+                  <StatusButtons
+                    status={status}
+                    saving={saving}
+                    onMarkWip={() => setSubtaskStatus(subtask.id, 'progress')}
+                    onMarkCompleted={() => setSubtaskStatus(subtask.id, 'completed')}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[assignment.status]}`} />
+            <span className="text-sm text-gray-200">Task status</span>
+          </div>
+          <StatusButtons
+            status={assignment.status}
+            saving={savingKey === '__task__'}
+            onMarkWip={() => setTaskStatus('progress')}
+            onMarkCompleted={() => setTaskStatus('completed')}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusButtons({
+  status,
+  saving,
+  onMarkWip,
+  onMarkCompleted,
+}: {
+  status: ApiAssignment['status'];
+  saving: boolean;
+  onMarkWip: () => void;
+  onMarkCompleted: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 shrink-0">
+      <button
+        onClick={onMarkWip}
+        disabled={saving || status === 'progress'}
+        className="text-[10px] font-medium px-2 py-1 rounded border border-yellow-500/30 text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+      >
+        {saving ? <Loader2 size={11} className="animate-spin" /> : null}
+        WIP
+      </button>
+      <button
+        onClick={onMarkCompleted}
+        disabled={saving || status === 'completed'}
+        className="text-[10px] font-medium px-2 py-1 rounded border border-green-500/30 text-green-400 bg-green-500/10 hover:bg-green-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+      >
+        {saving ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+        Completed
+      </button>
     </div>
   );
 }

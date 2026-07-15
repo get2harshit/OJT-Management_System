@@ -40,7 +40,7 @@ function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
       case 'proposals':
         return <ProjectProposals />;
       case 'tasks':
-        return <Tasks />;
+        return <Tasks mentorId={mentorId} />;
       case 'submissions':
         return <Submissions mentorId={mentorId} />;
       case 'credits':
