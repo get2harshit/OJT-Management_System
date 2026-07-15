@@ -1,4 +1,4 @@
-import type { ApiMentor, MentorCapacitySummary, MentorTrackRatio } from '../types';
+import type { ApiMentor, MentorCapacitySummary } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
 
 export async function apiListMentors(type?: 'internal' | 'external'): Promise<ApiMentor[]> {
@@ -29,17 +29,5 @@ export async function apiSetMentorCapacityOverride(mentorId: string, overrideTot
   await apiFetch<void>(`/api/v1/mentors/${mentorId}/capacity`, {
     method: 'PATCH',
     body: JSON.stringify({ overrideTotalCapacity }),
-  });
-}
-
-export async function apiGetMentorTrackRatios(mentorId: string): Promise<MentorTrackRatio[]> {
-  return apiFetch<MentorTrackRatio[]>(`/api/v1/mentors/${mentorId}/track-ratios`);
-}
-
-// Mentor self-service — replace-all semantics, ratios must sum to 100.
-export async function apiSetMentorTrackRatios(mentorId: string, ratios: MentorTrackRatio[]): Promise<void> {
-  await apiFetch<void>(`/api/v1/mentors/${mentorId}/track-ratios`, {
-    method: 'PUT',
-    body: JSON.stringify({ ratios }),
   });
 }
