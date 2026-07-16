@@ -25,10 +25,10 @@ import { useConfirm } from '../../../confirm';
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
-const STATUS_STYLES: Record<string, string> = {
-  allocated: 'bg-green-400/10 text-green-400',
-  needs_review: 'bg-red-400/10 text-red-400',
-  pending: 'bg-gray-400/10 text-gray-400',
+const STATUS_DOT: Record<string, { dot: string; text: string }> = {
+  allocated: { dot: 'bg-green-500', text: 'text-green-500' },
+  needs_review: { dot: 'bg-red-400', text: 'text-red-400' },
+  pending: { dot: 'bg-gray-400', text: 'text-gray-400' },
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -60,6 +60,7 @@ export default function CohortAllocationsPage() {
   const [detailTeam, setDetailTeam] = useState<TeamAllocationDetail | null>(null);
 
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const [trackFilter, setTrackFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -72,7 +73,7 @@ export default function CohortAllocationsPage() {
     try {
       const res = await apiGetTeamsForCohortDetailed(cohortId, {
         page: targetPage,
-        limit: PAGE_SIZE,
+        limit,
         track: trackFilter || undefined,
         batch: batchFilter || undefined,
         search: search || undefined,
@@ -82,7 +83,7 @@ export default function CohortAllocationsPage() {
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load teams for allocation');
     }
-  }, [cohortId, trackFilter, batchFilter, search, showError]);
+  }, [cohortId, limit, trackFilter, batchFilter, search, showError]);
 
   // Cohort label/mentors/load-summary — only changes after an actual
   // allocation mutation, not on every page/filter change.
@@ -122,7 +123,7 @@ export default function CohortAllocationsPage() {
       setTableLoading(false);
       setLoading(false);
     });
-  }, [page, trackFilter, batchFilter, search, fetchTeams]);
+  }, [page, limit, trackFilter, batchFilter, search, fetchTeams]);
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleSearchChange = (value: string) => {
@@ -141,6 +142,11 @@ export default function CohortAllocationsPage() {
   const handleBatchFilterChange = (value: string) => {
     setPage(1);
     setBatchFilter(value);
+  };
+
+  const handleLimitChange = (value: number) => {
+    setPage(1);
+    setLimit(value);
   };
 
   const handleReverseAllocation = async () => {
@@ -219,21 +225,16 @@ export default function CohortAllocationsPage() {
     submittedAt: formatDateDisplay(t.submittedAt),
     pref1: `${t.preference1.projectTitle}${t.preference1.mentorName ? ` · ${t.preference1.mentorName}` : ''}`,
     pref2: `${t.preference2.projectTitle}${t.preference2.mentorName ? ` · ${t.preference2.mentorName}` : ''}`,
-    pref1ProjectId: t.preference1.projectId,
-    pref2ProjectId: t.preference2.projectId,
-    allocatedProjectId: t.allocatedProjectId,
     status: t.allocationStatus,
     overriddenAt: t.overriddenAt,
-    allocated: (() => {
-      const projectTitle =
-        t.allocatedProjectId === t.preference1.projectId
-          ? t.preference1.projectTitle
-          : t.allocatedProjectId === t.preference2.projectId
-          ? t.preference2.projectTitle
-          : null;
-      if (!projectTitle) return '—';
-      return t.allocatedMentorName ? `${projectTitle} · ${t.allocatedMentorName}` : projectTitle;
-    })(),
+    allocatedPrefNum: t.allocatedProjectId === t.preference1.projectId ? 1 : t.allocatedProjectId === t.preference2.projectId ? 2 : null,
+    allocatedProjectTitle:
+      t.allocatedProjectId === t.preference1.projectId
+        ? t.preference1.projectTitle
+        : t.allocatedProjectId === t.preference2.projectId
+        ? t.preference2.projectTitle
+        : null,
+    allocatedMentorName: t.allocatedMentorName,
   }));
 
   return (
@@ -291,43 +292,35 @@ export default function CohortAllocationsPage() {
               ),
             },
             { key: 'submittedAt', header: 'Submitted' },
-            {
-              key: 'pref1',
-              header: 'Preference 1',
-              render: (row) => (
-                <span className={row.allocatedProjectId && row.pref1ProjectId === row.allocatedProjectId ? 'text-green-400 font-medium' : undefined}>
-                  {row.pref1}
-                </span>
-              ),
-            },
-            {
-              key: 'pref2',
-              header: 'Preference 2',
-              render: (row) => (
-                <span className={row.allocatedProjectId && row.pref2ProjectId === row.allocatedProjectId ? 'text-green-400 font-medium' : undefined}>
-                  {row.pref2}
-                </span>
-              ),
-            },
+            { key: 'pref1', header: 'Preference 1' },
+            { key: 'pref2', header: 'Preference 2' },
             {
               key: 'allocated',
               header: 'Allocated',
               render: (row) => (
                 <div className="space-y-1">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[row.status] ?? STATUS_STYLES.pending}`}>
+                  <span className="inline-flex items-center gap-2.5">
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${(STATUS_DOT[row.status] ?? STATUS_DOT.pending).text}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${(STATUS_DOT[row.status] ?? STATUS_DOT.pending).dot}`} />
                       {STATUS_LABELS[row.status] ?? row.status}
                     </span>
                     {row.overriddenAt && (
                       <span
                         title="Manually overridden by an admin — skipped by bulk reverse"
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-400/10 text-blue-400"
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-400"
                       >
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
                         Overridden
                       </span>
                     )}
                   </span>
-                  {row.allocated !== '—' && <p className="text-gray-400 text-xs">{row.allocated}</p>}
+                  {row.allocatedProjectTitle && (
+                    <p className="text-gray-400 text-xs">
+                      {row.allocatedPrefNum && <span className="text-gold">Pref {row.allocatedPrefNum} · </span>}
+                      {row.allocatedProjectTitle}
+                      {row.allocatedMentorName && <span className="text-white font-medium"> · {row.allocatedMentorName}</span>}
+                    </p>
+                  )}
                 </div>
               ),
             },
@@ -342,6 +335,9 @@ export default function CohortAllocationsPage() {
             total: pagination.total,
             totalPages: pagination.totalPages,
             onPageChange: setPage,
+            limitOptions: [20, 40, 80, 100],
+            onLimitChange: handleLimitChange,
+            autoFit: true,
           }}
           leftHeaderContent={
             <>
@@ -387,12 +383,14 @@ export default function CohortAllocationsPage() {
               </p>
             </div>
 
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[detailTeam.allocationStatus] ?? STATUS_STYLES.pending}`}>
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${(STATUS_DOT[detailTeam.allocationStatus] ?? STATUS_DOT.pending).text}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${(STATUS_DOT[detailTeam.allocationStatus] ?? STATUS_DOT.pending).dot}`} />
                 {STATUS_LABELS[detailTeam.allocationStatus] ?? detailTeam.allocationStatus}
               </span>
               {detailTeam.overriddenAt && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-400/10 text-blue-400">
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
                   Overridden
                 </span>
               )}
@@ -415,22 +413,14 @@ export default function CohortAllocationsPage() {
                     )}
                   </div>
                   <p className="text-white font-semibold text-sm">{pref.projectTitle}</p>
-                  {pref.mentorName && <p className="text-gray-400 text-xs mt-0.5">{pref.mentorName}</p>}
+                  {(selected ? detailTeam.allocatedMentorName ?? pref.mentorName : pref.mentorName) && (
+                    <p className="text-gray-400 text-xs mt-0.5">
+                      {selected ? detailTeam.allocatedMentorName ?? pref.mentorName : pref.mentorName}
+                    </p>
+                  )}
                 </div>
               );
             })}
-
-            {detailTeam.allocatedProjectId && (
-              <div className="rounded-lg p-3 border border-green-400/30 bg-green-400/5">
-                <p className="text-xs text-green-400 uppercase font-bold tracking-wider mb-1">Allocated</p>
-                <p className="text-white font-semibold text-sm">
-                  {detailTeam.allocatedProjectId === detailTeam.preference1.projectId
-                    ? detailTeam.preference1.projectTitle
-                    : detailTeam.preference2.projectTitle}
-                </p>
-                {detailTeam.allocatedMentorName && <p className="text-gray-400 text-xs mt-0.5">{detailTeam.allocatedMentorName}</p>}
-              </div>
-            )}
 
             <div className="flex items-center gap-2 pt-2">
               <button

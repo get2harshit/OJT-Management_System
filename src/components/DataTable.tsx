@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Maximize2, Search } from 'lucide-react';
 
 interface Column<T> {
   key: keyof T | string;
@@ -14,6 +14,13 @@ interface ServerPagination {
   totalPages: number;
   total: number;
   onPageChange: (page: number) => void;
+  // Page-size choices (e.g. [20, 40, 80, 100]) rendered as small buttons next
+  // to the "Showing X - Y of Z" label. Omit to keep the fixed page size.
+  limitOptions?: number[];
+  onLimitChange?: (limit: number) => void;
+  // Runs the "Fit to screen" sizing once automatically after the first page
+  // of rows renders, instead of waiting for the admin to click the button.
+  autoFit?: boolean;
 }
 
 interface DataTableProps<T> {
@@ -48,6 +55,34 @@ export default function DataTable<T extends Record<string, unknown>>({
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 12;
+  const tbodyRef = useRef<HTMLTableSectionElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+
+  // Picks a page size so the current page of rows fills the viewport below
+  // the table without needing to scroll — measures an actual rendered row
+  // rather than assuming a fixed height, since wrapped preference text etc.
+  // makes row height vary per page.
+  const handleFitToViewport = () => {
+    if (!serverPagination?.onLimitChange) return;
+    const firstRow = tbodyRef.current?.querySelector('tr');
+    if (!firstRow) return;
+    const rowHeight = firstRow.getBoundingClientRect().height;
+    if (!rowHeight) return;
+    const tbodyTop = firstRow.getBoundingClientRect().top;
+    const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 60;
+    const available = window.innerHeight - tbodyTop - footerHeight - 16;
+    const count = Math.max(5, Math.floor(available / rowHeight));
+    serverPagination.onLimitChange(count);
+  };
+
+  const hasAutoFitted = useRef(false);
+  useEffect(() => {
+    if (serverPagination?.autoFit && !hasAutoFitted.current && data.length > 0) {
+      hasAutoFitted.current = true;
+      handleFitToViewport();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverPagination?.autoFit, data]);
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -117,7 +152,7 @@ export default function DataTable<T extends Record<string, unknown>>({
               {actions && <th className="px-4 py-3" />}
             </tr>
           </thead>
-          <tbody>
+          <tbody ref={tbodyRef}>
             {paginated.map((row, idx) => (
               <tr
                 key={typeof row.id === 'string' || typeof row.id === 'number' ? row.id : idx}
@@ -202,13 +237,47 @@ export default function DataTable<T extends Record<string, unknown>>({
       </div>
 
       {(serverPagination ? serverPagination.totalPages > 1 : filtered.length > pageSize) && (
-        <div className="p-4 border-t border-zinc-750 flex items-center justify-between">
-          <span className="text-xs text-gray-500">
-            {serverPagination
-              ? `Showing ${(currentPage - 1) * serverPagination.limit + 1} - ${Math.min(currentPage * serverPagination.limit, totalCount)} of ${totalCount}`
-              : `Showing ${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}`}
-          </span>
+        <div ref={footerRef} className="p-4 border-t border-zinc-750 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-500">
+              {serverPagination
+                ? `Showing ${(currentPage - 1) * serverPagination.limit + 1} - ${Math.min(currentPage * serverPagination.limit, totalCount)} of ${totalCount}`
+                : `Showing ${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}`}
+            </span>
+            {serverPagination?.limitOptions && serverPagination.onLimitChange && (
+              <div className="flex items-center gap-1">
+                {serverPagination.limitOptions.map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => serverPagination.onLimitChange!(opt)}
+                    className={`text-xs px-2 py-1 rounded-md transition-colors ${
+                      opt === serverPagination.limit
+                        ? 'bg-gold/20 text-gold font-semibold'
+                        : 'text-gray-400 hover:text-white hover:bg-zinc-750'
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+                <button
+                  onClick={handleFitToViewport}
+                  title="Fit rows to your current screen size"
+                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
+                >
+                  <Maximize2 size={11} />
+                  Fit to screen
+                </button>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => goToPage(1)}
+              disabled={currentPage === 1}
+              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+            >
+              <ChevronsLeft size={16} />
+            </button>
             <button
               onClick={() => goToPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
@@ -223,6 +292,13 @@ export default function DataTable<T extends Record<string, unknown>>({
               className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
             >
               <ChevronRight size={16} />
+            </button>
+            <button
+              onClick={() => goToPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+            >
+              <ChevronsRight size={16} />
             </button>
           </div>
         </div>
