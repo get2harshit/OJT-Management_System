@@ -16,6 +16,19 @@ interface MentorRow extends ApiMentor {
   assignedTracks: string[];
 }
 
+const TYPE_DOT: Record<string, { dot: string; text: string }> = {
+  Internal: { dot: 'bg-gold', text: 'text-gold' },
+  External: { dot: 'bg-blue-400', text: 'text-blue-400' },
+};
+
+const TRACK_DOT: Record<string, { dot: string; text: string }> = {
+  'Product Development': { dot: 'bg-blue-400', text: 'text-blue-400' },
+  'Application Development': { dot: 'bg-purple-400', text: 'text-purple-400' },
+  'Data Scientist': { dot: 'bg-teal-400', text: 'text-teal-400' },
+  'Open Source': { dot: 'bg-orange-400', text: 'text-orange-400' },
+  'Gen AI': { dot: 'bg-pink-400', text: 'text-pink-400' },
+};
+
 export default function AdminMentors() {
   const { showSuccess, showError } = useToast();
   const [mentors, setMentors] = useState<MentorRow[]>([]);
@@ -162,26 +175,31 @@ export default function AdminMentors() {
             {
               key: 'type',
               header: 'Type',
-              render: (row) => (
-                <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${row.type === 'External'
-                    ? 'bg-blue-500/10 text-blue-400'
-                    : 'bg-gold/10 text-gold'
-                  }`}>
-                  {row.type}
-                </span>
-              ),
+              render: (row) => {
+                const style = TYPE_DOT[row.type] ?? TYPE_DOT.Internal;
+                return (
+                  <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                    {row.type}
+                  </span>
+                );
+              },
             },
             {
               key: 'assignedTracks',
               header: 'Specialized Tracks',
               render: (row) => (
-                <div className="flex flex-wrap gap-1 max-w-xs">
+                <div className="flex flex-wrap gap-x-3 gap-y-1 max-w-xs">
                   {row.assignedTracks && row.assignedTracks.length > 0
-                    ? row.assignedTracks.map((t) => (
-                      <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold font-medium">
-                        {t}
-                      </span>
-                    ))
+                    ? row.assignedTracks.map((t) => {
+                      const style = TRACK_DOT[t] ?? { dot: 'bg-gray-400', text: 'text-gray-300' };
+                      return (
+                        <span key={t} className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                          {t}
+                        </span>
+                      );
+                    })
                     : <span className="text-gray-500 text-xs">Not assigned</span>
                   }
                 </div>
