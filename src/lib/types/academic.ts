@@ -248,6 +248,7 @@ export interface MentorLoadSummaryRow {
 // (GET /api/v1/teams/cohort/:cohortId/detail).
 export interface TeamAllocationDetail {
   teamId: string;
+  teamName: string | null;
   track: string;
   members: { studentId: string; fullName: string | null }[];
   tier: string;
