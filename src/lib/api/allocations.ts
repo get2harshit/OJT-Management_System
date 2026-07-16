@@ -1,5 +1,6 @@
 import type { TeamAllocationDetail, StudentAllocation, MentorLoadSummaryRow } from '../types';
 import { apiFetch } from './client';
+import { mapFrontendTrackToBackend } from './trackMapping';
 
 // Student — the logged-in student's own project allocation, if any.
 export async function apiGetMyAllocation(): Promise<StudentAllocation> {
@@ -12,9 +13,33 @@ export async function apiGetAllocation(id: string): Promise<StudentAllocation> {
   return apiFetch<StudentAllocation>(`/api/v1/allocations/${id}`);
 }
 
-// Admin — full per-team preference detail for the allocation review panel.
-export async function apiGetTeamsForCohortDetailed(cohortId: string): Promise<TeamAllocationDetail[]> {
-  return apiFetch<TeamAllocationDetail[]>(`/api/v1/teams/cohort/${cohortId}/detail`);
+export interface TeamsForCohortPage {
+  data: TeamAllocationDetail[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+interface GetTeamsForCohortParams {
+  track?: string;
+  batch?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+// Admin — full per-team preference detail for the allocation review panel,
+// server-paginated with optional track/batch/search filters.
+export async function apiGetTeamsForCohortDetailed(
+  cohortId: string,
+  params: GetTeamsForCohortParams = {}
+): Promise<TeamsForCohortPage> {
+  const query = new URLSearchParams();
+  if (params.track) query.set('track', mapFrontendTrackToBackend(params.track));
+  if (params.batch) query.set('batch', params.batch);
+  if (params.search) query.set('search', params.search);
+  if (params.page) query.set('page', String(params.page));
+  if (params.limit) query.set('limit', String(params.limit));
+  const qs = query.toString();
+  return apiFetch<TeamsForCohortPage>(`/api/v1/teams/cohort/${cohortId}/detail${qs ? `?${qs}` : ''}`);
 }
 
 // Admin — runs the deferred-acceptance resolution across every pending team in the cohort.
@@ -30,13 +55,14 @@ export async function apiOverrideTeamAllocation(teamId: string, allocatedProject
   });
 }
 
-// Admin — overrides just the mentor on an already-allocated team. The
-// project is untouched, and the mentor doesn't need to match the team's
-// track or be one of its submitted preferences.
-export async function apiOverrideTeamMentor(teamId: string, mentorId: string): Promise<void> {
-  await apiFetch<void>(`/api/v1/teams/${teamId}/allocation/mentor`, {
+// Admin — one-step resolution for a team with no allocation yet: the
+// project must be one of the team's own two preferences, but the mentor
+// can be anyone in the cohort (doesn't need to match the team's track or
+// be one of the preferences' mentors).
+export async function apiResolveTeamAllocation(teamId: string, allocatedProjectId: string, mentorId: string): Promise<void> {
+  await apiFetch<void>(`/api/v1/teams/${teamId}/allocation/resolve`, {
     method: 'PATCH',
-    body: JSON.stringify({ mentorId }),
+    body: JSON.stringify({ allocatedProjectId, mentorId }),
   });
 }
 
