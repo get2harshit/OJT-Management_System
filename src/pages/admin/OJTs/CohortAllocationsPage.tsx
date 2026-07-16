@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { Users2, Shuffle, CheckCircle2, ArrowLeftRight, UserCog, Gauge, RotateCcw } from 'lucide-react';
+import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, UserCog, Gauge, RotateCcw } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import SpinnerSquare from '../../../components/SpinnerSquare';
-import ActionsMenu from '../../../components/ActionsMenu';
 import type { TeamAllocationDetail, ApiMentor, MentorLoadSummaryRow } from '../../../lib/types';
 import {
   apiGetTeamsForCohortDetailed,
@@ -51,6 +50,7 @@ export default function CohortAllocationsPage() {
   const [savingMentorOverride, setSavingMentorOverride] = useState(false);
   const [mentorLoadSummary, setMentorLoadSummary] = useState<MentorLoadSummaryRow[]>([]);
   const [showLoadSummary, setShowLoadSummary] = useState(false);
+  const [detailTeam, setDetailTeam] = useState<TeamAllocationDetail | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!cohortId) return;
@@ -147,8 +147,7 @@ export default function CohortAllocationsPage() {
   const data = teams.map((t) => ({
     id: t.teamId,
     members: t.members.map((m) => m.fullName || m.studentId).join(', '),
-    track: t.track,
-    tier: t.tier,
+    memberCount: t.members.length,
     submittedAt: formatDateDisplay(t.submittedAt),
     pref1: `${t.preference1.projectTitle}${t.preference1.mentorName ? ` · ${t.preference1.mentorName}` : ''}`,
     pref2: `${t.preference2.projectTitle}${t.preference2.mentorName ? ` · ${t.preference2.mentorName}` : ''}`,
@@ -213,13 +212,15 @@ export default function CohortAllocationsPage() {
               header: 'Team',
               render: (row) => (
                 <span className="flex items-center gap-2">
-                  <Users2 size={14} className="text-gold shrink-0" />
+                  {row.memberCount > 1 ? (
+                    <Users2 size={14} className="text-gold shrink-0" />
+                  ) : (
+                    <User size={14} className="text-gold shrink-0" />
+                  )}
                   {row.members}
                 </span>
               ),
             },
-            { key: 'track', header: 'Track' },
-            { key: 'tier', header: 'Tier' },
             { key: 'submittedAt', header: 'Submitted' },
             {
               key: 'pref1',
@@ -240,44 +241,112 @@ export default function CohortAllocationsPage() {
               ),
             },
             {
-              key: 'status',
-              header: 'Status',
+              key: 'allocated',
+              header: 'Allocated',
               render: (row) => (
-                <span className="inline-flex items-center gap-1.5">
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[row.status] ?? STATUS_STYLES.pending}`}>
-                    {STATUS_LABELS[row.status] ?? row.status}
-                  </span>
-                  {row.overriddenAt && (
-                    <span
-                      title="Manually overridden by an admin — skipped by bulk reverse"
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-400/10 text-blue-400"
-                    >
-                      Overridden
+                <div className="space-y-1">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[row.status] ?? STATUS_STYLES.pending}`}>
+                      {STATUS_LABELS[row.status] ?? row.status}
                     </span>
-                  )}
-                </span>
+                    {row.overriddenAt && (
+                      <span
+                        title="Manually overridden by an admin — skipped by bulk reverse"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-400/10 text-blue-400"
+                      >
+                        Overridden
+                      </span>
+                    )}
+                  </span>
+                  {row.allocated !== '—' && <p className="text-gray-400 text-xs">{row.allocated}</p>}
+                </div>
               ),
             },
-            { key: 'allocated', header: 'Allocated Project' },
           ]}
           data={data}
           searchPlaceholder="Search teams..."
-          actions={(row) => {
-            const team = teams.find((t) => t.teamId === row.id);
-            if (!team) return null;
-            return (
-              <ActionsMenu
-                items={[
-                  { label: 'Override Project', icon: ArrowLeftRight, onClick: () => setOverrideTeam(team) },
-                  ...(team.allocatedProjectId
-                    ? [{ label: 'Change Mentor', icon: UserCog, onClick: () => setMentorOverrideTeam(team) }]
-                    : []),
-                ]}
-              />
-            );
-          }}
+          onRowClick={(row) => setDetailTeam(teams.find((t) => t.teamId === row.id) ?? null)}
         />
       )}
+
+      <Modal open={!!detailTeam} onClose={() => setDetailTeam(null)} title="Team Detail">
+        {detailTeam && (
+          <div className="space-y-4">
+            <div className="bg-zinc-800/60 border border-zinc-700 rounded-lg px-4 py-3 space-y-1">
+              <p className="text-white text-sm font-semibold flex items-center gap-2">
+                {detailTeam.members.length > 1 ? (
+                  <Users2 size={14} className="text-gold shrink-0" />
+                ) : (
+                  <User size={14} className="text-gold shrink-0" />
+                )}
+                {detailTeam.teamName || 'Unnamed Team'}
+              </p>
+              <p className="text-gray-300 text-xs">
+                {detailTeam.members.map((m) => m.fullName || m.studentId).join(', ')}
+              </p>
+              <p className="text-gray-400 text-xs">
+                {detailTeam.track} · Tier {detailTeam.tier} · Submitted {formatDateDisplay(detailTeam.submittedAt)}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[detailTeam.allocationStatus] ?? STATUS_STYLES.pending}`}>
+                {STATUS_LABELS[detailTeam.allocationStatus] ?? detailTeam.allocationStatus}
+              </span>
+              {detailTeam.overriddenAt && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-400/10 text-blue-400">
+                  Overridden
+                </span>
+              )}
+            </div>
+
+            {[detailTeam.preference1, detailTeam.preference2].map((pref, idx) => {
+              const selected = detailTeam.allocatedProjectId === pref.projectId && !detailTeam.overriddenAt;
+              return (
+                <div
+                  key={pref.projectId}
+                  className={`rounded-lg p-3 border ${selected ? 'bg-gold/10 border-gold' : 'bg-zinc-900 border-zinc-750'}`}
+                >
+                  <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {idx + 1}</p>
+                  <p className="text-white font-semibold text-sm">{pref.projectTitle}</p>
+                  {pref.mentorName && <p className="text-gray-400 text-xs mt-0.5">{pref.mentorName}</p>}
+                </div>
+              );
+            })}
+
+            {detailTeam.allocatedProjectId && (
+              <div className="rounded-lg p-3 border border-green-400/30 bg-green-400/5">
+                <p className="text-xs text-green-400 uppercase font-bold tracking-wider mb-1">Allocated</p>
+                <p className="text-white font-semibold text-sm">
+                  {detailTeam.allocatedProjectId === detailTeam.preference1.projectId
+                    ? detailTeam.preference1.projectTitle
+                    : detailTeam.preference2.projectTitle}
+                </p>
+                {detailTeam.allocatedMentorName && <p className="text-gray-400 text-xs mt-0.5">{detailTeam.allocatedMentorName}</p>}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                onClick={() => { setOverrideTeam(detailTeam); setDetailTeam(null); }}
+                className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+              >
+                <ArrowLeftRight size={14} />
+                Override Project
+              </button>
+              <button
+                onClick={() => { setMentorOverrideTeam(detailTeam); setDetailTeam(null); }}
+                disabled={!detailTeam.allocatedProjectId}
+                title={!detailTeam.allocatedProjectId ? 'Team must be allocated a project first' : undefined}
+                className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <UserCog size={14} />
+                Assign Other Mentor
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={!!overrideTeam} onClose={() => setOverrideTeam(null)} title="Override Allocation">
         {overrideTeam && (
@@ -336,6 +405,8 @@ export default function CohortAllocationsPage() {
                 .filter((m) => (m.fullName || '').toLowerCase().includes(mentorSearch.toLowerCase()))
                 .map((mentor) => {
                   const selected = mentorOverrideTeam.allocatedMentorId === mentor.id;
+                  const load = mentorLoadSummary.find((m) => m.mentorId === mentor.id);
+                  const overCapacity = !!load && load.allocatedCount >= load.threshold;
                   return (
                     <button
                       key={mentor.id}
@@ -350,7 +421,14 @@ export default function CohortAllocationsPage() {
                           <p className="text-white font-semibold text-sm">{mentor.fullName || '—'}</p>
                           <p className="text-gray-500 text-xs">{(mentor.tracks ?? []).join(', ') || 'No tracks assigned'}</p>
                         </div>
-                        {selected && <CheckCircle2 size={16} className="text-gold shrink-0" />}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {load && (
+                            <span className={`text-xs font-bold ${overCapacity ? 'text-red-400' : 'text-gray-400'}`}>
+                              {load.allocatedCount}/{load.threshold}
+                            </span>
+                          )}
+                          {selected && <CheckCircle2 size={16} className="text-gold shrink-0" />}
+                        </div>
                       </div>
                     </button>
                   );
