@@ -11,6 +11,30 @@ export async function apiListStudents(cohortId?: string): Promise<ApiStudent[]> 
   });
 }
 
+export interface StudentsPage {
+  data: ApiStudent[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+interface GetStudentsPageParams {
+  page: number;
+  limit: number;
+  batch?: string;
+  search?: string;
+}
+
+// Admin — full student roster, server-paginated with optional batch/search
+// filters, for the admin Students table (the roster is too big to always
+// fetch in one shot).
+export async function apiListStudentsPage(params: GetStudentsPageParams): Promise<StudentsPage> {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page));
+  query.set('limit', String(params.limit));
+  if (params.batch) query.set('batch', params.batch);
+  if (params.search) query.set('search', params.search);
+  return apiFetch<StudentsPage>(`/api/v1/students?${query.toString()}`);
+}
+
 // Admin-only. batch must be in "YYYY X" format (e.g. "2025 A"), matching a
 // cohort's allowedBatches — the backend rejects anything else.
 export async function apiUpdateStudentBatch(studentId: string, batch: string): Promise<ApiStudent> {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Edit2, UserCheck, UserX } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import SpinnerSquare from '../../components/SpinnerSquare';
@@ -6,34 +6,76 @@ import Select from '../../components/Select';
 import Modal from '../../components/Modal';
 import ActionsMenu from '../../components/ActionsMenu';
 import type { ApiStudent } from '../../lib/types';
-import { apiListStudents, apiUpdateStudentBatch, apiSetIndividualOverride } from '../../lib/api';
+import { apiListStudentsPage, apiListStudentBatches, apiUpdateStudentBatch, apiSetIndividualOverride } from '../../lib/api';
 import { useToast } from '../../toast';
 
 const BATCH_FORMAT = /^[0-9]{4} [A-Z]$/;
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 400;
 
-// Real backend roster (GET /api/v1/students, unfiltered). The backend only
-// exposes a batch-update endpoint so far — no full student edit/delete yet —
-// so batch is the one editable field here.
+// Real backend roster (GET /api/v1/students, server-paginated). The backend
+// only exposes a batch-update endpoint so far — no full student edit/delete
+// yet — so batch is the one editable field here.
 export default function AdminStudents() {
   const { showSuccess, showError } = useToast();
   const [students, setStudents] = useState<ApiStudent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [batches, setBatches] = useState<string[]>([]);
   const [selectedBatch, setSelectedBatch] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
   const [editingStudent, setEditingStudent] = useState<ApiStudent | null>(null);
   const [batchInput, setBatchInput] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const fetchStudents = useCallback(() => {
-    setLoading(true);
-    return apiListStudents()
-      .then(setStudents)
-      .catch(() => setStudents([]))
-      .finally(() => setLoading(false));
+  const fetchStudents = useCallback(async () => {
+    try {
+      const res = await apiListStudentsPage({
+        page,
+        limit,
+        batch: selectedBatch || undefined,
+        search: search || undefined,
+      });
+      setStudents(res.data);
+      setPagination(res.pagination);
+    } catch {
+      setStudents([]);
+    }
+  }, [page, limit, selectedBatch, search]);
+
+  useEffect(() => {
+    apiListStudentBatches().then(setBatches).catch(() => setBatches([]));
   }, []);
 
   useEffect(() => {
-    fetchStudents();
+    setTableLoading(true);
+    fetchStudents().finally(() => {
+      setTableLoading(false);
+      setLoading(false);
+    });
   }, [fetchStudents]);
+
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const handleSearchChange = (value: string) => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1);
+      setSearch(value);
+    }, SEARCH_DEBOUNCE_MS);
+  };
+
+  const handleBatchFilterChange = (value: string) => {
+    setPage(1);
+    setSelectedBatch(value);
+  };
+
+  const handleLimitChange = (value: number) => {
+    setPage(1);
+    setLimit(value);
+  };
 
   const openEditBatch = (student: ApiStudent) => {
     setEditingStudent(student);
@@ -82,19 +124,7 @@ export default function AdminStudents() {
     }
   };
 
-  // Unique sorted batch values from the API data
-  const batches = useMemo(() => {
-    const vals = students.map(s => s.batch).filter((b): b is string => !!b && b !== '-');
-    return Array.from(new Set(vals)).sort();
-  }, [students]);
-
-  const filtered = useMemo(() => {
-    return selectedBatch
-      ? students.filter(s => s.batch === selectedBatch)
-      : students;
-  }, [students, selectedBatch]);
-
-  const data = filtered.map(s => ({
+  const data = students.map(s => ({
     id: s.id,
     roll_number: s.rollNumber ?? '-',
     name: s.fullName ?? '-',
@@ -111,64 +141,80 @@ export default function AdminStudents() {
         <p className="text-gray-400 text-sm mt-1">All enrolled students</p>
       </div>
 
-      {!loading && batches.length > 0 && (
-        <div className="flex flex-wrap gap-3">
-          <Select
-            variant="filter"
-            className="min-w-[160px]"
-            value={selectedBatch}
-            onChange={setSelectedBatch}
-            placeholder="All Batches"
-            options={batches.map(b => ({ value: b, label: b }))}
-          />
-        </div>
-      )}
-
       {loading ? (
         <div className="min-h-[50vh] flex items-center justify-center">
           <SpinnerSquare size={48} />
         </div>
       ) : (
-        <DataTable
-          columns={[
-            { key: 'roll_number', header: 'Roll Number' },
-            { key: 'name', header: 'Name' },
-            { key: 'email', header: 'Email' },
-            { key: 'batch', header: 'Batch' },
-            { key: 'currentTier', header: 'Tier' },
-            {
-              key: 'activeStatus',
-              header: 'Status',
-              render: (row) => (
-                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-                  row.activeStatus === false ? 'text-gray-400' : 'text-green-500'
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${row.activeStatus === false ? 'bg-gray-400' : 'bg-green-500'}`} />
-                  {row.activeStatus === false ? 'Inactive' : 'Active'}
-                </span>
-              ),
-            },
-          ]}
-          data={data}
-          searchPlaceholder="Search students..."
-          actions={(row) => {
-            const student = students.find(s => s.id === row.id);
-            if (!student) return null;
-            const isAllowedIndividual = !!student.allowedAsIndividual;
-            return (
-              <ActionsMenu
-                items={[
-                  { label: 'Edit Batch', icon: Edit2, onClick: () => openEditBatch(student) },
-                  {
-                    label: isAllowedIndividual ? 'Revoke Individual Project' : 'Allow Individual Project',
-                    icon: isAllowedIndividual ? UserX : UserCheck,
-                    onClick: () => handleToggleIndividualOverride(student),
-                  },
-                ]}
-              />
-            );
-          }}
-        />
+        <div className="relative">
+          {tableLoading && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center">
+              <SpinnerSquare size={56} />
+            </div>
+          )}
+          <div className={tableLoading ? 'opacity-20 transition-opacity' : 'transition-opacity'}>
+            <DataTable
+              columns={[
+                { key: 'roll_number', header: 'Roll Number' },
+                { key: 'name', header: 'Name' },
+                { key: 'email', header: 'Email' },
+                { key: 'batch', header: 'Batch' },
+                { key: 'currentTier', header: 'Tier' },
+                {
+                  key: 'activeStatus',
+                  header: 'Status',
+                  render: (row) => (
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                      row.activeStatus === false ? 'text-gray-400' : 'text-green-500'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${row.activeStatus === false ? 'bg-gray-400' : 'bg-green-500'}`} />
+                      {row.activeStatus === false ? 'Inactive' : 'Active'}
+                    </span>
+                  ),
+                },
+              ]}
+              data={data}
+              searchPlaceholder="Search students..."
+              onSearchChange={handleSearchChange}
+              serverPagination={{
+                page: pagination.page,
+                limit: pagination.limit,
+                total: pagination.total,
+                totalPages: pagination.totalPages,
+                onPageChange: setPage,
+                limitOptions: [20, 40, 80, 100],
+                onLimitChange: handleLimitChange,
+              }}
+              leftHeaderContent={
+                <Select
+                  variant="filter"
+                  className="min-w-[160px]"
+                  value={selectedBatch}
+                  onChange={handleBatchFilterChange}
+                  placeholder="All Batches"
+                  options={batches.map(b => ({ value: b, label: b }))}
+                />
+              }
+              actions={(row) => {
+                const student = students.find(s => s.id === row.id);
+                if (!student) return null;
+                const isAllowedIndividual = !!student.allowedAsIndividual;
+                return (
+                  <ActionsMenu
+                    items={[
+                      { label: 'Edit Batch', icon: Edit2, onClick: () => openEditBatch(student) },
+                      {
+                        label: isAllowedIndividual ? 'Revoke Individual Project' : 'Allow Individual Project',
+                        icon: isAllowedIndividual ? UserX : UserCheck,
+                        onClick: () => handleToggleIndividualOverride(student),
+                      },
+                    ]}
+                  />
+                );
+              }}
+            />
+          </div>
+        </div>
       )}
 
       <Modal open={!!editingStudent} onClose={closeEditBatch} title="Edit Batch">

@@ -274,7 +274,12 @@ export default function CohortAllocationsPage() {
           <SpinnerSquare size={48} />
         </div>
       ) : (
-        <div className={tableLoading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+        <div className={`relative ${tableLoading ? 'opacity-20 transition-opacity' : 'transition-opacity'}`}>
+        {tableLoading && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center">
+            <SpinnerSquare size={56} />
+          </div>
+        )}
         <DataTable
           columns={[
             {
