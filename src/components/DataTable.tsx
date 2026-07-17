@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Maximize2, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search } from 'lucide-react';
 
 interface Column<T> {
   key: keyof T | string;
@@ -39,6 +39,10 @@ interface DataTableProps<T> {
   onSearchChange?: (search: string) => void;
   // Custom content to render on the left side of the search header (e.g., custom filters).
   leftHeaderContent?: React.ReactNode;
+  // Page-size choices for local (client-side) pagination — same button row
+  // as serverPagination.limitOptions, but slices `data` in-browser since it's
+  // already fully loaded. Ignored when serverPagination is set.
+  pageSizeOptions?: number[];
 }
 
 export default function DataTable<T extends Record<string, unknown>>({
@@ -51,12 +55,16 @@ export default function DataTable<T extends Record<string, unknown>>({
   serverPagination,
   onSearchChange,
   leftHeaderContent,
+  pageSizeOptions,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const pageSize = 12;
+  const [localPageSize, setLocalPageSize] = useState(pageSizeOptions?.[0] ?? 12);
+  const pageSize = localPageSize;
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  const [maxBodyHeight, setMaxBodyHeight] = useState<number | undefined>(undefined);
 
   // Picks a page size so the current page of rows fills the viewport below
   // the table without needing to scroll — measures an actual rendered row
@@ -84,6 +92,25 @@ export default function DataTable<T extends Record<string, unknown>>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverPagination?.autoFit, data]);
 
+  // Caps the table body at the space actually available below it instead of
+  // letting a page full of rows push the pagination footer off-screen —
+  // rows beyond that scroll inside the table itself. Applies to every
+  // DataTable (local or server pagination), not just ones with page-size
+  // buttons, so long lists like Students/Mentors get the same treatment.
+  useEffect(() => {
+    const computeMaxHeight = () => {
+      const wrap = tableWrapRef.current;
+      if (!wrap) return;
+      const wrapTop = wrap.getBoundingClientRect().top;
+      const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 60;
+      const available = window.innerHeight - wrapTop - footerHeight - 16;
+      setMaxBodyHeight(Math.max(200, available));
+    };
+    computeMaxHeight();
+    window.addEventListener('resize', computeMaxHeight);
+    return () => window.removeEventListener('resize', computeMaxHeight);
+  }, []);
+
   const handleSearchChange = (value: string) => {
     setSearch(value);
     if (serverPagination) {
@@ -108,7 +135,7 @@ export default function DataTable<T extends Record<string, unknown>>({
   const currentPage = serverPagination ? serverPagination.page : page;
   const paginated = useMemo(
     () => (serverPagination ? filtered : filtered.slice((page - 1) * pageSize, page * pageSize)),
-    [filtered, serverPagination, page]
+    [filtered, serverPagination, page, pageSize]
   );
   const totalCount = serverPagination ? serverPagination.total : filtered.length;
   const goToPage = (p: number) => {
@@ -140,7 +167,11 @@ export default function DataTable<T extends Record<string, unknown>>({
       </div>
 
       {/* Desktop/tablet: the usual scrollable table. */}
-      <div className="hidden md:block overflow-x-auto">
+      <div
+        ref={tableWrapRef}
+        className="hidden md:block overflow-x-auto"
+        style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: 'auto' } : undefined}
+      >
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-750 bg-zinc-750/30">
@@ -244,14 +275,21 @@ export default function DataTable<T extends Record<string, unknown>>({
                 ? `Showing ${(currentPage - 1) * serverPagination.limit + 1} - ${Math.min(currentPage * serverPagination.limit, totalCount)} of ${totalCount}`
                 : `Showing ${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}`}
             </span>
-            {serverPagination?.limitOptions && serverPagination.onLimitChange && (
+            {(serverPagination?.limitOptions ?? (!serverPagination ? pageSizeOptions : undefined)) && (
               <div className="flex items-center gap-1">
-                {serverPagination.limitOptions.map((opt) => (
+                {(serverPagination?.limitOptions ?? pageSizeOptions ?? []).map((opt) => (
                   <button
                     key={opt}
-                    onClick={() => serverPagination.onLimitChange!(opt)}
+                    onClick={() => {
+                      if (serverPagination?.onLimitChange) {
+                        serverPagination.onLimitChange(opt);
+                      } else {
+                        setLocalPageSize(opt);
+                        setPage(1);
+                      }
+                    }}
                     className={`text-xs px-2 py-1 rounded-md transition-colors ${
-                      opt === serverPagination.limit
+                      opt === (serverPagination ? serverPagination.limit : localPageSize)
                         ? 'bg-gold/20 text-gold font-semibold'
                         : 'text-gray-400 hover:text-white hover:bg-zinc-750'
                     }`}
@@ -259,14 +297,6 @@ export default function DataTable<T extends Record<string, unknown>>({
                     {opt}
                   </button>
                 ))}
-                <button
-                  onClick={handleFitToViewport}
-                  title="Fit rows to your current screen size"
-                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
-                >
-                  <Maximize2 size={11} />
-                  Fit to screen
-                </button>
               </div>
             )}
           </div>
