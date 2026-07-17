@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Eye, CheckCircle2, RotateCcw, ArrowLeft, History, Loader2, Clock, Download } from 'lucide-react';
+import { Eye, ArrowLeft, History, Loader2, Download } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import PdfViewer from '../../components/PdfViewer';
+import ReviewActions from '../../components/ReviewActions';
 import type { PrdSubmission, StudentAllocation, DocumentType } from '../../lib/types';
 import { DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS } from '../../lib/types';
 import {
@@ -12,6 +13,7 @@ import {
   apiReviewPrdSubmission,
   apiGetPrdDownloadUrl,
 } from '../../lib/api';
+import { useToast } from '../../toast';
 
 interface Props {
   mentorId: string;
@@ -31,20 +33,20 @@ function fileNameFromGcsUri(uri: string): string {
   return name.replace(/^\d{10,}_/, '');
 }
 
-function statusBadgeClass(status: string): string {
-  if (status === 'approved') return 'bg-green-500/10 text-green-400 border border-green-500/20';
-  if (status === 'changes_requested') return 'bg-red-500/10 text-red-400 border border-red-500/20';
-  return 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20';
+function statusDotClass(status: string): { dot: string; text: string } {
+  if (status === 'approved') return { dot: 'bg-green-500', text: 'text-green-500' };
+  if (status === 'changes_requested') return { dot: 'bg-red-400', text: 'text-red-400' };
+  return { dot: 'bg-yellow-500', text: 'text-yellow-500' };
 }
 
 export default function MentorSubmissions({ mentorId }: Partial<Props> & { mentorId: string }) {
+  const { showSuccess, showError } = useToast();
   const [selectedType, setSelectedType] = useState<DocumentType | 'ALL'>('ALL');
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [reviewFeedback, setReviewFeedback] = useState('');
   const [reviewing, setReviewing] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -122,15 +124,14 @@ export default function MentorSubmissions({ mentorId }: Partial<Props> & { mento
     }
   };
 
-  const handleReview = async (sub: Row, status: 'under_review' | 'changes_requested' | 'approved') => {
+  const handleReview = async (sub: Row, status: 'changes_requested' | 'approved', feedback?: string) => {
     setReviewing(true);
-    setError(null);
     try {
-      await apiReviewPrdSubmission(sub.id, status, reviewFeedback.trim() || undefined);
-      setReviewFeedback('');
+      await apiReviewPrdSubmission(sub.id, status, feedback);
+      showSuccess(status === 'approved' ? 'Submission approved.' : 'Changes requested — the student has been notified.');
       await loadSubmissions();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update review');
+      showError(err instanceof Error ? err.message : 'Failed to update review');
     } finally {
       setReviewing(false);
     }
@@ -140,41 +141,12 @@ export default function MentorSubmissions({ mentorId }: Partial<Props> & { mento
   // mode, so a mentor can review from inside the expanded reader without
   // switching back to the compact view first.
   const reviewControls = activeSub && (
-    <div className="space-y-3 pt-2">
-      <textarea
-        value={reviewFeedback}
-        onChange={e => setReviewFeedback(e.target.value)}
-        placeholder="Feedback for the student (optional)..."
-        rows={3}
-        className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+    <div className="pt-2">
+      <ReviewActions
+        disabled={reviewing || activeSub.status === 'approved'}
+        onApprove={() => handleReview(activeSub, 'approved')}
+        onRequestChanges={(feedback) => handleReview(activeSub, 'changes_requested', feedback)}
       />
-      {error && <p className="text-xs text-red-400">{error}</p>}
-      <div className="flex gap-3">
-        <button
-          onClick={() => handleReview(activeSub, 'under_review')}
-          disabled={reviewing}
-          className="flex-1 flex items-center justify-center gap-2 py-2 bg-zinc-700 text-white font-semibold rounded-lg hover:bg-zinc-600 transition-colors text-sm disabled:opacity-50"
-        >
-          <Clock size={16} />
-          Mark Under Review
-        </button>
-        <button
-          onClick={() => handleReview(activeSub, 'approved')}
-          disabled={reviewing}
-          className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50"
-        >
-          <CheckCircle2 size={16} />
-          Approve
-        </button>
-        <button
-          onClick={() => handleReview(activeSub, 'changes_requested')}
-          disabled={reviewing}
-          className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-650 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors text-sm disabled:opacity-50"
-        >
-          <RotateCcw size={16} />
-          Request Changes
-        </button>
-      </div>
     </div>
   );
 
@@ -189,12 +161,13 @@ export default function MentorSubmissions({ mentorId }: Partial<Props> & { mento
           Back to Submissions
         </button>
 
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${statusBadgeClass(activeSub.status)}`}>
+                  <span className={`inline-flex items-center gap-1.5 text-xs font-medium shrink-0 ${statusDotClass(activeSub.status).text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass(activeSub.status).dot}`} />
                     {activeSub.status.replace(/_/g, ' ').toUpperCase()}
                   </span>
                   <h2 className="text-base font-bold text-white">
@@ -299,7 +272,8 @@ export default function MentorSubmissions({ mentorId }: Partial<Props> & { mento
             key: 'status',
             header: 'Status',
             render: (row) => (
-              <span className={`text-xs px-2 py-0.5 rounded-full ${statusBadgeClass(row.status)}`}>
+              <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${statusDotClass(row.status).text}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass(row.status).dot}`} />
                 {row.status.replace(/_/g, ' ').toUpperCase()}
               </span>
             ),

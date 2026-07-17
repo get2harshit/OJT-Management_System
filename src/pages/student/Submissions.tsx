@@ -31,10 +31,10 @@ function fileNameFromGcsUri(uri: string): string {
   return name.replace(/^\d{10,}_/, '');
 }
 
-function statusBadgeClass(status: string): string {
-  if (status === 'approved') return 'bg-green-500/10 text-green-400 border border-green-500/20';
-  if (status === 'changes_requested') return 'bg-red-500/10 text-red-400 border border-red-500/20';
-  return 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20';
+function statusDotClass(status: string): { dot: string; text: string } {
+  if (status === 'approved') return { dot: 'bg-green-500', text: 'text-green-500' };
+  if (status === 'changes_requested') return { dot: 'bg-red-400', text: 'text-red-400' };
+  return { dot: 'bg-yellow-500', text: 'text-yellow-500' };
 }
 
 export default function StudentSubmissions({
@@ -254,11 +254,12 @@ export default function StudentSubmissions({
           Back to Submissions
         </button>
 
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3 flex-wrap">
-                <span className={`text-xs px-2.5 py-0.5 rounded-full shrink-0 ${statusBadgeClass(activeSub.status)}`}>
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium shrink-0 ${statusDotClass(activeSub.status).text}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass(activeSub.status).dot}`} />
                   {activeSub.status.replace(/_/g, ' ').toUpperCase()}
                 </span>
                 <h2 className="text-xl font-bold text-white">
@@ -388,7 +389,8 @@ export default function StudentSubmissions({
             key: 'status',
             header: 'Status',
             render: (row) => (
-              <span className={`text-xs px-2 py-0.5 rounded-full ${statusBadgeClass(row.status)}`}>
+              <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${statusDotClass(row.status).text}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass(row.status).dot}`} />
                 {row.status.replace(/_/g, ' ').toUpperCase()}
               </span>
             ),
