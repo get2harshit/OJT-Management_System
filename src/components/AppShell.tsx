@@ -23,6 +23,14 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
+  // Auto-collapses the sidebar to its icon rail the moment any nav item is
+  // picked, so the content area gets the space back immediately — the user
+  // can still pin it back open with the collapse toggle at any time.
+  const handleTabChange = (tab: string) => {
+    setCollapsed(true);
+    onTabChange(tab);
+  };
+
   return (
     <div className="flex h-screen bg-black">
       {mobileOpen && (
@@ -35,7 +43,7 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
       <Sidebar
         panel={panel}
         activeTab={activeTab}
-        onTabChange={onTabChange}
+        onTabChange={handleTabChange}
         onLogout={onLogout}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
@@ -57,8 +65,10 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
           <span className="w-[34px]" />
         </header>
 
-        <main className="flex-1 min-h-0 p-6 overflow-auto">
-          <div className="max-w-7xl mx-auto">{children}</div>
+        <main className="flex-1 min-h-0 p-6 overflow-auto flex flex-col">
+          <div className="w-full h-full flex-1 min-h-0 flex flex-col">
+            {children}
+          </div>
         </main>
       </div>
     </div>
