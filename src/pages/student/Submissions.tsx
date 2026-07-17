@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Upload, Eye, ArrowLeft, MessageSquare, Loader2, CheckCircle2, Download } from 'lucide-react';
-import DataTable from '../../components/DataTable';
+import { Upload, ArrowLeft, Loader2 } from 'lucide-react';
+import SplitPane from '../../components/SplitPane';
+import RosterList from '../../components/RosterList';
+import SubmissionDetail from '../../components/SubmissionDetail';
 import Modal from '../../components/Modal';
-import Drawer from '../../components/Drawer';
 import Select from '../../components/Select';
-import PdfViewer from '../../components/PdfViewer';
 import type { PrdSubmission, StudentAllocation, DocumentType } from '../../lib/types';
 import { DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS } from '../../lib/types';
 import {
@@ -15,26 +15,13 @@ import {
 } from '../../lib/api';
 import { apiGetTask, apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask, ApiTaskType } from '../../lib/api/tasks';
+import { statusDotClass } from '../../lib/submissionDisplay';
 
 interface Props {
   studentId: string;
   initialSelectedSubId?: string | null;
   initialNewSubTaskId?: string | null;
   onClearInitialState?: () => void;
-}
-
-// Strips the GCS upload timestamp prefix (e.g. "1783945358386_report.pdf")
-// so the UI shows the original filename the student uploaded.
-function fileNameFromGcsUri(uri: string): string {
-  const parts = uri.split('/');
-  const name = parts[parts.length - 1] || uri;
-  return name.replace(/^\d{10,}_/, '');
-}
-
-function statusDotClass(status: string): { dot: string; text: string } {
-  if (status === 'approved') return { dot: 'bg-green-500', text: 'text-green-500' };
-  if (status === 'changes_requested') return { dot: 'bg-red-400', text: 'text-red-400' };
-  return { dot: 'bg-yellow-500', text: 'text-yellow-500' };
 }
 
 export default function StudentSubmissions({
@@ -44,8 +31,8 @@ export default function StudentSubmissions({
   onClearInitialState,
 }: Partial<Props> & { studentId: string }) {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [selectedType, setSelectedType] = useState<DocumentType | null>(null);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
-  const [selectedType, setSelectedType] = useState<DocumentType | 'ALL'>('ALL');
 
   const [allocation, setAllocation] = useState<StudentAllocation | null>(null);
   const [submissions, setSubmissions] = useState<PrdSubmission[]>([]);
@@ -58,7 +45,6 @@ export default function StudentSubmissions({
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
-  const [feedbackDrawerOpen, setFeedbackDrawerOpen] = useState(false);
 
   // Set when the upload modal was opened from a specific task's "Submit"
   // button — locks the document type to what that task requires.
@@ -74,8 +60,7 @@ export default function StudentSubmissions({
 
   // Per document type: is there a task of that type still needing a
   // submission (never submitted, or the mentor requested changes), or is
-  // every task of that type already completed? Drives which types the
-  // standalone "New Submission" picker allows, and the green-tick tiles.
+  // every task of that type already completed?
   const typeStatus = useMemo(() => {
     const map: Partial<Record<DocumentType, { status: 'open' | 'done'; taskId: string }>> = {};
     for (const task of myTasks) {
@@ -96,10 +81,12 @@ export default function StudentSubmissions({
     .map((t) => ({ value: t, label: DOCUMENT_TYPE_LABELS[t] }));
 
   const openManualUpload = () => {
-    const firstOpen = DOCUMENT_TYPES.find((t) => typeStatus[t]?.status === 'open');
-    if (firstOpen) {
-      setUploadDocType(firstOpen);
-      setActiveTaskId(typeStatus[firstOpen]!.taskId);
+    const preferred =
+      (selectedType && typeStatus[selectedType]?.status === 'open' ? selectedType : undefined) ??
+      DOCUMENT_TYPES.find((t) => typeStatus[t]?.status === 'open');
+    if (preferred) {
+      setUploadDocType(preferred);
+      setActiveTaskId(typeStatus[preferred]!.taskId);
     }
     setUploadModalOpen(true);
   };
@@ -145,6 +132,14 @@ export default function StudentSubmissions({
     }
   }, [initialSelectedSubId, onClearInitialState]);
 
+  // Keeps the left-side type selection in sync when a submission is opened
+  // directly (e.g. from a task's "View Submission" button).
+  useEffect(() => {
+    if (!selectedSubId) return;
+    const sub = submissions.find((s) => s.id === selectedSubId);
+    if (sub) setSelectedType(sub.documentType);
+  }, [selectedSubId, submissions]);
+
   useEffect(() => {
     if (!initialNewSubTaskId) return;
     let cancelled = false;
@@ -158,6 +153,7 @@ export default function StudentSubmissions({
         if (taskType) {
           setLockedDocType(taskType);
           setUploadDocType(taskType);
+          setSelectedType(taskType);
         } else {
           setLockedDocType(null);
         }
@@ -176,10 +172,9 @@ export default function StudentSubmissions({
     };
   }, [initialNewSubTaskId, onClearInitialState]);
 
-  const filteredSubmissions = submissions.filter((s) => selectedType === 'ALL' || s.documentType === selectedType);
+  const typeSubmissions = submissions.filter((s) => s.documentType === selectedType);
   const activeSub = submissions.find((s) => s.id === selectedSubId);
 
-  // Load the embedded preview automatically when a submission opens.
   useEffect(() => {
     if (!activeSub) {
       setViewerUrl(null);
@@ -190,18 +185,15 @@ export default function StudentSubmissions({
       .then((url) => { if (!cancelled) setViewerUrl(url); })
       .catch(() => { if (!cancelled) setViewerUrl(null); });
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSub?.id]);
 
-  // Closes the feedback drawer whenever a different submission is opened.
-  useEffect(() => {
-    setFeedbackDrawerOpen(false);
-  }, [activeSub?.id]);
-
-  const handleDownload = async (sub: PrdSubmission) => {
+  const handleDownload = async () => {
+    if (!activeSub) return;
     setDownloadError(null);
-    setDownloadingId(sub.id);
+    setDownloadingId(activeSub.id);
     try {
-      const url = await apiGetPrdDownloadUrl(sub.id);
+      const url = await apiGetPrdDownloadUrl(activeSub.id);
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : 'Failed to generate download link');
@@ -243,91 +235,25 @@ export default function StudentSubmissions({
     }
   };
 
-  if (activeSub) {
-    return (
-      <div className="space-y-6">
-        <button
-          onClick={() => setSelectedSubId(null)}
-          className="flex items-center gap-2 px-3 py-1.5 bg-zinc-850 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-750 transition-all text-sm font-semibold border border-zinc-700"
-        >
-          <ArrowLeft size={16} />
-          Back to Submissions
-        </button>
+  const rosterItems = DOCUMENT_TYPES.map((type) => {
+    const status = typeStatus[type]?.status;
+    return {
+      id: type,
+      primaryLabel: DOCUMENT_TYPE_LABELS[type],
+      secondaryLabel: status === 'open' ? 'Pending' : status === 'done' ? 'Done' : 'Not assigned',
+      badge: submissions.filter((s) => s.documentType === type).length,
+      done: status === 'done',
+    };
+  });
 
-        <div className="max-w-6xl mx-auto">
-          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className={`inline-flex items-center gap-1.5 text-xs font-medium shrink-0 ${statusDotClass(activeSub.status).text}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass(activeSub.status).dot}`} />
-                  {activeSub.status.replace(/_/g, ' ').toUpperCase()}
-                </span>
-                <h2 className="text-xl font-bold text-white">
-                  {DOCUMENT_TYPE_LABELS[activeSub.documentType]} Document v{activeSub.versionNumber}
-                </h2>
-                <span className="text-sm text-gray-500">Submitted {activeSub.updatedAt.slice(0, 10)}</span>
-              </div>
-
-              <button
-                onClick={() => setFeedbackDrawerOpen(true)}
-                className="relative flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-750 text-gray-300 hover:text-white hover:border-zinc-600 rounded-lg text-xs font-medium transition-colors shrink-0"
-                title="Mentor Feedback"
-              >
-                <MessageSquare size={14} />
-                Mentor Feedback
-                {activeSub.mentorFeedback && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-gold rounded-full" />
-                )}
-              </button>
-            </div>
-
-            <hr className="border-zinc-750" />
-
-            {activeSub.documentLink ? (
-              <>
-                <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-3 flex items-center justify-between gap-3">
-                  <span className="text-sm text-gray-300 font-medium truncate">{fileNameFromGcsUri(activeSub.documentLink)}</span>
-                  <button
-                    onClick={() => handleDownload(activeSub)}
-                    disabled={downloadingId === activeSub.id}
-                    className="p-1.5 text-gray-400 hover:text-gold transition-colors disabled:opacity-50 shrink-0"
-                    title="Download file"
-                    aria-label="Download file"
-                  >
-                    {downloadingId === activeSub.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                  </button>
-                </div>
-                {downloadError && <p className="text-xs text-red-400">{downloadError}</p>}
-
-                {viewerUrl && <PdfViewer url={viewerUrl} />}
-              </>
-            ) : (
-              <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4">
-                <span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Message</span>
-                <p className="text-sm text-gray-300">{activeSub.messageContent}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <Drawer open={feedbackDrawerOpen} onClose={() => setFeedbackDrawerOpen(false)} title="Mentor Feedback">
-          {activeSub.mentorFeedback ? (
-            <div className="p-3 rounded-lg bg-zinc-750 text-gray-200 text-sm">
-              {activeSub.mentorFeedback}
-            </div>
-          ) : (
-            <p className="text-gray-500 text-sm text-center py-6">
-              No feedback yet — your submission is currently {activeSub.status.replace(/_/g, ' ')}.
-            </p>
-          )}
-        </Drawer>
-      </div>
-    );
-  }
+  const selectType = (type: string) => {
+    setSelectedType(type as DocumentType);
+    setSelectedSubId(null);
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 h-full flex flex-col">
+      <div className="shrink-0 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">My Submissions</h1>
           <p className="text-gray-400 text-sm mt-1">Upload and track your project documents</p>
@@ -342,73 +268,91 @@ export default function StudentSubmissions({
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-2.5">
-          {error}
-        </div>
+        <div className="shrink-0 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-2.5">{error}</div>
       )}
 
-      {/* Document Type Filter Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {DOCUMENT_TYPES.map((type) => {
-          const isSelected = selectedType === type;
-          const count = submissions.filter((s) => s.documentType === type).length;
-          const isDone = typeStatus[type]?.status === 'done';
-          return (
-            <button
-              key={type}
-              onClick={() => setSelectedType(isSelected ? 'ALL' : type)}
-              className={`bg-zinc-850 border rounded-xl p-5 text-left transition-all hover:scale-[1.02] ${isSelected ? 'border-gold shadow-lg shadow-gold/5' : 'border-zinc-750 hover:border-zinc-600'
-                }`}
-            >
-              <h4 className="text-gray-400 text-xs font-semibold uppercase tracking-wider flex items-center gap-1">
-                {DOCUMENT_TYPE_LABELS[type]}
-                {isDone && <CheckCircle2 size={13} className="text-green-400" />}
-              </h4>
-              <p className="text-3xl font-bold text-white mt-2 flex items-center gap-2">
-                {loading ? <Loader2 size={22} className="animate-spin text-gray-500" /> : count}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">{isSelected ? 'Click to show all' : 'Click to filter'}</p>
-            </button>
-          );
-        })}
-      </div>
+      <SplitPane
+        sidebarCollapsed={!!activeSub}
+        sidebar={
+          <RosterList
+            items={rosterItems}
+            selectedId={selectedType}
+            onSelect={selectType}
+            searchPlaceholder="Search document types..."
+          />
+        }
+      >
+        {!allocation ? (
+          <div className="h-full flex items-center justify-center text-center px-6">
+            <p className="text-gray-500 text-sm">
+              You don't have a project allocation yet — submissions open once you're allocated to a project.
+            </p>
+          </div>
+        ) : !selectedType ? (
+          <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+            Select a document type to view your submissions.
+          </div>
+        ) : activeSub ? (
+          <div className="space-y-0">
+            <div className="px-6 pt-6">
+              <button
+                onClick={() => setSelectedSubId(null)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-zinc-850 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-750 transition-all text-sm font-semibold border border-zinc-700"
+              >
+                <ArrowLeft size={16} />
+                Back to {DOCUMENT_TYPE_LABELS[selectedType]} submissions
+              </button>
+            </div>
+            <SubmissionDetail
+              status={activeSub.status}
+              documentType={activeSub.documentType}
+              versionNumber={activeSub.versionNumber}
+              updatedAt={activeSub.updatedAt}
+              documentLink={activeSub.documentLink}
+              messageContent={activeSub.messageContent}
+              mentorFeedback={activeSub.mentorFeedback}
+              viewerUrl={viewerUrl}
+              downloading={downloadingId === activeSub.id}
+              downloadError={downloadError}
+              onDownload={handleDownload}
+            />
+          </div>
+        ) : (
+          <div className="p-6 space-y-4">
+            <h2 className="text-lg font-bold text-white">{DOCUMENT_TYPE_LABELS[selectedType]}</h2>
 
-      <DataTable
-        columns={[
-          { key: 'documentType', header: 'Type', render: (row) => DOCUMENT_TYPE_LABELS[row.documentType] },
-          {
-            key: 'documentLink',
-            header: 'File',
-            render: (row) => {
-              const link = row.documentLink as string | undefined;
-              return link ? fileNameFromGcsUri(link) : <span className="italic text-gray-500">Text message</span>;
-            },
-          },
-          { key: 'versionNumber', header: 'Version' },
-          {
-            key: 'status',
-            header: 'Status',
-            render: (row) => (
-              <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${statusDotClass(row.status).text}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass(row.status).dot}`} />
-                {row.status.replace(/_/g, ' ').toUpperCase()}
-              </span>
-            ),
-          },
-          { key: 'updatedAt', header: 'Submitted', render: (row) => row.updatedAt.slice(0, 10) },
-        ]}
-        data={filteredSubmissions}
-        searchPlaceholder="Search submissions..."
-        actions={(row) => (
-          <button
-            onClick={() => setSelectedSubId(row.id)}
-            className="p-1.5 text-gray-400 hover:text-gold transition-colors"
-            title="View Submission Details"
-          >
-            <Eye size={16} />
-          </button>
+            {loading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 size={22} className="animate-spin text-gray-500" />
+              </div>
+            ) : typeSubmissions.length === 0 ? (
+              <p className="text-gray-500 text-sm text-center py-10">No submissions of this type yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {typeSubmissions.map((sub) => {
+                  const style = statusDotClass(sub.status);
+                  return (
+                    <button
+                      key={sub.id}
+                      onClick={() => setSelectedSubId(sub.id)}
+                      className="w-full flex items-center justify-between gap-3 bg-zinc-900 border border-zinc-750 hover:border-zinc-600 rounded-lg px-4 py-3 transition-colors text-left"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-white truncate">Version {sub.versionNumber}</p>
+                        <p className="text-xs text-gray-500">{sub.updatedAt.slice(0, 10)}</p>
+                      </div>
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium shrink-0 ${style.text}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                        {sub.status.replace(/_/g, ' ').toUpperCase()}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
-      />
+      </SplitPane>
 
       <Modal open={uploadModalOpen} onClose={closeUploadModal} title="New Submission">
         <div className="space-y-4">
@@ -417,8 +361,7 @@ export default function StudentSubmissions({
               You don't have a project allocation yet — submissions open once you're allocated to a project.
             </div>
           ) : !lockedDocType && openTypeOptions.length === 0 ? (
-            <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-lg px-3 py-2.5 flex items-center gap-2">
-              <CheckCircle2 size={16} />
+            <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-lg px-3 py-2.5">
               Nothing needs your submission right now — every assigned document is already submitted.
             </div>
           ) : (

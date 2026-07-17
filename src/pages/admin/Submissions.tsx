@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
-import { Eye, ArrowLeft, MessageSquare, Loader2 } from 'lucide-react';
-import DataTable from '../../components/DataTable';
-import PdfViewer from '../../components/PdfViewer';
+import { useState, useEffect, useMemo } from 'react';
+import { ArrowLeft, Eye, Loader2 } from 'lucide-react';
+import SplitPane from '../../components/SplitPane';
+import RosterList from '../../components/RosterList';
+import SubmissionDetail from '../../components/SubmissionDetail';
 import ReviewActions from '../../components/ReviewActions';
-import type { PrdSubmission, StudentAllocation, DocumentType } from '../../lib/types';
+import Select from '../../components/Select';
+import type { PrdSubmission, StudentAllocation, DocumentType, ApiStudent, ApiMentor } from '../../lib/types';
 import { DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS } from '../../lib/types';
 import {
   apiGetAllPrdSubmissions,
@@ -14,92 +16,66 @@ import {
   apiListProjects,
   apiReviewPrdSubmission,
 } from '../../lib/api';
-import type { ApiMentor } from '../../lib/types';
-import Select from '../../components/Select';
+import { statusDotClass } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
 
-type Row = PrdSubmission & {
-  studentName: string;
-  rollNumber: string;
-  track: string;
-  batch: string;
-  mentorId?: string;
-  mentorName?: string;
-};
-
-// Strips the GCS upload timestamp prefix (e.g. "1783945358386_report.pdf")
-// so the UI shows the original filename the student uploaded.
-function fileNameFromGcsUri(uri: string): string {
-  const parts = uri.split('/');
-  const name = parts[parts.length - 1] || uri;
-  return name.replace(/^\d{10,}_/, '');
-}
-
-function statusDotClass(status: string): { dot: string; text: string } {
-  if (status === 'approved') return { dot: 'bg-green-500', text: 'text-green-500' };
-  if (status === 'changes_requested') return { dot: 'bg-red-400', text: 'text-red-400' };
-  return { dot: 'bg-yellow-500', text: 'text-yellow-500' };
-}
+type Row = PrdSubmission & { studentId: string; mentorId?: string };
 
 export default function AdminSubmissions() {
   const { showSuccess, showError } = useToast();
-  const [selectedType, setSelectedType] = useState<DocumentType | 'ALL'>('ALL');
-  const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
 
+  const [students, setStudents] = useState<ApiStudent[]>([]);
+  const [globalMentors, setGlobalMentors] = useState<ApiMentor[]>([]);
+  const [globalTracks, setGlobalTracks] = useState<string[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [reviewing, setReviewing] = useState(false);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
   const [batchFilter, setBatchFilter] = useState('ALL');
   const [trackFilter, setTrackFilter] = useState('ALL');
   const [mentorFilter, setMentorFilter] = useState('ALL');
+  const [docTypeFilter, setDocTypeFilter] = useState<DocumentType | 'ALL'>('ALL');
 
-  const [globalBatches, setGlobalBatches] = useState<string[]>([]);
-  const [globalTracks, setGlobalTracks] = useState<string[]>([]);
-  const [globalMentors, setGlobalMentors] = useState<ApiMentor[]>([]);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
+
+  const [reviewing, setReviewing] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
   const loadSubmissions = async () => {
     setLoading(true);
     setError(null);
     try {
       const [allSubs, allStudents, allMentors, allProjects] = await Promise.all([
-        apiGetAllPrdSubmissions(), 
+        apiGetAllPrdSubmissions(),
         apiListStudents(),
         apiListMentors(),
-        apiListProjects()
+        apiListProjects(),
       ]);
-      const studentsById = new Map(allStudents.map(s => [s.id, s]));
-      const mentorsById = new Map(allMentors.map(m => [m.id, m]));
 
-      setGlobalBatches(Array.from(new Set(allStudents.map(s => s.batch).filter(b => b && b !== '-'))).sort());
-      setGlobalTracks(Array.from(new Set(allProjects.map(p => p.track).filter(t => t && t !== '-'))).sort());
+      setStudents(allStudents);
       setGlobalMentors(allMentors);
+      setGlobalTracks(
+        Array.from(new Set(allProjects.map((p) => p.track).filter((t): t is string => !!t && t !== '-'))).sort()
+      );
 
-      const uniqueAllocationIds = Array.from(new Set(allSubs.map(s => s.allocationId)));
-      const allocations = await Promise.all(uniqueAllocationIds.map(id => apiGetAllocation(id).catch(() => null)));
+      const mentorsById = new Map(allMentors.map((m) => [m.id, m]));
+      const uniqueAllocationIds = Array.from(new Set(allSubs.map((s) => s.allocationId)));
+      const allocations = await Promise.all(uniqueAllocationIds.map((id) => apiGetAllocation(id).catch(() => null)));
       const allocationsById = new Map<string, StudentAllocation>();
       allocations.forEach((alloc, idx) => {
         if (alloc) allocationsById.set(uniqueAllocationIds[idx], alloc);
       });
 
-      const mapped: Row[] = allSubs.map(s => {
+      const mapped = allSubs.reduce<Row[]>((acc, s) => {
         const alloc = allocationsById.get(s.allocationId);
-        const student = alloc ? studentsById.get(alloc.studentId) : undefined;
-        const mentor = alloc?.primaryMentorId ? mentorsById.get(alloc.primaryMentorId) : undefined;
-        return {
-          ...s,
-          studentName: student?.fullName ?? '-',
-          rollNumber: student?.rollNumber ?? '-',
-          track: student?.track ?? '-',
-          batch: student?.batch ?? '-',
-          mentorId: mentor?.id,
-          mentorName: mentor?.fullName ?? mentor?.email ?? 'Unassigned',
-        };
-      });
+        if (!alloc) return acc;
+        const mentor = alloc.primaryMentorId ? mentorsById.get(alloc.primaryMentorId) : undefined;
+        acc.push({ ...s, studentId: alloc.studentId, mentorId: mentor?.id });
+        return acc;
+      }, []);
       setRows(mapped);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load submissions');
@@ -112,17 +88,52 @@ export default function AdminSubmissions() {
     loadSubmissions();
   }, []);
 
-  const filteredRows = rows.filter(r => {
-    if (selectedType !== 'ALL' && r.documentType !== selectedType) return false;
-    if (batchFilter !== 'ALL' && r.batch !== batchFilter) return false;
-    if (trackFilter !== 'ALL' && r.track !== trackFilter) return false;
-    if (mentorFilter !== 'ALL' && r.mentorId !== mentorFilter) return false;
-    return true;
-  });
+  // Pending-review count per student, shown as the roster badge.
+  const pendingCountByStudent = useMemo(() => {
+    const map = new Map<string, number>();
+    rows.forEach((r) => {
+      if (r.status === 'submitted' || r.status === 'under_review') {
+        map.set(r.studentId, (map.get(r.studentId) ?? 0) + 1);
+      }
+    });
+    return map;
+  }, [rows]);
 
-  const activeSub = rows.find(r => r.id === selectedSubId);
+  // Mentor filter operates on which mentor has reviewed/is reviewing a
+  // student's submissions — students with no submissions yet have no known
+  // mentor from this data, so they drop out only when a mentor filter is active.
+  const studentMentorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    rows.forEach((r) => {
+      if (r.mentorId) map.set(r.studentId, r.mentorId);
+    });
+    return map;
+  }, [rows]);
 
-  // Load the embedded preview automatically when a submission opens.
+  const rosterItems = useMemo(() => {
+    return students
+      .filter((s) => batchFilter === 'ALL' || s.batch === batchFilter)
+      .filter((s) => trackFilter === 'ALL' || s.track === trackFilter)
+      .filter((s) => mentorFilter === 'ALL' || studentMentorMap.get(s.id) === mentorFilter)
+      .map((s) => ({
+        id: s.id,
+        primaryLabel: s.fullName || s.email || s.id,
+        secondaryLabel: [s.rollNumber, s.batch].filter(Boolean).join(' · '),
+        badge: pendingCountByStudent.get(s.id) ?? 0,
+      }));
+  }, [students, batchFilter, trackFilter, mentorFilter, studentMentorMap, pendingCountByStudent]);
+
+  const globalBatches = useMemo(
+    () => Array.from(new Set(students.map((s) => s.batch).filter((b): b is string => !!b && b !== '-'))).sort(),
+    [students]
+  );
+
+  const selectedStudent = students.find((s) => s.id === selectedStudentId);
+  const studentRows = rows
+    .filter((r) => r.studentId === selectedStudentId)
+    .filter((r) => docTypeFilter === 'ALL' || r.documentType === docTypeFilter);
+  const activeSub = rows.find((r) => r.id === selectedSubId);
+
   useEffect(() => {
     if (!activeSub) {
       setViewerUrl(null);
@@ -136,11 +147,12 @@ export default function AdminSubmissions() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSub?.id]);
 
-  const handleDownload = async (sub: Row) => {
+  const handleDownload = async () => {
+    if (!activeSub) return;
     setDownloadError(null);
-    setDownloadingId(sub.id);
+    setDownloadingId(activeSub.id);
     try {
-      const url = await apiGetPrdDownloadUrl(sub.id);
+      const url = await apiGetPrdDownloadUrl(activeSub.id);
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : 'Failed to generate download link');
@@ -149,10 +161,11 @@ export default function AdminSubmissions() {
     }
   };
 
-  const handleReview = async (sub: Row, status: 'changes_requested' | 'approved', feedback?: string) => {
+  const handleReview = async (status: 'changes_requested' | 'approved', feedback?: string) => {
+    if (!activeSub) return;
     setReviewing(true);
     try {
-      await apiReviewPrdSubmission(sub.id, status, feedback);
+      await apiReviewPrdSubmission(activeSub.id, status, feedback);
       showSuccess(status === 'approved' ? 'Submission approved.' : 'Changes requested — the student has been notified.');
       await loadSubmissions();
     } catch (err) {
@@ -162,214 +175,165 @@ export default function AdminSubmissions() {
     }
   };
 
-  if (activeSub) {
-    return (
-      <div className="space-y-6">
-        <button
-          onClick={() => setSelectedSubId(null)}
-          className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-700 transition-all text-sm font-semibold border border-zinc-700"
-        >
-          <ArrowLeft size={16} />
-          Back to Submissions
-        </button>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
-              <div>
-                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${statusDotClass(activeSub.status).text}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass(activeSub.status).dot}`} />
-                  {activeSub.status.replace(/_/g, ' ').toUpperCase()}
-                </span>
-                <h2 className="text-xl font-bold text-white mt-2">
-                  {DOCUMENT_TYPE_LABELS[activeSub.documentType]} Document v{activeSub.versionNumber}
-                </h2>
-              </div>
-
-              <hr className="border-zinc-750" />
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500 block">Submitted By</span>
-                  <span className="text-gray-300 font-semibold">{activeSub.studentName} ({activeSub.rollNumber})</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">Technology Track</span>
-                  <span className="text-gray-300 font-semibold">{activeSub.track}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">Version</span>
-                  <span className="text-gray-300 font-semibold">v{activeSub.versionNumber}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">Submitted Date</span>
-                  <span className="text-gray-300 font-semibold">{activeSub.updatedAt.slice(0, 10)}</span>
-                </div>
-              </div>
-
-              <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4 flex items-center justify-between">
-                <div>
-                  <span className="text-xs text-gray-500 uppercase tracking-wider block">Attachment</span>
-                  <span className="text-sm text-gray-300 font-medium">{fileNameFromGcsUri(activeSub.documentLink)}</span>
-                </div>
-                <button
-                  onClick={() => handleDownload(activeSub)}
-                  disabled={downloadingId === activeSub.id}
-                  className="px-3.5 py-1.5 bg-gold text-black font-semibold rounded-lg text-xs hover:bg-gold-hover hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
-                >
-                  {downloadingId === activeSub.id ? 'Generating link…' : 'Download File'}
-                </button>
-              </div>
-              {downloadError && <p className="text-xs text-red-400">{downloadError}</p>}
-
-              {viewerUrl && <PdfViewer url={viewerUrl} />}
-
-              <div className="pt-2">
-                <ReviewActions
-                  disabled={reviewing || activeSub.status === 'approved'}
-                  onApprove={() => handleReview(activeSub, 'approved')}
-                  onRequestChanges={(feedback) => handleReview(activeSub, 'changes_requested', feedback)}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5 flex flex-col h-[500px]">
-            <div className="flex items-center gap-2 border-b border-zinc-750 pb-3 mb-4">
-              <MessageSquare size={18} className="text-gold" />
-              <h3 className="text-lg font-semibold text-white">Review History</h3>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-              {activeSub.mentorFeedback ? (
-                <div className="p-3 rounded-lg bg-zinc-750 text-gray-200 text-sm">
-                  {activeSub.mentorFeedback}
-                </div>
-              ) : (
-                <div className="h-full flex items-center justify-center text-gray-500 text-sm text-center px-4">
-                  No feedback submitted yet for this version.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const selectStudent = (id: string) => {
+    setSelectedStudentId(id);
+    setSelectedSubId(null);
+    setDocTypeFilter('ALL');
+  };
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="space-y-6 h-full flex flex-col">
+      <div className="shrink-0">
         <h1 className="text-2xl font-bold text-white">Submissions</h1>
         <p className="text-gray-400 text-sm mt-1">Review and manage student submissions</p>
       </div>
 
-      {error && !activeSub && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-2.5">
-          {error}
-        </div>
+      {error && (
+        <div className="shrink-0 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-2.5">{error}</div>
       )}
 
-      {/* Document Type Filter Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {DOCUMENT_TYPES.map((type) => {
-          const isSelected = selectedType === type;
-          const count = rows.filter(r => r.documentType === type).length;
-          return (
-            <button
-              key={type}
-              onClick={() => setSelectedType(isSelected ? 'ALL' : type)}
-              className={`bg-zinc-850 border rounded-xl p-5 text-left transition-all hover:scale-[1.02] ${isSelected ? 'border-gold shadow-lg shadow-gold/5' : 'border-zinc-750 hover:border-zinc-600'
-                }`}
-            >
-              <h4 className="text-gray-400 text-xs font-semibold uppercase tracking-wider">{DOCUMENT_TYPE_LABELS[type]}</h4>
-              <p className="text-3xl font-bold text-white mt-2 flex items-center gap-2">
-                {loading ? <Loader2 size={22} className="animate-spin text-gray-500" /> : count}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">{isSelected ? 'Click to show all' : 'Click to filter'}</p>
-            </button>
-          );
-        })}
-      </div>
-
-      <DataTable
-        leftHeaderContent={
+      <SplitPane
+        sidebarCollapsed={!!activeSub}
+        sidebar={
           <>
-            <Select
-              value={batchFilter}
-              onChange={(v) => setBatchFilter(v as string)}
-              variant="filter"
-              options={[
-                { value: 'ALL', label: 'All Batches' },
-                ...globalBatches.map(b => ({ value: b, label: b }))
-              ]}
-            />
-            <Select
-              value={trackFilter}
-              onChange={(v) => setTrackFilter(v as string)}
-              variant="filter"
-              options={[
-                { value: 'ALL', label: 'All Tracks' },
-                ...globalTracks.map(t => ({ value: t, label: t }))
-              ]}
-            />
-            <Select
-              value={mentorFilter}
-              onChange={(v) => setMentorFilter(v as string)}
-              variant="filter"
-              options={[
-                { value: 'ALL', label: 'All Mentors' },
-                ...globalMentors.map(m => ({ value: m.id, label: m.fullName || m.email }))
-              ]}
+            <div className="p-3 border-b border-zinc-750 space-y-2">
+              <Select
+                value={batchFilter}
+                onChange={(v) => setBatchFilter(v as string)}
+                variant="filter"
+                options={[{ value: 'ALL', label: 'All Batches' }, ...globalBatches.map((b) => ({ value: b, label: b }))]}
+              />
+              <Select
+                value={trackFilter}
+                onChange={(v) => setTrackFilter(v as string)}
+                variant="filter"
+                options={[{ value: 'ALL', label: 'All Tracks' }, ...globalTracks.map((t) => ({ value: t, label: t }))]}
+              />
+              <Select
+                value={mentorFilter}
+                onChange={(v) => setMentorFilter(v as string)}
+                variant="filter"
+                options={[
+                  { value: 'ALL', label: 'All Mentors' },
+                  ...globalMentors.map((m) => ({ value: m.id, label: m.fullName || m.email || m.id })),
+                ]}
+              />
+            </div>
+            <RosterList
+              items={rosterItems}
+              selectedId={selectedStudentId}
+              onSelect={selectStudent}
+              searchPlaceholder="Search students..."
+              emptyMessage={loading ? 'Loading students…' : 'No students match these filters.'}
             />
           </>
         }
-        columns={[
-          { key: 'studentName', header: 'Student', render: (row) => (
-            <div>
-              <div className="font-semibold">{row.studentName}</div>
-              <div className="text-xs text-zinc-500">{row.rollNumber}</div>
+      >
+        {!selectedStudent ? (
+          <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+            Select a student to view their submissions.
+          </div>
+        ) : activeSub ? (
+          <div className="space-y-0">
+            <div className="px-6 pt-6">
+              <button
+                onClick={() => setSelectedSubId(null)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-700 transition-all text-sm font-semibold border border-zinc-700"
+              >
+                <ArrowLeft size={16} />
+                Back to {selectedStudent.fullName || 'student'}'s submissions
+              </button>
             </div>
-          )},
-          { key: 'track', header: 'Track/Batch', render: (row) => (
+            <SubmissionDetail
+              status={activeSub.status}
+              documentType={activeSub.documentType}
+              versionNumber={activeSub.versionNumber}
+              updatedAt={activeSub.updatedAt}
+              documentLink={activeSub.documentLink}
+              messageContent={activeSub.messageContent}
+              mentorFeedback={activeSub.mentorFeedback}
+              viewerUrl={viewerUrl}
+              downloading={downloadingId === activeSub.id}
+              downloadError={downloadError}
+              onDownload={handleDownload}
+              headerExtra={
+                <p className="text-xs text-gray-500 mt-1">
+                  {selectedStudent.fullName} ({selectedStudent.rollNumber}) · {selectedStudent.track}
+                </p>
+              }
+              reviewControls={
+                <ReviewActions
+                  disabled={reviewing || activeSub.status === 'approved'}
+                  onApprove={() => handleReview('approved')}
+                  onRequestChanges={(feedback) => handleReview('changes_requested', feedback)}
+                />
+              }
+            />
+          </div>
+        ) : (
+          <div className="p-6 space-y-4">
             <div>
-              <div className="text-sm truncate max-w-xs" title={row.track}>{row.track}</div>
-              <div className="text-xs text-zinc-500">{row.batch}</div>
+              <h2 className="text-lg font-bold text-white">{selectedStudent.fullName}</h2>
+              <p className="text-xs text-gray-500">
+                {selectedStudent.rollNumber} · {selectedStudent.track} · {selectedStudent.batch}
+              </p>
             </div>
-          )},
-          { key: 'mentorName', header: 'Mentor', render: (row) => (
-            <span className="text-sm">{row.mentorName || '-'}</span>
-          )},
-          { key: 'documentType', header: 'Type', render: (row) => DOCUMENT_TYPE_LABELS[row.documentType] },
-          { key: 'documentLink', header: 'File', render: (row) => fileNameFromGcsUri(row.documentLink) },
-          { key: 'versionNumber', header: 'Version' },
-          {
-            key: 'status',
-            header: 'Status',
-            render: (row) => {
-              const style = statusDotClass(row.status);
-              return (
-                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                  {row.status.replace(/_/g, ' ').toUpperCase()}
-                </span>
-              );
-            },
-          },
-          { key: 'updatedAt', header: 'Submitted', render: (row) => row.updatedAt.slice(0, 10) },
-        ]}
-        data={filteredRows}
-        searchPlaceholder="Search by name or roll number..."
-        searchKeys={['studentName', 'rollNumber']}
-        actions={(row) => (
-          <button
-            onClick={() => setSelectedSubId(row.id)}
-            className="p-1.5 text-gray-400 hover:text-gold transition-colors"
-            title="View Submission & Review"
-          >
-            <Eye size={16} />
-          </button>
+
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setDocTypeFilter('ALL')}
+                className={`text-xs px-3 py-1 rounded-full border transition-colors ${docTypeFilter === 'ALL' ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
+              >
+                All
+              </button>
+              {DOCUMENT_TYPES.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setDocTypeFilter(type)}
+                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${docTypeFilter === type ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
+                >
+                  {DOCUMENT_TYPE_LABELS[type]}
+                </button>
+              ))}
+            </div>
+
+            {loading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 size={22} className="animate-spin text-gray-500" />
+              </div>
+            ) : studentRows.length === 0 ? (
+              <p className="text-gray-500 text-sm text-center py-10">No submissions from this student yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {studentRows.map((row) => {
+                  const style = statusDotClass(row.status);
+                  return (
+                    <button
+                      key={row.id}
+                      onClick={() => setSelectedSubId(row.id)}
+                      className="w-full flex items-center justify-between gap-3 bg-zinc-900 border border-zinc-750 hover:border-zinc-600 rounded-lg px-4 py-3 transition-colors text-left"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-white truncate">
+                          {DOCUMENT_TYPE_LABELS[row.documentType]} · v{row.versionNumber}
+                        </p>
+                        <p className="text-xs text-gray-500">{row.updatedAt.slice(0, 10)}</p>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                          {row.status.replace(/_/g, ' ').toUpperCase()}
+                        </span>
+                        <Eye size={16} className="text-gray-500" />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
-      />
+      </SplitPane>
     </div>
   );
 }

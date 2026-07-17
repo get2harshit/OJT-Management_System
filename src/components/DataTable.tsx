@@ -92,11 +92,12 @@ export default function DataTable<T extends Record<string, unknown>>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverPagination?.autoFit, data]);
 
-  // Caps the table body at the space actually available below it instead of
-  // letting a page full of rows push the pagination footer off-screen —
-  // rows beyond that scroll inside the table itself. Applies to every
-  // DataTable (local or server pagination), not just ones with page-size
-  // buttons, so long lists like Students/Mentors get the same treatment.
+  // Sizes the table body to fill the space actually available below it
+  // (not just cap it) — so a page with a full table scrolls internally
+  // instead of pushing the pagination footer off-screen, AND a page with
+  // few/zero rows still occupies the full remaining screen height instead
+  // of collapsing to fit its content. Applies to every DataTable (local or
+  // server pagination), not just ones with page-size buttons.
   useEffect(() => {
     const computeMaxHeight = () => {
       const wrap = tableWrapRef.current;
@@ -170,7 +171,7 @@ export default function DataTable<T extends Record<string, unknown>>({
       <div
         ref={tableWrapRef}
         className="hidden md:block overflow-x-auto"
-        style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: 'auto' } : undefined}
+        style={maxBodyHeight ? { height: maxBodyHeight, overflowY: 'auto' } : undefined}
       >
         <table className="w-full text-sm">
           <thead>
