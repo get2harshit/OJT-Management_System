@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { ChevronLeft, ChevronRight, ExternalLink, Maximize2, X } from 'lucide-react';
@@ -14,7 +15,19 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-const COMPACT_PAGE_WIDTH = 760;
+const VIEWER_PADDING = 16; // matches the scroll container's p-2 on each side
+// Fullscreen fits the page to the available height by default, which reads
+// as slightly small — this bumps it up a bit; the container already
+// scrolls, so a page that's now a little taller than the viewport is fine.
+const FULLSCREEN_ZOOM = 1.45;
+// Filling the compact viewer's full width read as a bit too large — backs
+// it off slightly.
+const COMPACT_ZOOM = 0.85;
+const COMPACT_MIN_HEIGHT = 360;
+// Space reserved below the compact viewer for the review action buttons
+// that sit right underneath it in the page — keeps the fit-to-viewport
+// height from pushing them off-screen.
+const COMPACT_BOTTOM_RESERVE = 120;
 
 interface PdfViewerProps {
   url: string;
@@ -34,15 +47,47 @@ export default function PdfViewer({ url, fullscreenExtra }: PdfViewerProps) {
   const [pageNumber, setPageNumber] = useState(1);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  const [viewerSize, setViewerSize] = useState({ width: 0, height: 0 });
+  const [compactHeight, setCompactHeight] = useState(COMPACT_MIN_HEIGHT);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
+  // react-pdf's text/annotation layers can grab focus as they finish
+  // rendering, which drags the scroll container down with them — force it
+  // back to the top of the page every time a render completes.
+  const resetScroll = () => {
+    scrollRef.current?.scrollTo(0, 0);
+  };
+
+  // Tracks the scroll container's own box so the page can be sized to fill
+  // it (fullscreen fits by height so the whole page is visible without
+  // scrolling; the compact view fits by width to shrink its side padding).
   useEffect(() => {
-    function handleResize() {
-      setViewportWidth(window.innerWidth);
-    }
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setViewerSize({ width: el.clientWidth, height: el.clientHeight });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isFullscreen]);
+
+  // Fits the compact (non-fullscreen) viewer to whatever vertical room is
+  // left in the viewport below it, instead of a fixed height, so it makes
+  // better use of tall/wide screens.
+  useEffect(() => {
+    if (isFullscreen) return;
+    const el = wrapperRef.current;
+    if (!el) return;
+    const update = () => {
+      const top = el.getBoundingClientRect().top;
+      const available = window.innerHeight - top - COMPACT_BOTTOM_RESERVE;
+      setCompactHeight(Math.max(COMPACT_MIN_HEIGHT, available));
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [isFullscreen]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -70,28 +115,30 @@ export default function PdfViewer({ url, fullscreenExtra }: PdfViewerProps) {
     );
   }
 
-  const pageNav = numPages && numPages > 1 && (
-    <div className="flex items-center justify-center gap-4 border-t border-zinc-750 py-2.5 shrink-0">
+  // Floats directly on top of the page instead of taking its own row below
+  // — keeps the viewer compact and puts the controls where you're looking.
+  const pageNavOverlay = numPages && numPages > 1 && (
+    <>
       <button
         onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
         disabled={pageNumber <= 1}
-        className="p-1.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:text-gray-400 transition-colors"
+        className="absolute left-3 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-gold hover:text-black disabled:opacity-0 disabled:pointer-events-none transition-colors"
         aria-label="Previous page"
       >
         <ChevronLeft size={18} />
       </button>
-      <span className="text-xs text-gray-400 font-medium">
-        Page {pageNumber} of {numPages}
-      </span>
       <button
         onClick={() => setPageNumber((p) => Math.min(numPages, p + 1))}
         disabled={pageNumber >= numPages}
-        className="p-1.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:text-gray-400 transition-colors"
+        className="absolute right-3 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-gold hover:text-black disabled:opacity-0 disabled:pointer-events-none transition-colors"
         aria-label="Next page"
       >
         <ChevronRight size={18} />
       </button>
-    </div>
+      <span className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 px-2.5 py-1 rounded-full bg-black/60 text-white text-xs font-medium">
+        Page {pageNumber} of {numPages}
+      </span>
+    </>
   );
 
   const handleLoadSuccess = ({ numPages: n }: { numPages: number }) => {
@@ -100,8 +147,12 @@ export default function PdfViewer({ url, fullscreenExtra }: PdfViewerProps) {
   };
 
   if (isFullscreen) {
-    const fullscreenPageWidth = Math.min(680, viewportWidth - 240);
-    return (
+    // Portalled straight to <body> — rendered inline, this div is still a
+    // flex child of whatever space-y-* card wraps the viewer, and CSS
+    // margin still applies to a fixed/inset-0 box even though it's out of
+    // flow, which was pushing the "fullscreen" overlay down from the real
+    // viewport edge.
+    return createPortal(
       <div className="fixed inset-0 z-50 bg-black flex flex-col">
         <div className="flex items-center justify-end px-4 py-3 border-b border-zinc-750 shrink-0">
           <button
@@ -113,7 +164,51 @@ export default function PdfViewer({ url, fullscreenExtra }: PdfViewerProps) {
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-auto flex justify-center p-4">
+        <div className="relative flex-1 min-h-0">
+          <div ref={scrollRef} className="h-full overflow-auto flex justify-center p-2">
+            <Document
+              file={url}
+              onLoadSuccess={handleLoadSuccess}
+              onLoadError={(err) => setLoadError(err.message)}
+              loading={
+                <div className="flex items-center justify-center py-16">
+                  <SpinnerSquare size={48} />
+                </div>
+              }
+            >
+              <Page
+                pageNumber={pageNumber}
+                height={viewerSize.height ? (viewerSize.height - VIEWER_PADDING) * FULLSCREEN_ZOOM : undefined}
+                onRenderSuccess={resetScroll}
+              />
+            </Document>
+          </div>
+          {pageNavOverlay}
+        </div>
+
+        {fullscreenExtra && (
+          <div className="border-t border-zinc-750 p-4 shrink-0 max-h-[40vh] overflow-auto bg-zinc-900">
+            {fullscreenExtra}
+          </div>
+        )}
+      </div>,
+      document.body
+    );
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative bg-zinc-900 border border-zinc-750 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setIsFullscreen(true)}
+        className="absolute top-2 right-2 z-10 p-1.5 bg-black/60 hover:bg-black/80 text-gray-300 hover:text-white rounded-md transition-colors"
+        aria-label="Expand"
+        title="Expand"
+      >
+        <Maximize2 size={16} />
+      </button>
+
+      <div className="relative" style={{ maxHeight: compactHeight }}>
+        <div ref={scrollRef} className="overflow-auto flex justify-center items-start p-2" style={{ maxHeight: compactHeight }}>
           <Document
             file={url}
             onLoadSuccess={handleLoadSuccess}
@@ -124,48 +219,15 @@ export default function PdfViewer({ url, fullscreenExtra }: PdfViewerProps) {
               </div>
             }
           >
-            <Page pageNumber={pageNumber} width={fullscreenPageWidth} />
+            <Page
+              pageNumber={pageNumber}
+              width={viewerSize.width ? (viewerSize.width - VIEWER_PADDING) * COMPACT_ZOOM : undefined}
+              onRenderSuccess={resetScroll}
+            />
           </Document>
         </div>
-
-        {pageNav}
-
-        {fullscreenExtra && (
-          <div className="border-t border-zinc-750 p-4 shrink-0 max-h-[40vh] overflow-auto bg-zinc-900">
-            {fullscreenExtra}
-          </div>
-        )}
+        {pageNavOverlay}
       </div>
-    );
-  }
-
-  return (
-    <div className="relative bg-zinc-900 border border-zinc-750 rounded-lg overflow-hidden">
-      <button
-        onClick={() => setIsFullscreen(true)}
-        className="absolute top-2 right-2 z-10 p-1.5 bg-black/60 hover:bg-black/80 text-gray-300 hover:text-white rounded-md transition-colors"
-        aria-label="Expand"
-        title="Expand"
-      >
-        <Maximize2 size={16} />
-      </button>
-
-      <div className="flex justify-center items-start max-h-[400px] overflow-auto p-3">
-        <Document
-          file={url}
-          onLoadSuccess={handleLoadSuccess}
-          onLoadError={(err) => setLoadError(err.message)}
-          loading={
-            <div className="flex items-center justify-center py-16">
-              <SpinnerSquare size={48} />
-            </div>
-          }
-        >
-          <Page pageNumber={pageNumber} width={COMPACT_PAGE_WIDTH} />
-        </Document>
-      </div>
-
-      {pageNav}
     </div>
   );
 }
