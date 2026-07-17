@@ -14,8 +14,8 @@ import {
   apiListProjects
 } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
-import { TRACKS } from '../../lib/constants';
-import { mapFrontendTrackToBackend } from '../../lib/api/trackMapping';
+import { TRACKS, TRACK_DOT_COLORS } from '../../lib/constants';
+import { mapFrontendTrackToBackend, mapBackendTrackToFrontend } from '../../lib/api/trackMapping';
 
 import { useTasks } from '../../hooks/useTasks';
 import { useSubmissions } from '../../hooks/useSubmissions';
@@ -168,7 +168,7 @@ export default function AdminDashboard({
     id: m.id,
     name: m.fullName || m.email || 'Unnamed Mentor',
     track: m.isExternal ? 'External' : 'Internal',
-    tracks: m.tracks || (m.isExternal ? ['External'] : ['Internal']),
+    tracks: (m.tracks && m.tracks.length > 0) ? m.tracks.map(mapBackendTrackToFrontend) : [m.isExternal ? 'External' : 'Internal'],
   }));
 
   const taskCount = tasks.length;
@@ -334,11 +334,15 @@ export default function AdminDashboard({
                   <td className="px-4 py-3 font-semibold text-white">{m.name}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
-                      {m.tracks.map((t: string) => (
-                        <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold font-medium">
-                          {t}
-                        </span>
-                      ))}
+                      {m.tracks.map((t: string) => {
+                        const style = TRACK_DOT_COLORS[t] ?? { dot: 'bg-gold', text: 'text-gold' };
+                        return (
+                          <span key={t} className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                            {t}
+                          </span>
+                        );
+                      })}
                       {m.tracks.length === 0 && (
                         <span className="text-gray-500 text-xs">General</span>
                       )}
@@ -369,11 +373,15 @@ export default function AdminDashboard({
                 <span className="text-gray-300 font-mono text-xs">{m.attendanceRate} attendance</span>
               </div>
               <div className="flex flex-wrap gap-1">
-                {m.tracks.map((t: string) => (
-                  <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold font-medium">
-                    {t}
-                  </span>
-                ))}
+                {m.tracks.map((t: string) => {
+                  const style = TRACK_DOT_COLORS[t] ?? { dot: 'bg-gold', text: 'text-gold' };
+                  return (
+                    <span key={t} className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                      {t}
+                    </span>
+                  );
+                })}
                 {m.tracks.length === 0 && <span className="text-gray-500 text-xs">General</span>}
               </div>
               <div className="flex items-center gap-4 text-xs font-mono">

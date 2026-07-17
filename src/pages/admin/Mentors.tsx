@@ -6,7 +6,7 @@ import SpinnerSquare from '../../components/SpinnerSquare';
 import Select from '../../components/Select';
 import ActionsMenu from '../../components/ActionsMenu';
 import type { ApiMentor, Cohort, MentorCapacitySummary } from '../../lib/types';
-import { TRACKS } from '../../lib/constants';
+import { TRACKS, TRACK_DOT_COLORS, MENTOR_TYPE_DOT_COLORS } from '../../lib/constants';
 import { apiListMentors, apiUpdateMentor, apiListCohorts, apiGetMentorCapacity, apiSetMentorCapacityOverride } from '../../lib/api';
 import { mapBackendTrackToFrontend, mapFrontendTrackToBackend } from '../../lib/api/trackMapping';
 import { getCohortLabel } from '../../lib/cohortLabel';
@@ -15,19 +15,6 @@ import { useToast } from '../../toast';
 interface MentorRow extends ApiMentor {
   assignedTracks: string[];
 }
-
-const TYPE_DOT: Record<string, { dot: string; text: string }> = {
-  Internal: { dot: 'bg-gold', text: 'text-gold' },
-  External: { dot: 'bg-blue-400', text: 'text-blue-400' },
-};
-
-const TRACK_DOT: Record<string, { dot: string; text: string }> = {
-  'Product Development': { dot: 'bg-blue-400', text: 'text-blue-400' },
-  'Application Development': { dot: 'bg-purple-400', text: 'text-purple-400' },
-  'Data Scientist': { dot: 'bg-teal-400', text: 'text-teal-400' },
-  'Open Source': { dot: 'bg-orange-400', text: 'text-orange-400' },
-  'Gen AI': { dot: 'bg-pink-400', text: 'text-pink-400' },
-};
 
 export default function AdminMentors() {
   const { showSuccess, showError } = useToast();
@@ -176,7 +163,7 @@ export default function AdminMentors() {
               key: 'type',
               header: 'Type',
               render: (row) => {
-                const style = TYPE_DOT[row.type] ?? TYPE_DOT.Internal;
+                const style = MENTOR_TYPE_DOT_COLORS[row.type] ?? MENTOR_TYPE_DOT_COLORS.Internal;
                 return (
                   <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
@@ -192,7 +179,7 @@ export default function AdminMentors() {
                 <div className="flex flex-wrap gap-x-3 gap-y-1 max-w-xs">
                   {row.assignedTracks && row.assignedTracks.length > 0
                     ? row.assignedTracks.map((t) => {
-                      const style = TRACK_DOT[t] ?? { dot: 'bg-gray-400', text: 'text-gray-300' };
+                      const style = TRACK_DOT_COLORS[t] ?? { dot: 'bg-gray-400', text: 'text-gray-300' };
                       return (
                         <span key={t} className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />

@@ -5,6 +5,7 @@ import CohortPageHeader from './CohortPageHeader';
 import SelectEntityGrid from './SelectEntityGrid';
 import ProjectCsvImportModal from './ProjectCsvImportModal';
 import type { Project } from '../../../lib/types';
+import { TRACK_DOT_COLORS } from '../../../lib/constants';
 import { apiGetCohort, apiGetProjectsForCohort, apiAddProjectsToCohort } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
@@ -130,7 +131,15 @@ export default function CohortProjectsPage({ projects, onProjectsImported }: Coh
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-[9px] uppercase tracking-wide text-gray-500 font-medium">Track:</span>
-              <span className="text-[10px] text-gold/80 bg-gold/10 px-2 py-0.5 rounded-full font-medium">{p.track}</span>
+              {(() => {
+                const style = TRACK_DOT_COLORS[p.track] ?? { dot: 'bg-gray-400', text: 'text-gray-300' };
+                return (
+                  <span className={`inline-flex items-center gap-1.5 text-[10px] font-medium ${style.text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                    {p.track}
+                  </span>
+                );
+              })()}
             </div>
             <div>
               <span className="text-[9px] uppercase tracking-wide text-gray-500 font-medium">Description:</span>

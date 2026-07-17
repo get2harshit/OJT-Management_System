@@ -39,6 +39,12 @@ function statusBadgeClass(status: string): string {
   return 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20';
 }
 
+function statusDotClass(status: string): { dot: string; text: string } {
+  if (status === 'approved') return { dot: 'bg-green-500', text: 'text-green-500' };
+  if (status === 'changes_requested') return { dot: 'bg-red-400', text: 'text-red-400' };
+  return { dot: 'bg-yellow-500', text: 'text-yellow-500' };
+}
+
 export default function AdminSubmissions() {
   const [selectedType, setSelectedType] = useState<DocumentType | 'ALL'>('ALL');
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
@@ -372,11 +378,15 @@ export default function AdminSubmissions() {
           {
             key: 'status',
             header: 'Status',
-            render: (row) => (
-              <span className={`text-xs px-2 py-0.5 rounded-full ${statusBadgeClass(row.status)}`}>
-                {row.status.replace(/_/g, ' ').toUpperCase()}
-              </span>
-            ),
+            render: (row) => {
+              const style = statusDotClass(row.status);
+              return (
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                  {row.status.replace(/_/g, ' ').toUpperCase()}
+                </span>
+              );
+            },
           },
           { key: 'updatedAt', header: 'Submitted', render: (row) => row.updatedAt.slice(0, 10) },
         ]}

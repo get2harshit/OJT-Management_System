@@ -126,7 +126,7 @@ export default function CohortStudentsPage() {
             {p.email && <p className="text-gray-400 text-xs line-clamp-1">{p.email}</p>}
             <div className="flex flex-wrap gap-1">
               {p.rollNumber && (
-                <span className="text-[10px] text-gold/80 bg-gold/10 px-2 py-0.5 rounded-full font-medium">{p.rollNumber}</span>
+                <span className="text-[10px] text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded-full font-medium">{p.rollNumber}</span>
               )}
               {p.batch && (
                 <span className="text-[10px] text-gray-300 bg-zinc-750 px-2 py-0.5 rounded-full font-medium">{p.batch}</span>

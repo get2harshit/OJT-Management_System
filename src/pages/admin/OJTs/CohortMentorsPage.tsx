@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import CohortPageHeader from './CohortPageHeader';
 import SelectEntityGrid from './SelectEntityGrid';
 import type { ApiMentor } from '../../../lib/types';
+import { MENTOR_TYPE_DOT_COLORS } from '../../../lib/constants';
 import { apiListMentors, apiGetCohort, apiAddMentorsToCohort } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
@@ -124,10 +125,17 @@ export default function CohortMentorsPage() {
               />
             </div>
             {m.email && <p className="text-gray-400 text-xs line-clamp-1">{m.email}</p>}
-            <div className="flex flex-wrap gap-1">
-              <span className="text-[10px] text-gold/80 bg-gold/10 px-2 py-0.5 rounded-full font-medium">
-                {m.isExternal ? 'External' : 'Internal'}
-              </span>
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              {(() => {
+                const type = m.isExternal ? 'External' : 'Internal';
+                const style = MENTOR_TYPE_DOT_COLORS[type];
+                return (
+                  <span className={`inline-flex items-center gap-1.5 text-[10px] font-medium ${style.text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                    {type}
+                  </span>
+                );
+              })()}
               {m.organization && (
                 <span className="text-[10px] text-gray-300 bg-zinc-750 px-2 py-0.5 rounded-full font-medium">{m.organization}</span>
               )}
