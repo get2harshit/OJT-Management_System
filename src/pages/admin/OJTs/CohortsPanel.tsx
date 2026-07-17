@@ -208,8 +208,8 @@ export default function CohortsPanel() {
               key: 'isActive',
               header: 'Status',
               render: (row) => (
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${row.isActive ? 'bg-green-400/10 text-green-400' : 'bg-gray-400/10 text-gray-400'
-                  }`}>
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${row.isActive ? 'text-green-500' : 'text-gray-400'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${row.isActive ? 'bg-green-500' : 'bg-gray-400'}`} />
                   {row.isActive ? 'Active' : 'Inactive'}
                 </span>
               ),

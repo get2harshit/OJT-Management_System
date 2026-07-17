@@ -4,7 +4,7 @@ import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
 import type { Project } from '../../../lib/types';
-import { TRACKS } from '../../../lib/constants';
+import { TRACKS, TRACK_DOT_COLORS } from '../../../lib/constants';
 import { apiListProjectsPage } from '../../../lib/api';
 import { useConfirm } from '../../../confirm';
 
@@ -126,9 +126,15 @@ export default function ProjectCatalogPanel({ addProject, deleteProject, deleteA
       <DataTable
         columns={[
           { key: 'title', header: 'Project Title' },
-          { key: 'track', header: 'Related Track', render: (row) => (
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-gold/10 text-gold font-medium">{row.track}</span>
-          )},
+          { key: 'track', header: 'Related Track', render: (row) => {
+            const style = TRACK_DOT_COLORS[row.track] ?? { dot: 'bg-gray-400', text: 'text-gray-300' };
+            return (
+              <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                {row.track}
+              </span>
+            );
+          }},
           { key: 'problemStatement', header: 'Problem Statement', render: (row) => (
             <p className="text-xs text-gray-400 line-clamp-2 max-w-sm">{row.problemStatement || row.description || '-'}</p>
           )},

@@ -252,28 +252,33 @@ export default function AdminTasks() {
           {
             key: 'target_role',
             header: 'Target',
-            render: (row) => (
-              <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${row.target_role === 'student' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/25' : 'bg-purple-500/10 text-purple-400 border border-purple-500/25'}`}>
-                {row.target_role === 'student' ? 'Student' : 'Mentor'}
-              </span>
-            ),
+            render: (row) => {
+              const isStudent = row.target_role === 'student';
+              return (
+                <span className={`inline-flex items-center gap-1.5 text-[10px] uppercase font-bold ${isStudent ? 'text-blue-400' : 'text-purple-400'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${isStudent ? 'bg-blue-400' : 'bg-purple-400'}`} />
+                  {isStudent ? 'Student' : 'Mentor'}
+                </span>
+              );
+            },
           },
           {
             key: 'status', header: 'Status', render: (row) => {
-              const statusColors = {
-                pending: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/25',
-                in_progress: 'bg-blue-500/10 text-blue-400 border-blue-500/25',
-                completed: 'bg-green-500/10 text-green-400 border-green-500/25',
+              const statusDots = {
+                pending: { dot: 'bg-zinc-400', text: 'text-zinc-400' },
+                in_progress: { dot: 'bg-blue-400', text: 'text-blue-400' },
+                completed: { dot: 'bg-green-500', text: 'text-green-500' },
               };
-              const color = statusColors[row.aggregateStatus as keyof typeof statusColors] || statusColors.pending;
+              const style = statusDots[row.aggregateStatus as keyof typeof statusDots] || statusDots.pending;
               const label = row.aggregateStatus.replace('_', ' ');
               return (
-                <div 
+                <div
                   className="flex flex-col gap-1 items-start cursor-pointer hover:opacity-80 group"
                   onClick={() => openProgressModal()}
                   title="Click to view detailed progress"
                 >
-                  <span className={`text-[10px] whitespace-nowrap uppercase font-bold px-2 py-0.5 rounded-full border transition-colors ${color}`}>
+                  <span className={`inline-flex items-center gap-1.5 text-[10px] whitespace-nowrap uppercase font-bold ${style.text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                     {label}
                   </span>
                   {row.progressText !== '-' && (
