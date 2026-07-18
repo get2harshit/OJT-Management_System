@@ -22,6 +22,8 @@ export interface OJT {
   created_at: string;
 }
 
+export type ProjectLevel = 'beginner' | 'intermediate' | 'advanced';
+
 // GET /api/v1/projects (list) only returns this trimmed shape — description,
 // endUsersDefined, batch and createdAt are only present on the single-project
 // detail response (GET /api/v1/projects/:id). description is therefore
@@ -34,13 +36,32 @@ export interface Project {
   track: string;
   techStack?: string[];
   endUsersDefined?: string;
-  batch?: string;
+  batch?: string[];
   created_at: string;
   end_goals?: string;
   related_field?: string;
   // Whether this is an admin-listed catalog project ('PST') or a team's own
   // proposed idea ('STUDENT') — only present on the single-project GET.
   projectBy?: 'PST' | 'STUDENT';
+
+  // Catalog identifier — "PST0001" (admin CSV) or "STU0001" (student-proposed,
+  // backend-generated). Renamed from the sheet's "OJTID" — see api/projects.ts.
+  projectId?: string | null;
+  courseCovered?: string[];
+  projectDescription?: string;   // short summary, distinct from the detailed `description`
+  framework?: string[];
+  suggestedLibrariesTools?: string[];
+  coreLearningGoals?: string[];
+  stretchGoal?: string[];
+  evaluationMetrics?: string[];
+  expectedOutput?: string[];
+  firstMonthMilestones?: string[];
+  secondMonthMilestones?: string[];
+  thirdMonthMilestones?: string[];
+  industry?: string;
+  mustHaveFeatures?: string[];
+  goodToHaveFeatures?: string[];
+  level?: ProjectLevel;
 }
 
 export type SemesterSession = 'ODD' | 'EVEN';
@@ -308,6 +329,49 @@ export interface TeamProject {
   endUsersDefined?: string;
   projectBy: 'PST' | 'STUDENT';
   createdByTeamId: string | null;
+  projectId?: string | null;
+  courseCovered?: string[];
+  projectDescription?: string;
+  framework?: string[];
+  suggestedLibrariesTools?: string[];
+  coreLearningGoals?: string[];
+  stretchGoal?: string[];
+  evaluationMetrics?: string[];
+  expectedOutput?: string[];
+  firstMonthMilestones?: string[];
+  secondMonthMilestones?: string[];
+  thirdMonthMilestones?: string[];
+  industry?: string;
+  mustHaveFeatures?: string[];
+  goodToHaveFeatures?: string[];
+  level?: ProjectLevel;
+}
+
+// Payload for POST /api/v1/teams/projects/propose — the fields the sheet
+// marks Required for the student self-propose path (a subset of the full
+// admin CSV required set — see domain/projectFields.ts on the backend).
+// track is never included: it always follows the team's own track.
+export interface ProposeProjectInput {
+  title: string;
+  description: string;
+  problemStatement: string;
+  techStack: string[];
+  courseCovered: string[];
+  coreLearningGoals: string[];
+  expectedOutput: string[];
+  industry: string;
+  mustHaveFeatures: string[];
+  goodToHaveFeatures: string[];
+  evaluationMetrics: string[];
+  endUsersDefined?: string;
+  projectDescription?: string;
+  framework?: string[];
+  suggestedLibrariesTools?: string[];
+  stretchGoal?: string[];
+  firstMonthMilestones?: string[];
+  secondMonthMilestones?: string[];
+  thirdMonthMilestones?: string[];
+  level?: ProjectLevel;
 }
 
 export interface CohortDetails extends Cohort {
