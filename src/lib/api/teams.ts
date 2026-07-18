@@ -11,6 +11,7 @@ import type {
   AvailableTeammate,
   TeamAvailableMentor,
   TeamProject,
+  ProposeProjectInput,
   SemesterSession,
   TeamWithProject,
 } from '../types';
@@ -105,6 +106,35 @@ interface RawProject {
   projectBy?: 'PST' | 'STUDENT';
   created_by_team_id?: string | null;
   createdByTeamId?: string | null;
+  project_id?: string | null;
+  projectId?: string | null;
+  course_covered?: string[];
+  courseCovered?: string[];
+  project_description?: string;
+  projectDescription?: string;
+  framework?: string[];
+  suggested_libraries_tools?: string[];
+  suggestedLibrariesTools?: string[];
+  core_learning_goals?: string[];
+  coreLearningGoals?: string[];
+  stretch_goal?: string[];
+  stretchGoal?: string[];
+  evaluation_metrics?: string[];
+  evaluationMetrics?: string[];
+  expected_output?: string[];
+  expectedOutput?: string[];
+  first_month_milestones?: string[];
+  firstMonthMilestones?: string[];
+  second_month_milestones?: string[];
+  secondMonthMilestones?: string[];
+  third_month_milestones?: string[];
+  thirdMonthMilestones?: string[];
+  industry?: string;
+  must_have_features?: string[];
+  mustHaveFeatures?: string[];
+  good_to_have_features?: string[];
+  goodToHaveFeatures?: string[];
+  level?: 'beginner' | 'intermediate' | 'advanced';
 }
 
 interface RawMyCohort {
@@ -218,6 +248,22 @@ function mapProject(p: RawProject): TeamProject {
     // Backend always sends one of the two casings; required on the frontend type.
     projectBy: (p.project_by ?? p.projectBy)!,
     createdByTeamId: p.created_by_team_id ?? p.createdByTeamId ?? null,
+    projectId: p.project_id ?? p.projectId ?? null,
+    courseCovered: p.course_covered ?? p.courseCovered ?? undefined,
+    projectDescription: p.project_description ?? p.projectDescription ?? undefined,
+    framework: p.framework ?? undefined,
+    suggestedLibrariesTools: p.suggested_libraries_tools ?? p.suggestedLibrariesTools ?? undefined,
+    coreLearningGoals: p.core_learning_goals ?? p.coreLearningGoals ?? undefined,
+    stretchGoal: p.stretch_goal ?? p.stretchGoal ?? undefined,
+    evaluationMetrics: p.evaluation_metrics ?? p.evaluationMetrics ?? undefined,
+    expectedOutput: p.expected_output ?? p.expectedOutput ?? undefined,
+    firstMonthMilestones: p.first_month_milestones ?? p.firstMonthMilestones ?? undefined,
+    secondMonthMilestones: p.second_month_milestones ?? p.secondMonthMilestones ?? undefined,
+    thirdMonthMilestones: p.third_month_milestones ?? p.thirdMonthMilestones ?? undefined,
+    industry: p.industry ?? undefined,
+    mustHaveFeatures: p.must_have_features ?? p.mustHaveFeatures ?? undefined,
+    goodToHaveFeatures: p.good_to_have_features ?? p.goodToHaveFeatures ?? undefined,
+    level: p.level ?? undefined,
   };
 }
 
@@ -290,13 +336,7 @@ export async function apiGetAvailableProjects(cohortId: string): Promise<TeamPro
   return res.map(mapProject);
 }
 
-export async function apiProposeProject(cohortId: string, data: {
-  title: string;
-  description?: string;
-  techStack?: string[];
-  problemStatement?: string;
-  endUsersDefined?: string;
-}): Promise<TeamProject> {
+export async function apiProposeProject(cohortId: string, data: ProposeProjectInput): Promise<TeamProject> {
   const p = await apiFetch<RawProject>('/api/v1/teams/projects/propose', {
     method: 'POST',
     body: JSON.stringify({ cohortId, ...data }),

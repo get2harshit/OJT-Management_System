@@ -1,4 +1,4 @@
-import type { Project } from '../types';
+import type { Project, ProjectLevel } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
 import { mapFrontendTrackToBackend, mapBackendTrackToFrontend } from './trackMapping';
 
@@ -30,10 +30,28 @@ interface RawProject {
 interface RawFullProject extends RawProject {
   description?: string;
   endUsersDefined?: string;
-  batch?: string;
+  batch?: string[];
   created_at: string;
   end_goals?: string;
   projectBy?: 'PST' | 'STUDENT';
+  // Catalog identifier — "PST0001" for admin-imported projects. Renamed
+  // from the sheet's "OJTID".
+  projectId?: string | null;
+  courseCovered?: string[];
+  projectDescription?: string;
+  framework?: string[];
+  suggestedLibrariesTools?: string[];
+  coreLearningGoals?: string[];
+  stretchGoal?: string[];
+  evaluationMetrics?: string[];
+  expectedOutput?: string[];
+  firstMonthMilestones?: string[];
+  secondMonthMilestones?: string[];
+  thirdMonthMilestones?: string[];
+  industry?: string;
+  mustHaveFeatures?: string[];
+  goodToHaveFeatures?: string[];
+  level?: ProjectLevel;
 }
 
 // The trimmed list endpoint doesn't return created_at (only the single-project
@@ -60,7 +78,7 @@ function buildListUrl({ track, page, limit, search }: ListProjectsParams): strin
 
 // Returns the trimmed list shape (id/title/problemStatement/track/techStack
 // — no description). When called as a student, the backend also silently
-// scopes results to that student's own batch year.
+// scopes results to that student's own batch codes.
 //
 // Fetches the whole catalog in one page (backend defaults to 20/page) —
 // used by callers that need every project at once (e.g. the Allocations
@@ -94,6 +112,10 @@ export async function apiGetProject(id: string): Promise<Project> {
   return toFrontendProject(p);
 }
 
+// Manual admin "quick add" form — deliberately lighter than the CSV path:
+// only title + track are required on the backend, everything else here is
+// optional. The full required set (see ProjectCsvRowInput) only applies to
+// bulk/CSV import.
 export interface ProjectCreateInput {
   title: string;
   description?: string;
@@ -101,6 +123,31 @@ export interface ProjectCreateInput {
   techStack?: string[];
   problemStatement?: string;
   endUsersDefined?: string;
+  batch?: string[];
+  courseCovered?: string[];
+  projectDescription?: string;
+  framework?: string[];
+  suggestedLibrariesTools?: string[];
+  coreLearningGoals?: string[];
+  stretchGoal?: string[];
+  evaluationMetrics?: string[];
+  expectedOutput?: string[];
+  firstMonthMilestones?: string[];
+  secondMonthMilestones?: string[];
+  thirdMonthMilestones?: string[];
+  industry?: string;
+  mustHaveFeatures?: string[];
+  goodToHaveFeatures?: string[];
+  level?: ProjectLevel;
+}
+
+// Every field required for the CSV/bulk-import row — matches
+// domain/projectFields.ts's adminProjectRowSchema on the backend. project_id
+// is supplied by the CSV as-is (e.g. "PST0001") — the backend never
+// generates one for this path, only for student self-proposals.
+export interface ProjectCsvRowInput extends Required<Omit<ProjectCreateInput, 'level'>> {
+  projectId: string;
+  level?: ProjectLevel;
 }
 
 export async function apiCreateProject(body: ProjectCreateInput): Promise<Project> {
@@ -116,22 +163,41 @@ export async function apiCreateProject(body: ProjectCreateInput): Promise<Projec
   return toFrontendProject(p);
 }
 
-// All-or-nothing on the backend — if any row fails validation, none of the
-// batch is created. Used by the project CSV importer instead of looping
-// apiCreateProject, so a bad row can't leave a half-imported catalog.
-export async function apiCreateProjectsBulk(items: ProjectCreateInput[]): Promise<Project[]> {
+// Partial success: each row is validated and duplicate-checked
+// independently on the backend — a bad or duplicate row is reported and
+// skipped, it does not fail the rest of the import (this used to be
+// all-or-nothing; see ProjectCsvImportModal.tsx for how the result is
+// surfaced).
+export interface ProjectBulkImportResult {
+  added: Project[];
+  duplicates: Array<{ identifier: string; reason: string }>;
+  invalid: Array<{ identifier: string; reason: string }>;
+  message: string;
+}
+
+export async function apiCreateProjectsBulk(items: ProjectCsvRowInput[]): Promise<ProjectBulkImportResult> {
   const payload = {
     projects: items.map(item => ({
       ...item,
       track: mapFrontendTrackToBackend(item.track),
     })),
   };
-  const res = await apiFetch<RawFullProject[]>('/api/v1/projects/bulk', {
+  const res = await apiFetch<{
+    added: RawFullProject[];
+    duplicates: Array<{ identifier: string; reason: string }>;
+    invalid: Array<{ identifier: string; reason: string }>;
+    message: string;
+  }>('/api/v1/projects/bulk', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
   invalidateCached('projects:list');
-  return res.map(toFrontendProject);
+  return {
+    added: res.added.map(toFrontendProject),
+    duplicates: res.duplicates,
+    invalid: res.invalid,
+    message: res.message,
+  };
 }
 
 export async function apiDeleteProject(id: string): Promise<void> {

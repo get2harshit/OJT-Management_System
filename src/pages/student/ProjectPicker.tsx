@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus, UserCheck } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import { TRACKS } from '../../lib/constants';
-import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project, PreferenceReviewStatus } from '../../lib/types';
+import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project, PreferenceReviewStatus, ProjectLevel } from '../../lib/types';
 import {
   apiGetMyCohort,
   apiGetMyTeamStatus,
@@ -836,19 +836,76 @@ function SelfProjectProposer({
 }) {
   const { showError, showSuccess } = useToast();
   const [proposing, setProposing] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', problemStatement: '', endUsersDefined: '', techStack: '' });
+  const [showMore, setShowMore] = useState(false);
+  const [form, setForm] = useState({
+    // Required (studentProposeProjectSchema on the backend)
+    title: '',
+    description: '',
+    problemStatement: '',
+    techStack: '',
+    courseCovered: '',
+    coreLearningGoals: '',
+    expectedOutput: '',
+    industry: '',
+    mustHaveFeatures: '',
+    goodToHaveFeatures: '',
+    evaluationMetrics: '',
+    // Optional
+    endUsersDefined: '',
+    projectDescription: '',
+    framework: '',
+    suggestedLibrariesTools: '',
+    stretchGoal: '',
+    firstMonthMilestones: '',
+    secondMonthMilestones: '',
+    thirdMonthMilestones: '',
+    level: '' as '' | ProjectLevel,
+  });
+
+  const setField = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setForm(f => ({ ...f, [key]: e.target.value }));
+
+  const requiredFilled =
+    form.title.trim() &&
+    form.description.trim() &&
+    form.problemStatement.trim() &&
+    form.techStack.trim() &&
+    form.courseCovered.trim() &&
+    form.coreLearningGoals.trim() &&
+    form.expectedOutput.trim() &&
+    form.industry.trim() &&
+    form.mustHaveFeatures.trim() &&
+    form.goodToHaveFeatures.trim() &&
+    form.evaluationMetrics.trim();
+
+  const toList = (raw: string) => raw.split(',').map(t => t.trim()).filter(Boolean);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.title.trim()) return;
+    if (!requiredFilled) return;
     setProposing(true);
     try {
       const created = await apiProposeProject(cohortId, {
         title: form.title.trim(),
-        description: form.description.trim() || undefined,
-        problemStatement: form.problemStatement.trim() || undefined,
+        description: form.description.trim(),
+        problemStatement: form.problemStatement.trim(),
+        techStack: toList(form.techStack),
+        courseCovered: toList(form.courseCovered),
+        coreLearningGoals: toList(form.coreLearningGoals),
+        expectedOutput: toList(form.expectedOutput),
+        industry: form.industry.trim(),
+        mustHaveFeatures: toList(form.mustHaveFeatures),
+        goodToHaveFeatures: toList(form.goodToHaveFeatures),
+        evaluationMetrics: toList(form.evaluationMetrics),
         endUsersDefined: form.endUsersDefined.trim() || undefined,
-        techStack: form.techStack.split(',').map(t => t.trim()).filter(Boolean),
+        projectDescription: form.projectDescription.trim() || undefined,
+        framework: form.framework.trim() ? toList(form.framework) : undefined,
+        suggestedLibrariesTools: form.suggestedLibrariesTools.trim() ? toList(form.suggestedLibrariesTools) : undefined,
+        stretchGoal: form.stretchGoal.trim() ? toList(form.stretchGoal) : undefined,
+        firstMonthMilestones: form.firstMonthMilestones.trim() ? toList(form.firstMonthMilestones) : undefined,
+        secondMonthMilestones: form.secondMonthMilestones.trim() ? toList(form.secondMonthMilestones) : undefined,
+        thirdMonthMilestones: form.thirdMonthMilestones.trim() ? toList(form.thirdMonthMilestones) : undefined,
+        level: form.level || undefined,
       });
       onCreated(created);
       showSuccess('Self project created.');
@@ -858,6 +915,8 @@ function SelfProjectProposer({
       setProposing(false);
     }
   };
+
+  const inputClass = 'w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold';
 
   return (
     <div className="group bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4 h-full transition-all duration-300 hover:border-gold/20 hover:shadow-lg hover:shadow-gold/5">
@@ -879,45 +938,44 @@ function SelfProjectProposer({
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-3">
-          <input
-            type="text"
-            required
-            placeholder="Project title"
-            value={form.title}
-            onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-          />
-          <textarea
-            placeholder="Description"
-            value={form.description}
-            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-            rows={2}
-            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
-          />
-          <textarea
-            placeholder="Problem statement"
-            value={form.problemStatement}
-            onChange={e => setForm(f => ({ ...f, problemStatement: e.target.value }))}
-            rows={2}
-            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
-          />
-          <input
-            type="text"
-            placeholder="End users"
-            value={form.endUsersDefined}
-            onChange={e => setForm(f => ({ ...f, endUsersDefined: e.target.value }))}
-            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-          />
-          <input
-            type="text"
-            placeholder="Tech stack (comma separated)"
-            value={form.techStack}
-            onChange={e => setForm(f => ({ ...f, techStack: e.target.value }))}
-            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-          />
+          <input type="text" required placeholder="Project title" value={form.title} onChange={setField('title')} className={inputClass} />
+          <textarea required placeholder="Description (detailed)" value={form.description} onChange={setField('description')} rows={2} className={`${inputClass} resize-none`} />
+          <textarea required placeholder="Problem statement" value={form.problemStatement} onChange={setField('problemStatement')} rows={2} className={`${inputClass} resize-none`} />
+          <input type="text" required placeholder="Tech stack (comma separated)" value={form.techStack} onChange={setField('techStack')} className={inputClass} />
+          <input type="text" required placeholder="Course(s) covered (comma separated)" value={form.courseCovered} onChange={setField('courseCovered')} className={inputClass} />
+          <input type="text" required placeholder="Core learning goals (comma separated)" value={form.coreLearningGoals} onChange={setField('coreLearningGoals')} className={inputClass} />
+          <textarea required placeholder="Expected output (comma separated)" value={form.expectedOutput} onChange={setField('expectedOutput')} rows={2} className={`${inputClass} resize-none`} />
+          <input type="text" required placeholder="Industry" value={form.industry} onChange={setField('industry')} className={inputClass} />
+          <textarea required placeholder="Must-have features (comma separated)" value={form.mustHaveFeatures} onChange={setField('mustHaveFeatures')} rows={2} className={`${inputClass} resize-none`} />
+          <textarea required placeholder="Good-to-have features (comma separated)" value={form.goodToHaveFeatures} onChange={setField('goodToHaveFeatures')} rows={2} className={`${inputClass} resize-none`} />
+          <textarea required placeholder="Evaluation metrics (comma separated)" value={form.evaluationMetrics} onChange={setField('evaluationMetrics')} rows={2} className={`${inputClass} resize-none`} />
+
+          <button type="button" onClick={() => setShowMore(s => !s)} className="text-xs text-gold hover:underline">
+            {showMore ? 'Hide optional details' : '+ Add optional details (end users, milestones...)'}
+          </button>
+
+          {showMore && (
+            <div className="space-y-3 border-t border-zinc-800 pt-3">
+              <input type="text" placeholder="End users" value={form.endUsersDefined} onChange={setField('endUsersDefined')} className={inputClass} />
+              <textarea placeholder="Short project description" value={form.projectDescription} onChange={setField('projectDescription')} rows={2} className={`${inputClass} resize-none`} />
+              <input type="text" placeholder="Framework (comma separated)" value={form.framework} onChange={setField('framework')} className={inputClass} />
+              <input type="text" placeholder="Suggested libraries / tools (comma separated)" value={form.suggestedLibrariesTools} onChange={setField('suggestedLibrariesTools')} className={inputClass} />
+              <textarea placeholder="Stretch goal (comma separated)" value={form.stretchGoal} onChange={setField('stretchGoal')} rows={2} className={`${inputClass} resize-none`} />
+              <input type="text" placeholder="1st month milestones (comma separated)" value={form.firstMonthMilestones} onChange={setField('firstMonthMilestones')} className={inputClass} />
+              <input type="text" placeholder="2nd month milestones (comma separated)" value={form.secondMonthMilestones} onChange={setField('secondMonthMilestones')} className={inputClass} />
+              <input type="text" placeholder="3rd month milestones (comma separated)" value={form.thirdMonthMilestones} onChange={setField('thirdMonthMilestones')} className={inputClass} />
+              <select value={form.level} onChange={setField('level')} className={inputClass}>
+                <option value="">Level (optional)</option>
+                <option value="beginner">Beginner</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="advanced">Advanced</option>
+              </select>
+            </div>
+          )}
+
           <button
             type="submit"
-            disabled={proposing || !form.title.trim()}
+            disabled={proposing || !requiredFilled}
             className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
           >
             <Plus size={16} />
