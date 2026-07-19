@@ -21,17 +21,20 @@ interface GetStudentsPageParams {
   limit: number;
   batch?: string;
   search?: string;
+  /** Scope to a specific cohort's mapped students instead of the whole roster. */
+  cohortId?: string;
 }
 
 // Admin — full student roster, server-paginated with optional batch/search
 // filters, for the admin Students table (the roster is too big to always
-// fetch in one shot).
+// fetch in one shot). Also used cohort-scoped by the cohort detail page.
 export async function apiListStudentsPage(params: GetStudentsPageParams): Promise<StudentsPage> {
   const query = new URLSearchParams();
   query.set('page', String(params.page));
   query.set('limit', String(params.limit));
   if (params.batch) query.set('batch', params.batch);
   if (params.search) query.set('search', params.search);
+  if (params.cohortId) query.set('cohortId', params.cohortId);
   return apiFetch<StudentsPage>(`/api/v1/students?${query.toString()}`);
 }
 

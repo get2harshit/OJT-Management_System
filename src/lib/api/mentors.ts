@@ -1,9 +1,37 @@
 import type { ApiMentor, MentorCapacitySummary } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
+import { mapFrontendTrackToBackend } from './trackMapping';
 
 export async function apiListMentors(type?: 'internal' | 'external'): Promise<ApiMentor[]> {
   const url = type ? `/api/v1/mentors?type=${type}` : '/api/v1/mentors';
   return cachedFetch(`mentors:list:${type || 'all'}`, 15_000, () => apiFetch<ApiMentor[]>(url));
+}
+
+export interface MentorsPage {
+  data: ApiMentor[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+interface GetMentorsPageParams {
+  page: number;
+  limit: number;
+  search?: string;
+  /** Frontend track label, e.g. "Gen AI" — mapped to the backend enum here. */
+  track?: string;
+  /** Scope to mentors actually mapped to a specific cohort. */
+  cohortId?: string;
+}
+
+// Admin — mentor roster, server-paginated with optional search/track/cohort
+// filters, for the cohort detail page (mirrors apiListStudentsPage).
+export async function apiListMentorsPage(params: GetMentorsPageParams): Promise<MentorsPage> {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page));
+  query.set('limit', String(params.limit));
+  if (params.search) query.set('search', params.search);
+  if (params.track) query.set('track', mapFrontendTrackToBackend(params.track));
+  if (params.cohortId) query.set('cohortId', params.cohortId);
+  return apiFetch<MentorsPage>(`/api/v1/mentors?${query.toString()}`);
 }
 
 // Admin or self — updates mutable mentor fields (organization, isExternal, track).

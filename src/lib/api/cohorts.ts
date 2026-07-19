@@ -1,6 +1,6 @@
 import type { Cohort, CohortDetails, CreateCohortBody, UpdateCohortBody, Project } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
-import { mapBackendTrackToFrontend } from './trackMapping';
+import { mapBackendTrackToFrontend, mapFrontendTrackToBackend } from './trackMapping';
 
 // Cohort sub-pages (students/mentors/projects/teams/allocations tabs) are
 // routed as siblings that each fetch the same cohort on mount — this TTL
@@ -73,6 +73,40 @@ export async function apiGetProjectsForCohort(cohortId: string): Promise<Project
       related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
     }));
   });
+}
+
+export interface CohortProjectsPage {
+  data: Project[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+interface GetCohortProjectsPageParams {
+  page: number;
+  limit: number;
+  search?: string;
+  /** Frontend track label, e.g. "Gen AI" — mapped to the backend enum here. */
+  track?: string;
+}
+
+// Same project list as apiGetProjectsForCohort, but server-paginated with
+// optional search/track filters, for the cohort detail page.
+export async function apiGetProjectsForCohortPage(cohortId: string, params: GetCohortProjectsPageParams): Promise<CohortProjectsPage> {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page));
+  query.set('limit', String(params.limit));
+  if (params.search) query.set('search', params.search);
+  if (params.track) query.set('track', mapFrontendTrackToBackend(params.track));
+  const res = await apiFetch<{ success: boolean; data: RawCohortProject[]; pagination: CohortProjectsPage['pagination'] }>(
+    `/api/v1/cohorts/${cohortId}/projects?${query.toString()}`
+  );
+  return {
+    data: res.data.map(p => ({
+      ...p,
+      track: mapBackendTrackToFrontend(p.track),
+      related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
+    })),
+    pagination: res.pagination,
+  };
 }
 
 // Additive only — there's no unmap endpoint, so callers can only grow a
