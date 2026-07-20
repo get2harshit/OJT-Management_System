@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react';
-import { FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { FileText, AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import Modal from '../../../components/Modal';
 import { parseCSV, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../../lib/csv';
-import { TRACKS } from '../../../lib/constants';
 import { apiCreateProjectsBulk } from '../../../lib/api';
 import type { ProjectCsvRowInput, ProjectBulkImportResult } from '../../../lib/api';
 import type { ProjectLevel } from '../../../lib/types';
@@ -12,6 +11,9 @@ interface ProjectCsvImportModalProps {
   open: boolean;
   onClose: () => void;
   onImportSuccess: () => void;
+  // When given, every added/updated project from this import is linked to
+  // this cohort — the upload itself is the cohort-scoping step.
+  cohortId?: string;
 }
 
 // Fuzzy-matches free-text track values (e.g. "App Dev", "Product Development")
@@ -156,10 +158,14 @@ function parseRows(parsed: string[][]): { rowNumber: number; project: Record<str
   });
 }
 
-export default function ProjectCsvImportModal({ open, onClose, onImportSuccess }: ProjectCsvImportModalProps) {
+const MANDATORY_FIELDS_HINT = REQUIRED_COLUMNS.map(c => c.label).join(', ');
+
+export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, cohortId }: ProjectCsvImportModalProps) {
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ProjectBulkImportResult | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [cardOpen, setCardOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const { showSuccess, showError } = useToast();
 
@@ -189,135 +195,133 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess }
     const rows = parseRows(parsed);
     setImporting(true);
     setResult(null);
+    setErrorMessage(null);
     try {
-      const importResult = await apiCreateProjectsBulk(rows.map(r => r.project) as ProjectCsvRowInput[]);
+      const importResult = await apiCreateProjectsBulk(rows.map(r => r.project) as ProjectCsvRowInput[], cohortId);
       setResult(importResult);
       if (importResult.added.length > 0 || importResult.updated.length > 0) {
         showSuccess(`${importResult.added.length} project template(s) imported, ${importResult.updated.length} updated.`);
         onImportSuccess();
       }
       // Only auto-close on a fully clean import — if anything was skipped,
-      // leave the modal open so the admin can see exactly what needs fixing.
+      // leave the modal open (and pop the result card) so the admin can see
+      // exactly what needs fixing before trying again.
       if (importResult.duplicates.length === 0 && importResult.invalid.length === 0) {
         handleClose();
       } else {
         setCsvText('');
+        setCardOpen(true);
       }
     } catch (err: unknown) {
-      showError(err instanceof Error ? err.message : 'Failed to import project templates');
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to import project templates');
+      setCardOpen(true);
     } finally {
       setImporting(false);
     }
   };
 
   return (
-    <Modal open={open} onClose={handleClose} title="Import Project templates via CSV">
-      <div className="space-y-4">
-        <p className="text-sm text-gray-400">
-          Upload or paste the full project catalog CSV. Rows are imported independently — a row with a missing
-          field or a duplicate title/problem statement/description is skipped and reported below; it won't block
-          the rest of the file. If a row's Project ID (OJTID) already exists in the catalog, that project is
-          overwritten with the row's data instead of being skipped as a duplicate.
-        </p>
+    <>
+      <Modal open={open} onClose={handleClose} title="Import Project templates via CSV">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-400">
+            Mandatory fields: <span className="text-white">{MANDATORY_FIELDS_HINT}</span>
+          </p>
 
-        <div className="bg-zinc-800/40 p-3 rounded-lg text-xs font-mono text-gray-400 space-y-1">
-          <span className="text-gold">Expected Headers:</span>
-          <div className="text-white">
-            Batch, Project ID (OJTID), Track, Course Covered, Title, Problem Statement, Project Description,
-            Description, End Users Defined, Tech Stack, Framework, Suggested Libraries / Tools,
-            Core Learning Goals, Stretch Goal, Evaluation Metrics, Expected Output, First/Second/Third Month
-            Milestones, Industry, Must Have Features, Good To Have Features, Level
+          <div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,.txt"
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => setCsvText(ev.target?.result as string);
+                reader.readAsText(file);
+              }}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-gold border border-zinc-700 rounded-lg text-sm font-semibold transition-colors"
+            >
+              Choose File
+            </button>
           </div>
-          <span className="text-gray-500 block pt-1">Valid tracks:</span>
-          <div>{TRACKS.join(', ')}</div>
-          <span className="text-gray-500 block pt-1">Level (1-5):</span>
-          <div>1 = Beginner, 2-3 = Intermediate, 4-5 = Advanced</div>
-        </div>
 
-        <div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,.txt"
-            onChange={e => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = ev => setCsvText(ev.target?.result as string);
-              reader.readAsText(file);
-            }}
-            className="hidden"
-          />
           <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-gold border border-zinc-700 rounded-lg text-sm font-semibold transition-colors"
+            onClick={handleUpload}
+            disabled={!csvText || importing}
+            className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            Choose File
+            <FileText size={18} />
+            {importing ? 'Importing...' : 'Import Project Catalog'}
           </button>
         </div>
+      </Modal>
 
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Or paste CSV text below</label>
-          <textarea
-            value={csvText}
-            onChange={e => setCsvText(e.target.value)}
-            rows={5}
-            placeholder="Batch,Project ID,Track,Course Covered,Title,Problem Statement..."
-            className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold font-mono"
-          />
-        </div>
-
-        <button
-          onClick={handleUpload}
-          disabled={!csvText || importing}
-          className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          <FileText size={18} />
-          {importing ? 'Importing...' : 'Import Project Catalog'}
-        </button>
-
-        {result && (result.duplicates.length > 0 || result.invalid.length > 0 || result.added.length > 0 || result.updated.length > 0) && (
-          <div className="space-y-2 border-t border-zinc-800 pt-3">
-            <div className="flex items-center gap-2 text-sm text-green-400">
-              <CheckCircle2 size={16} />
-              {result.added.length} project(s) added
+      {/* Result/error card — pinned to the right of the screen and only
+          dismissed by the admin, not on a timer, since a list of skipped
+          rows is easy to miss in an auto-fading toast. */}
+      {cardOpen && (errorMessage || result) && (
+        <div className="fixed top-20 right-5 z-[60] w-full max-w-sm bg-zinc-900 border border-zinc-750 rounded-xl shadow-2xl shadow-black/50 animate-in slide-in-from-right-4 fade-in duration-200">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <AlertTriangle size={16} className="text-amber-400" />
+              CSV Import Result
             </div>
-            {result.updated.length > 0 && (
-              <div className="flex items-center gap-2 text-sm text-blue-400">
-                <CheckCircle2 size={16} />
-                {result.updated.length} existing project(s) updated
-              </div>
-            )}
-            {result.duplicates.length > 0 && (
-              <div className="text-sm text-amber-400">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle size={16} />
-                  {result.duplicates.length} duplicate(s) skipped
+            <button onClick={() => setCardOpen(false)} className="text-gray-400 hover:text-white transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+          <div className="px-4 py-3 space-y-2 max-h-[60vh] overflow-y-auto">
+            {errorMessage ? (
+              <p className="text-sm text-red-400">{errorMessage}</p>
+            ) : result && (
+              <>
+                <div className="flex items-center gap-2 text-sm text-green-400">
+                  <CheckCircle2 size={16} />
+                  {result.added.length} project(s) added
                 </div>
-                <ul className="mt-1 ml-6 list-disc text-xs text-amber-300/80 space-y-0.5">
-                  {result.duplicates.map((d, i) => (
-                    <li key={i}>{d.identifier}: {d.reason}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {result.invalid.length > 0 && (
-              <div className="text-sm text-red-400">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle size={16} />
-                  {result.invalid.length} invalid row(s) skipped
-                </div>
-                <ul className="mt-1 ml-6 list-disc text-xs text-red-300/80 space-y-0.5">
-                  {result.invalid.map((d, i) => (
-                    <li key={i}>{d.identifier}: {d.reason}</li>
-                  ))}
-                </ul>
-              </div>
+                {result.updated.length > 0 && (
+                  <div className="flex items-center gap-2 text-sm text-blue-400">
+                    <CheckCircle2 size={16} />
+                    {result.updated.length} existing project(s) updated
+                  </div>
+                )}
+                {result.duplicates.length > 0 && (
+                  <div className="text-sm text-amber-400">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle size={16} />
+                      {result.duplicates.length} duplicate(s) skipped
+                    </div>
+                    <ul className="mt-1 ml-6 list-disc text-xs text-amber-300/80 space-y-0.5">
+                      {result.duplicates.map((d, i) => (
+                        <li key={i}>{d.identifier}: {d.reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {result.invalid.length > 0 && (
+                  <div className="text-sm text-red-400">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle size={16} />
+                      {result.invalid.length} invalid row(s) skipped
+                    </div>
+                    <ul className="mt-1 ml-6 list-disc text-xs text-red-300/80 space-y-0.5">
+                      {result.invalid.map((d, i) => (
+                        <li key={i}>{d.identifier}: {d.reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
             )}
           </div>
-        )}
-      </div>
-    </Modal>
+        </div>
+      )}
+    </>
   );
 }
