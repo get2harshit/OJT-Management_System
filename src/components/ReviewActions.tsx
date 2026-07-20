@@ -34,22 +34,22 @@ export default function ReviewActions({ onApprove, onRequestChanges, disabled }:
           className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold transition-colors resize-none"
         />
       </div>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onApprove}
-          disabled={disabled}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition-colors disabled:opacity-50"
-        >
-          <CheckCircle2 size={16} />
-          Approve
-        </button>
+      <div className="grid grid-cols-2 gap-3 pt-2">
         <button
           onClick={handleSend}
           disabled={disabled || !feedback.trim()}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors disabled:opacity-50"
+          className="w-full py-2.5 flex items-center justify-center gap-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors text-sm font-medium disabled:opacity-50 border border-red-500/20"
         >
           <RotateCcw size={16} />
           Request Changes
+        </button>
+        <button
+          onClick={onApprove}
+          disabled={disabled}
+          className="w-full py-2.5 flex items-center justify-center gap-2 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors text-sm font-medium disabled:opacity-50"
+        >
+          <CheckCircle2 size={16} />
+          Approve
         </button>
       </div>
     </div>

@@ -48,39 +48,17 @@ export default function SubmissionDetail({
   const statusStyle = statusDotClass(status);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
-      <div className="lg:col-span-2 space-y-4 min-w-0">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`inline-flex items-center gap-1.5 text-xs font-medium shrink-0 ${statusStyle.text}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
-              {status.replace(/_/g, ' ').toUpperCase()}
-            </span>
-            <h2 className="text-lg font-bold text-white">
-              {DOCUMENT_TYPE_LABELS[documentType]} Document v{versionNumber}
-            </h2>
-          </div>
-          {headerExtra}
-          <p className="text-xs text-gray-500 mt-1">Submitted {updatedAt.slice(0, 10)}</p>
-        </div>
-
+    <div className="flex flex-col xl:flex-row gap-6 p-6 items-start">
+      {/* Left: PRD Viewer */}
+      <div className="flex-1 min-w-0 w-full">
         {documentLink ? (
-          <>
-            <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-3 flex items-center justify-between gap-3">
-              <span className="text-sm text-gray-300 font-medium truncate">{fileNameFromGcsUri(documentLink)}</span>
-              <button
-                onClick={onDownload}
-                disabled={downloading}
-                className="p-1.5 text-gray-400 hover:text-gold transition-colors disabled:opacity-50 shrink-0"
-                title="Download file"
-                aria-label="Download file"
-              >
-                {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-              </button>
+          viewerUrl ? (
+            <PdfViewer url={viewerUrl} />
+          ) : (
+            <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-10 flex items-center justify-center text-gray-500">
+              Loading preview...
             </div>
-            {downloadError && <p className="text-xs text-red-400">{downloadError}</p>}
-            {viewerUrl && <PdfViewer url={viewerUrl} />}
-          </>
+          )
         ) : (
           <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4">
             <span className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Message</span>
@@ -89,20 +67,53 @@ export default function SubmissionDetail({
         )}
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-750 rounded-xl p-4 flex flex-col gap-4 h-fit lg:sticky lg:top-6">
+      {/* Right: Metadata & Feedback Box */}
+      <div className="w-full xl:w-[400px] shrink-0 space-y-6 xl:sticky xl:top-6">
+        
+        {/* Metadata */}
         <div>
-          <h3 className="text-xs font-semibold text-white uppercase tracking-wider mb-2">Feedback</h3>
-          {mentorFeedback ? (
-            <div className="p-3 rounded-lg bg-zinc-800 text-gray-200 text-sm">{mentorFeedback}</div>
-          ) : (
-            <p className="text-gray-500 text-sm">
-              {reviewControls
-                ? 'No feedback given yet.'
-                : `No feedback yet — your submission is currently ${status.replace(/_/g, ' ')}.`}
-            </p>
-          )}
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+            <span className={`inline-flex items-center gap-1.5 text-xs font-medium shrink-0 ${statusStyle.text}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
+              {status.replace(/_/g, ' ').toUpperCase()}
+            </span>
+            {documentLink && (
+              <div className="flex items-center gap-2">
+                {downloadError && <span className="text-xs text-red-400">{downloadError}</span>}
+                <button
+                  onClick={onDownload}
+                  disabled={downloading}
+                  className="p-1.5 text-gray-400 hover:text-white transition-colors disabled:opacity-50 bg-zinc-800 hover:bg-zinc-700 rounded-md border border-zinc-700 flex items-center justify-center"
+                  title="Download file"
+                >
+                  {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                </button>
+              </div>
+            )}
+          </div>
+          <h2 className="text-xl font-bold text-white mb-1">
+            {DOCUMENT_TYPE_LABELS[documentType]} Document v{versionNumber}
+          </h2>
+          {headerExtra}
+          <p className="text-xs text-gray-500 mt-2">Submitted {updatedAt.slice(0, 10)}</p>
         </div>
-        {reviewControls}
+
+        {/* Feedback Section */}
+        <div className="bg-zinc-900 border border-zinc-750 rounded-xl p-5 flex flex-col gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-white mb-2 uppercase tracking-wider">Review & Feedback</h3>
+            {mentorFeedback ? (
+              <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700/50 text-gray-300 text-sm whitespace-pre-wrap">{mentorFeedback}</div>
+            ) : (
+              <p className="text-gray-500 text-sm">
+                {reviewControls
+                  ? 'Provide feedback to the student regarding their submission.'
+                  : `No feedback yet — your submission is currently ${status.replace(/_/g, ' ')}.`}
+              </p>
+            )}
+          </div>
+          {reviewControls}
+        </div>
       </div>
     </div>
   );
