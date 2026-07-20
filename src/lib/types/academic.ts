@@ -66,6 +66,15 @@ export interface Project {
 
 export type SemesterSession = 'ODD' | 'EVEN';
 
+/**
+ * Cohort-wide allocation run lifecycle (distinct from a team's per-team
+ * `TeamAllocationStatus`). 'review' is derived server-side, not settable
+ * directly: it means the last run left at least one team in needs_review,
+ * blocking Publish until an admin resolves them (which flips it back to
+ * 'draft' automatically).
+ */
+export type CohortAllocationRunStatus = 'pending' | 'draft' | 'review' | 'published';
+
 export interface Cohort {
   id: string;
   name?: string;
@@ -76,6 +85,8 @@ export interface Cohort {
   isActive: boolean;
   createdBy: string | null;
   createdAt: string;
+  allocationRunStatus: CohortAllocationRunStatus;
+  allocationPublishedAt: string | null;
 }
 
 export interface CreateCohortBody {
@@ -225,6 +236,10 @@ export interface TeamProjectPreferences {
   preference2MentorId: string | null;
   allocatedProjectId: string | null;
   allocationStatus: TeamAllocationStatus;
+  // Both null until the cohort admin publishes the allocation AND this team
+  // was actually allocated — see GET /teams/my-status.
+  allocatedMentorId: string | null;
+  allocatedMentorName: string | null;
   preference1ReviewStatus: PreferenceReviewStatus;
   preference1ReviewNote: string | null;
   submittedAt: string;

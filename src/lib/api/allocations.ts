@@ -79,3 +79,10 @@ export async function apiReverseAllocation(cohortId: string): Promise<{ reversed
     method: 'POST',
   });
 }
+
+// Admin — locks in the cohort's current draft results, making them visible
+// to students/mentors. Only allowed once every team has cleared
+// needs_review (cohort's allocationRunStatus must be 'draft').
+export async function apiPublishAllocation(cohortId: string): Promise<void> {
+  await apiFetch<void>(`/api/v1/teams/cohort/${cohortId}/publish-allocation`, { method: 'POST' });
+}

@@ -6,7 +6,7 @@ import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
-import type { TeamAllocationDetail, ApiMentor, MentorLoadSummaryRow } from '../../../lib/types';
+import type { TeamAllocationDetail, ApiMentor, MentorLoadSummaryRow, CohortAllocationRunStatus } from '../../../lib/types';
 import { TRACKS } from '../../../lib/constants';
 import {
   apiGetTeamsForCohortDetailed,
@@ -15,6 +15,7 @@ import {
   apiResolveTeamAllocation,
   apiGetMentorLoadSummary,
   apiReverseAllocation,
+  apiPublishAllocation,
   apiGetCohort,
 } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
@@ -37,6 +38,23 @@ const STATUS_LABELS: Record<string, string> = {
   pending: 'Pending',
 };
 
+// Cohort-wide run lifecycle — distinct from the per-team STATUS_DOT/LABELS
+// above. 'review' reuses the same red as the per-team needs_review dot:
+// same underlying signal (some team is stuck), just cohort-scoped.
+const RUN_STATUS_DOT: Record<CohortAllocationRunStatus, { dot: string; text: string }> = {
+  pending: { dot: 'bg-gray-400', text: 'text-gray-400' },
+  draft: { dot: 'bg-blue-400', text: 'text-blue-400' },
+  review: { dot: 'bg-red-400', text: 'text-red-400' },
+  published: { dot: 'bg-green-500', text: 'text-green-500' },
+};
+
+const RUN_STATUS_LABELS: Record<CohortAllocationRunStatus, string> = {
+  pending: 'Not Run Yet',
+  draft: 'Draft',
+  review: 'Needs Review',
+  published: 'Published',
+};
+
 export default function CohortAllocationsPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const { showSuccess, showError } = useToast();
@@ -49,6 +67,8 @@ export default function CohortAllocationsPage() {
   const [tableLoading, setTableLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [reversing, setReversing] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [runStatus, setRunStatus] = useState<CohortAllocationRunStatus>('pending');
   const [overrideTeam, setOverrideTeam] = useState<TeamAllocationDetail | null>(null);
   const [savingOverride, setSavingOverride] = useState(false);
   const [resolveTeam, setResolveTeam] = useState<TeamAllocationDetail | null>(null);
@@ -97,6 +117,7 @@ export default function CohortAllocationsPage() {
       setCohortLabel(getCohortLabel(cohort));
       setCohortMentors(cohort.mentors ?? []);
       setCohortBatches(cohort.allowedBatches ?? []);
+      setRunStatus(cohort.allocationRunStatus);
       setMentorLoadSummary(loadSummary);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load cohort data');
@@ -186,6 +207,27 @@ export default function CohortAllocationsPage() {
     }
   };
 
+  const handlePublishAllocation = async () => {
+    if (!cohortId) return;
+    const confirmPublish = await confirm({
+      title: 'Publish allocation',
+      message: 'Make the current draft results visible to students and mentors? Run Allocation, Reverse Allocation, and manual overrides will be locked for this cohort once published.',
+      confirmLabel: 'Publish',
+    });
+    if (!confirmPublish) return;
+
+    setPublishing(true);
+    try {
+      await apiPublishAllocation(cohortId);
+      showSuccess('Allocation published — students and mentors can now see their results.');
+      await refreshAfterMutation();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to publish allocation');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const handleOverride = async (projectId: string) => {
     if (!overrideTeam) return;
     setSavingOverride(true);
@@ -237,10 +279,30 @@ export default function CohortAllocationsPage() {
     allocatedMentorName: t.allocatedMentorName,
   }));
 
+  const needsReviewCount = teams.filter((t) => t.allocationStatus === 'needs_review').length;
+  const isPublished = runStatus === 'published';
+  const mutationInFlight = running || reversing || publishing;
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <CohortPageHeader title="Project Allocation" subtitle={cohortLabel} />
+        <div className="space-y-1.5">
+          <CohortPageHeader title="Project Allocation" subtitle={cohortLabel} />
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${RUN_STATUS_DOT[runStatus].text}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${RUN_STATUS_DOT[runStatus].dot}`} />
+              {RUN_STATUS_LABELS[runStatus]}
+            </span>
+            {runStatus === 'review' && (
+              <span className="text-xs text-gray-400">
+                {needsReviewCount} team{needsReviewCount === 1 ? '' : 's'} need{needsReviewCount === 1 ? 's' : ''} review before this cohort can be published.
+              </span>
+            )}
+            {isPublished && (
+              <span className="text-xs text-gray-400">Locked — run, reverse, and manual overrides are disabled.</span>
+            )}
+          </div>
+        </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setShowLoadSummary(true)}
@@ -252,7 +314,8 @@ export default function CohortAllocationsPage() {
           </button>
           <button
             onClick={handleReverseAllocation}
-            disabled={reversing || running || loading}
+            disabled={mutationInFlight || loading || isPublished}
+            title={isPublished ? 'Locked — this cohort has already been published' : undefined}
             className="flex items-center gap-1.5 text-sm px-4 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
           >
             <RotateCcw size={14} />
@@ -260,11 +323,21 @@ export default function CohortAllocationsPage() {
           </button>
           <button
             onClick={handleRunAllocation}
-            disabled={running || reversing || loading}
-            className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+            disabled={mutationInFlight || loading || isPublished}
+            title={isPublished ? 'Locked — this cohort has already been published' : undefined}
+            className="flex items-center gap-1.5 text-sm px-4 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
           >
             <Shuffle size={14} />
             {running ? 'Running...' : 'Run Allocation'}
+          </button>
+          <button
+            onClick={handlePublishAllocation}
+            disabled={mutationInFlight || loading || runStatus !== 'draft'}
+            title={runStatus !== 'draft' ? 'Only enabled once every team has cleared needs_review' : undefined}
+            className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+          >
+            <CheckCircle2 size={14} />
+            {publishing ? 'Publishing...' : 'Publish'}
           </button>
         </div>
       </div>
@@ -430,7 +503,9 @@ export default function CohortAllocationsPage() {
             <div className="flex items-center gap-2 pt-2">
               <button
                 onClick={() => { setOverrideTeam(detailTeam); setDetailTeam(null); }}
-                className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+                disabled={isPublished}
+                title={isPublished ? 'Locked — this cohort has already been published' : undefined}
+                className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
               >
                 <ArrowLeftRight size={14} />
                 Override Project
@@ -441,7 +516,9 @@ export default function CohortAllocationsPage() {
                   setResolveTeam(detailTeam);
                   setDetailTeam(null);
                 }}
-                className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+                disabled={isPublished}
+                title={isPublished ? 'Locked — this cohort has already been published' : undefined}
+                className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
               >
                 <UserCog size={14} />
                 Assign Project & Mentor
