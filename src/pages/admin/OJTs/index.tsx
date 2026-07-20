@@ -1,21 +1,7 @@
-import { useState } from 'react';
-import { Briefcase, Layers } from 'lucide-react';
-import type { Project } from '../../../lib/types';
+import { Briefcase } from 'lucide-react';
 import CohortsPanel from './CohortsPanel';
-import ProjectCatalogPanel from './ProjectCatalogPanel';
 
-interface OJTsProps {
-  addProject: (proj: Omit<Project, 'id' | 'created_at'>) => Promise<void>;
-  deleteProject: (id: string) => Promise<void>;
-  deleteAllProjects: () => Promise<void>;
-}
-export default function AdminOJTs({
-  addProject,
-  deleteProject,
-  deleteAllProjects
-}: OJTsProps) {
-  const [activeTab, setActiveTab] = useState<'cohorts' | 'catalog'>('cohorts');
-
+export default function AdminOJTs() {
   return (
     <div className="space-y-6">
       <div>
@@ -23,41 +9,10 @@ export default function AdminOJTs({
           <Briefcase className="text-gold" size={26} />
           OJT Setup & Program Management
         </h1>
-        <p className="text-gray-400 text-sm mt-1">Configure academic term cohorts, upload student responses, and publish project catalogs</p>
+        <p className="text-gray-400 text-sm mt-1">Configure academic term cohorts and publish project catalogs</p>
       </div>
 
-      <div className="flex border-b border-zinc-800">
-        <button
-          onClick={() => setActiveTab('cohorts')}
-          className={`px-5 py-2.5 font-semibold text-sm flex items-center gap-2 border-b-2 transition-all duration-200 ${activeTab === 'cohorts'
-              ? 'border-gold text-gold bg-gold/5'
-              : 'border-transparent text-gray-400 hover:text-white'
-            }`}
-        >
-          <Layers size={16} />
-          OJT Cohorts & Batches
-        </button>
-        <button
-          onClick={() => setActiveTab('catalog')}
-          className={`px-5 py-2.5 font-semibold text-sm flex items-center gap-2 border-b-2 transition-all duration-200 ${activeTab === 'catalog'
-              ? 'border-gold text-gold bg-gold/5'
-              : 'border-transparent text-gray-400 hover:text-white'
-            }`}
-        >
-          <Briefcase size={16} />
-          Project Catalog Templates
-        </button>
-      </div>
-
-      {activeTab === 'cohorts' && <CohortsPanel />}
-
-      {activeTab === 'catalog' && (
-        <ProjectCatalogPanel
-          addProject={addProject}
-          deleteProject={deleteProject}
-          deleteAllProjects={deleteAllProjects}
-        />
-      )}
+      <CohortsPanel />
     </div>
   );
 }
