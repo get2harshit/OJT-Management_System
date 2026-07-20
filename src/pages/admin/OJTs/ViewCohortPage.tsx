@@ -5,18 +5,14 @@ import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import DataTable from '../../../components/DataTable';
-import type { CohortDetails, Project, Profile, ApiStudent, ApiMentor, TeamAllocationDetail } from '../../../lib/types';
+import type { CohortDetails, Project, ApiStudent, ApiMentor, TeamAllocationDetail } from '../../../lib/types';
 import { apiGetCohort, apiGetProjectsForCohort, apiGetProjectsForCohortPage, apiListStudentsPage, apiListMentorsPage } from '../../../lib/api';
 import { apiGetTeamsForCohortDetailed } from '../../../lib/api/allocations';
 import { getDurationString, formatDateDisplay } from '../../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
-import FormCsvImportModal from './FormCsvImportModal';
-import type { OJTBatchStudentRecord } from '../../../context/DataContext';
 import { TRACKS } from '../../../lib/constants';
 import { mapBackendTrackToFrontend } from '../../../lib/api/trackMapping';
-
-import { useData } from '../../../context/DataContext';
 
 type PanelView = '' | 'students' | 'projects' | 'mentors';
 
@@ -525,19 +521,7 @@ function MentorRoster({
   );
 }
 
-interface ViewCohortPageProps {
-  profiles: Profile[];
-  importOJTBatch: (cohortId: string, studentRecords: OJTBatchStudentRecord[], batchName?: string, semesterName?: string) => void;
-}
-
-export default function ViewCohortPage({
-  profiles: propProfiles,
-  importOJTBatch: propImportOJTBatch,
-}: Partial<ViewCohortPageProps> = {}) {
-  const { profiles: hookProfiles, importOJTBatch: hookImportOJTBatch } = useData();
-
-  const profiles = propProfiles ?? hookProfiles;
-  const importOJTBatch = propImportOJTBatch ?? hookImportOJTBatch;
+export default function ViewCohortPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
   const { showError } = useToast();
@@ -546,7 +530,6 @@ export default function ViewCohortPage({
   const [teams, setTeams] = useState<TeamAllocationDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBatchFilter, setSelectedBatchFilter] = useState('');
-  const [formCsvModalOpen, setFormCsvModalOpen] = useState(false);
   const [panelView, setPanelView] = useState<PanelView>('');
   const [panelSearch, setPanelSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -787,11 +770,11 @@ export default function ViewCohortPage({
           />
         </div>
         <button
-          onClick={() => setFormCsvModalOpen(true)}
+          onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/projects`)}
           className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"
         >
           <Upload size={16} />
-          Upload OJT Form CSV
+          Upload Projects for This Cohort
         </button>
       </div>
 
@@ -1007,17 +990,6 @@ export default function ViewCohortPage({
           <p className="text-gray-500 text-sm">Select Students, Projects, or Mentors from the dropdown above to view details.</p>
         </div>
       )}
-
-      <FormCsvImportModal
-        open={formCsvModalOpen}
-        onClose={() => setFormCsvModalOpen(false)}
-        profiles={profiles}
-        importOJTBatch={importOJTBatch}
-        defaultCohortId={cohortId}
-        defaultBatchName={cohort.allowedBatches?.[0]}
-        defaultSemesterName={getCohortLabel(cohort)}
-        onImportSuccess={fetchDetails}
-      />
     </div>
   );
 }

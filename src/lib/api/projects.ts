@@ -178,12 +178,16 @@ export interface ProjectBulkImportResult {
   message: string;
 }
 
-export async function apiCreateProjectsBulk(items: ProjectCsvRowInput[]): Promise<ProjectBulkImportResult> {
+// cohortId, when given, links every added/updated project to that cohort
+// in the same request — the CSV upload is the cohort-scoping step now, no
+// separate manual "select projects to map" step.
+export async function apiCreateProjectsBulk(items: ProjectCsvRowInput[], cohortId?: string): Promise<ProjectBulkImportResult> {
   const payload = {
     projects: items.map(item => ({
       ...item,
       track: mapFrontendTrackToBackend(item.track),
     })),
+    ...(cohortId ? { cohortId } : {}),
   };
   const res = await apiFetch<{
     added: RawFullProject[];
