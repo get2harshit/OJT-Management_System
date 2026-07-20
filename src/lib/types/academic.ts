@@ -345,6 +345,10 @@ export interface TeamProject {
   mustHaveFeatures?: string[];
   goodToHaveFeatures?: string[];
   level?: ProjectLevel;
+  // True when this project's level matches the browsing team's best member
+  // tier (A -> advanced, B -> intermediate, C -> beginner) — a nudge, not a
+  // filter; every project still shows regardless of this flag.
+  isRecommended?: boolean;
 }
 
 // Payload for POST /api/v1/teams/projects/propose — the fields the sheet

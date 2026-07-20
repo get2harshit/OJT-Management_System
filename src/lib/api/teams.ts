@@ -135,6 +135,9 @@ interface RawProject {
   good_to_have_features?: string[];
   goodToHaveFeatures?: string[];
   level?: 'beginner' | 'intermediate' | 'advanced';
+  // Server-computed, based on the requesting team's best member tier —
+  // never a raw tier value itself (see TeamService.getAvailableProjects).
+  isRecommended?: boolean;
 }
 
 interface RawMyCohort {
@@ -264,6 +267,7 @@ function mapProject(p: RawProject): TeamProject {
     mustHaveFeatures: p.must_have_features ?? p.mustHaveFeatures ?? undefined,
     goodToHaveFeatures: p.good_to_have_features ?? p.goodToHaveFeatures ?? undefined,
     level: p.level ?? undefined,
+    isRecommended: p.isRecommended ?? false,
   };
 }
 
