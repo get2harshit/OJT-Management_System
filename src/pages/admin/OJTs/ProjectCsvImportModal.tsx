@@ -29,10 +29,21 @@ function normalizeTrack(raw: string): string | null {
   return null;
 }
 
+// The sheet's Level column is a 1-5 difficulty scale (1 = beginner,
+// 2-3 = intermediate, 4-5 = advanced) — collapsed here into the backend's
+// 3-value enum since the DB/validation layer still only knows
+// beginner/intermediate/advanced. Falls back to fuzzy text matching for
+// CSVs that still spell the level out instead of using the numeric scale.
 function normalizeLevel(raw: string): ProjectLevel | undefined {
+  const numeric = Number(raw.trim());
+  if (Number.isInteger(numeric)) {
+    if (numeric === 1) return 'beginner';
+    if (numeric === 2 || numeric === 3) return 'intermediate';
+    if (numeric === 4 || numeric === 5) return 'advanced';
+  }
   const lower = raw.toLowerCase();
   if (lower.includes('beg')) return 'beginner';
-  if (lower.includes('inter')) return 'intermediate';
+  if (lower.includes('inter') || lower.includes('mod')) return 'intermediate';
   if (lower.includes('adv')) return 'advanced';
   return undefined;
 }
@@ -181,8 +192,8 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess }
     try {
       const importResult = await apiCreateProjectsBulk(rows.map(r => r.project) as ProjectCsvRowInput[]);
       setResult(importResult);
-      if (importResult.added.length > 0) {
-        showSuccess(`${importResult.added.length} project template(s) imported.`);
+      if (importResult.added.length > 0 || importResult.updated.length > 0) {
+        showSuccess(`${importResult.added.length} project template(s) imported, ${importResult.updated.length} updated.`);
         onImportSuccess();
       }
       // Only auto-close on a fully clean import — if anything was skipped,
@@ -205,7 +216,8 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess }
         <p className="text-sm text-gray-400">
           Upload or paste the full project catalog CSV. Rows are imported independently — a row with a missing
           field or a duplicate title/problem statement/description is skipped and reported below; it won't block
-          the rest of the file.
+          the rest of the file. If a row's Project ID (OJTID) already exists in the catalog, that project is
+          overwritten with the row's data instead of being skipped as a duplicate.
         </p>
 
         <div className="bg-zinc-800/40 p-3 rounded-lg text-xs font-mono text-gray-400 space-y-1">
@@ -218,6 +230,8 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess }
           </div>
           <span className="text-gray-500 block pt-1">Valid tracks:</span>
           <div>{TRACKS.join(', ')}</div>
+          <span className="text-gray-500 block pt-1">Level (1-5):</span>
+          <div>1 = Beginner, 2-3 = Intermediate, 4-5 = Advanced</div>
         </div>
 
         <div>
@@ -263,12 +277,18 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess }
           {importing ? 'Importing...' : 'Import Project Catalog'}
         </button>
 
-        {result && (result.duplicates.length > 0 || result.invalid.length > 0 || result.added.length > 0) && (
+        {result && (result.duplicates.length > 0 || result.invalid.length > 0 || result.added.length > 0 || result.updated.length > 0) && (
           <div className="space-y-2 border-t border-zinc-800 pt-3">
             <div className="flex items-center gap-2 text-sm text-green-400">
               <CheckCircle2 size={16} />
               {result.added.length} project(s) added
             </div>
+            {result.updated.length > 0 && (
+              <div className="flex items-center gap-2 text-sm text-blue-400">
+                <CheckCircle2 size={16} />
+                {result.updated.length} existing project(s) updated
+              </div>
+            )}
             {result.duplicates.length > 0 && (
               <div className="text-sm text-amber-400">
                 <div className="flex items-center gap-2">

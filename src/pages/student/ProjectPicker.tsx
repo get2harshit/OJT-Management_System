@@ -806,7 +806,15 @@ function ExistingProjectPicker({
                 : 'bg-zinc-900 border-zinc-750 hover:border-zinc-600 hover:scale-[1.01]'
             }`}
           >
-            <p className="text-white font-semibold text-sm">{p.title}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-white font-semibold text-sm">{p.title}</p>
+              {p.isRecommended && (
+                <span className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gold/10 text-gold font-semibold uppercase tracking-wider">
+                  <Sparkles size={10} />
+                  Suggested for you
+                </span>
+              )}
+            </div>
             {p.problemStatement && (
               <p className="text-gray-400 text-xs mt-1 line-clamp-2">{p.problemStatement}</p>
             )}
