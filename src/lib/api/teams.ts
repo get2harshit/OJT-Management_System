@@ -62,6 +62,8 @@ interface RawPreferences {
   preference2MentorId?: string | null;
   allocatedProjectId?: string | null;
   allocationStatus: 'pending' | 'allocated' | 'needs_review';
+  allocatedMentorId?: string | null;
+  allocatedMentorName?: string | null;
   preference1ReviewStatus: PreferenceReviewStatus;
   preference1ReviewNote?: string | null;
   submittedAt: string;
@@ -212,6 +214,8 @@ function mapPreferences(p: RawPreferences): TeamProjectPreferences {
     preference2MentorId: p.preference2MentorId ?? null,
     allocatedProjectId: p.allocatedProjectId ?? null,
     allocationStatus: p.allocationStatus,
+    allocatedMentorId: p.allocatedMentorId ?? null,
+    allocatedMentorName: p.allocatedMentorName ?? null,
     preference1ReviewStatus: p.preference1ReviewStatus,
     preference1ReviewNote: p.preference1ReviewNote ?? null,
     submittedAt: p.submittedAt,

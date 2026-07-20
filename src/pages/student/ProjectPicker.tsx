@@ -1080,6 +1080,10 @@ function SummaryScreen({
     preference2Id: string;
     preference1MentorId: string | null;
     preference2MentorId: string | null;
+    allocationStatus: 'pending' | 'allocated' | 'needs_review';
+    allocatedProjectId: string | null;
+    allocatedMentorId: string | null;
+    allocatedMentorName: string | null;
     preference1ReviewStatus: PreferenceReviewStatus;
     preference1ReviewNote: string | null;
   };
@@ -1121,8 +1125,42 @@ function SummaryScreen({
   const isRejected = preferences.preference1ReviewStatus === 'rejected';
   const isPending = preferences.preference1ReviewStatus === 'pending_review';
 
+  const isAllocated = preferences.allocationStatus === 'allocated';
+  const allocatedProjectTitle =
+    preferences.allocatedProjectId === selfProject?.id
+      ? selfProject?.title
+      : preferences.allocatedProjectId === existingProject?.id
+      ? existingProject?.title
+      : null;
+
   return (
     <div className="space-y-4">
+      {!loading && (
+        <div
+          className={`rounded-xl p-6 ${
+            isAllocated ? 'bg-gold/10 border border-gold' : 'bg-zinc-850 border border-zinc-750'
+          }`}
+        >
+          {isAllocated ? (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm font-semibold text-gold">
+                <Sparkles size={16} />
+                You've been allocated!
+              </div>
+              <p className="text-white font-semibold text-lg">{allocatedProjectTitle ?? 'Project'}</p>
+              {preferences.allocatedMentorName && (
+                <p className="text-gray-300 text-sm">Mentor: {preferences.allocatedMentorName}</p>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-400">
+              <Clock size={16} />
+              Waiting for allocation results — your admin hasn't published them yet.
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-6 space-y-4">
         <div className={`flex items-center gap-2 text-sm font-semibold ${banner.className}`}>
           <BannerIcon size={16} />
