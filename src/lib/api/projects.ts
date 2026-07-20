@@ -167,9 +167,12 @@ export async function apiCreateProject(body: ProjectCreateInput): Promise<Projec
 // independently on the backend — a bad or duplicate row is reported and
 // skipped, it does not fail the rest of the import (this used to be
 // all-or-nothing; see ProjectCsvImportModal.tsx for how the result is
-// surfaced).
+// surfaced). A row whose project_id matches an existing catalog project is
+// not a duplicate — the backend overwrites that project with the row's
+// data and reports it under `updated` instead of `added`.
 export interface ProjectBulkImportResult {
   added: Project[];
+  updated: Project[];
   duplicates: Array<{ identifier: string; reason: string }>;
   invalid: Array<{ identifier: string; reason: string }>;
   message: string;
@@ -184,6 +187,7 @@ export async function apiCreateProjectsBulk(items: ProjectCsvRowInput[]): Promis
   };
   const res = await apiFetch<{
     added: RawFullProject[];
+    updated: RawFullProject[];
     duplicates: Array<{ identifier: string; reason: string }>;
     invalid: Array<{ identifier: string; reason: string }>;
     message: string;
@@ -194,6 +198,7 @@ export async function apiCreateProjectsBulk(items: ProjectCsvRowInput[]): Promis
   invalidateCached('projects:list');
   return {
     added: res.added.map(toFrontendProject),
+    updated: res.updated.map(toFrontendProject),
     duplicates: res.duplicates,
     invalid: res.invalid,
     message: res.message,
