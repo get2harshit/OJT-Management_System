@@ -175,13 +175,16 @@ export default function DataTable<T extends Record<string, unknown>>({
       >
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-zinc-750 bg-zinc-750/30">
+            <tr className="border-b border-zinc-750">
               {columns.map((col) => (
-                <th key={String(col.key)} className="text-left px-4 py-3 text-gray-400 font-medium uppercase tracking-wider text-xs">
+                <th
+                  key={String(col.key)}
+                  className="sticky top-0 z-10 bg-zinc-800 text-left px-4 py-3 text-gray-400 font-medium uppercase tracking-wider text-xs"
+                >
                   {col.headerRender ? col.headerRender() : col.header}
                 </th>
               ))}
-              {actions && <th className="px-4 py-3" />}
+              {actions && <th className="sticky top-0 z-10 bg-zinc-800 px-4 py-3" />}
             </tr>
           </thead>
           <tbody ref={tbodyRef}>

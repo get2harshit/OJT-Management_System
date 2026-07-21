@@ -22,8 +22,10 @@ interface GetTeamsForCohortParams {
   track?: string;
   batch?: string;
   search?: string;
+  status?: 'pending' | 'allocated' | 'overridden';
   page?: number;
   limit?: number;
+  skipCount?: boolean;
 }
 
 // Admin — full per-team preference detail for the allocation review panel,
@@ -36,8 +38,10 @@ export async function apiGetTeamsForCohortDetailed(
   if (params.track) query.set('track', mapFrontendTrackToBackend(params.track));
   if (params.batch) query.set('batch', params.batch);
   if (params.search) query.set('search', params.search);
+  if (params.status) query.set('status', params.status);
   if (params.page) query.set('page', String(params.page));
   if (params.limit) query.set('limit', String(params.limit));
+  if (params.skipCount) query.set('skipCount', 'true');
   const qs = query.toString();
   return apiFetch<TeamsForCohortPage>(`/api/v1/teams/cohort/${cohortId}/detail${qs ? `?${qs}` : ''}`);
 }
