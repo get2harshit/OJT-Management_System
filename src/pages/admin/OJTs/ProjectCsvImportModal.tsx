@@ -292,29 +292,55 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
                   </div>
                 )}
                 {result.duplicates.length > 0 && (
-                  <div className="text-sm text-amber-400">
-                    <div className="flex items-center gap-2">
+                  <div className="text-sm text-amber-400 mt-2">
+                    <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle size={16} />
                       {result.duplicates.length} duplicate(s) skipped
                     </div>
-                    <ul className="mt-1 ml-6 list-disc text-xs text-amber-300/80 space-y-0.5">
-                      {result.duplicates.map((d, i) => (
-                        <li key={i}>{d.identifier}: {d.reason}</li>
-                      ))}
-                    </ul>
+                    <div className="rounded-md border border-amber-500/20 overflow-hidden">
+                      <table className="w-full text-left text-xs text-white border-collapse">
+                        <thead className="bg-amber-500/10 text-amber-400">
+                          <tr>
+                            <th className="px-3 py-2 border-b border-amber-500/20 font-medium whitespace-nowrap">ID</th>
+                            <th className="px-3 py-2 border-b border-amber-500/20 font-medium">Error Message</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-amber-500/10">
+                          {result.duplicates.map((d, i) => (
+                            <tr key={i} className="hover:bg-amber-500/5 transition-colors">
+                              <td className="px-3 py-2 font-mono whitespace-nowrap">{d.identifier}</td>
+                              <td className="px-3 py-2">{d.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
                 {result.invalid.length > 0 && (
-                  <div className="text-sm text-red-400">
-                    <div className="flex items-center gap-2">
+                  <div className="text-sm text-red-400 mt-2">
+                    <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle size={16} />
                       {result.invalid.length} invalid row(s) skipped
                     </div>
-                    <ul className="mt-1 ml-6 list-disc text-xs text-red-300/80 space-y-0.5">
-                      {result.invalid.map((d, i) => (
-                        <li key={i}>{d.identifier}: {d.reason}</li>
-                      ))}
-                    </ul>
+                    <div className="rounded-md border border-red-500/20 overflow-hidden">
+                      <table className="w-full text-left text-xs text-white border-collapse">
+                        <thead className="bg-red-500/10 text-red-400">
+                          <tr>
+                            <th className="px-3 py-2 border-b border-red-500/20 font-medium whitespace-nowrap">ID</th>
+                            <th className="px-3 py-2 border-b border-red-500/20 font-medium">Error Message</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-red-500/10">
+                          {result.invalid.map((d, i) => (
+                            <tr key={i} className="hover:bg-red-500/5 transition-colors">
+                              <td className="px-3 py-2 font-mono whitespace-nowrap">{d.identifier}</td>
+                              <td className="px-3 py-2">{d.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </>
