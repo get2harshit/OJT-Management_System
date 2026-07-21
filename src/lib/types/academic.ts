@@ -303,6 +303,15 @@ export interface TeamAllocationDetail {
   overriddenAt: string | null;
 }
 
+// Cohort student not yet in any team (GET /api/v1/teams/cohort/:cohortId/students-without-team)
+// — for the admin's manual-team-creation modal.
+export interface StudentWithoutTeam {
+  id: string;
+  fullName: string | null;
+  rollNumber: string | null;
+  batch: string | null;
+}
+
 // A mentor eligible to supervise a team's project (GET /api/v1/teams/mentors/available)
 // — already scoped server-side to the team's cohort and track.
 export interface TeamAvailableMentor {

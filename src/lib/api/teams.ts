@@ -14,6 +14,7 @@ import type {
   ProposeProjectInput,
   SemesterSession,
   TeamWithProject,
+  StudentWithoutTeam,
 } from '../types';
 import { apiFetch } from './client';
 import { mapFrontendTrackToBackend, mapBackendTrackToFrontend } from './trackMapping';
@@ -436,4 +437,34 @@ export async function apiListMyTeamsDetailed(): Promise<TeamWithProject[]> {
 // step. Used to reset test accounts without a manual DB query.
 export async function apiBreakTeam(teamId: string): Promise<void> {
   await apiFetch<void>(`/api/v1/teams/${teamId}`, { method: 'DELETE' });
+}
+
+interface RawStudentWithoutTeam {
+  id: string;
+  full_name: string | null;
+  roll_number: string | null;
+  batch: string | null;
+}
+
+// Admin — cohort students not yet in any team, for the manual-team-creation modal.
+export async function apiGetStudentsWithoutTeam(cohortId: string, search?: string): Promise<StudentWithoutTeam[]> {
+  const query = search ? `?search=${encodeURIComponent(search)}` : '';
+  const res = await apiFetch<RawStudentWithoutTeam[]>(`/api/v1/teams/cohort/${cohortId}/students-without-team${query}`);
+  return res.map((s) => ({ id: s.id, fullName: s.full_name, rollNumber: s.roll_number, batch: s.batch }));
+}
+
+// Admin — builds a team for 1-2 students who never went through self-service
+// team formation, locking it in as already-allocated + overridden. Allowed
+// even after the cohort has been published.
+export async function apiCreateManualTeam(
+  cohortId: string,
+  studentIds: string[],
+  track: string,
+  projectId: string,
+  mentorId: string
+): Promise<void> {
+  await apiFetch<void>(`/api/v1/teams/cohort/${cohortId}/manual-team`, {
+    method: 'POST',
+    body: JSON.stringify({ studentIds, track: mapFrontendTrackToBackend(track), projectId, mentorId }),
+  });
 }
