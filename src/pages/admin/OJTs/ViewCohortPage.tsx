@@ -564,27 +564,14 @@ export default function ViewCohortPage() {
     setListLimit(value);
   };
 
-  const fetchDetails = useCallback(async () => {
+  // Only the cohort itself gates the page's main spinner — this is the one
+  // thing every visit needs (the top stat cards render as soon as it's in).
+  const fetchCohort = useCallback(async () => {
     if (!cohortId) return;
     setLoading(true);
     try {
-      const [details, mappedProjects, firstTeamsPage] = await Promise.all([
-        apiGetCohort(cohortId),
-        apiGetProjectsForCohort(cohortId),
-        apiGetTeamsForCohortDetailed(cohortId, { limit: 200 }),
-      ]);
+      const details = await apiGetCohort(cohortId);
       setCohort(details);
-      setProjects(mappedProjects);
-
-      let allTeams = firstTeamsPage.data;
-      const { totalPages } = firstTeamsPage.pagination;
-      if (totalPages > 1) {
-        const restPages = await Promise.all(
-          Array.from({ length: totalPages - 1 }, (_, i) => apiGetTeamsForCohortDetailed(cohortId, { limit: 200, page: i + 2 }))
-        );
-        allTeams = allTeams.concat(...restPages.map(p => p.data));
-      }
-      setTeams(allTeams);
     } catch (err: unknown) {
       showError(err instanceof Error ? err.message : 'Failed to load cohort');
       navigate(-1);
@@ -594,8 +581,50 @@ export default function ViewCohortPage() {
   }, [cohortId, navigate, showError]);
 
   useEffect(() => {
-    fetchDetails();
-  }, [fetchDetails]);
+    fetchCohort();
+  }, [fetchCohort]);
+
+  // Full projects + all-teams-pages fetch — only feeds the cross-reference
+  // maps a detail card needs (studentIdToTeam / projectIdToTeams /
+  // mentorIdToTeams below). The default landing state never touches those,
+  // so this used to run unconditionally on every page visit for nothing;
+  // now it's deferred to the first time a Students/Projects/Mentors panel
+  // is actually opened, and cached (via crossRefLoadedRef) after that.
+  const [crossRefLoading, setCrossRefLoading] = useState(false);
+  const crossRefLoadedRef = useRef(false);
+  const fetchCrossRefData = useCallback(async () => {
+    if (!cohortId || crossRefLoadedRef.current) return;
+    crossRefLoadedRef.current = true;
+    setCrossRefLoading(true);
+    try {
+      const [mappedProjects, firstTeamsPage] = await Promise.all([
+        apiGetProjectsForCohort(cohortId),
+        apiGetTeamsForCohortDetailed(cohortId, { limit: 200 }),
+      ]);
+      setProjects(mappedProjects);
+
+      let allTeams = firstTeamsPage.data;
+      const { totalPages } = firstTeamsPage.pagination;
+      if (totalPages > 1) {
+        const restPages = await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, i) =>
+            apiGetTeamsForCohortDetailed(cohortId, { limit: 200, page: i + 2, skipCount: true })
+          )
+        );
+        allTeams = allTeams.concat(...restPages.map(p => p.data));
+      }
+      setTeams(allTeams);
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to load cohort roster data');
+      crossRefLoadedRef.current = false; // allow retrying on the next panel open
+    } finally {
+      setCrossRefLoading(false);
+    }
+  }, [cohortId, showError]);
+
+  useEffect(() => {
+    if (panelView) fetchCrossRefData();
+  }, [panelView, fetchCrossRefData]);
 
   // Debounce free-text search so every keystroke doesn't fire a request.
   useEffect(() => {
@@ -833,6 +862,12 @@ export default function ViewCohortPage() {
               }}
               className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden"
             >
+              {crossRefLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <SpinnerSquare size={40} />
+                </div>
+              ) : (
+                <>
               {panelView === 'students' && renderStudentDetail()}
 
               {panelView === 'projects' && (
@@ -864,6 +899,8 @@ export default function ViewCohortPage() {
                   />
                 );
               })()}
+                </>
+              )}
             </div>
           ) : (
             <div className={`relative ${listLoading ? 'opacity-40 transition-opacity' : 'transition-opacity'}`}>

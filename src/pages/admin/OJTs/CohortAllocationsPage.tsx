@@ -101,6 +101,7 @@ export default function CohortAllocationsPage() {
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [trackFilter, setTrackFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'' | 'pending' | 'allocated' | 'overridden'>('');
   const [search, setSearch] = useState('');
   const [cohortBatches, setCohortBatches] = useState<string[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
@@ -114,6 +115,7 @@ export default function CohortAllocationsPage() {
         limit,
         track: trackFilter || undefined,
         batch: batchFilter || undefined,
+        status: statusFilter || undefined,
         search: search || undefined,
       });
       setTeams(res.data);
@@ -121,7 +123,7 @@ export default function CohortAllocationsPage() {
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load teams for allocation');
     }
-  }, [cohortId, limit, trackFilter, batchFilter, search, showError]);
+  }, [cohortId, limit, trackFilter, batchFilter, statusFilter, search, showError]);
 
   // Cohort label/mentors/load-summary — only changes after an actual
   // allocation mutation, not on every page/filter change.
@@ -167,7 +169,7 @@ export default function CohortAllocationsPage() {
       setTableLoading(false);
       setLoading(false);
     });
-  }, [page, limit, trackFilter, batchFilter, search, fetchTeams]);
+  }, [page, limit, trackFilter, batchFilter, statusFilter, search, fetchTeams]);
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleSearchChange = (value: string) => {
@@ -186,6 +188,11 @@ export default function CohortAllocationsPage() {
   const handleBatchFilterChange = (value: string) => {
     setPage(1);
     setBatchFilter(value);
+  };
+
+  const handleStatusFilterChange = (value: string) => {
+    setPage(1);
+    setStatusFilter(value as '' | 'pending' | 'allocated' | 'overridden');
   };
 
   const handleLimitChange = (value: number) => {
@@ -356,8 +363,10 @@ export default function CohortAllocationsPage() {
     members: t.members.map((m) => m.fullName || m.studentId).join(', '),
     memberCount: t.members.length,
     submittedAt: formatDateDisplay(t.submittedAt),
-    pref1: `${t.preference1.projectTitle}${t.preference1.mentorName ? ` · ${t.preference1.mentorName}` : ''}`,
-    pref2: `${t.preference2.projectTitle}${t.preference2.mentorName ? ` · ${t.preference2.mentorName}` : ''}`,
+    pref1Title: t.preference1.projectTitle,
+    pref1Mentor: t.preference1.mentorName,
+    pref2Title: t.preference2.projectTitle,
+    pref2Mentor: t.preference2.mentorName,
     status: t.allocationStatus,
     overriddenAt: t.overriddenAt,
     allocatedPrefNum: t.allocatedProjectId === t.preference1.projectId ? 1 : t.allocatedProjectId === t.preference2.projectId ? 2 : null,
@@ -469,8 +478,36 @@ export default function CohortAllocationsPage() {
               ),
             },
             { key: 'submittedAt', header: 'Submitted' },
-            { key: 'pref1', header: 'Preference 1' },
-            { key: 'pref2', header: 'Preference 2' },
+            {
+              key: 'pref1',
+              header: 'Preference 1',
+              render: (row) => (
+                <div>
+                  <p className="text-gray-300">{row.pref1Title}</p>
+                  {row.pref1Mentor && (
+                    <p className="text-white font-medium text-xs mt-0.5 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-gold shrink-0" />
+                      {row.pref1Mentor}
+                    </p>
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: 'pref2',
+              header: 'Preference 2',
+              render: (row) => (
+                <div>
+                  <p className="text-gray-300">{row.pref2Title}</p>
+                  {row.pref2Mentor && (
+                    <p className="text-white font-medium text-xs mt-0.5 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full bg-gold shrink-0" />
+                      {row.pref2Mentor}
+                    </p>
+                  )}
+                </div>
+              ),
+            },
             {
               key: 'allocated',
               header: 'Allocated',
@@ -533,6 +570,18 @@ export default function CohortAllocationsPage() {
                 onChange={handleBatchFilterChange}
                 placeholder="All Batches"
                 options={cohortBatches.map((b) => ({ value: b, label: b }))}
+              />
+              <Select
+                variant="filter"
+                className="min-w-[140px]"
+                value={statusFilter}
+                onChange={handleStatusFilterChange}
+                placeholder="All Statuses"
+                options={[
+                  { value: 'pending', label: 'Pending' },
+                  { value: 'allocated', label: 'Allocated' },
+                  { value: 'overridden', label: 'Overridden' },
+                ]}
               />
             </>
           }
@@ -607,7 +656,7 @@ export default function CohortAllocationsPage() {
                 className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
               >
                 <ArrowLeftRight size={14} />
-                Override Project
+                {detailTeam.allocationStatus === 'allocated' ? 'Override Project' : 'Assign Project'}
               </button>
               <button
                 onClick={() => {
@@ -627,11 +676,17 @@ export default function CohortAllocationsPage() {
         )}
       </Modal>
 
-      <Modal open={!!overrideTeam} onClose={() => setOverrideTeam(null)} title="Override Allocation">
+      <Modal
+        open={!!overrideTeam}
+        onClose={() => setOverrideTeam(null)}
+        title={overrideTeam?.allocationStatus === 'allocated' ? 'Override Allocation' : 'Assign Allocation'}
+      >
         {overrideTeam && (
           <div className="space-y-3">
             <p className="text-gray-400 text-sm">
-              Choose which of this team's own preferences to allocate. This overrides any recommendation.
+              {overrideTeam.allocationStatus === 'allocated'
+                ? "Choose which of this team's own preferences to allocate. This overrides any recommendation."
+                : "Choose which of this team's own preferences to allocate."}
             </p>
             {[overrideTeam.preference1, overrideTeam.preference2].map((pref, idx) => {
               const selected = overrideTeam.allocatedProjectId === pref.projectId;
@@ -674,7 +729,12 @@ export default function CohortAllocationsPage() {
             </p>
 
             <div>
-              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">1. Project</p>
+              <div className="flex items-center gap-4 mb-2">
+                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">1. Project</p>
+                <div className="inline-flex items-center px-2.5 py-1 rounded-lg border border-gold bg-gold/10">
+                  <span className="text-gold font-semibold text-xs">{resolveTeam.track}</span>
+                </div>
+              </div>
               <div className="space-y-2">
                 {[resolveTeam.preference1, resolveTeam.preference2].map((pref, idx) => {
                   const selected = resolveProjectId === pref.projectId;

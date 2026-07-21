@@ -7,6 +7,7 @@ import { ConfirmProvider } from './confirm';
 import Login from './pages/auth/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import SpinnerSquare from './components/SpinnerSquare';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Each panel is its own lazily-loaded chunk so a user only downloads the
 // bundle for their role (and Login stays small for first paint).
@@ -28,40 +29,42 @@ export default function App() {
       <ToastProvider>
         <ConfirmProvider>
           <DataProvider>
-            <Suspense fallback={<PanelLoader />}>
-              <Routes>
-                <Route path="/" element={<Login />} />
+            <ErrorBoundary>
+              <Suspense fallback={<PanelLoader />}>
+                <Routes>
+                  <Route path="/" element={<Login />} />
 
-                <Route
-                  path="/admin/dashboard/*"
-                  element={
-                    <ProtectedRoute role="admin">
-                      <AdminPanel />
-                    </ProtectedRoute>
-                  }
-                />
+                  <Route
+                    path="/admin/dashboard/*"
+                    element={
+                      <ProtectedRoute role="admin">
+                        <AdminPanel />
+                      </ProtectedRoute>
+                    }
+                  />
 
-                <Route
-                  path="/mentor/dashboard/*"
-                  element={
-                    <ProtectedRoute role="mentor">
-                      <MentorPanel />
-                    </ProtectedRoute>
-                  }
-                />
+                  <Route
+                    path="/mentor/dashboard/*"
+                    element={
+                      <ProtectedRoute role="mentor">
+                        <MentorPanel />
+                      </ProtectedRoute>
+                    }
+                  />
 
-                <Route
-                  path="/student/dashboard/*"
-                  element={
-                    <ProtectedRoute role="student">
-                      <StudentPanel />
-                    </ProtectedRoute>
-                  }
-                />
+                  <Route
+                    path="/student/dashboard/*"
+                    element={
+                      <ProtectedRoute role="student">
+                        <StudentPanel />
+                      </ProtectedRoute>
+                    }
+                  />
 
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </Suspense>
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Suspense>
+            </ErrorBoundary>
           </DataProvider>
         </ConfirmProvider>
       </ToastProvider>
