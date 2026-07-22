@@ -360,6 +360,7 @@ export default function CohortAllocationsPage() {
 
   const data = teams.map((t) => ({
     id: t.teamId,
+    teamName: t.teamName,
     members: t.members.map((m) => m.fullName || m.studentId).join(', '),
     memberCount: t.members.length,
     submittedAt: formatDateDisplay(t.submittedAt),
@@ -467,13 +468,16 @@ export default function CohortAllocationsPage() {
               key: 'members',
               header: 'Team',
               render: (row) => (
-                <span className="flex items-center gap-2">
+                <span className="flex items-start gap-2">
                   {row.memberCount > 1 ? (
-                    <Users2 size={14} className="text-gold shrink-0" />
+                    <Users2 size={14} className="text-gold shrink-0 mt-0.5" />
                   ) : (
-                    <User size={14} className="text-gold shrink-0" />
+                    <User size={14} className="text-gold shrink-0 mt-0.5" />
                   )}
-                  {row.members}
+                  <span>
+                    {row.teamName && <p className="text-white font-semibold">{row.teamName}</p>}
+                    <p className={row.teamName ? 'text-gray-400 text-xs mt-0.5' : undefined}>{row.members}</p>
+                  </span>
                 </span>
               ),
             },
