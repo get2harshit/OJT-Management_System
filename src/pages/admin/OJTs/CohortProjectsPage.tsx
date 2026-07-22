@@ -198,6 +198,10 @@ function ProjectDetail({ project }: { project: Project }) {
         <p className="text-sm text-gray-300 whitespace-pre-wrap">{project.endUsersDefined || '-'}</p>
       </ProjectDetailSection>
 
+      <ProjectDetailSection label="Reference Docs">
+        <p className="text-sm text-gray-300 whitespace-pre-wrap">{project.referenceDocs || '-'}</p>
+      </ProjectDetailSection>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <ProjectDetailSection label="Tech Stack">
           <TagList items={techStack} />
@@ -213,6 +217,15 @@ function ProjectDetail({ project }: { project: Project }) {
         </ProjectDetailSection>
         <ProjectDetailSection label="Industry">
           <p className="text-sm text-gray-300">{project.industry || '-'}</p>
+        </ProjectDetailSection>
+        <ProjectDetailSection label="Theme">
+          <p className="text-sm text-gray-300">{project.theme || '-'}</p>
+        </ProjectDetailSection>
+        <ProjectDetailSection label="Source / Startup School">
+          <p className="text-sm text-gray-300">{project.sourceStartupSchool || '-'}</p>
+        </ProjectDetailSection>
+        <ProjectDetailSection label="Estimated Duration">
+          <p className="text-sm text-gray-300">{project.estimatedDuration ? `${project.estimatedDuration} week${project.estimatedDuration === 1 ? '' : 's'}` : '-'}</p>
         </ProjectDetailSection>
         <ProjectDetailSection label="Batch">
           <TagList items={project.batch} />

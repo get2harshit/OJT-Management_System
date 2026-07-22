@@ -139,6 +139,13 @@ interface RawProject {
   good_to_have_features?: string[];
   goodToHaveFeatures?: string[];
   level?: 'beginner' | 'intermediate' | 'advanced';
+  theme?: string;
+  reference_docs?: string;
+  referenceDocs?: string;
+  estimated_duration?: number;
+  estimatedDuration?: number;
+  source_startup_school?: string;
+  sourceStartupSchool?: string;
   // Server-computed, based on the requesting team's best member tier —
   // never a raw tier value itself (see TeamService.getAvailableProjects).
   isRecommended?: boolean;
@@ -276,6 +283,10 @@ function mapProject(p: RawProject): TeamProject {
     mustHaveFeatures: p.must_have_features ?? p.mustHaveFeatures ?? undefined,
     goodToHaveFeatures: p.good_to_have_features ?? p.goodToHaveFeatures ?? undefined,
     level: p.level ?? undefined,
+    theme: p.theme ?? undefined,
+    referenceDocs: p.reference_docs ?? p.referenceDocs ?? undefined,
+    estimatedDuration: p.estimated_duration ?? p.estimatedDuration ?? undefined,
+    sourceStartupSchool: p.source_startup_school ?? p.sourceStartupSchool ?? undefined,
     isRecommended: p.isRecommended ?? false,
   };
 }

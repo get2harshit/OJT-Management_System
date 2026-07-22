@@ -62,6 +62,10 @@ export interface Project {
   mustHaveFeatures?: string[];
   goodToHaveFeatures?: string[];
   level?: ProjectLevel;
+  theme?: string;
+  referenceDocs?: string;
+  estimatedDuration?: number;   // weeks
+  sourceStartupSchool?: string;
 }
 
 export type SemesterSession = 'ODD' | 'EVEN';
@@ -372,6 +376,10 @@ export interface TeamProject {
   mustHaveFeatures?: string[];
   goodToHaveFeatures?: string[];
   level?: ProjectLevel;
+  theme?: string;
+  referenceDocs?: string;
+  estimatedDuration?: number;   // weeks
+  sourceStartupSchool?: string;
   // True when this project's level matches the browsing team's best member
   // tier (A -> advanced, B -> intermediate, C -> beginner) — a nudge, not a
   // filter; every project still shows regardless of this flag.
@@ -403,6 +411,10 @@ export interface ProposeProjectInput {
   secondMonthMilestones?: string[];
   thirdMonthMilestones?: string[];
   level?: ProjectLevel;
+  theme?: string;
+  referenceDocs?: string;
+  estimatedDuration?: number;   // weeks
+  sourceStartupSchool?: string;
 }
 
 export interface CohortDetails extends Cohort {
