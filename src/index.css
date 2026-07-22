@@ -25,6 +25,9 @@
 html.light {
   --color-bg: 248 250 252;
   --color-fg: 15 23 42;
+  --color-gold: 217 119 6;
+  --color-gold-hover: 180 83 9;
+  --color-gold-dark: 146 64 14;
   --color-zinc-750: 226 232 240;
   --color-zinc-850: 255 255 255;
   --color-login-card: 255 255 255;
@@ -44,38 +47,133 @@ html.light {
 }
 
 /* Light mode Tailwind utility overrides */
-html.light .bg-black {
+html.light .bg-black,
+html.light .bg-zinc-950 {
   background-color: #f8fafc !important;
 }
+
 html.light .bg-zinc-900,
 html.light .bg-zinc-850,
 html.light .bg-zinc-800 {
   background-color: #ffffff !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
 }
-html.light .bg-zinc-750 {
+
+html.light th.bg-zinc-800 {
   background-color: #f1f5f9 !important;
 }
+
+html.light .bg-zinc-750,
+html.light .bg-zinc-700 {
+  background-color: #f1f5f9 !important;
+}
+
 html.light .border-zinc-750,
 html.light .border-zinc-800,
-html.light .border-zinc-700 {
+html.light .border-zinc-700,
+html.light .border-zinc-900,
+html.light .border-zinc-600,
+html.light .border-zinc-850 {
   border-color: #e2e8f0 !important;
 }
+
+html.light .border-white\/5,
+html.light .border-white\/10,
+html.light .border-white\/20 {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Text Overrides for crisp legibility */
 html.light .text-white {
   color: #0f172a !important;
 }
-html.light .text-gray-300,
-html.light .text-gray-400 {
-  color: #475569 !important;
+
+html.light .text-gray-100,
+html.light .text-gray-200,
+html.light .text-zinc-100,
+html.light .text-zinc-200,
+html.light .text-slate-100,
+html.light .text-slate-200 {
+  color: #1e293b !important;
 }
-html.light .text-gray-500 {
+
+html.light .text-gray-300,
+html.light .text-gray-400,
+html.light .text-zinc-300,
+html.light .text-zinc-400,
+html.light .text-slate-300,
+html.light .text-slate-400 {
+  color: #334155 !important;
+}
+
+html.light .text-gray-500,
+html.light .text-zinc-500,
+html.light .text-slate-500 {
   color: #64748b !important;
 }
+
+/* Status & Accent Text Colors adjusted for high contrast in light mode */
+html.light .text-amber-400,
+html.light .text-amber-300,
+html.light .text-yellow-400,
+html.light .text-yellow-300 {
+  color: #d97706 !important;
+}
+
+html.light .text-red-400,
+html.light .text-red-300 {
+  color: #dc2626 !important;
+}
+
+html.light .text-green-400,
+html.light .text-green-300 {
+  color: #16a34a !important;
+}
+
+html.light .text-blue-400,
+html.light .text-blue-300 {
+  color: #2563eb !important;
+}
+
+html.light .text-indigo-400,
+html.light .text-indigo-300 {
+  color: #4f46e5 !important;
+}
+
+html.light .text-purple-400,
+html.light .text-purple-300 {
+  color: #9333ea !important;
+}
+
+html.light .text-emerald-400,
+html.light .text-emerald-300 {
+  color: #059669 !important;
+}
+
+/* Hovers */
 html.light .hover\:bg-zinc-750:hover,
-html.light .hover\:bg-zinc-800:hover {
+html.light .hover\:bg-zinc-800:hover,
+html.light .hover\:bg-zinc-700:hover {
   background-color: #f1f5f9 !important;
 }
-html.light .hover\:text-white:hover {
+
+html.light .hover\:text-white:hover,
+html.light .hover\:text-gray-200:hover,
+html.light .hover\:text-gray-100:hover {
   color: #0f172a !important;
+}
+
+/* Form Inputs & Selects */
+html.light input,
+html.light select,
+html.light textarea {
+  color: #0f172a !important;
+}
+
+html.light input::placeholder,
+html.light select::placeholder,
+html.light textarea::placeholder {
+  color: #94a3b8 !important;
 }
 
 @layer utilities {
