@@ -129,18 +129,6 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
         })}
       </nav>
 
-      {user && (
-        <div className="p-4 border-t border-zinc-750 flex items-center gap-3 bg-zinc-800/10">
-          <div className="w-8 h-8 rounded-full bg-gold/15 border border-gold/30 flex items-center justify-center text-gold font-bold text-sm shrink-0">
-            {user.fullName?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
-          </div>
-          <div className={`min-w-0 flex-1 ${collapsed ? 'lg:hidden' : ''}`}>
-            <p className="text-xs font-bold text-white truncate">{user.fullName || 'User'}</p>
-            <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
-          </div>
-        </div>
-      )}
-
       <div className="p-4 border-t border-zinc-750">
         <button
           onClick={async () => {

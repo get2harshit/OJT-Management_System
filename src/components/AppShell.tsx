@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Menu, Sun, Moon } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Menu, Sun, Moon, User, LogOut } from 'lucide-react';
 import Sidebar from './Sidebar';
 import NotificationCenter from './NotificationCenter';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/useAuth';
 import type { PanelType } from '../lib/types';
 
 interface AppShellProps {
@@ -19,12 +20,52 @@ const PANEL_LABELS: Record<PanelType, string> = {
   student: 'Student',
 };
 
+function getDisplayName(user: { fullName?: string; email?: string } | null): string {
+  if (!user) return '';
+  if (user.fullName && user.fullName.trim() && user.fullName.trim().toLowerCase() !== 'user') {
+    return user.fullName.trim();
+  }
+  if (user.email) {
+    const handle = user.email.split('@')[0];
+    return handle
+      .split(/[._-]/)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+  return '';
+}
+
 // Shared layout shell for the admin/mentor/student panels: inline sidebar on
 // desktop, hamburger-triggered off-canvas drawer below the lg breakpoint.
 export default function AppShell({ panel, activeTab, onTabChange, onLogout, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const { theme, toggleTheme } = useTheme();
+
+  let user = null;
+  let logout: (() => Promise<void>) | null = null;
+  try {
+    const auth = useAuth();
+    user = auth.user;
+    logout = auth.logout;
+  } catch {
+    // AuthProvider not present
+  }
+  const displayName = getDisplayName(user);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    }
+    if (profileOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [profileOpen]);
 
   // Auto-collapses the sidebar to its icon rail the moment any nav item is
   // picked, so the content area gets the space back immediately — the user
@@ -77,6 +118,55 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
             >
               {theme === 'dark' ? <Sun size={20} className="text-amber-400" /> : <Moon size={20} className="text-indigo-400" />}
             </button>
+
+            {/* Profile Header Avatar (Click to Open Dropdown Down Below) */}
+            {user && (
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setProfileOpen(!profileOpen)}
+                  className="w-9 h-9 rounded-full bg-gradient-to-tr from-amber-500 to-amber-400 text-black font-bold text-sm flex items-center justify-center ring-2 ring-gold/30 hover:ring-gold/60 shadow-md cursor-pointer transition-all hover:scale-105 active:scale-95 shrink-0"
+                  title={displayName}
+                >
+                  {displayName ? displayName.charAt(0).toUpperCase() : <User size={16} />}
+                </button>
+
+                {/* Dropdown Menu (Visible Down On Click) */}
+                {profileOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-750 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150 p-3 space-y-3">
+                    <div className="flex items-center gap-3 p-2 bg-zinc-800/60 rounded-lg border border-zinc-750">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-amber-500 to-amber-400 text-black font-bold text-xs flex items-center justify-center shrink-0 shadow-inner">
+                        {displayName ? displayName.charAt(0).toUpperCase() : <User size={16} />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-white truncate">{displayName}</p>
+                        <p className="text-[10px] text-gold font-medium uppercase tracking-wider mt-0.5">{panel}</p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-zinc-800 pt-2">
+                      <button
+                        onClick={async () => {
+                          setProfileOpen(false);
+                          if (onLogout) {
+                            onLogout();
+                          } else if (logout) {
+                            await logout();
+                          } else {
+                            window.location.reload();
+                          }
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                      >
+                        <span className="flex items-center gap-2">
+                          <LogOut size={14} />
+                          Sign Out
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </header>
 
