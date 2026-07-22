@@ -198,24 +198,21 @@ export default function ProjectPicker() {
             onSubmitted={() => refreshStatus(cohortId)}
           />
         )
-      ) : status?.pendingSentRequest ? (
-        <PendingSentScreen
-          request={status.pendingSentRequest}
-          onRevoke={async () => {
+      ) : (
+        <TrackAndTeammateScreen
+          cohortId={cohortId}
+          canInviteTeammate={status?.canInviteTeammate ?? true}
+          pendingSentRequests={status?.pendingSentRequests ?? []}
+          onTeamFormed={() => refreshStatus(cohortId)}
+          onRevoke={async (requestId) => {
             try {
-              await apiRevokeTeamRequest(status.pendingSentRequest!.id);
+              await apiRevokeTeamRequest(requestId);
               showSuccess('Invite revoked.');
               await refreshStatus(cohortId);
             } catch (err) {
               showError(err instanceof Error ? err.message : 'Failed to revoke invite');
             }
           }}
-        />
-      ) : (
-        <TrackAndTeammateScreen
-          cohortId={cohortId}
-          canInviteTeammate={status?.canInviteTeammate ?? true}
-          onTeamFormed={() => refreshStatus(cohortId)}
         />
       )}
     </div>
@@ -227,22 +224,32 @@ export default function ProjectPicker() {
 function TrackAndTeammateScreen({
   cohortId,
   canInviteTeammate,
+  pendingSentRequests,
   onTeamFormed,
+  onRevoke,
 }: {
   cohortId: string;
   canInviteTeammate: boolean;
+  pendingSentRequests: { id: string; receiverId: string; receiverName: string | null; track: string; expiresAt: string }[];
   onTeamFormed: () => void;
+  onRevoke: (requestId: string) => Promise<void>;
 }) {
   const { showError, showSuccess } = useToast();
-  const [track, setTrack] = useState<string | null>(null);
+  // Resumes on the track already implied by any invites already sent (e.g.
+  // after a reload) instead of re-showing the track picker and losing that
+  // context — every pending invite for a student is always the same track.
+  const [track, setTrack] = useState<string | null>(pendingSentRequests[0]?.track ?? null);
   const [teammates, setTeammates] = useState<AvailableTeammate[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sendingTo, setSendingTo] = useState<string | null>(null);
   const [creatingIndividual, setCreatingIndividual] = useState(false);
 
-  const handlePickTrack = useCallback(async (t: string) => {
-    setTrack(t);
+  const SEND_QUOTA = 3;
+  const invitedIds = useMemo(() => new Set(pendingSentRequests.map(r => r.receiverId)), [pendingSentRequests]);
+  const quotaFull = pendingSentRequests.length >= SEND_QUOTA;
+
+  const fetchTeammates = useCallback(async () => {
     if (!canInviteTeammate) return;
     setLoading(true);
     try {
@@ -255,6 +262,22 @@ function TrackAndTeammateScreen({
       setLoading(false);
     }
   }, [cohortId, canInviteTeammate, showError]);
+
+  const handlePickTrack = useCallback(async (t: string) => {
+    setTrack(t);
+    await fetchTeammates();
+  }, [fetchTeammates]);
+
+  // Covers resuming with a track already implied by pending invites (see
+  // the initial state above) — handlePickTrack only fires from the picker
+  // click, so a reload with existing invites needs its own fetch trigger.
+  const teammatesFetchedRef = useRef(false);
+  useEffect(() => {
+    if (!track || teammatesFetchedRef.current) return;
+    teammatesFetchedRef.current = true;
+    fetchTeammates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track]);
 
   const handleSendRequest = async (teammate: AvailableTeammate) => {
     if (!track) return;
@@ -343,16 +366,41 @@ function TrackAndTeammateScreen({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <button onClick={() => setTrack(null)} className="text-sm text-gray-400 hover:text-white transition-colors">
+        <button
+          onClick={() => setTrack(null)}
+          disabled={pendingSentRequests.length > 0}
+          title={pendingSentRequests.length > 0 ? 'Revoke your pending invites first to change track' : undefined}
+          className="text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-40 disabled:hover:text-gray-400"
+        >
           Change track
         </button>
         <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{track}</span>
       </div>
 
+      {pendingSentRequests.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-white font-semibold flex items-center gap-2">
+            <Clock size={18} className="text-gold" />
+            Pending Invites ({pendingSentRequests.length}/{SEND_QUOTA})
+          </h2>
+          <div className="space-y-2">
+            {pendingSentRequests.map(req => (
+              <PendingSentInviteCard key={req.id} request={req} onRevoke={() => onRevoke(req.id)} />
+            ))}
+          </div>
+        </div>
+      )}
+
       <h2 className="text-white font-semibold flex items-center gap-2">
         <Users size={18} className="text-gold" />
         Choose your teammate
       </h2>
+
+      {quotaFull && (
+        <p className="text-xs text-gray-500">
+          You've reached your invite limit ({SEND_QUOTA}/{SEND_QUOTA}). Revoke one above to invite someone else.
+        </p>
+      )}
 
       <div className="relative max-w-sm">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -371,24 +419,27 @@ function TrackAndTeammateScreen({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTeammates.map(t => (
-            <div
-              key={t.studentId}
-              className="bg-zinc-850 border border-zinc-750 rounded-xl p-4 flex items-center justify-between gap-3"
-            >
-              <div>
-                <p className="text-white font-semibold">{t.fullName}</p>
-                <p className="text-gray-500 text-xs">{t.rollNumber} · {t.batch}</p>
-              </div>
-              <button
-                onClick={() => handleSendRequest(t)}
-                disabled={sendingTo === t.studentId}
-                className="text-xs px-3 py-1.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+          {filteredTeammates.map(t => {
+            const alreadyInvited = invitedIds.has(t.studentId);
+            return (
+              <div
+                key={t.studentId}
+                className="bg-zinc-850 border border-zinc-750 rounded-xl p-4 flex items-center justify-between gap-3"
               >
-                {sendingTo === t.studentId ? 'Sending...' : 'Invite'}
-              </button>
-            </div>
-          ))}
+                <div>
+                  <p className="text-white font-semibold">{t.fullName}</p>
+                  <p className="text-gray-500 text-xs">{t.rollNumber} · {t.batch}</p>
+                </div>
+                <button
+                  onClick={() => handleSendRequest(t)}
+                  disabled={sendingTo === t.studentId || alreadyInvited || (quotaFull && !alreadyInvited)}
+                  className="text-xs px-3 py-1.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+                >
+                  {sendingTo === t.studentId ? 'Sending...' : alreadyInvited ? 'Pending' : 'Invite'}
+                </button>
+              </div>
+            );
+          })}
           {filteredTeammates.length === 0 && (
             <div className="col-span-full bg-zinc-850 border border-zinc-750 rounded-xl p-12 text-center">
               <Users size={40} className="mx-auto text-gray-600 mb-3" />
@@ -403,18 +454,18 @@ function TrackAndTeammateScreen({
 
 // ── Step 3: waiting on the invite you sent ───────────────────────────────────
 
-function PendingSentScreen({
+// Compact — several of these can be stacked at once, up to the 3-invite quota.
+function PendingSentInviteCard({
   request,
   onRevoke,
 }: {
-  request: { receiverName: string | null; track: string; expiresAt: string };
-  onRevoke?: () => void;
+  request: { id: string; receiverName: string | null; track: string; expiresAt: string };
+  onRevoke: () => Promise<void>;
 }) {
   const { label, expired } = useCountdown(request.expiresAt);
   const [revoking, setRevoking] = useState(false);
 
   const handleRevoke = async () => {
-    if (!onRevoke) return;
     setRevoking(true);
     try {
       await onRevoke();
@@ -424,27 +475,25 @@ function PendingSentScreen({
   };
 
   return (
-    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-8 text-center space-y-4">
-      <Clock size={32} className="mx-auto text-gold" />
-      <h2 className="text-white font-bold text-lg">Request Pending</h2>
-      <p className="text-gray-400 text-sm">
-        Waiting for <span className="text-white font-medium">{request.receiverName}</span> to accept your invite for{' '}
-        <span className="text-gold">{request.track}</span>.
-      </p>
-      <p className="text-xs text-gray-500">
-        {expired ? 'This request has expired.' : `Expires in ${label} if there's no response.`}
-      </p>
-      {onRevoke && (
-        <div className="pt-2">
-          <button
-            onClick={handleRevoke}
-            disabled={revoking}
-            className="text-xs px-4 py-2 bg-zinc-750 hover:bg-zinc-700 text-red-400 font-semibold rounded-lg transition-colors disabled:opacity-50"
-          >
-            {revoking ? 'Revoking...' : 'Revoke Request'}
-          </button>
+    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-4 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <Clock size={18} className="text-gold shrink-0" />
+        <div>
+          <p className="text-white text-sm">
+            Waiting for <span className="font-semibold">{request.receiverName}</span>
+          </p>
+          <p className="text-xs text-gray-500">
+            {expired ? 'Expired' : `Expires in ${label}`}
+          </p>
         </div>
-      )}
+      </div>
+      <button
+        onClick={handleRevoke}
+        disabled={revoking}
+        className="text-xs px-3 py-1.5 bg-zinc-750 hover:bg-zinc-700 text-red-400 font-semibold rounded-lg transition-colors disabled:opacity-50 shrink-0"
+      >
+        {revoking ? 'Revoking...' : 'Revoke'}
+      </button>
     </div>
   );
 }

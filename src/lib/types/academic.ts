@@ -330,6 +330,7 @@ export interface MyTeamStatus {
   // the teammate-invite screen renders at all.
   canInviteTeammate: boolean;
   pendingSentRequest: PendingSentRequest | null;
+  pendingSentRequests: PendingSentRequest[];
   pendingReceivedRequests: PendingReceivedRequest[];
   pendingReceivedRequest?: PendingReceivedRequest | null;
   projectPreferences: TeamProjectPreferences | null;
