@@ -964,6 +964,10 @@ function SelfProjectProposer({
     secondMonthMilestones: '',
     thirdMonthMilestones: '',
     level: '' as '' | ProjectLevel,
+    theme: '',
+    referenceDocs: '',
+    estimatedDuration: '',
+    sourceStartupSchool: '',
   });
 
   const setField = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -1010,6 +1014,10 @@ function SelfProjectProposer({
         secondMonthMilestones: form.secondMonthMilestones.trim() ? toList(form.secondMonthMilestones) : undefined,
         thirdMonthMilestones: form.thirdMonthMilestones.trim() ? toList(form.thirdMonthMilestones) : undefined,
         level: form.level || undefined,
+        theme: form.theme.trim() || undefined,
+        referenceDocs: form.referenceDocs.trim() || undefined,
+        estimatedDuration: form.estimatedDuration.trim() ? Number(form.estimatedDuration) : undefined,
+        sourceStartupSchool: form.sourceStartupSchool.trim() || undefined,
       });
       onCreated(created);
       showSuccess('Self project created.');
@@ -1068,6 +1076,10 @@ function SelfProjectProposer({
               <input type="text" placeholder="1st month milestones (comma separated)" value={form.firstMonthMilestones} onChange={setField('firstMonthMilestones')} className={inputClass} />
               <input type="text" placeholder="2nd month milestones (comma separated)" value={form.secondMonthMilestones} onChange={setField('secondMonthMilestones')} className={inputClass} />
               <input type="text" placeholder="3rd month milestones (comma separated)" value={form.thirdMonthMilestones} onChange={setField('thirdMonthMilestones')} className={inputClass} />
+              <input type="text" placeholder="Theme" value={form.theme} onChange={setField('theme')} className={inputClass} />
+              <input type="text" placeholder="Reference docs (links / notes)" value={form.referenceDocs} onChange={setField('referenceDocs')} className={inputClass} />
+              <input type="number" min={1} max={52} placeholder="Estimated duration (weeks)" value={form.estimatedDuration} onChange={setField('estimatedDuration')} className={inputClass} />
+              <input type="text" placeholder="Source / Startup School" value={form.sourceStartupSchool} onChange={setField('sourceStartupSchool')} className={inputClass} />
               <select value={form.level} onChange={setField('level')} className={inputClass}>
                 <option value="">Level (optional)</option>
                 <option value="beginner">Beginner</option>

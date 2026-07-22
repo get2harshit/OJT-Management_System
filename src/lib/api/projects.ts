@@ -52,6 +52,10 @@ interface RawFullProject extends RawProject {
   mustHaveFeatures?: string[];
   goodToHaveFeatures?: string[];
   level?: ProjectLevel;
+  theme?: string;
+  referenceDocs?: string;
+  estimatedDuration?: number;
+  sourceStartupSchool?: string;
 }
 
 // The trimmed list endpoint doesn't return created_at (only the single-project
@@ -139,6 +143,10 @@ export interface ProjectCreateInput {
   mustHaveFeatures?: string[];
   goodToHaveFeatures?: string[];
   level?: ProjectLevel;
+  theme?: string;
+  referenceDocs?: string;
+  estimatedDuration?: number;
+  sourceStartupSchool?: string;
 }
 
 // Every field required for the CSV/bulk-import row — matches

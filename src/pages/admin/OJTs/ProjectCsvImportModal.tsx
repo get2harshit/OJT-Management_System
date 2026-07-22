@@ -54,6 +54,15 @@ function splitList(raw: string): string[] {
   return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
 }
 
+// The sheet only ever puts a plain number in this cell (weeks) — the
+// leading-digit strip is just a safety net for a stray "weeks" suffix or
+// surrounding whitespace, not an expected input shape.
+function parseDurationWeeks(raw: string): number | undefined {
+  const match = raw.match(/\d+/);
+  if (!match) return undefined;
+  return Number(match[0]);
+}
+
 // Column headers this template expects, each matched loosely (substring,
 // case-insensitive) so minor header wording differences between CSV exports
 // don't break the import.
@@ -79,6 +88,10 @@ const COLUMN_PATTERNS = {
   mustHaveFeatures: ['must_have', 'must have'],
   goodToHaveFeatures: ['good_to_have', 'good to have'],
   level: ['level'],
+  theme: ['theme'],
+  referenceDocs: ['reference doc', 'reference_docs'],
+  estimatedDuration: ['estimated duration', 'estimated_duration'],
+  sourceStartupSchool: ['startup school', 'source / startup', 'source_startup'],
 } as const;
 
 // Every field the CSV row schema requires on the backend (adminProjectRowSchema)
@@ -100,6 +113,10 @@ const REQUIRED_COLUMNS: Array<{ label: string; patterns: readonly string[] }> = 
   { label: 'Must Have Features', patterns: COLUMN_PATTERNS.mustHaveFeatures },
   { label: 'Good To Have Features', patterns: COLUMN_PATTERNS.goodToHaveFeatures },
   { label: 'Evaluation Metrics', patterns: COLUMN_PATTERNS.evaluationMetrics },
+  { label: 'Theme', patterns: COLUMN_PATTERNS.theme },
+  { label: 'Reference Docs', patterns: COLUMN_PATTERNS.referenceDocs },
+  { label: 'Estimated Duration', patterns: COLUMN_PATTERNS.estimatedDuration },
+  { label: 'Source / Startup School', patterns: COLUMN_PATTERNS.sourceStartupSchool },
 ];
 
 function findColumn(headers: string[], patterns: readonly string[]): number {
@@ -152,6 +169,10 @@ function parseRows(parsed: string[][]): { rowNumber: number; project: Record<str
       mustHaveFeatures: splitList(cell(cols, col.mustHaveFeatures)),
       goodToHaveFeatures: splitList(cell(cols, col.goodToHaveFeatures)),
       level: levelRaw ? normalizeLevel(levelRaw) : undefined,
+      theme: cell(cols, col.theme) || undefined,
+      referenceDocs: cell(cols, col.referenceDocs) || undefined,
+      estimatedDuration: parseDurationWeeks(cell(cols, col.estimatedDuration)),
+      sourceStartupSchool: cell(cols, col.sourceStartupSchool) || undefined,
     };
 
     return { rowNumber, project };
