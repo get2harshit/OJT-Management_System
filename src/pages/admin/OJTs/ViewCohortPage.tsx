@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, type LucideIcon } from 'lucide-react';
+import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, Megaphone, X, type LucideIcon } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
@@ -13,6 +13,7 @@ import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabe
 import { useToast } from '../../../toast';
 import { TRACKS } from '../../../lib/constants';
 import { mapBackendTrackToFrontend } from '../../../lib/api/trackMapping';
+import { createAnnouncement } from '../../../lib/announcements';
 
 type PanelView = '' | 'students' | 'projects' | 'mentors';
 
@@ -524,7 +525,7 @@ function MentorRoster({
 export default function ViewCohortPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
   const [cohort, setCohort] = useState<CohortDetails | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [teams, setTeams] = useState<TeamAllocationDetail[]>([]);
@@ -537,6 +538,14 @@ export default function ViewCohortPage() {
   const [detailStudentId, setDetailStudentId] = useState<string | null>(null);
   const [detailProjectId, setDetailProjectId] = useState<string | null>(null);
   const [selectedMentorId, setSelectedMentorId] = useState<string | null>(null);
+
+  // Announcement modal state
+  const [showAnnModal, setShowAnnModal] = useState(false);
+  const [annTitle, setAnnTitle] = useState('');
+  const [annContent, setAnnContent] = useState('');
+  const [annTargetBatch, setAnnTargetBatch] = useState('All Batches');
+  const [annTargetTrack, setAnnTargetTrack] = useState('All Tracks');
+  const [annPriority, setAnnPriority] = useState<'normal' | 'important' | 'urgent'>('normal');
 
   // The browsable list for whichever category is active — server-paginated
   // and server-searched, independent of the full cohort/projects fetch
@@ -798,13 +807,22 @@ export default function ViewCohortPage() {
             options={PANEL_OPTIONS}
           />
         </div>
-        <button
-          onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/projects`)}
-          className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"
-        >
-          <Upload size={16} />
-          Upload Projects for This Cohort
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAnnModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 active:scale-95 transition-all duration-200 text-sm shadow-md shadow-gold/10"
+          >
+            <Megaphone size={16} />
+            Create Announcement
+          </button>
+          <button
+            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/projects`)}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"
+          >
+            <Upload size={16} />
+            Upload Projects for This Cohort
+          </button>
+        </div>
       </div>
 
       {/* Top stats row — 4 cards */}
@@ -1025,6 +1043,128 @@ export default function ViewCohortPage() {
       {panelView === '' && (
         <div className="border border-dashed border-zinc-800 rounded-xl py-20 flex flex-col items-center justify-center gap-2">
           <p className="text-gray-500 text-sm">Select Students, Projects, or Mentors from the dropdown above to view details.</p>
+        </div>
+      )}
+
+      {/* Announcement creation modal */}
+      {showAnnModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAnnModal(false)} />
+          <div className="relative w-full max-w-lg bg-zinc-900 border border-zinc-750 rounded-2xl shadow-2xl p-6 mx-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-5 border-b border-zinc-800 pb-3">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Megaphone size={20} className="text-gold" />
+                Create Announcement
+              </h3>
+              <button
+                onClick={() => setShowAnnModal(false)}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Target Batch</label>
+                  <select
+                    value={annTargetBatch}
+                    onChange={e => setAnnTargetBatch(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
+                  >
+                    <option value="All Batches">All Batches</option>
+                    {(cohort?.allowedBatches || []).map(b => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Target Track</label>
+                  <select
+                    value={annTargetTrack}
+                    onChange={e => setAnnTargetTrack(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
+                  >
+                    <option value="All Tracks">All Tracks</option>
+                    {TRACKS.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Priority</label>
+                  <select
+                    value={annPriority}
+                    onChange={e => setAnnPriority(e.target.value as 'normal' | 'important' | 'urgent')}
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="important">Important</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Announcement Title</label>
+                <input
+                  type="text"
+                  value={annTitle}
+                  onChange={e => setAnnTitle(e.target.value)}
+                  placeholder="Enter announcement title..."
+                  className="w-full px-3.5 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Message / Content</label>
+                <textarea
+                  value={annContent}
+                  onChange={e => setAnnContent(e.target.value)}
+                  placeholder="Write your announcement message..."
+                  rows={4}
+                  className="w-full px-3.5 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 mt-6 pt-3 border-t border-zinc-800">
+              <button
+                onClick={() => setShowAnnModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white bg-zinc-800 hover:bg-zinc-750 rounded-lg border border-zinc-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (!annTitle.trim() || !annContent.trim()) return;
+                  createAnnouncement({
+                    title: annTitle.trim(),
+                    content: annContent.trim(),
+                    cohortId: cohortId,
+                    cohortName: cohort ? getCohortLabel(cohort) : undefined,
+                    targetBatch: annTargetBatch,
+                    targetTrack: annTargetTrack,
+                    priority: annPriority,
+                  });
+                  setAnnTitle('');
+                  setAnnContent('');
+                  setAnnTargetBatch('All Batches');
+                  setAnnTargetTrack('All Tracks');
+                  setAnnPriority('normal');
+                  setShowAnnModal(false);
+                  showSuccess('Announcement published to notifications!');
+                }}
+                disabled={!annTitle.trim() || !annContent.trim()}
+                className="px-5 py-2 text-sm font-semibold text-black bg-gold hover:bg-gold-hover rounded-lg shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:cursor-not-allowed"
+              >
+                Publish Announcement
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

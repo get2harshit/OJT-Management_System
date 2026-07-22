@@ -1,18 +1,37 @@
-import { useState, useRef, useEffect } from 'react';
-import { Bell, CheckCheck, Trash2, Info, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Bell, CheckCheck, Trash2, Info, AlertTriangle, CheckCircle2, Megaphone, Flame } from 'lucide-react';
+import { getAnnouncements } from '../lib/announcements';
 
 export interface NotificationItem {
   id: string;
   title: string;
   message: string;
   timestamp: string;
-  type: 'info' | 'success' | 'warning';
+  type: 'info' | 'success' | 'warning' | 'announcement';
   read: boolean;
+  targetBatch?: string;
+  targetTrack?: string;
+  priority?: 'normal' | 'important' | 'urgent';
 }
 
-const INITIAL_NOTIFICATIONS: NotificationItem[] = [
+const NOTIF_READ_KEY = 'ojt_notification_read_ids';
+
+function getReadIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(NOTIF_READ_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveReadIds(ids: Set<string>) {
+  localStorage.setItem(NOTIF_READ_KEY, JSON.stringify([...ids]));
+}
+
+const SYSTEM_NOTIFICATIONS: NotificationItem[] = [
   {
-    id: 'n1',
+    id: 'sys-1',
     title: 'CSV Import Completed',
     message: '18 project templates imported successfully into the system catalog.',
     timestamp: '10m ago',
@@ -20,7 +39,7 @@ const INITIAL_NOTIFICATIONS: NotificationItem[] = [
     read: false,
   },
   {
-    id: 'n2',
+    id: 'sys-2',
     title: 'Project Allocation Update',
     message: 'Allocation run draft has been generated for Cohort 2024-B1.',
     timestamp: '1h ago',
@@ -28,27 +47,59 @@ const INITIAL_NOTIFICATIONS: NotificationItem[] = [
     read: false,
   },
   {
-    id: 'n3',
+    id: 'sys-3',
     title: 'Review Required',
     message: '2 teams require manual review before allocation can be published.',
     timestamp: '2h ago',
     type: 'warning',
     read: false,
   },
-  {
-    id: 'n4',
-    title: 'Cloud Credit Request',
-    message: 'New AWS credit request submitted by Team STU0012.',
-    timestamp: '1d ago',
-    type: 'info',
-    read: true,
-  },
 ];
 
+function timeAgo(isoDate: string): string {
+  const diff = Date.now() - new Date(isoDate).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 export default function NotificationCenter() {
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const buildNotifications = useCallback(() => {
+    const readIds = getReadIds();
+
+    const annNotifs: NotificationItem[] = getAnnouncements().map(a => ({
+      id: a.id,
+      title: a.title,
+      message: a.content,
+      timestamp: timeAgo(a.createdAt),
+      type: 'announcement' as const,
+      read: readIds.has(a.id),
+      targetBatch: a.targetBatch,
+      targetTrack: a.targetTrack,
+      priority: a.priority,
+    }));
+
+    const sysNotifs = SYSTEM_NOTIFICATIONS.map(n => ({
+      ...n,
+      read: readIds.has(n.id),
+    }));
+
+    setNotifications([...annNotifs, ...sysNotifs]);
+  }, []);
+
+  useEffect(() => {
+    buildNotifications();
+    window.addEventListener('ojt_announcement_created', buildNotifications);
+    return () => window.removeEventListener('ojt_announcement_created', buildNotifications);
+  }, [buildNotifications]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -65,15 +116,37 @@ export default function NotificationCenter() {
   }, [isOpen]);
 
   const markAllAsRead = () => {
+    const readIds = getReadIds();
+    notifications.forEach(n => readIds.add(n.id));
+    saveReadIds(readIds);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
 
   const markAsRead = (id: string) => {
+    const readIds = getReadIds();
+    readIds.add(id);
+    saveReadIds(readIds);
     setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
   };
 
   const clearAll = () => {
+    const readIds = getReadIds();
+    notifications.forEach(n => readIds.add(n.id));
+    saveReadIds(readIds);
     setNotifications([]);
+  };
+
+  const iconFor = (n: NotificationItem) => {
+    if (n.type === 'announcement') {
+      if (n.priority === 'urgent') return <Flame size={16} className="text-red-400 animate-bounce" />;
+      if (n.priority === 'important') return <AlertTriangle size={16} className="text-amber-400" />;
+      return <Megaphone size={16} className="text-gold" />;
+    }
+    switch (n.type) {
+      case 'success': return <CheckCircle2 size={16} className="text-green-400" />;
+      case 'warning': return <AlertTriangle size={16} className="text-amber-400" />;
+      default: return <Info size={16} className="text-blue-400" />;
+    }
   };
 
   return (
@@ -140,18 +213,45 @@ export default function NotificationCenter() {
                   }`}
                 >
                   <div className="mt-0.5 shrink-0">
-                    {n.type === 'success' && <CheckCircle2 size={16} className="text-green-400" />}
-                    {n.type === 'warning' && <AlertTriangle size={16} className="text-amber-400" />}
-                    {n.type === 'info' && <Info size={16} className="text-blue-400" />}
+                    {iconFor(n)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <p className={`text-xs font-semibold ${!n.read ? 'text-white' : 'text-gray-300'}`}>
-                        {n.title}
-                      </p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {n.priority === 'urgent' && (
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-red-500/20 text-red-400 border border-red-500/30 uppercase">
+                            Urgent
+                          </span>
+                        )}
+                        {n.priority === 'important' && (
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase">
+                            Important
+                          </span>
+                        )}
+                        <p className={`text-xs font-semibold ${!n.read ? 'text-white' : 'text-gray-300'}`}>
+                          {n.title}
+                        </p>
+                      </div>
                       <span className="text-[10px] text-gray-500 shrink-0">{n.timestamp}</span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">{n.message}</p>
+
+                    {/* Target metadata pill */}
+                    {(n.targetBatch || n.targetTrack) && (
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap text-[10px]">
+                        {n.targetBatch && (
+                          <span className="px-1.5 py-0.5 rounded bg-zinc-750 text-gray-300 border border-zinc-700 font-mono">
+                            Batch: {n.targetBatch}
+                          </span>
+                        )}
+                        {n.targetTrack && (
+                          <span className="px-1.5 py-0.5 rounded bg-zinc-750 text-gold/90 border border-gold/20">
+                            Track: {n.targetTrack}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">{n.message}</p>
                   </div>
                   {!n.read && <span className="w-2 h-2 rounded-full bg-gold shrink-0 mt-1.5" />}
                 </div>
