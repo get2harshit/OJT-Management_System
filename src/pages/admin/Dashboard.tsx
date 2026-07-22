@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Sparkles, Activity, UserCog, Briefcase } from 'lucide-react';
+import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Sparkles, Activity, UserCog, Briefcase, Download } from 'lucide-react';
+import { exportToCSV } from '../../lib/csvExport';
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
@@ -232,11 +233,28 @@ export default function AdminDashboard({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Admin Dashboard</h1>
           <p className="text-gray-400 text-sm mt-1">Overview of the OJT management system</p>
         </div>
+        <button
+          onClick={() => {
+            exportToCSV('admin_dashboard_metrics', [
+              {
+                studentsCount: showStudentsCount,
+                mentorsCount: showMentorsCount,
+                projectsCount: showProjectsCount,
+                creditsAvailable: metrics?.totalCreditsAvailable ?? 0,
+                activeFilterCohort: semFilter ? (cohorts.find(c => c.id === semFilter)?.name || semFilter) : 'All Cohorts',
+              }
+            ]);
+          }}
+          className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-gold text-black rounded-lg hover:bg-gold-hover transition-colors shadow-sm"
+        >
+          <Download size={15} />
+          Export Dashboard CSV
+        </button>
       </div>
 
       {/* Filter Bar */}

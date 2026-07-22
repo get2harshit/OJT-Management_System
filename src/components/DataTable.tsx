@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Download } from 'lucide-react';
+import { exportToCSV } from '../lib/csvExport';
 
 interface Column<T> {
   key: keyof T | string;
@@ -43,6 +44,9 @@ interface DataTableProps<T> {
   // as serverPagination.limitOptions, but slices `data` in-browser since it's
   // already fully loaded. Ignored when serverPagination is set.
   pageSizeOptions?: number[];
+  // Options to customize CSV export behavior.
+  exportFilename?: string;
+  hideExport?: boolean;
 }
 
 export default function DataTable<T extends Record<string, unknown>>({
@@ -56,6 +60,8 @@ export default function DataTable<T extends Record<string, unknown>>({
   onSearchChange,
   leftHeaderContent,
   pageSizeOptions,
+  exportFilename = 'export_data',
+  hideExport = false,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -158,13 +164,29 @@ export default function DataTable<T extends Record<string, unknown>>({
         <div className={`flex items-center gap-3 ${leftHeaderContent ? 'flex-1 max-w-sm' : 'flex-1'}`}>
           <Search size={18} className="text-gray-500 shrink-0" />
           <input
-          type="text"
-          value={search}
-          onChange={(e) => handleSearchChange(e.target.value)}
-          placeholder={searchPlaceholder}
-          className="bg-transparent text-sm text-white placeholder-gray-500 outline-none flex-1 min-w-0"
-        />
+            type="text"
+            value={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="bg-transparent text-sm text-white placeholder-gray-500 outline-none flex-1 min-w-0"
+          />
         </div>
+        {!hideExport && (
+          <button
+            onClick={() => {
+              const exportCols = columns.map(c => ({
+                key: String(c.key),
+                header: c.header,
+              }));
+              exportToCSV(exportFilename, filtered, exportCols);
+            }}
+            title="Export CSV"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-zinc-750 hover:bg-zinc-700 text-gold border border-zinc-700 rounded-lg transition-colors shrink-0"
+          >
+            <Download size={14} />
+            <span className="hidden sm:inline">Export CSV</span>
+          </button>
+        )}
       </div>
 
       {/* Desktop/tablet: the usual scrollable table. */}

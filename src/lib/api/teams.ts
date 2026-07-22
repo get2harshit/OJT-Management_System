@@ -154,7 +154,8 @@ interface RawMyTeamStatus {
   team: RawTeam | null;
   canInviteTeammate: boolean;
   pendingSentRequest: RawSentRequest | null;
-  pendingReceivedRequest: RawReceivedRequest | null;
+  pendingReceivedRequests?: RawReceivedRequest[] | null;
+  pendingReceivedRequest?: RawReceivedRequest | null;
   projectPreferences: RawPreferences | null;
 }
 
@@ -288,11 +289,14 @@ export async function apiGetMyCohort(): Promise<MyCohort> {
 
 export async function apiGetMyTeamStatus(cohortId: string): Promise<MyTeamStatus> {
   const res = await apiFetch<RawMyTeamStatus>(`/api/v1/teams/my-status?cohortId=${cohortId}`);
+  const receivedList = res.pendingReceivedRequests ?? (res.pendingReceivedRequest ? [res.pendingReceivedRequest] : []);
+  const mappedReceivedList = receivedList.map(mapReceivedRequest);
   return {
     team: res.team ? mapTeam(res.team) : null,
     canInviteTeammate: res.canInviteTeammate,
     pendingSentRequest: res.pendingSentRequest ? mapSentRequest(res.pendingSentRequest) : null,
-    pendingReceivedRequest: res.pendingReceivedRequest ? mapReceivedRequest(res.pendingReceivedRequest) : null,
+    pendingReceivedRequests: mappedReceivedList,
+    pendingReceivedRequest: mappedReceivedList.length > 0 ? mappedReceivedList[0] : null,
     projectPreferences: res.projectPreferences ? mapPreferences(res.projectPreferences) : null,
   };
 }
@@ -315,10 +319,38 @@ export async function apiSendTeamRequest(receiverId: string, cohortId: string, t
 }
 
 export async function apiRespondToTeamRequest(requestId: string, action: 'accept' | 'reject'): Promise<void> {
-  await apiFetch<void>(`/api/v1/teams/request/${requestId}/respond`, {
-    method: 'POST',
-    body: JSON.stringify({ action }),
-  });
+  try {
+    await apiFetch<void>(`/api/v1/teams/request/${requestId}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      const msg = err.message.toLowerCase();
+      if (msg.includes('404') || msg.includes('not found') || msg.includes('no longer pending')) {
+        return;
+      }
+    }
+    throw err;
+  }
+}
+
+export async function apiRevokeTeamRequest(requestId: string): Promise<void> {
+  try {
+    await apiFetch<void>(`/api/v1/teams/request/${requestId}/revoke`, {
+      method: 'POST',
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      const msg = err.message.toLowerCase();
+      // If backend returns 404 ("Request not found" or no longer pending/already expired/deleted),
+      // treat as resolved so the frontend clears the stale pending request state.
+      if (msg.includes('404') || msg.includes('not found') || msg.includes('no longer pending')) {
+        return;
+      }
+    }
+    throw err;
+  }
 }
 
 // Used by students who can't invite a teammate (batch-mandated individual,

@@ -9,6 +9,7 @@ import {
   apiGetAvailableTeammates,
   apiSendTeamRequest,
   apiRespondToTeamRequest,
+  apiRevokeTeamRequest,
   apiCreateIndividualTeam,
   apiGetAvailableProjects,
   apiGetAvailableMentors,
@@ -158,19 +159,25 @@ export default function ProjectPicker() {
         <p className="text-gray-400 text-sm mt-1">Pick a track, team up, and lock in your projects.</p>
       </div>
 
-      {status?.pendingReceivedRequest ? (
-        <IncomingRequestScreen
-          request={status.pendingReceivedRequest}
-          onDecide={async (action) => {
-            try {
-              await apiRespondToTeamRequest(status.pendingReceivedRequest!.id, action);
-              showSuccess(action === 'accept' ? 'Team formed!' : 'Request rejected.');
-              await refreshStatus(cohortId);
-            } catch (err) {
-              showError(err instanceof Error ? err.message : 'Failed to respond to request');
-            }
-          }}
-        />
+      {(status?.pendingReceivedRequests && status.pendingReceivedRequests.length > 0) ? (
+        <div className="space-y-4">
+          <h2 className="text-white font-semibold">Pending Team Invites ({status.pendingReceivedRequests.length})</h2>
+          {status.pendingReceivedRequests.map((req) => (
+            <IncomingRequestScreen
+              key={req.id}
+              request={req}
+              onDecide={async (action) => {
+                try {
+                  await apiRespondToTeamRequest(req.id, action);
+                  showSuccess(action === 'accept' ? 'Team formed!' : 'Request rejected.');
+                  await refreshStatus(cohortId);
+                } catch (err) {
+                  showError(err instanceof Error ? err.message : 'Failed to respond to request');
+                }
+              }}
+            />
+          ))}
+        </div>
       ) : status?.team ? (
         status.projectPreferences ? (
           <SummaryScreen
@@ -192,7 +199,18 @@ export default function ProjectPicker() {
           />
         )
       ) : status?.pendingSentRequest ? (
-        <PendingSentScreen request={status.pendingSentRequest} />
+        <PendingSentScreen
+          request={status.pendingSentRequest}
+          onRevoke={async () => {
+            try {
+              await apiRevokeTeamRequest(status.pendingSentRequest!.id);
+              showSuccess('Invite revoked.');
+              await refreshStatus(cohortId);
+            } catch (err) {
+              showError(err instanceof Error ? err.message : 'Failed to revoke invite');
+            }
+          }}
+        />
       ) : (
         <TrackAndTeammateScreen
           cohortId={cohortId}
@@ -385,10 +403,28 @@ function TrackAndTeammateScreen({
 
 // ── Step 3: waiting on the invite you sent ───────────────────────────────────
 
-function PendingSentScreen({ request }: { request: { receiverName: string | null; track: string; expiresAt: string } }) {
+function PendingSentScreen({
+  request,
+  onRevoke,
+}: {
+  request: { receiverName: string | null; track: string; expiresAt: string };
+  onRevoke?: () => void;
+}) {
   const { label, expired } = useCountdown(request.expiresAt);
+  const [revoking, setRevoking] = useState(false);
+
+  const handleRevoke = async () => {
+    if (!onRevoke) return;
+    setRevoking(true);
+    try {
+      await onRevoke();
+    } finally {
+      setRevoking(false);
+    }
+  };
+
   return (
-    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-8 text-center space-y-3">
+    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-8 text-center space-y-4">
       <Clock size={32} className="mx-auto text-gold" />
       <h2 className="text-white font-bold text-lg">Request Pending</h2>
       <p className="text-gray-400 text-sm">
@@ -398,6 +434,17 @@ function PendingSentScreen({ request }: { request: { receiverName: string | null
       <p className="text-xs text-gray-500">
         {expired ? 'This request has expired.' : `Expires in ${label} if there's no response.`}
       </p>
+      {onRevoke && (
+        <div className="pt-2">
+          <button
+            onClick={handleRevoke}
+            disabled={revoking}
+            className="text-xs px-4 py-2 bg-zinc-750 hover:bg-zinc-700 text-red-400 font-semibold rounded-lg transition-colors disabled:opacity-50"
+          >
+            {revoking ? 'Revoking...' : 'Revoke Request'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

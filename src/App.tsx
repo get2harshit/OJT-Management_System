@@ -9,6 +9,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import SpinnerSquare from './components/SpinnerSquare';
 import ErrorBoundary from './components/ErrorBoundary';
 
+import { ThemeProvider } from './context/ThemeContext';
+
 // Each panel is its own lazily-loaded chunk so a user only downloads the
 // bundle for their role (and Login stays small for first paint).
 const AdminPanel = lazy(() => import('./pages/admin'));
@@ -25,7 +27,8 @@ function PanelLoader() {
 
 export default function App() {
   return (
-    <AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
       <ToastProvider>
         <ConfirmProvider>
           <DataProvider>
@@ -68,6 +71,7 @@ export default function App() {
           </DataProvider>
         </ConfirmProvider>
       </ToastProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
