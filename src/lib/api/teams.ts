@@ -154,6 +154,7 @@ interface RawMyTeamStatus {
   team: RawTeam | null;
   canInviteTeammate: boolean;
   pendingSentRequest: RawSentRequest | null;
+  pendingSentRequests?: RawSentRequest[] | null;
   pendingReceivedRequests?: RawReceivedRequest[] | null;
   pendingReceivedRequest?: RawReceivedRequest | null;
   projectPreferences: RawPreferences | null;
@@ -291,10 +292,13 @@ export async function apiGetMyTeamStatus(cohortId: string): Promise<MyTeamStatus
   const res = await apiFetch<RawMyTeamStatus>(`/api/v1/teams/my-status?cohortId=${cohortId}`);
   const receivedList = res.pendingReceivedRequests ?? (res.pendingReceivedRequest ? [res.pendingReceivedRequest] : []);
   const mappedReceivedList = receivedList.map(mapReceivedRequest);
+  const sentList = res.pendingSentRequests ?? (res.pendingSentRequest ? [res.pendingSentRequest] : []);
+  const mappedSentList = sentList.map(mapSentRequest);
   return {
     team: res.team ? mapTeam(res.team) : null,
     canInviteTeammate: res.canInviteTeammate,
-    pendingSentRequest: res.pendingSentRequest ? mapSentRequest(res.pendingSentRequest) : null,
+    pendingSentRequest: mappedSentList[0] ?? null,
+    pendingSentRequests: mappedSentList,
     pendingReceivedRequests: mappedReceivedList,
     pendingReceivedRequest: mappedReceivedList.length > 0 ? mappedReceivedList[0] : null,
     projectPreferences: res.projectPreferences ? mapPreferences(res.projectPreferences) : null,
