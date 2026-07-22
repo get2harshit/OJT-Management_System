@@ -309,6 +309,12 @@ function TrackAndTeammateScreen({
       t.rollNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.batch?.toLowerCase().includes(searchQuery.toLowerCase())
     );
+  }).sort((a, b) => {
+    const aPending = pendingSentRequests.some(r => r.receiverId === a.studentId);
+    const bPending = pendingSentRequests.some(r => r.receiverId === b.studentId);
+    if (aPending && !bPending) return -1;
+    if (!aPending && bPending) return 1;
+    return 0;
   });
 
   if (!track) {
@@ -377,32 +383,12 @@ function TrackAndTeammateScreen({
         </div>
       </div>
 
-      {pendingSentRequests.length > 0 && (
-        <div className="space-y-2">
-          <h2 className="text-white font-semibold flex items-center gap-2">
-            <Clock size={18} className="text-gold" />
-            Pending Sent Invites ({pendingSentRequests.length}/{SEND_QUOTA})
-          </h2>
-          <div className="space-y-2">
-            {pendingSentRequests.map((req, idx) => (
-              <PendingSentInviteCard key={req.id} index={idx + 1} request={req} onRevoke={() => onRevoke(req.id)} />
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
         <h2 className="text-white font-semibold flex items-center gap-2">
           <Users size={18} className="text-gold" />
           Choose your teammate
         </h2>
       </div>
-
-      {quotaFull && (
-        <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-lg">
-          You've reached your invite limit ({SEND_QUOTA}/{SEND_QUOTA}). Revoke a pending request above to invite someone else.
-        </p>
-      )}
 
       <div className="relative max-w-sm">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -475,54 +461,6 @@ function TrackAndTeammateScreen({
 }
 
 // ── Step 3: waiting on the invite you sent ───────────────────────────────────
-
-// Compact — several of these can be stacked at once, up to the 3-invite quota.
-function PendingSentInviteCard({
-  index,
-  request,
-  onRevoke,
-}: {
-  index: number;
-  request: { id: string; receiverName: string | null; track: string; expiresAt: string };
-  onRevoke: () => Promise<void>;
-}) {
-  const { label, expired } = useCountdown(request.expiresAt);
-  const [revoking, setRevoking] = useState(false);
-
-  const handleRevoke = async () => {
-    setRevoking(true);
-    try {
-      await onRevoke();
-    } finally {
-      setRevoking(false);
-    }
-  };
-
-  return (
-    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-3.5 flex items-center justify-between gap-3 shadow-sm hover:border-zinc-700 transition-all">
-      <div className="flex items-center gap-3">
-        <div className="w-7 h-7 rounded-full bg-gold/15 border border-gold/30 flex items-center justify-center text-gold font-bold text-xs shrink-0">
-          #{index}
-        </div>
-        <div>
-          <p className="text-white text-sm">
-            Waiting for <span className="font-semibold text-gold">{request.receiverName || 'Teammate'}</span>
-          </p>
-          <p className="text-xs text-gray-400">
-            Track: <span className="text-gray-200">{request.track}</span> · {expired ? <span className="text-red-400 font-medium">Expired</span> : `Expires in ${label}`}
-          </p>
-        </div>
-      </div>
-      <button
-        onClick={handleRevoke}
-        disabled={revoking}
-        className="text-xs px-3 py-1.5 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 text-red-400 font-semibold rounded-lg transition-colors disabled:opacity-50 shrink-0"
-      >
-        {revoking ? 'Revoking...' : 'Revoke Request'}
-      </button>
-    </div>
-  );
-}
 
 // ── Step 3b: someone invited you ─────────────────────────────────────────────
 
