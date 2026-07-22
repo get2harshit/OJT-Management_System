@@ -475,7 +475,7 @@ export default function CohortAllocationsPage() {
                     <User size={14} className="text-gold shrink-0 mt-0.5" />
                   )}
                   <span>
-                    {row.teamName && <p className="text-white font-semibold">{row.teamName}</p>}
+                    {row.teamName && <p className="text-white font-semibold tracking-wider">{row.teamName}</p>}
                     <p className={row.teamName ? 'text-gray-400 text-xs mt-0.5' : undefined}>{row.members}</p>
                   </span>
                 </span>
@@ -603,7 +603,7 @@ export default function CohortAllocationsPage() {
                 ) : (
                   <User size={14} className="text-gold shrink-0" />
                 )}
-                {detailTeam.teamName || 'Unnamed Team'}
+                {detailTeam.teamName ? <span className="tracking-wider">{detailTeam.teamName}</span> : 'Unnamed Team'}
               </p>
               <p className="text-gray-300 text-xs">
                 {detailTeam.members.map((m) => m.fullName || m.studentId).join(', ')}

@@ -28,6 +28,7 @@ interface RawTeamMember {
 
 interface RawTeam {
   id: string;
+  name?: string | null;
   track: string;
   isIndividual: boolean;
   members?: RawTeamMember[];
@@ -170,6 +171,7 @@ interface RawAvailableTeammate {
 function mapTeam(t: RawTeam): Team {
   return {
     id: t.id,
+    name: t.name ?? null,
     track: mapBackendTrackToFrontend(t.track),
     isIndividual: t.isIndividual,
     members: (t.members || []).map((m) => ({

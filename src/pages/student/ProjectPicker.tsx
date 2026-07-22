@@ -1170,7 +1170,7 @@ function SummaryScreen({
   onResubmitted,
 }: {
   cohortId: string;
-  team: { track: string; members: { studentId: string; fullName: string | null }[] };
+  team: { name: string | null; track: string; members: { studentId: string; fullName: string | null }[] };
   preferences: {
     preference1Id: string;
     preference2Id: string;
@@ -1263,9 +1263,18 @@ function SummaryScreen({
           {banner.label}
         </div>
 
-        <div>
-          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Track</p>
-          <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{team.track}</span>
+        <div className="flex flex-wrap gap-6">
+          <div>
+            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Track</p>
+            <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{team.track}</span>
+          </div>
+
+          {team.name && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Group</p>
+              <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium tracking-wider">{team.name}</span>
+            </div>
+          )}
         </div>
 
         <div>

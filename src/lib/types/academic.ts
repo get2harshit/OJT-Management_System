@@ -162,6 +162,7 @@ export interface TeamMemberInfo {
 // A formed 2-student team (GET /api/v1/teams/my-status).
 export interface Team {
   id: string;
+  name: string | null;
   track: string;
   isIndividual: boolean;
   members: TeamMemberInfo[];
