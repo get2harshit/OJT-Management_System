@@ -95,18 +95,25 @@ export default function ProjectPicker() {
   }, [showError]);
 
   useEffect(() => {
+    let handleStatusChange: (() => void) | null = null;
     (async () => {
       setLoading(true);
       try {
         const cohort = await apiGetMyCohort();
         setCohortId(cohort.cohortId);
         await refreshStatus(cohort.cohortId);
+        
+        handleStatusChange = () => refreshStatus(cohort.cohortId);
+        window.addEventListener('ojt_team_status_changed', handleStatusChange);
       } catch (err) {
         setCohortError(err instanceof Error ? err.message : 'Failed to load your cohort');
       } finally {
         setLoading(false);
       }
     })();
+    return () => {
+      if (handleStatusChange) window.removeEventListener('ojt_team_status_changed', handleStatusChange);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -174,27 +181,6 @@ export default function ProjectPicker() {
         )
       ) : (
         <div className="space-y-6">
-          {(status?.pendingReceivedRequests && status.pendingReceivedRequests.length > 0) && (
-            <div className="space-y-4">
-              <h2 className="text-white font-semibold">Pending Team Invites ({status.pendingReceivedRequests.length})</h2>
-              {status.pendingReceivedRequests.map((req) => (
-                <IncomingRequestScreen
-                  key={req.id}
-                  request={req}
-                  onDecide={async (action) => {
-                    try {
-                      await apiRespondToTeamRequest(req.id, action);
-                      showSuccess(action === 'accept' ? 'Team formed!' : 'Request rejected.');
-                      await refreshStatus(cohortId);
-                    } catch (err) {
-                      showError(err instanceof Error ? err.message : 'Failed to respond to request');
-                    }
-                  }}
-                />
-              ))}
-            </div>
-          )}
-
           <TrackAndTeammateScreen
             cohortId={cohortId}
             canInviteTeammate={status?.canInviteTeammate ?? true}

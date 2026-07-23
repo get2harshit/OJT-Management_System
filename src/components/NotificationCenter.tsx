@@ -1,17 +1,24 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Bell, CheckCheck, Trash2, Info, AlertTriangle, CheckCircle2, Megaphone, Flame } from 'lucide-react';
+import { Bell, CheckCheck, Trash2, Info, AlertTriangle, CheckCircle2, Megaphone, Flame, Users, Check, X } from 'lucide-react';
 import { getAnnouncements } from '../lib/announcements';
+import { apiGetMyCohort, apiGetMyTeamStatus, apiRespondToTeamRequest } from '../lib/api';
+import { useToast } from '../toast';
 
 export interface NotificationItem {
   id: string;
   title: string;
   message: string;
   timestamp: string;
-  type: 'info' | 'success' | 'warning' | 'announcement';
+  type: 'info' | 'success' | 'warning' | 'announcement' | 'team_invite';
   read: boolean;
   targetBatch?: string;
   targetTrack?: string;
   priority?: 'normal' | 'important' | 'urgent';
+  isInvite?: boolean;
+  senderName?: string;
+  trackName?: string;
+  onAccept?: () => Promise<void>;
+  onReject?: () => Promise<void>;
 }
 
 const NOTIF_READ_KEY = 'ojt_notification_read_ids';
@@ -67,12 +74,13 @@ function timeAgo(isoDate: string): string {
   return `${days}d ago`;
 }
 
-export default function NotificationCenter() {
+export default function NotificationCenter({ panel }: { panel?: string }) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { showError, showSuccess } = useToast();
 
-  const buildNotifications = useCallback(() => {
+  const buildNotifications = useCallback(async () => {
     const readIds = getReadIds();
 
     const annNotifs: NotificationItem[] = getAnnouncements().map(a => ({
@@ -92,13 +100,58 @@ export default function NotificationCenter() {
       read: readIds.has(n.id),
     }));
 
-    setNotifications([...annNotifs, ...sysNotifs]);
-  }, []);
+    let inviteNotifs: NotificationItem[] = [];
+    if (panel === 'student') {
+      try {
+        const cohort = await apiGetMyCohort();
+        const status = await apiGetMyTeamStatus(cohort.cohortId);
+        if (status?.pendingReceivedRequests && status.pendingReceivedRequests.length > 0) {
+          inviteNotifs = status.pendingReceivedRequests.map(req => ({
+            id: req.id,
+            title: 'Team Invite',
+            message: `${req.senderName} invited you to team up for ${req.track}.`,
+            timestamp: 'Just now',
+            type: 'team_invite',
+            read: false,
+            isInvite: true,
+            senderName: req.senderName || 'A teammate',
+            trackName: req.track,
+            onAccept: async () => {
+              try {
+                await apiRespondToTeamRequest(req.id, 'accept');
+                showSuccess('Team formed!');
+                window.dispatchEvent(new Event('ojt_team_status_changed'));
+              } catch (err) {
+                showError(err instanceof Error ? err.message : 'Failed to respond to request');
+              }
+            },
+            onReject: async () => {
+              try {
+                await apiRespondToTeamRequest(req.id, 'reject');
+                showSuccess('Request rejected.');
+                window.dispatchEvent(new Event('ojt_team_status_changed'));
+              } catch (err) {
+                showError(err instanceof Error ? err.message : 'Failed to respond to request');
+              }
+            }
+          }));
+        }
+      } catch (err) {
+        // ignore errors
+      }
+    }
+
+    setNotifications([...inviteNotifs, ...annNotifs, ...sysNotifs]);
+  }, [panel, showError, showSuccess]);
 
   useEffect(() => {
     buildNotifications();
     window.addEventListener('ojt_announcement_created', buildNotifications);
-    return () => window.removeEventListener('ojt_announcement_created', buildNotifications);
+    window.addEventListener('ojt_team_status_changed', buildNotifications);
+    return () => {
+      window.removeEventListener('ojt_announcement_created', buildNotifications);
+      window.removeEventListener('ojt_team_status_changed', buildNotifications);
+    };
   }, [buildNotifications]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -137,6 +190,7 @@ export default function NotificationCenter() {
   };
 
   const iconFor = (n: NotificationItem) => {
+    if (n.type === 'team_invite') return <Users size={16} className="text-gold" />;
     if (n.type === 'announcement') {
       if (n.priority === 'urgent') return <Flame size={16} className="text-red-400 animate-bounce" />;
       if (n.priority === 'important') return <AlertTriangle size={16} className="text-amber-400" />;
@@ -252,6 +306,23 @@ export default function NotificationCenter() {
                     )}
 
                     <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">{n.message}</p>
+                    
+                    {n.isInvite && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); n.onAccept?.(); }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-gold text-black text-xs font-semibold rounded-lg hover:bg-gold-hover transition-colors"
+                        >
+                          <Check size={14} /> Accept
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); n.onReject?.(); }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-750 text-white text-xs font-medium rounded-lg hover:bg-zinc-700 transition-colors"
+                        >
+                          <X size={14} /> Reject
+                        </button>
+                      </div>
+                    )}
                   </div>
                   {!n.read && <span className="w-2 h-2 rounded-full bg-gold shrink-0 mt-1.5" />}
                 </div>
