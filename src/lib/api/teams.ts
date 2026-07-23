@@ -16,8 +16,26 @@ import type {
   TeamWithProject,
   StudentWithoutTeam,
 } from '../types';
-import { apiFetch } from './client';
+import { apiFetch, cachedFetch, invalidateCached } from './client';
 import { mapFrontendTrackToBackend, mapBackendTrackToFrontend } from './trackMapping';
+
+const TEAMS_TTL = 15_000;
+
+// Any action that can change "my" team/request/preference state invalidates
+// all of these broadly rather than trying to pinpoint exactly which one
+// changed — team formation is a multi-step, race-condition-sensitive flow
+// (see the memory notes on it), so a few extra refetches is the safer
+// trade-off over a stale-state bug.
+function invalidateTeamCaches(): void {
+  invalidateCached('teams:mystatus');
+  invalidateCached('teams:mine');
+  invalidateCached('teams:mycohort');
+  invalidateCached('teams:availableteammates');
+  invalidateCached('teams:availableprojects');
+  invalidateCached('teams:availablementors');
+  invalidateCached('teams:pendingproposals');
+  invalidateCached('teams:cohort');
+}
 
 // ── Raw backend wire shapes (pre-mapping) ───────────────────────────────────────
 
@@ -294,40 +312,46 @@ function mapProject(p: RawProject): TeamProject {
 }
 
 export async function apiGetMyCohort(): Promise<MyCohort> {
-  const res = await apiFetch<RawMyCohort>('/api/v1/teams/my-cohort');
-  return {
-    cohortId: res.cohortId,
-    name: res.name ?? null,
-    sessionTerm: res.sessionTerm,
-    allowedBatches: res.allowedBatches ?? [],
-  };
+  return cachedFetch('teams:mycohort', TEAMS_TTL, async () => {
+    const res = await apiFetch<RawMyCohort>('/api/v1/teams/my-cohort');
+    return {
+      cohortId: res.cohortId,
+      name: res.name ?? null,
+      sessionTerm: res.sessionTerm,
+      allowedBatches: res.allowedBatches ?? [],
+    };
+  });
 }
 
 export async function apiGetMyTeamStatus(cohortId: string): Promise<MyTeamStatus> {
-  const res = await apiFetch<RawMyTeamStatus>(`/api/v1/teams/my-status?cohortId=${cohortId}`);
-  const receivedList = res.pendingReceivedRequests ?? (res.pendingReceivedRequest ? [res.pendingReceivedRequest] : []);
-  const mappedReceivedList = receivedList.map(mapReceivedRequest);
-  const sentList = res.pendingSentRequests ?? (res.pendingSentRequest ? [res.pendingSentRequest] : []);
-  const mappedSentList = sentList.map(mapSentRequest);
-  return {
-    team: res.team ? mapTeam(res.team) : null,
-    canInviteTeammate: res.canInviteTeammate,
-    pendingSentRequest: mappedSentList[0] ?? null,
-    pendingSentRequests: mappedSentList,
-    pendingReceivedRequests: mappedReceivedList,
-    pendingReceivedRequest: mappedReceivedList.length > 0 ? mappedReceivedList[0] : null,
-    projectPreferences: res.projectPreferences ? mapPreferences(res.projectPreferences) : null,
-  };
+  return cachedFetch(`teams:mystatus:${cohortId}`, TEAMS_TTL, async () => {
+    const res = await apiFetch<RawMyTeamStatus>(`/api/v1/teams/my-status?cohortId=${cohortId}`);
+    const receivedList = res.pendingReceivedRequests ?? (res.pendingReceivedRequest ? [res.pendingReceivedRequest] : []);
+    const mappedReceivedList = receivedList.map(mapReceivedRequest);
+    const sentList = res.pendingSentRequests ?? (res.pendingSentRequest ? [res.pendingSentRequest] : []);
+    const mappedSentList = sentList.map(mapSentRequest);
+    return {
+      team: res.team ? mapTeam(res.team) : null,
+      canInviteTeammate: res.canInviteTeammate,
+      pendingSentRequest: mappedSentList[0] ?? null,
+      pendingSentRequests: mappedSentList,
+      pendingReceivedRequests: mappedReceivedList,
+      pendingReceivedRequest: mappedReceivedList.length > 0 ? mappedReceivedList[0] : null,
+      projectPreferences: res.projectPreferences ? mapPreferences(res.projectPreferences) : null,
+    };
+  });
 }
 
 export async function apiGetAvailableTeammates(cohortId: string): Promise<AvailableTeammate[]> {
-  const res = await apiFetch<RawAvailableTeammate[]>(`/api/v1/teams/available-teammates?cohortId=${cohortId}`);
-  return res.map(s => ({
-    studentId: s.id,
-    rollNumber: s.roll_number,
-    batch: s.batch,
-    fullName: s.full_name,
-  }));
+  return cachedFetch(`teams:availableteammates:${cohortId}`, TEAMS_TTL, async () => {
+    const res = await apiFetch<RawAvailableTeammate[]>(`/api/v1/teams/available-teammates?cohortId=${cohortId}`);
+    return res.map(s => ({
+      studentId: s.id,
+      rollNumber: s.roll_number,
+      batch: s.batch,
+      fullName: s.full_name,
+    }));
+  });
 }
 
 export async function apiSendTeamRequest(receiverId: string, cohortId: string, track: string): Promise<void> {
@@ -335,6 +359,7 @@ export async function apiSendTeamRequest(receiverId: string, cohortId: string, t
     method: 'POST',
     body: JSON.stringify({ receiverId, cohortId, track: mapFrontendTrackToBackend(track) }),
   });
+  invalidateTeamCaches();
 }
 
 export async function apiRespondToTeamRequest(requestId: string, action: 'accept' | 'reject'): Promise<void> {
@@ -343,10 +368,12 @@ export async function apiRespondToTeamRequest(requestId: string, action: 'accept
       method: 'POST',
       body: JSON.stringify({ action }),
     });
+    invalidateTeamCaches();
   } catch (err: unknown) {
     if (err instanceof Error) {
       const msg = err.message.toLowerCase();
       if (msg.includes('404') || msg.includes('not found') || msg.includes('no longer pending')) {
+        invalidateTeamCaches();
         return;
       }
     }
@@ -359,12 +386,14 @@ export async function apiRevokeTeamRequest(requestId: string): Promise<void> {
     await apiFetch<void>(`/api/v1/teams/request/${requestId}/revoke`, {
       method: 'POST',
     });
+    invalidateTeamCaches();
   } catch (err: unknown) {
     if (err instanceof Error) {
       const msg = err.message.toLowerCase();
       // If backend returns 404 ("Request not found" or no longer pending/already expired/deleted),
       // treat as resolved so the frontend clears the stale pending request state.
       if (msg.includes('404') || msg.includes('not found') || msg.includes('no longer pending')) {
+        invalidateTeamCaches();
         return;
       }
     }
@@ -379,6 +408,7 @@ export async function apiCreateIndividualTeam(cohortId: string, track: string): 
     method: 'POST',
     body: JSON.stringify({ cohortId, track: mapFrontendTrackToBackend(track) }),
   });
+  invalidateTeamCaches();
   return mapTeam(res);
 }
 
@@ -389,11 +419,14 @@ export async function apiSetIndividualOverride(studentId: string, cohortId: stri
     method: 'PATCH',
     body: JSON.stringify({ cohortId, allowed }),
   });
+  invalidateTeamCaches();
 }
 
 export async function apiGetAvailableProjects(cohortId: string): Promise<TeamProject[]> {
-  const res = await apiFetch<RawProject[]>(`/api/v1/teams/projects/available?cohortId=${cohortId}`);
-  return res.map(mapProject);
+  return cachedFetch(`teams:availableprojects:${cohortId}`, TEAMS_TTL, async () => {
+    const res = await apiFetch<RawProject[]>(`/api/v1/teams/projects/available?cohortId=${cohortId}`);
+    return res.map(mapProject);
+  });
 }
 
 export async function apiProposeProject(cohortId: string, data: ProposeProjectInput): Promise<TeamProject> {
@@ -401,12 +434,15 @@ export async function apiProposeProject(cohortId: string, data: ProposeProjectIn
     method: 'POST',
     body: JSON.stringify({ cohortId, ...data }),
   });
+  invalidateTeamCaches();
   return mapProject(p);
 }
 
 export async function apiGetAvailableMentors(cohortId: string): Promise<TeamAvailableMentor[]> {
-  const res = await apiFetch<RawTeamMentor[]>(`/api/v1/teams/mentors/available?cohortId=${cohortId}`);
-  return res.map(mapTeamMentor);
+  return cachedFetch(`teams:availablementors:${cohortId}`, TEAMS_TTL, async () => {
+    const res = await apiFetch<RawTeamMentor[]>(`/api/v1/teams/mentors/available?cohortId=${cohortId}`);
+    return res.map(mapTeamMentor);
+  });
 }
 
 export async function apiSubmitProjectPreferences(
@@ -420,6 +456,7 @@ export async function apiSubmitProjectPreferences(
     method: 'POST',
     body: JSON.stringify({ cohortId, preference1Id, preference2Id, preference1MentorId, preference2MentorId }),
   });
+  invalidateTeamCaches();
   return mapPreferences(res);
 }
 
@@ -430,13 +467,16 @@ export async function apiResubmitPreference1(cohortId: string, projectId: string
     method: 'POST',
     body: JSON.stringify({ cohortId, projectId, mentorId }),
   });
+  invalidateTeamCaches();
   return mapPreferences(res);
 }
 
 // Mentor — self-proposed preference-1 projects awaiting this mentor's decision.
 export async function apiGetPendingProposals(): Promise<PendingProposal[]> {
-  const res = await apiFetch<RawPendingProposal[]>('/api/v1/teams/proposals/pending');
-  return res.map(mapPendingProposal);
+  return cachedFetch('teams:pendingproposals', TEAMS_TTL, async () => {
+    const res = await apiFetch<RawPendingProposal[]>('/api/v1/teams/proposals/pending');
+    return res.map(mapPendingProposal);
+  });
 }
 
 // Mentor — approves or rejects a self-proposed preference-1, with an optional note.
@@ -445,19 +485,24 @@ export async function apiDecideOnProposal(preferenceId: string, action: 'approve
     method: 'POST',
     body: JSON.stringify({ action, note }),
   });
+  invalidateTeamCaches();
 }
 
 // Admin — lists every team formed within a cohort.
 export async function apiListTeamsForCohort(cohortId: string): Promise<AdminTeam[]> {
-  const res = await apiFetch<RawAdminTeam[]>(`/api/v1/teams/cohort/${cohortId}`);
-  return res.map(mapAdminTeam);
+  return cachedFetch(`teams:cohort:${cohortId}`, TEAMS_TTL, async () => {
+    const res = await apiFetch<RawAdminTeam[]>(`/api/v1/teams/cohort/${cohortId}`);
+    return res.map(mapAdminTeam);
+  });
 }
 
 // Mentor — lists the teams this mentor is currently allocated to, used by
 // the mentor task-creation flow's team picker.
 export async function apiListMyTeams(): Promise<Team[]> {
-  const res = await apiFetch<RawTeam[]>('/api/v1/teams/my-teams');
-  return res.map(mapTeam);
+  return cachedFetch('teams:mine', TEAMS_TTL, async () => {
+    const res = await apiFetch<RawTeam[]>('/api/v1/teams/my-teams');
+    return res.map(mapTeam);
+  });
 }
 
 interface RawTeamMentorDetail {
@@ -472,22 +517,25 @@ interface RawTeamMentorDetail {
 // project (title/description) attached, for the OJTs & Projects page's
 // team → project drill-down.
 export async function apiListMyTeamsDetailed(): Promise<TeamWithProject[]> {
-  const res = await apiFetch<RawTeamMentorDetail[]>('/api/v1/teams/my-teams/detailed');
-  return res.map((t) => ({
-    teamId: t.teamId,
-    track: mapBackendTrackToFrontend(t.track),
-    isIndividual: t.isIndividual,
-    members: t.members,
-    project: t.project
-      ? { ...t.project, track: mapBackendTrackToFrontend(t.project.track) }
-      : null,
-  }));
+  return cachedFetch('teams:mine:detailed', TEAMS_TTL, async () => {
+    const res = await apiFetch<RawTeamMentorDetail[]>('/api/v1/teams/my-teams/detailed');
+    return res.map((t) => ({
+      teamId: t.teamId,
+      track: mapBackendTrackToFrontend(t.track),
+      isIndividual: t.isIndividual,
+      members: t.members,
+      project: t.project
+        ? { ...t.project, track: mapBackendTrackToFrontend(t.project.track) }
+        : null,
+    }));
+  });
 }
 
 // Admin — disbands a team, dropping its members back to the teammate-invite
 // step. Used to reset test accounts without a manual DB query.
 export async function apiBreakTeam(teamId: string): Promise<void> {
   await apiFetch<void>(`/api/v1/teams/${teamId}`, { method: 'DELETE' });
+  invalidateTeamCaches();
 }
 
 interface RawStudentWithoutTeam {
@@ -518,4 +566,5 @@ export async function apiCreateManualTeam(
     method: 'POST',
     body: JSON.stringify({ studentIds, track: mapFrontendTrackToBackend(track), projectId, mentorId }),
   });
+  invalidateTeamCaches();
 }

@@ -1,5 +1,7 @@
-import { apiFetch } from './client';
+import { apiFetch, cachedFetch, invalidateCached } from './client';
 import { mapFrontendTrackToBackend } from './trackMapping';
+
+const TASKS_TTL = 15_000;
 
 export type ApiAssignmentStatus = 'pending' | 'review' | 'resubmit' | 'approved';
 
@@ -128,16 +130,20 @@ export async function apiCreateTask(payload: CreateTaskPayload): Promise<{ succe
   if (payload.track) {
     body.track = mapFrontendTrackToBackend(payload.track);
   }
-  return apiFetch<{ success: boolean; message: string; data: ApiTask }>('/api/v1/tasks', {
+  const res = await apiFetch<{ success: boolean; message: string; data: ApiTask }>('/api/v1/tasks', {
     method: 'POST',
     body: JSON.stringify(body),
   });
+  invalidateCached('tasks:list');
+  return res;
 }
 
 // GET /tasks response is double-nested ({success, data: {data, pagination}})
 // server-side — flattened here so `res.data` stays the plain task array for
 // every existing caller, with `res.pagination` added alongside for callers
-// that want to build pagination controls.
+// that want to build pagination controls. Cached per distinct filter/
+// pagination combo — every task page (admin/mentor/student) independently
+// re-fetches this on every mount/tab-switch, usually with the same filters.
 export async function apiListTasks(filter: ApiTaskListFilter = {}): Promise<{ success: boolean; data: ApiTask[]; pagination: ApiTaskPagination }> {
   const params = new URLSearchParams();
   Object.entries(filter).forEach(([key, value]) => {
@@ -146,17 +152,19 @@ export async function apiListTasks(filter: ApiTaskListFilter = {}): Promise<{ su
     }
   });
   const qs = params.toString();
-  const res = await apiFetch<{ success: boolean; data: { data: ApiTask[]; pagination: ApiTaskPagination } }>(
-    `/api/v1/tasks${qs ? `?${qs}` : ''}`,
-    { method: 'GET' }
-  );
-  return { success: res.success, data: res.data.data, pagination: res.data.pagination };
+  return cachedFetch(`tasks:list:${qs}`, TASKS_TTL, async () => {
+    const res = await apiFetch<{ success: boolean; data: { data: ApiTask[]; pagination: ApiTaskPagination } }>(
+      `/api/v1/tasks${qs ? `?${qs}` : ''}`,
+      { method: 'GET' }
+    );
+    return { success: res.success, data: res.data.data, pagination: res.data.pagination };
+  });
 }
 
 export async function apiGetTask(id: string): Promise<{ success: boolean; data: ApiTask }> {
-  return apiFetch<{ success: boolean; data: ApiTask }>(`/api/v1/tasks/${id}`, {
-    method: 'GET',
-  });
+  return cachedFetch(`tasks:get:${id}`, TASKS_TTL, () =>
+    apiFetch<{ success: boolean; data: ApiTask }>(`/api/v1/tasks/${id}`, { method: 'GET' })
+  );
 }
 
 export async function apiUpdateTask(id: string, payload: UpdateTaskPayload): Promise<{ success: boolean; message: string; data: ApiTask }> {
@@ -164,16 +172,22 @@ export async function apiUpdateTask(id: string, payload: UpdateTaskPayload): Pro
   if (payload.track) {
     body.track = mapFrontendTrackToBackend(payload.track);
   }
-  return apiFetch<{ success: boolean; message: string; data: ApiTask }>(`/api/v1/tasks/${id}`, {
+  const res = await apiFetch<{ success: boolean; message: string; data: ApiTask }>(`/api/v1/tasks/${id}`, {
     method: 'PUT',
     body: JSON.stringify(body),
   });
+  invalidateCached('tasks:list');
+  invalidateCached(`tasks:get:${id}`);
+  return res;
 }
 
 export async function apiDeleteTask(id: string): Promise<{ success: boolean; message: string }> {
-  return apiFetch<{ success: boolean; message: string }>(`/api/v1/tasks/${id}`, {
+  const res = await apiFetch<{ success: boolean; message: string }>(`/api/v1/tasks/${id}`, {
     method: 'DELETE',
   });
+  invalidateCached('tasks:list');
+  invalidateCached(`tasks:get:${id}`);
+  return res;
 }
 
 export interface ApiWorkflowResponse {
@@ -182,37 +196,50 @@ export interface ApiWorkflowResponse {
   data: ApiAssignment;
 }
 
+function invalidateTaskCaches(taskId: string): void {
+  invalidateCached('tasks:list');
+  invalidateCached(`tasks:get:${taskId}`);
+}
+
 // Only meaningful for non-document tasks (category !== 'document_submission')
 // — a document-linked task's pending/resubmit -> review transition already
 // happens automatically server-side the moment the student uploads a
 // document via apiUploadPrd (see SubmissionService.syncAssignmentStatus).
 export async function apiSubmitTask(taskId: string, assignmentId: string, documentSubmissionId?: string): Promise<ApiWorkflowResponse> {
-  return apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/submit`, {
+  const res = await apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/submit`, {
     method: 'POST',
     body: JSON.stringify(documentSubmissionId ? { documentSubmissionId } : {}),
   });
+  invalidateTaskCaches(taskId);
+  return res;
 }
 
 export async function apiResubmitTask(taskId: string, assignmentId: string, documentSubmissionId?: string): Promise<ApiWorkflowResponse> {
-  return apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/resubmit`, {
+  const res = await apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/resubmit`, {
     method: 'POST',
     body: JSON.stringify(documentSubmissionId ? { documentSubmissionId } : {}),
   });
+  invalidateTaskCaches(taskId);
+  return res;
 }
 
 export async function apiApproveTask(taskId: string, assignmentId: string, comment?: string): Promise<ApiWorkflowResponse> {
-  return apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/approve`, {
+  const res = await apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/approve`, {
     method: 'PATCH',
     body: JSON.stringify(comment ? { comment } : {}),
   });
+  invalidateTaskCaches(taskId);
+  return res;
 }
 
 // UI-facing label for this action is always "Resubmit", never "Reject" (user
 // preference) — but it calls the backend's /reject route, which is what
 // actually drives the review -> resubmit transition.
 export async function apiRequestResubmit(taskId: string, assignmentId: string, comment: string): Promise<ApiWorkflowResponse> {
-  return apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/reject`, {
+  const res = await apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/reject`, {
     method: 'PATCH',
     body: JSON.stringify({ comment }),
   });
+  invalidateTaskCaches(taskId);
+  return res;
 }

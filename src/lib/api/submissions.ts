@@ -1,15 +1,23 @@
 import type { PrdSubmission, PrdStatus, DocumentType } from '../types';
-import { apiFetch } from './client';
+import { apiFetch, cachedFetch, invalidateCached } from './client';
+
+const SUBMISSIONS_TTL = 15_000;
 
 // Student — all PRD versions submitted for a given project allocation, latest first.
 export async function apiGetPrdSubmissionsByAllocation(allocationId: string): Promise<PrdSubmission[]> {
-  return apiFetch<PrdSubmission[]>(`/api/v1/allocations/${allocationId}/submissions`);
+  return cachedFetch(`submissions:byAllocation:${allocationId}`, SUBMISSIONS_TTL, () =>
+    apiFetch<PrdSubmission[]>(`/api/v1/allocations/${allocationId}/submissions`)
+  );
 }
 
-// Mentor/Admin/Batch Manager — every PRD submission across all allocations, for review dashboards.
+// Mentor/Admin/Batch Manager — every PRD submission across all allocations,
+// for review dashboards. Both the admin and mentor Submissions pages
+// independently fetch this whole list on mount, then filter client-side.
 export async function apiGetAllPrdSubmissions(status?: PrdStatus): Promise<PrdSubmission[]> {
   const qs = status ? `?status=${status}` : '';
-  return apiFetch<PrdSubmission[]>(`/api/v1/submissions${qs}`);
+  return cachedFetch(`submissions:all:${status || 'all'}`, SUBMISSIONS_TTL, () =>
+    apiFetch<PrdSubmission[]>(`/api/v1/submissions${qs}`)
+  );
 }
 
 export async function apiGetPrdSubmission(id: string): Promise<PrdSubmission> {
@@ -38,6 +46,15 @@ export async function apiUploadPrd(params: {
     method: 'POST',
     body: formData,
   });
+  invalidateCached('submissions:all');
+  invalidateCached(`submissions:byAllocation:${allocationId}`);
+  // A task-linked upload also auto-transitions that task's assignment status
+  // server-side (see SubmissionService.syncAssignmentStatus) — the task
+  // caches would otherwise show a stale pre-submission status.
+  if (taskId) {
+    invalidateCached('tasks:list');
+    invalidateCached(`tasks:get:${taskId}`);
+  }
   return res.submission;
 }
 
@@ -47,10 +64,17 @@ export async function apiReviewPrdSubmission(
   status: Extract<PrdStatus, 'under_review' | 'changes_requested' | 'approved'>,
   mentorFeedback?: string,
 ): Promise<PrdSubmission> {
-  return apiFetch<PrdSubmission>(`/api/v1/submissions/${id}/review`, {
+  const res = await apiFetch<PrdSubmission>(`/api/v1/submissions/${id}/review`, {
     method: 'POST',
     body: JSON.stringify({ status, mentorFeedback }),
   });
+  invalidateCached('submissions:all');
+  invalidateCached('submissions:byAllocation');
+  // A review decision also drives the linked task's assignment status
+  // (approved/resubmit) — invalidate broadly since the task id isn't known
+  // here, only the submission id.
+  invalidateCached('tasks:list');
+  return res;
 }
 
 // Generates a short-lived signed URL to view/download the PRD PDF.

@@ -1,16 +1,20 @@
 import type { TeamAllocationDetail, StudentAllocation, MentorLoadSummaryRow } from '../types';
-import { apiFetch } from './client';
+import { apiFetch, cachedFetch, invalidateCached } from './client';
 import { mapFrontendTrackToBackend } from './trackMapping';
+
+const ALLOCATION_TTL = 15_000;
 
 // Student — the logged-in student's own project allocation, if any.
 export async function apiGetMyAllocation(): Promise<StudentAllocation> {
-  return apiFetch<StudentAllocation>('/api/v1/allocations/me');
+  return cachedFetch('allocation:me', ALLOCATION_TTL, () => apiFetch<StudentAllocation>('/api/v1/allocations/me'));
 }
 
 // All authenticated roles — a single allocation by ID (used to resolve which
 // student a PRD submission belongs to on the mentor/admin review screens).
+// Admin and mentor submission-review pages both look up the same allocation
+// IDs independently — cached so the two don't duplicate the round trip.
 export async function apiGetAllocation(id: string): Promise<StudentAllocation> {
-  return apiFetch<StudentAllocation>(`/api/v1/allocations/${id}`);
+  return cachedFetch(`allocation:${id}`, ALLOCATION_TTL, () => apiFetch<StudentAllocation>(`/api/v1/allocations/${id}`));
 }
 
 export interface TeamsForCohortPage {
@@ -49,6 +53,7 @@ export async function apiGetTeamsForCohortDetailed(
 // Admin — runs the deferred-acceptance resolution across every pending team in the cohort.
 export async function apiRunAllocation(cohortId: string): Promise<void> {
   await apiFetch<void>(`/api/v1/teams/cohort/${cohortId}/allocate`, { method: 'POST' });
+  invalidateCached('allocation');
 }
 
 // Admin — manual override, restricted server-side to the team's own two preferences.
@@ -57,6 +62,7 @@ export async function apiOverrideTeamAllocation(teamId: string, allocatedProject
     method: 'PATCH',
     body: JSON.stringify({ allocatedProjectId }),
   });
+  invalidateCached('allocation');
 }
 
 // Admin — one-step resolution for a team with no allocation yet: the
@@ -68,6 +74,7 @@ export async function apiResolveTeamAllocation(teamId: string, allocatedProjectI
     method: 'PATCH',
     body: JSON.stringify({ allocatedProjectId, mentorId }),
   });
+  invalidateCached('allocation');
 }
 
 // Admin — how many teams are currently allocated to each mentor, per track, against their threshold.
@@ -79,9 +86,11 @@ export async function apiGetMentorLoadSummary(cohortId: string): Promise<MentorL
 // pending (submitted preferences are kept). Manually-overridden teams are
 // left untouched. Returns how many teams were reversed.
 export async function apiReverseAllocation(cohortId: string): Promise<{ reversedCount: number }> {
-  return apiFetch<{ success: boolean; reversedCount: number }>(`/api/v1/teams/cohort/${cohortId}/reverse-allocation`, {
+  const res = await apiFetch<{ success: boolean; reversedCount: number }>(`/api/v1/teams/cohort/${cohortId}/reverse-allocation`, {
     method: 'POST',
   });
+  invalidateCached('allocation');
+  return res;
 }
 
 // Admin — locks in the cohort's current draft results, making them visible
@@ -89,4 +98,5 @@ export async function apiReverseAllocation(cohortId: string): Promise<{ reversed
 // needs_review (cohort's allocationRunStatus must be 'draft').
 export async function apiPublishAllocation(cohortId: string): Promise<void> {
   await apiFetch<void>(`/api/v1/teams/cohort/${cohortId}/publish-allocation`, { method: 'POST' });
+  invalidateCached('allocation');
 }
