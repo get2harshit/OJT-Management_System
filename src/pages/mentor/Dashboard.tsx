@@ -35,9 +35,9 @@ export default function MentorDashboard({
   const { submissions: hookSubmissions } = useSubmissions();
   const { attendance: hookAttendance } = useAttendance();
 
-  const tasks = propTasks ?? hookTasks;
-  const submissions = propSubmissions ?? hookSubmissions;
-  const attendance = propAttendance ?? hookAttendance;
+  const tasks = propTasks ?? hookTasks ?? [];
+  const submissions = propSubmissions ?? hookSubmissions ?? [];
+  const attendance = propAttendance ?? hookAttendance ?? [];
 
   // Real roster: teams this mentor is actually allocated to (primary or
   // secondary), joined against the student profile list for batch/roll

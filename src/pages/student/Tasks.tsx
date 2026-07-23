@@ -31,7 +31,11 @@ export default function StudentTasks({
   const [filter, setFilter] = useState<TaskFilter>('ALL');
 
   useEffect(() => {
-    apiListTasks().then(res => setTasks(res.data || [])).catch(console.error);
+    apiListTasks().then(res => {
+      let t = Array.isArray(res) ? res : (res?.data || []);
+      if (!Array.isArray(t)) t = [];
+      setTasks(t);
+    }).catch(console.error);
   }, []);
 
   const taskData = useMemo(() => {

@@ -27,10 +27,10 @@ export default function StudentDashboard({
   const { credits: hookCredits } = useCredits();
   const { attendance: hookAttendance } = useAttendance();
 
-  const tasks = propTasks ?? hookTasks;
-  const submissions = propSubmissions ?? hookSubmissions;
-  const credits = propCredits ?? hookCredits;
-  const attendance = propAttendance ?? hookAttendance;
+  const tasks = propTasks ?? hookTasks ?? [];
+  const submissions = propSubmissions ?? hookSubmissions ?? [];
+  const credits = propCredits ?? hookCredits ?? [];
+  const attendance = propAttendance ?? hookAttendance ?? [];
   const mySubmissions = submissions.filter((s) => s.student_id === studentId);
   const myCredits = credits.filter((c) => c.student_id === studentId);
   const myAttendance = attendance.filter((a) => a.student_id === studentId);

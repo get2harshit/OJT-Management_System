@@ -153,6 +153,17 @@ function loadData(): StoredData {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<StoredData>;
       if (!parsed.creditRequests) parsed.creditRequests = defaultCreditRequests;
+      if (!parsed.tasks) parsed.tasks = defaultTasks;
+      if (!parsed.students) parsed.students = defaultStudents;
+      if (!parsed.submissions) parsed.submissions = defaultSubmissions;
+      if (!parsed.credits) parsed.credits = defaultCredits;
+      if (!parsed.attendance) parsed.attendance = defaultAttendance;
+      if (!parsed.comments) parsed.comments = defaultComments;
+      if (!parsed.ojts) parsed.ojts = defaultOJTs;
+      if (!parsed.projects) parsed.projects = defaultProjects;
+      if (!parsed.semesters) parsed.semesters = defaultSemesters;
+      if (!parsed.batches) parsed.batches = defaultBatches;
+      if (!parsed.profiles) parsed.profiles = defaultProfiles;
 
       const hasOldTracks = parsed.students?.some((s) =>
         s.track === 'Cloud Computing' || s.track === 'DevOps' || s.track === 'Full Stack'

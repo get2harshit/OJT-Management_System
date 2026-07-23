@@ -55,7 +55,11 @@ export default function StudentSubmissions({
 
   useEffect(() => {
     if (!studentId) return;
-    apiListTasks().then((res) => setMyTasks(res.data || [])).catch(console.error);
+    apiListTasks().then((res) => {
+      let t = Array.isArray(res) ? res : (res?.data || []);
+      if (!Array.isArray(t)) t = [];
+      setMyTasks(t);
+    }).catch(console.error);
   }, [studentId]);
 
   // Per document type: is there a task of that type still needing a
