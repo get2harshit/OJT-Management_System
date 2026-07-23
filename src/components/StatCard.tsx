@@ -30,8 +30,8 @@ export default function StatCard({ title, value, icon: Icon, trend, onClick }: S
           </span>
         )}
       </div>
-      <p className="text-2xl font-bold text-white">{value}</p>
-      <p className="text-sm text-gray-400 mt-1">{title}</p>
+      <p className="text-2xl font-bold text-white truncate" title={String(value)}>{value}</p>
+      <p className="text-sm text-gray-400 mt-1 truncate" title={title}>{title}</p>
     </Wrapper>
   );
 }

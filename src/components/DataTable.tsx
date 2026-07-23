@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Download, Inbox } from 'lucide-react';
 import { exportToCSV } from '../lib/csvExport';
 
 interface Column<T> {
@@ -240,8 +240,12 @@ export default function DataTable<T extends Record<string, unknown>>({
             ))}
             {paginated.length === 0 && (
               <tr>
-                <td colSpan={columns.length + (actions ? 1 : 0)} className="px-4 py-8 text-center text-gray-500">
-                  No records found
+                <td colSpan={columns.length + (actions ? 1 : 0)} className="px-4 py-16 text-center text-gray-500">
+                  <div className="flex flex-col items-center justify-center gap-1">
+                    <Inbox size={32} className="text-zinc-600 mb-2" />
+                    <p className="text-sm font-medium text-gray-400">No records found</p>
+                    <p className="text-xs text-gray-500">Try adjusting your search or filters</p>
+                  </div>
                 </td>
               </tr>
             )}
@@ -289,7 +293,11 @@ export default function DataTable<T extends Record<string, unknown>>({
           </div>
         ))}
         {paginated.length === 0 && (
-          <div className="px-4 py-8 text-center text-gray-500 text-sm">No records found</div>
+          <div className="px-4 py-16 text-center text-gray-500 flex flex-col items-center justify-center gap-1">
+            <Inbox size={32} className="text-zinc-600 mb-2" />
+            <p className="text-sm font-medium text-gray-400">No records found</p>
+            <p className="text-xs text-gray-500">Try adjusting your search or filters</p>
+          </div>
         )}
       </div>
 

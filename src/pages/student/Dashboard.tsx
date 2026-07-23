@@ -48,13 +48,13 @@ export default function StudentDashboard({
   const attendanceDays = myAttendance.length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 lg:space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white">Student Dashboard</h1>
         <p className="text-gray-400 text-sm mt-1">Track your OJT progress and tasks</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6">
         <StatCard title="Pending Tasks" value={pendingTasks} icon={Clock} trend="To do" />
         <StatCard title="Submissions" value={mySubmissions.length} icon={FolderOpen} />
         <StatCard title="Pending Review" value={pendingCount} icon={CheckSquare} trend="Awaiting" />
@@ -63,7 +63,7 @@ export default function StudentDashboard({
         <StatCard title="Progress" value={`${Math.round((acceptedCount / (tasks.length || 1)) * 100)}%`} icon={TrendingUp} trend="Keep going" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-white">My Submission Status</h3>

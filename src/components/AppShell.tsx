@@ -175,7 +175,7 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
           </div>
         </header>
 
-        <main className="flex-1 min-h-0 p-6 overflow-auto flex flex-col">
+        <main className="flex-1 min-h-0 p-4 sm:p-6 lg:p-8 overflow-auto flex flex-col">
           <div className="w-full h-full flex-1 min-h-0 flex flex-col">
             {children}
           </div>

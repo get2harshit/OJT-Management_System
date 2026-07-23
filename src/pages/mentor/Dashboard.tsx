@@ -112,7 +112,7 @@ export default function MentorDashboard({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 lg:space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white">Mentor Dashboard</h1>
         <p className="text-gray-400 text-sm mt-1">Overview of your assigned students and tasks</p>
@@ -138,7 +138,7 @@ export default function MentorDashboard({
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-6">
         <StatCard title="My Students" value={filteredStudents.length} icon={Users} />
         <StatCard title="My Tasks" value={myTasks.length} icon={CheckSquare} />
         <StatCard title="Pending Reviews" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" />
@@ -146,7 +146,7 @@ export default function MentorDashboard({
         <StatCard title="Avg Progress" value="72%" icon={TrendingUp} trend="+5%" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-white">Submission Status</h3>
