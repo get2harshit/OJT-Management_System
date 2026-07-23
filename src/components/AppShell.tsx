@@ -98,7 +98,7 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
       {/* The sidebar is fixed (so it stays put while this pane scrolls), which
           takes it out of normal flow — this margin reserves its width instead. */}
       <div className={`flex-1 flex flex-col min-w-0 min-h-0 transition-all duration-300 ${collapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
-        <header className="flex items-center justify-between h-14 px-4 sm:px-6 border-b border-zinc-750 bg-zinc-850">
+        <header className="flex items-center justify-between h-16 px-4 sm:px-6 bg-black">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileOpen(true)}
