@@ -1252,7 +1252,7 @@ function SummaryScreen({
 
         {loading ? (
           <div className="py-6 flex justify-center"><SpinnerSquare size={32} /></div>
-        ) : (
+        ) : isAllocated ? null : (
           <>
             <div>
               <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">
@@ -1285,36 +1285,38 @@ function SummaryScreen({
         )}
       </div>
 
-      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
-        <div className="flex items-center gap-2 text-white text-sm font-semibold">
-          <UserCheck size={16} className="text-gold" />
-          Mentor selection
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference 1 mentor</p>
-            {mentor1 ? (
-              <div className="flex items-center gap-2">
-                <MentorAvatar name={mentor1.fullName} selected />
-                <p className="text-white font-semibold">{mentor1.fullName}</p>
-              </div>
-            ) : (
-              <p className="text-white font-semibold">—</p>
-            )}
+      {!isAllocated && (
+        <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
+          <div className="flex items-center gap-2 text-white text-sm font-semibold">
+            <UserCheck size={16} className="text-gold" />
+            Mentor selection
           </div>
-          <div>
-            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference 2 mentor</p>
-            {mentor2 ? (
-              <div className="flex items-center gap-2">
-                <MentorAvatar name={mentor2.fullName} selected />
-                <p className="text-white font-semibold">{mentor2.fullName}</p>
-              </div>
-            ) : (
-              <p className="text-white font-semibold">—</p>
-            )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference 1 mentor</p>
+              {mentor1 ? (
+                <div className="flex items-center gap-2">
+                  <MentorAvatar name={mentor1.fullName} selected />
+                  <p className="text-white font-semibold">{mentor1.fullName}</p>
+                </div>
+              ) : (
+                <p className="text-white font-semibold">—</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference 2 mentor</p>
+              {mentor2 ? (
+                <div className="flex items-center gap-2">
+                  <MentorAvatar name={mentor2.fullName} selected />
+                  <p className="text-white font-semibold">{mentor2.fullName}</p>
+                </div>
+              ) : (
+                <p className="text-white font-semibold">—</p>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {isRejected && (
         <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">

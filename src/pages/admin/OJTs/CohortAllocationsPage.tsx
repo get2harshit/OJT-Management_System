@@ -14,6 +14,7 @@ import {
   apiOverrideTeamAllocation,
   apiResolveTeamAllocation,
   apiGetMentorLoadSummary,
+  apiGetRunnableTeamCount,
   apiReverseAllocation,
   apiPublishAllocation,
   apiGetCohort,
@@ -72,6 +73,15 @@ export default function CohortAllocationsPage() {
   const [reversing, setReversing] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [runStatus, setRunStatus] = useState<CohortAllocationRunStatus>('pending');
+  // Sticky — set once on first publish, never cleared, even while
+  // runStatus later cycles back to 'draft'/'review' for a fresh batch of
+  // teams. Drives the Reverse Allocation lock, which must stay disabled
+  // forever once a cohort has ever been published.
+  const [publishedAt, setPublishedAt] = useState<string | null>(null);
+  // How many teams still have something for Run Allocation to do (status
+  // 'pending' or 'needs_review') — once this hits 0, Run Allocation has
+  // nothing left to run until a later batch of teams submits preferences.
+  const [runnableCount, setRunnableCount] = useState(0);
   const [overrideTeam, setOverrideTeam] = useState<TeamAllocationDetail | null>(null);
   const [savingOverride, setSavingOverride] = useState(false);
   const [resolveTeam, setResolveTeam] = useState<TeamAllocationDetail | null>(null);
@@ -130,9 +140,10 @@ export default function CohortAllocationsPage() {
   const fetchAuxData = useCallback(async () => {
     if (!cohortId) return;
     try {
-      const [cohort, loadSummary] = await Promise.all([
+      const [cohort, loadSummary, runnable] = await Promise.all([
         apiGetCohort(cohortId),
         apiGetMentorLoadSummary(cohortId),
+        apiGetRunnableTeamCount(cohortId),
       ]);
       setCohortLabel(getCohortLabel(cohort));
       setCohortMentors(cohort.mentors ?? []);
@@ -143,6 +154,8 @@ export default function CohortAllocationsPage() {
       // below, so a stale/mismatched backend degrades gracefully instead
       // of crashing the whole page.
       setRunStatus(cohort.allocationRunStatus ?? 'pending');
+      setPublishedAt(cohort.allocationPublishedAt ?? null);
+      setRunnableCount(runnable);
       setMentorLoadSummary(loadSummary);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load cohort data');
@@ -381,7 +394,10 @@ export default function CohortAllocationsPage() {
   }));
 
   const needsReviewCount = teams.filter((t) => t.allocationStatus === 'needs_review').length;
-  const isPublished = runStatus === 'published';
+  // Sticky — a cohort that already published one batch can still Run/
+  // Override/Resolve for a later batch of teams without limit; only
+  // Reverse Allocation stays locked forever once this is true.
+  const everPublished = !!publishedAt;
   const mutationInFlight = running || reversing || publishing;
 
   return (
@@ -399,8 +415,13 @@ export default function CohortAllocationsPage() {
                 {needsReviewCount} team{needsReviewCount === 1 ? '' : 's'} need{needsReviewCount === 1 ? 's' : ''} review before this cohort can be published.
               </span>
             )}
-            {isPublished && (
-              <span className="text-xs text-gray-400">Locked — run, reverse, and manual overrides are disabled.</span>
+            {everPublished && (
+              <span className="text-xs text-gray-400">
+                Published — Reverse Allocation is locked for good.{' '}
+                {runnableCount > 0
+                  ? `${runnableCount} team${runnableCount === 1 ? '' : 's'} added since publish — Run Allocation will only resolve those.`
+                  : 'Run Allocation has nothing new to do right now.'}
+              </span>
             )}
           </div>
         </div>
@@ -423,8 +444,8 @@ export default function CohortAllocationsPage() {
           </button>
           <button
             onClick={handleReverseAllocation}
-            disabled={mutationInFlight || loading || isPublished}
-            title={isPublished ? 'Locked — this cohort has already been published' : undefined}
+            disabled={mutationInFlight || loading || everPublished}
+            title={everPublished ? 'Locked — this cohort has already been published' : undefined}
             className="flex items-center gap-1.5 text-sm px-4 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
           >
             <RotateCcw size={14} />
@@ -432,8 +453,14 @@ export default function CohortAllocationsPage() {
           </button>
           <button
             onClick={handleRunAllocation}
-            disabled={mutationInFlight || loading || isPublished}
-            title={isPublished ? 'Locked — this cohort has already been published' : undefined}
+            disabled={mutationInFlight || loading || runnableCount === 0}
+            title={
+              runnableCount === 0
+                ? 'Nothing to run — no team is pending or needs review right now'
+                : everPublished
+                ? `Resolves the ${runnableCount} team(s) added since this cohort was published`
+                : undefined
+            }
             className="flex items-center gap-1.5 text-sm px-4 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
           >
             <Shuffle size={14} />
@@ -653,10 +680,11 @@ export default function CohortAllocationsPage() {
             })}
 
             <div className="flex items-center gap-2 pt-2">
+              {/* Not locked by publish state — a team from a batch added
+                  after this cohort's first publish still needs Override/
+                  Resolve to go through its own allocate → publish cycle. */}
               <button
                 onClick={() => { setOverrideTeam(detailTeam); setDetailTeam(null); }}
-                disabled={isPublished}
-                title={isPublished ? 'Locked — this cohort has already been published' : undefined}
                 className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
               >
                 <ArrowLeftRight size={14} />
@@ -668,8 +696,6 @@ export default function CohortAllocationsPage() {
                   setResolveTeam(detailTeam);
                   setDetailTeam(null);
                 }}
-                disabled={isPublished}
-                title={isPublished ? 'Locked — this cohort has already been published' : undefined}
                 className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
               >
                 <UserCog size={14} />
