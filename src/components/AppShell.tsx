@@ -124,10 +124,15 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setProfileOpen(!profileOpen)}
-                  className="w-9 h-9 rounded-full bg-gradient-to-tr from-amber-500 to-amber-400 text-black font-bold text-sm flex items-center justify-center ring-2 ring-gold/30 hover:ring-gold/60 shadow-md cursor-pointer transition-all hover:scale-105 active:scale-95 shrink-0"
+                  className="flex items-center gap-2.5 rounded-full bg-zinc-800/50 hover:bg-zinc-750 transition-colors p-1 pr-3.5 ring-1 ring-zinc-700/50 hover:ring-zinc-600 active:scale-95 cursor-pointer"
                   title={displayName}
                 >
-                  {displayName ? displayName.charAt(0).toUpperCase() : <User size={16} />}
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-amber-500 to-amber-400 text-black font-bold text-xs flex items-center justify-center shadow-md shrink-0">
+                    {displayName ? displayName.charAt(0).toUpperCase() : <User size={14} />}
+                  </div>
+                  <span className="text-xs font-semibold text-white hidden sm:block tracking-wide">
+                    {PANEL_LABELS[panel]}
+                  </span>
                 </button>
 
                 {/* Dropdown Menu (Visible Down On Click) */}
