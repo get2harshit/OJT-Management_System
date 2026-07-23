@@ -82,6 +82,15 @@ export async function apiGetMentorLoadSummary(cohortId: string): Promise<MentorL
   return apiFetch<MentorLoadSummaryRow[]>(`/api/v1/teams/cohort/${cohortId}/mentor-load-summary`);
 }
 
+// Admin — how many teams still have something for Run Allocation to do
+// (status 'pending' or 'needs_review'). Drives the Run Allocation button:
+// a fully-resolved (possibly already-published) cohort shows 0 here until a
+// later batch of teams submits fresh preferences.
+export async function apiGetRunnableTeamCount(cohortId: string): Promise<number> {
+  const res = await apiFetch<{ count: number }>(`/api/v1/teams/cohort/${cohortId}/runnable-count`);
+  return res.count;
+}
+
 // Admin — bulk-resets every algorithm-allocated team in the cohort back to
 // pending (submitted preferences are kept). Manually-overridden teams are
 // left untouched. Returns how many teams were reversed.
