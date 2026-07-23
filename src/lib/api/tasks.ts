@@ -1,20 +1,40 @@
 import { apiFetch } from './client';
 import { mapFrontendTrackToBackend } from './trackMapping';
 
-// Subtasks live as a JSON blob on each assignment (ojt_task_assignments.subtasks),
-// not as their own table — every assignee gets their own clone of the same
-// list (same ids, independently-updatable status) at task-creation time.
-export interface ApiAssignmentSubtask {
+export type ApiAssignmentStatus = 'pending' | 'review' | 'resubmit' | 'approved';
+
+export interface ApiTaskComment {
   id: string;
-  title: string;
-  status: 'pending' | 'progress' | 'completed';
+  comment_text: string;
+  status_to: string;
+  is_mandatory: boolean;
+  created_at: string;
+  commented_by?: {
+    id: string;
+    full_name: string;
+    role: string;
+  };
+}
+
+export interface ApiTaskStatusHistory {
+  id: string;
+  from_status: ApiAssignmentStatus;
+  to_status: ApiAssignmentStatus;
+  version_number: number;
+  changed_by_id: string;
+  changed_at: string;
+  document_submission_id?: string | null;
+  comments?: ApiTaskComment[];
 }
 
 export interface ApiAssignment {
   id: string;
   task_id: string;
   assignee_id: string;
-  status: 'pending' | 'progress' | 'completed';
+  team_id?: string | null;
+  status: ApiAssignmentStatus;
+  resubmit_count: number;
+  max_resubmit_count: number;
   assigned_at: string;
   updated_at: string;
   assignee?: {
@@ -22,7 +42,8 @@ export interface ApiAssignment {
     full_name: string;
     role: string;
   };
-  subtasks?: ApiAssignmentSubtask[];
+  statusHistory?: ApiTaskStatusHistory[];
+  comments?: ApiTaskComment[];
 }
 
 export interface ApiTask {
@@ -35,6 +56,7 @@ export interface ApiTask {
   deadline: string;
   target_role: 'student' | 'mentor' | 'batch_manager';
   task_type?: ApiTaskType | null;
+  category: ApiTaskCategory;
   assign_mode?: ApiTaskAssignMode | null;
   assigned_by_id: string;
   created_at: string;
@@ -48,26 +70,30 @@ export interface ApiTask {
 }
 
 export type ApiTaskType = 'prd' | 'db_schema' | 'hld' | 'lld' | 'api_contract' | 'others';
+export type ApiTaskCategory = 'document_submission' | 'general' | 'link_submission';
 export type ApiTaskAssignMode = 'team' | 'individual';
 
+// Backend requires week/track/start_date/deadline/target_role/task_type/
+// category/assign_mode unconditionally now (only `title` used to be
+// required) — see createTaskSchema in task.routes.ts.
 export interface CreateTaskPayload {
   title: string;
   description?: string;
-  week?: string; // e.g. "Week 1"
-  track?: string; // e.g. "product_development" (will be mapped automatically)
-  startDate?: string; // ISO datetime string
-  deadline?: string; // ISO datetime string
-  targetRole?: 'student' | 'mentor' | 'batch_manager';
-  taskType?: ApiTaskType;
-  assignMode?: ApiTaskAssignMode;
+  week: string; // e.g. "Week 1"
+  track: string; // e.g. "product_development" (will be mapped automatically)
+  start_date: string; // ISO datetime string, must be before deadline
+  deadline: string; // ISO datetime string
+  target_role: 'student' | 'mentor' | 'batch_manager';
+  task_type: ApiTaskType;
+  category: ApiTaskCategory;
+  assign_mode: ApiTaskAssignMode;
   batch?: string;
   teamIds?: string[];
   assignees?: string[];
-  subtasks?: string[];
 }
 
 // Backend's PUT /tasks/:id only persists these fields (see updateTaskSchema in
-// task.routes.ts and TaskService.updateTask) — reassigning assignees/subtasks/
+// task.routes.ts and TaskService.updateTask) — reassigning assignees/
 // targetRole/batch isn't supported on update, only at creation time.
 export interface UpdateTaskPayload {
   title?: string;
@@ -75,6 +101,26 @@ export interface UpdateTaskPayload {
   week?: string;
   track?: string;
   deadline?: string;
+}
+
+export interface ApiTaskPagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
+
+export interface ApiTaskListFilter {
+  page?: number;
+  limit?: number;
+  task_type?: ApiTaskType;
+  category?: ApiTaskCategory;
+  status?: ApiAssignmentStatus;
+  week?: string;
+  batch?: string;
+  track?: string;
+  assignee?: string;
+  sort?: 'deadline' | 'created_at' | 'week' | 'status';
 }
 
 export async function apiCreateTask(payload: CreateTaskPayload): Promise<{ success: boolean; message: string; data: ApiTask }> {
@@ -88,10 +134,23 @@ export async function apiCreateTask(payload: CreateTaskPayload): Promise<{ succe
   });
 }
 
-export async function apiListTasks(): Promise<{ success: boolean; data: ApiTask[] }> {
-  return apiFetch<{ success: boolean; data: ApiTask[] }>('/api/v1/tasks', {
-    method: 'GET',
+// GET /tasks response is double-nested ({success, data: {data, pagination}})
+// server-side — flattened here so `res.data` stays the plain task array for
+// every existing caller, with `res.pagination` added alongside for callers
+// that want to build pagination controls.
+export async function apiListTasks(filter: ApiTaskListFilter = {}): Promise<{ success: boolean; data: ApiTask[]; pagination: ApiTaskPagination }> {
+  const params = new URLSearchParams();
+  Object.entries(filter).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value));
+    }
   });
+  const qs = params.toString();
+  const res = await apiFetch<{ success: boolean; data: { data: ApiTask[]; pagination: ApiTaskPagination } }>(
+    `/api/v1/tasks${qs ? `?${qs}` : ''}`,
+    { method: 'GET' }
+  );
+  return { success: res.success, data: res.data.data, pagination: res.data.pagination };
 }
 
 export async function apiGetTask(id: string): Promise<{ success: boolean; data: ApiTask }> {
@@ -117,33 +176,43 @@ export async function apiDeleteTask(id: string): Promise<{ success: boolean; mes
   });
 }
 
-export async function apiUpdateAssignmentStatus(
-  taskId: string,
-  assignmentId: string,
-  status: 'pending' | 'progress' | 'completed'
-): Promise<{ success: boolean; message: string; data: ApiAssignment }> {
-  return apiFetch<{ success: boolean; message: string; data: ApiAssignment }>(
-    `/api/v1/tasks/${taskId}/assignments/${assignmentId}/status`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify({ status }),
-    }
-  );
+export interface ApiWorkflowResponse {
+  success: boolean;
+  message: string;
+  data: ApiAssignment;
 }
 
-// Backend returns the whole updated assignment (subtasks JSON included),
-// not a standalone subtask-progress record.
-export async function apiUpdateSubtaskProgressStatus(
-  taskId: string,
-  assignmentId: string,
-  subtaskId: string,
-  status: 'pending' | 'progress' | 'completed'
-): Promise<{ success: boolean; message: string; data: ApiAssignment }> {
-  return apiFetch<{ success: boolean; message: string; data: ApiAssignment }>(
-    `/api/v1/tasks/${taskId}/assignments/${assignmentId}/subtasks/${subtaskId}/status`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify({ status }),
-    }
-  );
+// Only meaningful for non-document tasks (category !== 'document_submission')
+// — a document-linked task's pending/resubmit -> review transition already
+// happens automatically server-side the moment the student uploads a
+// document via apiUploadPrd (see SubmissionService.syncAssignmentStatus).
+export async function apiSubmitTask(taskId: string, assignmentId: string, documentSubmissionId?: string): Promise<ApiWorkflowResponse> {
+  return apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/submit`, {
+    method: 'POST',
+    body: JSON.stringify(documentSubmissionId ? { documentSubmissionId } : {}),
+  });
+}
+
+export async function apiResubmitTask(taskId: string, assignmentId: string, documentSubmissionId?: string): Promise<ApiWorkflowResponse> {
+  return apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/resubmit`, {
+    method: 'POST',
+    body: JSON.stringify(documentSubmissionId ? { documentSubmissionId } : {}),
+  });
+}
+
+export async function apiApproveTask(taskId: string, assignmentId: string, comment?: string): Promise<ApiWorkflowResponse> {
+  return apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/approve`, {
+    method: 'PATCH',
+    body: JSON.stringify(comment ? { comment } : {}),
+  });
+}
+
+// UI-facing label for this action is always "Resubmit", never "Reject" (user
+// preference) — but it calls the backend's /reject route, which is what
+// actually drives the review -> resubmit transition.
+export async function apiRequestResubmit(taskId: string, assignmentId: string, comment: string): Promise<ApiWorkflowResponse> {
+  return apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/reject`, {
+    method: 'PATCH',
+    body: JSON.stringify({ comment }),
+  });
 }

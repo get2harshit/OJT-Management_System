@@ -32,6 +32,7 @@ interface RawTeam {
   track: string;
   isIndividual: boolean;
   members?: RawTeamMember[];
+  cohortId?: string;
 }
 
 interface RawAdminTeam extends RawTeam {
@@ -185,6 +186,7 @@ function mapTeam(t: RawTeam): Team {
       studentId: m.studentId,
       fullName: m.fullName ?? null,
     })),
+    cohortId: t.cohortId,
   };
 }
 

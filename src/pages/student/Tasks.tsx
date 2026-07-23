@@ -1,20 +1,20 @@
-import { useState, useMemo, useEffect } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, ListFilter, Upload } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { AlertTriangle, CheckCircle2, Clock, ListFilter, Loader2, RotateCcw, Upload } from 'lucide-react';
 import DataTable from '../../components/DataTable';
-import { apiListTasks } from '../../lib/api/tasks';
+import { apiListTasks, apiSubmitTask, apiResubmitTask } from '../../lib/api/tasks';
 import type { ApiTask } from '../../lib/api/tasks';
 
-type TaskFilter = 'ALL' | 'MISSED' | 'IN_PROGRESS' | 'COMPLETED' | 'UPCOMING';
+type TaskFilter = 'ALL' | 'MISSED' | 'IN_REVIEW' | 'RESUBMIT' | 'COMPLETED' | 'UPCOMING';
 
-function getTaskStatus(task: ApiTask, studentId: string) {
+function getTaskStatus(task: ApiTask, studentId: string): TaskFilter {
   const myAssignment = task.assignments?.find(a => a.assignee_id === studentId);
   const status = myAssignment?.status;
-
   const isPastDue = task.deadline ? new Date(task.deadline) < new Date() : false;
 
-  if (status === 'completed') return 'COMPLETED';
-  if (status === 'progress' || status === 'pending') return 'IN_PROGRESS'; // Pending usually means they started but haven't finished, or they just got it.
-  if (isPastDue && status !== 'completed') return 'MISSED';
+  if (status === 'approved') return 'COMPLETED';
+  if (status === 'review') return 'IN_REVIEW';
+  if (status === 'resubmit') return 'RESUBMIT';
+  if (isPastDue) return 'MISSED';
   return 'UPCOMING';
 }
 
@@ -29,14 +29,36 @@ export default function StudentTasks({
 }) {
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [filter, setFilter] = useState<TaskFilter>('ALL');
+  const [savingId, setSavingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    apiListTasks().then(res => {
-      let t = Array.isArray(res) ? res : (res?.data || []);
-      if (!Array.isArray(t)) t = [];
-      setTasks(t);
+  const loadTasks = useCallback(() => {
+    return apiListTasks().then(res => {
+      const t = Array.isArray(res) ? res : (res?.data || []);
+      setTasks(Array.isArray(t) ? t : []);
     }).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    loadTasks();
+  }, [loadTasks]);
+
+  // For a general/link_submission task (no document to upload), Submit and
+  // Resubmit hit the workflow endpoints directly instead of routing through
+  // the Submissions tab — a document_submission task's transition happens
+  // automatically server-side the moment the document is uploaded there.
+  const handleInlineSubmit = async (task: ApiTask, assignmentId: string, isResubmit: boolean) => {
+    setSavingId(assignmentId);
+    try {
+      if (isResubmit) {
+        await apiResubmitTask(task.id, assignmentId);
+      } else {
+        await apiSubmitTask(task.id, assignmentId);
+      }
+      await loadTasks();
+    } finally {
+      setSavingId(null);
+    }
+  };
 
   const taskData = useMemo(() => {
     return tasks.map((task) => {
@@ -47,11 +69,14 @@ export default function StudentTasks({
         id: task.id,
         title: task.title,
         description: task.description || '-',
-        start_date: '-', 
+        start_date: task.start_date ? new Date(task.start_date).toLocaleDateString() : '-',
         due_date: task.deadline ? new Date(task.deadline).toLocaleDateString() : '-',
         status,
-        submission_status: myAssignment?.status ? myAssignment.status.toUpperCase() : 'NOT_SUBMITTED',
-        version: '-', // Assuming versions are handled in submissions API
+        category: task.category,
+        assignmentId: myAssignment?.id,
+        assignmentStatus: myAssignment?.status,
+        resubmitCount: myAssignment?.resubmit_count ?? 0,
+        maxResubmitCount: myAssignment?.max_resubmit_count ?? 5,
       };
     });
   }, [tasks, studentId]);
@@ -63,17 +88,19 @@ export default function StudentTasks({
 
   const completed = taskData.filter(t => t.status === 'COMPLETED').length;
   const missed = taskData.filter(t => t.status === 'MISSED').length;
-  const inProgress = taskData.filter(t => t.status === 'IN_PROGRESS').length;
+  const inReview = taskData.filter(t => t.status === 'IN_REVIEW').length;
+  const resubmit = taskData.filter(t => t.status === 'RESUBMIT').length;
   const upcoming = taskData.filter(t => t.status === 'UPCOMING').length;
   const total = taskData.length || 1;
   const completedPct = Math.round((completed / total) * 100);
   const missedPct = Math.round((missed / total) * 100);
-  const inProgressPct = Math.round((inProgress / total) * 100);
+  const activePct = Math.round(((inReview + resubmit) / total) * 100);
 
   const filters: { key: TaskFilter; label: string; count: number }[] = [
     { key: 'ALL', label: 'All Tasks', count: taskData.length },
     { key: 'MISSED', label: 'Missed', count: missed },
-    { key: 'IN_PROGRESS', label: 'In Progress', count: inProgress },
+    { key: 'RESUBMIT', label: 'Resubmit', count: resubmit },
+    { key: 'IN_REVIEW', label: 'In Review', count: inReview },
     { key: 'COMPLETED', label: 'Completed', count: completed },
     { key: 'UPCOMING', label: 'Upcoming', count: upcoming },
   ];
@@ -88,22 +115,23 @@ export default function StudentTasks({
       <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Task Progress</h3>
-          <span className="text-sm text-gold font-bold">{completedPct}% Complete</span>
+          <span className="text-sm text-gold font-bold">{completedPct}% Approved</span>
         </div>
         <div className="flex h-3 bg-zinc-750 rounded-full overflow-hidden">
           {completedPct > 0 && (
-            <div className="bg-green-500 transition-all duration-500" style={{ width: `${completedPct}%` }} title={`Completed: ${completed}`} />
+            <div className="bg-green-500 transition-all duration-500" style={{ width: `${completedPct}%` }} title={`Approved: ${completed}`} />
           )}
-          {inProgressPct > 0 && (
-            <div className="bg-yellow-500 transition-all duration-500" style={{ width: `${inProgressPct}%` }} title={`In Progress: ${inProgress}`} />
+          {activePct > 0 && (
+            <div className="bg-yellow-500 transition-all duration-500" style={{ width: `${activePct}%` }} title={`In review/resubmit: ${inReview + resubmit}`} />
           )}
           {missedPct > 0 && (
             <div className="bg-red-500 transition-all duration-500" style={{ width: `${missedPct}%` }} title={`Missed: ${missed}`} />
           )}
         </div>
-        <div className="flex gap-4 text-xs text-gray-400">
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Completed ({completed})</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" /> In Progress ({inProgress})</span>
+        <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Approved ({completed})</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" /> In Review ({inReview})</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" /> Resubmit ({resubmit})</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Missed ({missed})</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-500 inline-block" /> Upcoming ({upcoming})</span>
         </div>
@@ -120,7 +148,8 @@ export default function StudentTasks({
           >
             {f.key === 'ALL' && <ListFilter size={13} />}
             {f.key === 'MISSED' && <AlertTriangle size={13} />}
-            {f.key === 'IN_PROGRESS' && <Clock size={13} />}
+            {f.key === 'RESUBMIT' && <RotateCcw size={13} />}
+            {f.key === 'IN_REVIEW' && <Clock size={13} />}
             {f.key === 'COMPLETED' && <CheckCircle2 size={13} />}
             {f.label} ({f.count})
           </button>
@@ -137,13 +166,15 @@ export default function StudentTasks({
             key: 'status',
             header: 'Status',
             render: (row) => {
-              const statusConfig: Record<string, { bg: string; text: string; label: string; icon?: React.ReactNode }> = {
-                COMPLETED: { bg: 'bg-green-500/10 border-green-500/20', text: 'text-green-400', label: 'Completed', icon: <CheckCircle2 size={12} /> },
-                IN_PROGRESS: { bg: 'bg-yellow-500/10 border-yellow-500/20', text: 'text-yellow-400', label: 'In Progress', icon: <Clock size={12} /> },
+              const statusConfig: Record<TaskFilter, { bg: string; text: string; label: string; icon?: React.ReactNode }> = {
+                ALL: { bg: '', text: '', label: '' },
+                COMPLETED: { bg: 'bg-green-500/10 border-green-500/20', text: 'text-green-400', label: 'Approved', icon: <CheckCircle2 size={12} /> },
+                IN_REVIEW: { bg: 'bg-yellow-500/10 border-yellow-500/20', text: 'text-yellow-400', label: 'In Review', icon: <Clock size={12} /> },
+                RESUBMIT: { bg: 'bg-orange-500/10 border-orange-500/20', text: 'text-orange-400', label: 'Resubmit', icon: <RotateCcw size={12} /> },
                 MISSED: { bg: 'bg-red-500/10 border-red-500/20', text: 'text-red-400', label: 'Missed', icon: <AlertTriangle size={12} /> },
                 UPCOMING: { bg: 'bg-gray-500/10 border-gray-500/20', text: 'text-gray-400', label: 'Upcoming' },
               };
-              const cfg = statusConfig[row.status as string] ?? statusConfig.UPCOMING;
+              const cfg = statusConfig[row.status as TaskFilter] ?? statusConfig.UPCOMING;
               return (
                 <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.text}`}>
                   {cfg.icon}
@@ -152,47 +183,67 @@ export default function StudentTasks({
               );
             },
           },
-          {
-            key: 'submission_status',
-            header: 'Submission',
-            render: (row) => {
-              const s = row.submission_status as string;
-              if (s === 'NOT_SUBMITTED') return <span className="text-xs text-gray-500">Not Submitted</span>;
-              const color = s === 'COMPLETED' ? 'text-green-400' : s === 'PROGRESS' || s === 'PENDING' ? 'text-yellow-400' : 'text-red-400';
-              return <span className={`text-xs font-semibold ${color}`}>{s}</span>;
-            },
-          },
         ]}
         data={filteredData}
         searchPlaceholder="Search tasks..."
         actions={(row) => {
-          // A task's assignment status is auto-synced to 'completed' by the
-          // backend the moment a submission is created for it, and reverted
-          // to 'progress' if a mentor requests changes — so this status is
-          // driven by the actual submission, not a manual toggle.
-          if (row.submission_status === 'COMPLETED') {
+          const isDocumentTask = row.category === 'document_submission';
+          const canAct = row.assignmentStatus === 'pending' || row.assignmentStatus === 'resubmit';
+          const isResubmit = row.assignmentStatus === 'resubmit';
+          const saving = savingId === row.assignmentId;
+
+          if (row.assignmentStatus === 'approved') {
+            return (
+              <span className="p-1 px-2.5 bg-green-500/10 text-green-400 text-xs font-semibold rounded flex items-center gap-1 border border-green-500/25 w-fit">
+                <CheckCircle2 size={13} />
+                Approved
+              </span>
+            );
+          }
+
+          if (isDocumentTask) {
+            // Document tasks always route through the Submissions tab —
+            // uploading there is what drives the pending/resubmit -> review
+            // transition automatically.
+            if (canAct) {
+              return (
+                <button
+                  onClick={() => onNewSubmission(row.id)}
+                  className="p-1 px-2.5 bg-zinc-800 hover:bg-zinc-700 text-gray-300 text-xs font-semibold rounded border border-zinc-700 transition-all flex items-center gap-1"
+                  title={isResubmit ? 'Resubmit Deliverable' : 'Submit Deliverable'}
+                >
+                  <Upload size={13} />
+                  {isResubmit ? 'Resubmit' : 'Submit'}
+                </button>
+              );
+            }
             return (
               <button
                 onClick={() => onViewSubmission(row.id)}
-                className="p-1 px-2.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs font-semibold rounded transition-all flex items-center gap-1 border border-green-500/25"
+                className="p-1 px-2.5 bg-zinc-800 hover:bg-zinc-700 text-gray-300 text-xs font-semibold rounded border border-zinc-700 transition-all flex items-center gap-1"
                 title="View Submission"
               >
-                <CheckCircle2 size={13} />
                 View Submission
               </button>
             );
-          } else {
+          }
+
+          // Non-document tasks: no file to upload, call the workflow
+          // endpoints directly.
+          if (canAct && row.assignmentId) {
             return (
               <button
-                onClick={() => onNewSubmission(row.id)}
-                className="p-1 px-2.5 bg-zinc-800 hover:bg-zinc-700 text-gray-300 text-xs font-semibold rounded border border-zinc-700 transition-all flex items-center gap-1"
-                title="Submit Deliverable"
+                onClick={() => handleInlineSubmit(tasks.find(t => t.id === row.id)!, row.assignmentId!, isResubmit)}
+                disabled={saving}
+                className="p-1 px-2.5 bg-zinc-800 hover:bg-zinc-700 text-gray-300 text-xs font-semibold rounded border border-zinc-700 transition-all flex items-center gap-1 disabled:opacity-50"
               >
-                <Upload size={13} />
-                Submit
+                {saving ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                {isResubmit ? 'Resubmit' : 'Submit'}
               </button>
             );
           }
+
+          return <span className="text-xs text-gray-500">Waiting for review</span>;
         }}
       />
     </div>

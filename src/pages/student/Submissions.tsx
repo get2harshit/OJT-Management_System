@@ -64,14 +64,14 @@ export default function StudentSubmissions({
 
   // Per document type: is there a task of that type still needing a
   // submission (never submitted, or the mentor requested changes), or is
-  // every task of that type already completed?
+  // every task of that type already approved?
   const typeStatus = useMemo(() => {
     const map: Partial<Record<DocumentType, { status: 'open' | 'done'; taskId: string }>> = {};
     for (const task of myTasks) {
       const type = task.task_type as ApiTaskType | null | undefined;
       if (!type) continue;
       const myAssignment = task.assignments?.find((a) => a.assignee_id === studentId);
-      const isOpen = myAssignment?.status !== 'completed';
+      const isOpen = myAssignment?.status === 'pending' || myAssignment?.status === 'resubmit';
       const existing = map[type];
       if (!existing || (isOpen && existing.status === 'done')) {
         map[type] = { status: isOpen ? 'open' : 'done', taskId: task.id };

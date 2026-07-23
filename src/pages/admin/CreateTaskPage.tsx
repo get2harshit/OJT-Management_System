@@ -17,7 +17,7 @@ import Select from '../../components/Select';
 import Button from '../../components/Button';
 import { TRACKS } from '../../lib/constants';
 import { apiCreateTask } from '../../lib/api/tasks';
-import type { ApiTaskType } from '../../lib/api/tasks';
+import type { ApiTaskType, ApiTaskCategory } from '../../lib/api/tasks';
 import { apiListMentors } from '../../lib/api/mentors';
 import { apiListStudents } from '../../lib/api/students';
 import type { ApiMentor, ApiStudent, Cohort } from '../../lib/types';
@@ -35,6 +35,12 @@ const TASK_TYPE_OPTIONS = [
   { value: 'others', label: 'Others' },
 ];
 
+const TASK_CATEGORY_OPTIONS: { value: ApiTaskCategory; label: string }[] = [
+  { value: 'document_submission', label: 'Document Submission' },
+  { value: 'general', label: 'General (no submission)' },
+  { value: 'link_submission', label: 'Link Submission' },
+];
+
 export default function CreateTaskPage() {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
@@ -44,16 +50,24 @@ export default function CreateTaskPage() {
   const [saving, setSaving] = useState(false);
 
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
-  const [selectedTracks, setSelectedTracks] = useState<string[]>([]);
+  // Single track only — the backend matches this against a single-value
+  // Postgres enum (team.track / mentor.track / task assignment queries), so
+  // a multi-select here would produce a comma-joined string that crashes
+  // Prisma with "Invalid value for argument track" (a real bug hit in
+  // testing: selecting all 5 tracks sent "Product Development, Application
+  // Development, ..." as one string).
+  const [selectedTrack, setSelectedTrack] = useState<string>('');
   const [form, setForm] = useState({
     title: '',
     description: '',
+    start_date: '',
     due_date: '',
     targetRole: 'student' as 'student' | 'mentor',
+    assignMode: 'individual' as 'individual' | 'team',
     assigned_to: [] as string[],
     week_number: '1',
     taskType: 'others' as ApiTaskType,
-    sub_tasks: [] as string[],
+    category: 'document_submission' as ApiTaskCategory,
   });
 
   useEffect(() => {
@@ -86,10 +100,22 @@ export default function CreateTaskPage() {
 
   const uniqueBatches = Array.from(new Set(students.map(s => s.batch).filter(Boolean))) as string[];
 
+  // The backend silently drops any student whose team hasn't been published
+  // yet from task assignment (they shouldn't get a task before they can even
+  // see their own allocation) — filtered out here too so the picker doesn't
+  // let admin select someone who'd just be dropped on save with no feedback.
+  const publishedCohortIds = new Set(
+    cohorts.filter(c => c.allocationRunStatus === 'published').map(c => c.id)
+  );
+  const unpublishedStudentCount = students.filter(
+    s => !s.activeCohortId || !publishedCohortIds.has(s.activeCohortId)
+  ).length;
+
   const assignableList = form.targetRole === 'student'
     ? students
+        .filter(s => !!s.activeCohortId && publishedCohortIds.has(s.activeCohortId))
         .filter(s => (selectedBatches.length > 0 ? selectedBatches.includes(s.batch!) : true))
-        .filter(s => (selectedTracks.length > 0 ? selectedTracks.includes(s.track!) : true))
+        .filter(s => (selectedTrack ? s.track === selectedTrack : true))
         .map(s => ({ id: s.id, label: `${s.fullName || s.email} (${s.rollNumber || 'N/A'})` }))
     : mentors.map(m => ({ id: m.id, label: m.fullName || m.email || m.id }));
 
@@ -98,24 +124,44 @@ export default function CreateTaskPage() {
       showError('Task title is required');
       return;
     }
+    if (!selectedTrack) {
+      showError('Select a track');
+      return;
+    }
+    if (!form.start_date) {
+      showError('Start date is required');
+      return;
+    }
+    if (!form.due_date) {
+      showError('Due date is required');
+      return;
+    }
+    if (new Date(form.start_date) >= new Date(form.due_date)) {
+      showError('Start date must be before due date');
+      return;
+    }
 
     setSaving(true);
     try {
       await apiCreateTask({
         title: form.title,
         description: form.description || undefined,
-        targetRole: form.targetRole,
-        taskType: (form.sub_tasks.length > 0 && ['prd', 'db_schema', 'hld', 'lld', 'api_contract', 'others'].includes(form.sub_tasks[0])) ? form.sub_tasks[0] as ApiTaskType : 'others',
-        subtasks: form.sub_tasks,
-        assignees: form.assigned_to.length > 0 ? form.assigned_to : undefined,
-        deadline: form.due_date ? new Date(form.due_date).toISOString() : undefined,
+        target_role: form.targetRole,
+        task_type: form.taskType,
+        category: form.category,
+        assign_mode: form.targetRole === 'student' ? form.assignMode : 'individual',
+        // Team-submission mode assigns whole teams matching the track/batch
+        // filters — no individual hand-picking, so assignees is never sent.
+        assignees: form.assignMode === 'individual' && form.assigned_to.length > 0 ? form.assigned_to : undefined,
+        start_date: new Date(form.start_date).toISOString(),
+        deadline: new Date(form.due_date).toISOString(),
         week: `Week ${form.week_number}`,
-        track: form.targetRole === 'student' && selectedTracks.length > 0 ? selectedTracks.join(', ') : undefined,
+        track: selectedTrack,
       });
       showSuccess('Task created successfully');
       navigate('/admin/dashboard?tab=tasks');
     } catch (err) {
-      showError('Failed to create task');
+      showError(err instanceof Error ? err.message : 'Failed to create task');
       console.error(err);
     } finally {
       setSaving(false);
@@ -201,7 +247,7 @@ export default function CreateTaskPage() {
 
               <button
                 type="button"
-                onClick={() => setForm({ ...form, targetRole: 'mentor', assigned_to: [] })}
+                onClick={() => setForm({ ...form, targetRole: 'mentor', assignMode: 'individual', assigned_to: [] })}
                 className={`p-4 rounded-xl border flex items-center gap-4 text-left transition-all duration-200 ${
                   form.targetRole === 'mentor'
                     ? 'bg-purple-500/10 border-purple-500 text-white shadow-lg shadow-purple-500/5'
@@ -218,14 +264,50 @@ export default function CreateTaskPage() {
               </button>
             </div>
 
-            {/* Filter Inset Box */}
+            {/* Submission Mode Toggle — team mode assigns whole teams
+                matching the track/batch filters below (one member's
+                submission completes it for the team); only meaningful for
+                students, mentors have no team concept. */}
             {form.targetRole === 'student' && (
-              <div className="bg-zinc-900/80 border border-zinc-750 rounded-xl p-4 space-y-3">
-                <p className="text-xs text-gray-400 uppercase font-semibold tracking-wider flex items-center gap-1.5">
-                  <Layers size={14} className="text-gold" />
-                  Filter Assignable Pool
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wider">Submission Mode</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, assignMode: 'individual', assigned_to: [] })}
+                    className={`px-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${
+                      form.assignMode === 'individual'
+                        ? 'bg-gold/10 border-gold text-gold'
+                        : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-zinc-600'
+                    }`}
+                  >
+                    Individual Submission
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, assignMode: 'team', assigned_to: [] })}
+                    className={`px-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${
+                      form.assignMode === 'team'
+                        ? 'bg-gold/10 border-gold text-gold'
+                        : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-zinc-600'
+                    }`}
+                  >
+                    Team Submission
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Filter Inset Box — Track is always shown now since the
+                backend requires `track` on every task regardless of
+                target_role; Batch filtering only makes sense for students. */}
+            <div className="bg-zinc-900/80 border border-zinc-750 rounded-xl p-4 space-y-3">
+              <p className="text-xs text-gray-400 uppercase font-semibold tracking-wider flex items-center gap-1.5">
+                <Layers size={14} className="text-gold" />
+                Filter Assignable Pool
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {form.targetRole === 'student' && (
                   <div>
                     <label className="block text-xs text-gray-400 mb-1.5 font-medium">Filter by Batch</label>
                     <Select
@@ -240,54 +322,68 @@ export default function CreateTaskPage() {
                       options={uniqueBatches.map(b => ({ value: b, label: b }))}
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1.5 font-medium">Filter by Track</label>
-                    <Select
-                      isMulti
-                      value={selectedTracks}
-                      onChange={v => {
-                        setSelectedTracks(v as string[]);
-                        setForm(prev => ({ ...prev, assigned_to: [] }));
-                      }}
-                      className="w-full text-xs"
-                      placeholder="All Tracks"
-                      options={TRACKS.map(t => ({ value: t, label: t }))}
-                    />
-                  </div>
+                )}
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5 font-medium">Track *</label>
+                  <Select
+                    value={selectedTrack}
+                    onChange={v => {
+                      setSelectedTrack(v as string);
+                      setForm(prev => ({ ...prev, assigned_to: [] }));
+                    }}
+                    className="w-full text-xs"
+                    placeholder="Select track..."
+                    options={TRACKS.map(t => ({ value: t, label: t }))}
+                  />
                 </div>
               </div>
-            )}
-
-            {/* Assignee Multi-Select */}
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-sm font-medium text-gray-300">
-                  Select {form.targetRole === 'student' ? 'Students' : 'Mentors'} ({form.assigned_to.length} selected)
-                </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (form.assigned_to.length === assignableList.length) {
-                      setForm({ ...form, assigned_to: [] });
-                    } else {
-                      setForm({ ...form, assigned_to: assignableList.map(a => a.id) });
-                    }
-                  }}
-                  className="text-xs text-gold hover:underline font-semibold transition-colors"
-                >
-                  {form.assigned_to.length === assignableList.length && assignableList.length > 0 ? 'Clear All' : 'Select All'}
-                </button>
-              </div>
-              <Select
-                isMulti
-                isSearchable
-                value={form.assigned_to}
-                onChange={v => setForm({ ...form, assigned_to: v as string[] })}
-                className="w-full"
-                placeholder={`Search and select ${form.targetRole}(s)...`}
-                options={assignableList.map(a => ({ value: a.id, label: a.label }))}
-              />
             </div>
+
+            {/* Assignee Multi-Select — not applicable in team-submission
+                mode, where teams are auto-matched by track/batch instead of
+                hand-picked. */}
+            {form.assignMode === 'team' ? (
+              <div className="bg-zinc-900/80 border border-zinc-750 rounded-xl p-4">
+                <p className="text-sm text-gray-300">
+                  Every team matching the track{selectedBatches.length > 0 ? ' and batch' : ''} filter above will be assigned this task — one member submitting completes it for the whole team.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-medium text-gray-300">
+                    Select {form.targetRole === 'student' ? 'Students' : 'Mentors'} ({form.assigned_to.length} selected)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (form.assigned_to.length === assignableList.length) {
+                        setForm({ ...form, assigned_to: [] });
+                      } else {
+                        setForm({ ...form, assigned_to: assignableList.map(a => a.id) });
+                      }
+                    }}
+                    className="text-xs text-gold hover:underline font-semibold transition-colors"
+                  >
+                    {form.assigned_to.length === assignableList.length && assignableList.length > 0 ? 'Clear All' : 'Select All'}
+                  </button>
+                </div>
+                <Select
+                  isMulti
+                  isSearchable
+                  value={form.assigned_to}
+                  onChange={v => setForm({ ...form, assigned_to: v as string[] })}
+                  className="w-full"
+                  placeholder={`Search and select ${form.targetRole}(s)...`}
+                  options={assignableList.map(a => ({ value: a.id, label: a.label }))}
+                />
+                {form.targetRole === 'student' && unpublishedStudentCount > 0 && (
+                  <p className="text-[11px] text-gray-500 mt-1.5">
+                    {unpublishedStudentCount} student{unpublishedStudentCount !== 1 ? 's' : ''} hidden — their team's project allocation hasn't been published yet.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Card 2: Task Specifications */}
@@ -311,20 +407,33 @@ export default function CreateTaskPage() {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                <Target size={15} className="text-gold" />
-                Sub-tasks / Deliverable Types
-              </label>
-              <Select
-                isMulti
-                isCreatable
-                value={form.sub_tasks}
-                onChange={v => setForm({ ...form, sub_tasks: v as string[] })}
-                options={TASK_TYPE_OPTIONS}
-                className="w-full"
-                placeholder="Select or type deliverable tags (e.g. PRD, DB Schema...)"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                  <Target size={15} className="text-gold" />
+                  Deliverable Type *
+                </label>
+                <Select
+                  value={form.taskType}
+                  onChange={v => setForm({ ...form, taskType: v as ApiTaskType })}
+                  options={TASK_TYPE_OPTIONS}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Category *</label>
+                <Select
+                  value={form.category}
+                  onChange={v => setForm({ ...form, category: v as ApiTaskCategory })}
+                  options={TASK_CATEGORY_OPTIONS}
+                  className="w-full"
+                />
+                <p className="text-[11px] text-gray-500 mt-1.5">
+                  {form.category === 'document_submission'
+                    ? 'Student submits a file via the Submissions tab.'
+                    : 'No file/link expected — reviewed directly from the Tasks tab.'}
+                </p>
+              </div>
             </div>
 
             <div>
@@ -365,7 +474,20 @@ export default function CreateTaskPage() {
 
             <div>
               <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                Due Date
+                Start Date *
+              </label>
+              <input
+                type="date"
+                style={{ colorScheme: 'dark' }}
+                value={form.start_date}
+                onChange={e => setForm({ ...form, start_date: e.target.value })}
+                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Due Date *
               </label>
               <div className="relative">
                 <input
@@ -405,24 +527,15 @@ export default function CreateTaskPage() {
                 <span className="text-gray-400">Target Week</span>
                 <span className="font-semibold text-white">Week {form.week_number}</span>
               </div>
+              <div className="flex justify-between items-center py-1.5 border-b border-zinc-800">
+                <span className="text-gray-400">Start Date</span>
+                <span className="font-semibold text-white">{form.start_date || 'Not set'}</span>
+              </div>
               <div className="flex justify-between items-center py-1.5">
                 <span className="text-gray-400">Due Date</span>
                 <span className="font-semibold text-white">{form.due_date || 'Not set'}</span>
               </div>
             </div>
-
-            {form.sub_tasks.length > 0 && (
-              <div className="pt-2 border-t border-zinc-800">
-                <p className="text-[11px] text-gray-400 mb-1.5 font-medium">Sub-task Deliverables:</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {form.sub_tasks.map(st => (
-                    <span key={st} className="px-2 py-0.5 rounded text-[10px] font-semibold bg-gold/15 text-gold border border-gold/30">
-                      {st}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Card 5: Big Action Button */}

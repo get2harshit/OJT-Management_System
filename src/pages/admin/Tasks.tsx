@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Calendar, CheckSquare, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
-import { apiListTasks, apiDeleteTask, apiUpdateTask } from '../../lib/api/tasks';
-import type { ApiTask } from '../../lib/api/tasks';
+import { apiListTasks, apiDeleteTask, apiUpdateTask, apiApproveTask, apiRequestResubmit } from '../../lib/api/tasks';
+import type { ApiTask, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
@@ -15,7 +15,7 @@ interface Assignee {
   id: string;
   name: string;
   role: string;
-  tasks: Array<{ taskId: string; taskTitle: string; week: string; status: 'pending' | 'progress' | 'completed'; deadline?: string }>;
+  tasks: Array<{ taskId: string; taskTitle: string; week: string; status: ApiAssignmentStatus; deadline?: string }>;
 }
 
 export default function AdminTasks() {
@@ -23,6 +23,7 @@ export default function AdminTasks() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [editingTask, setEditingTask] = useState<ApiTask | null>(null);
+  const [reviewTask, setReviewTask] = useState<ApiTask | null>(null);
 
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [allAssignees, setAllAssignees] = useState<Assignee[]>([]);
@@ -66,7 +67,7 @@ export default function AdminTasks() {
           taskId: task.id,
           taskTitle: task.title,
           week: task.week || '-',
-          status: a.status as 'pending' | 'progress' | 'completed',
+          status: a.status,
           deadline: task.deadline || undefined,
         });
       });
@@ -129,13 +130,13 @@ export default function AdminTasks() {
       if (t.assignments && t.assignments.length > 0) {
         assignedNames = t.assignments.map(a => a.assignee ? a.assignee.full_name : a.assignee_id);
         totalAssignments = t.assignments.length;
-        completedAssignments = t.assignments.filter(a => a.status === 'completed').length;
+        completedAssignments = t.assignments.filter(a => a.status === 'approved').length;
       }
 
       let aggregateStatus = 'pending';
       if (totalAssignments > 0) {
-        if (completedAssignments === totalAssignments) aggregateStatus = 'completed';
-        else if (completedAssignments > 0 || t.assignments!.some(a => a.status === 'progress')) aggregateStatus = 'in_progress';
+        if (completedAssignments === totalAssignments) aggregateStatus = 'approved';
+        else if (t.assignments!.some(a => a.status === 'review' || a.status === 'resubmit')) aggregateStatus = 'in_progress';
       }
 
       return { 
@@ -152,10 +153,11 @@ export default function AdminTasks() {
     });
 
   const selectedAssignee = allAssignees.find(a => a.id === selectedAssigneeId);
-  const statusConfig = {
+  const statusConfig: Record<ApiAssignmentStatus, { label: string; icon: typeof Circle; cls: string }> = {
     pending: { label: 'Pending', icon: Circle, cls: 'text-zinc-400 bg-zinc-800 border-zinc-700' },
-    progress: { label: 'WIP', icon: Clock, cls: 'text-blue-400 bg-blue-900/20 border-blue-800' },
-    completed: { label: 'Completed', icon: CheckCircle2, cls: 'text-green-400 bg-green-900/20 border-green-800' },
+    review: { label: 'In Review', icon: Clock, cls: 'text-blue-400 bg-blue-900/20 border-blue-800' },
+    resubmit: { label: 'Resubmit', icon: Clock, cls: 'text-orange-400 bg-orange-900/20 border-orange-800' },
+    approved: { label: 'Approved', icon: CheckCircle2, cls: 'text-green-400 bg-green-900/20 border-green-800' },
   };
 
   return (
@@ -184,7 +186,7 @@ export default function AdminTasks() {
               { value: 'all', label: 'All Status' },
               { value: 'pending', label: 'Pending' },
               { value: 'in_progress', label: 'In Progress' },
-              { value: 'completed', label: 'Completed' },
+              { value: 'approved', label: 'Approved' },
             ]}
           />
           <Button
@@ -224,32 +226,6 @@ export default function AdminTasks() {
             )
           },
           {
-            key: 'sub_tasks', header: 'Sub-tasks', render: (row) => (
-              <div className="max-w-[200px]">
-                {row.subtasks && row.subtasks.length > 0 ? (
-                  <details className="group cursor-pointer">
-                    <summary className="text-xs text-gold hover:underline font-medium list-none flex items-center gap-1 outline-none">
-                      <span>View {row.subtasks.length} Sub-tasks</span>
-                      <svg className="w-3 h-3 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </summary>
-                    <div className="mt-2 space-y-1.5 pl-2 border-l-2 border-zinc-800 py-1">
-                      {row.subtasks.map((st: { id: string; title: string }, idx: number) => (
-                        <div key={idx} className="flex items-start gap-1.5 text-xs text-gray-400">
-                          <CheckSquare size={12} className="text-gold shrink-0 mt-0.5" />
-                          <span className="leading-tight">{st.title}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                ) : (
-                  <span className="text-gray-600 text-xs">-</span>
-                )}
-              </div>
-            )
-          },
-          {
             key: 'target_role',
             header: 'Target',
             render: (row) => {
@@ -267,7 +243,7 @@ export default function AdminTasks() {
               const statusDots = {
                 pending: { dot: 'bg-zinc-400', text: 'text-zinc-400' },
                 in_progress: { dot: 'bg-blue-400', text: 'text-blue-400' },
-                completed: { dot: 'bg-green-500', text: 'text-green-500' },
+                approved: { dot: 'bg-green-500', text: 'text-green-500' },
               };
               const style = statusDots[row.aggregateStatus as keyof typeof statusDots] || statusDots.pending;
               const label = row.aggregateStatus.replace('_', ' ');
@@ -340,6 +316,12 @@ export default function AdminTasks() {
         actions={(row) => (
           <ActionsMenu
             items={[
+              // Document-category tasks are reviewed from the Submissions
+              // page instead — this is only for general/link_submission
+              // tasks, which have no submission record to review there.
+              ...(row.category !== 'document_submission' && (row.assignments?.length ?? 0) > 0
+                ? [{ label: 'Review Assignments', icon: ClipboardCheck, onClick: () => setReviewTask(row) }]
+                : []),
               { label: 'Edit Task', icon: Edit2, onClick: () => handleEditClick(row) },
               { label: 'Delete Task', icon: Trash2, onClick: () => handleDelete(row.id), danger: true },
             ]}
@@ -443,8 +425,8 @@ export default function AdminTasks() {
                   .filter(a => boardRoleFilter === 'all' || a.role === boardRoleFilter)
                   .map(a => {
                   const total = a.tasks.length;
-                  const done  = a.tasks.filter(t => t.status === 'completed').length;
-                  const wip   = a.tasks.filter(t => t.status === 'progress').length;
+                  const done  = a.tasks.filter(t => t.status === 'approved').length;
+                  const wip   = a.tasks.filter(t => t.status === 'review' || t.status === 'resubmit').length;
                   const isSelected = a.id === selectedAssigneeId;
                   return (
                     <button
@@ -509,7 +491,7 @@ export default function AdminTasks() {
                     </div>
                     {/* Quick stat pills */}
                     <div className="ml-auto flex gap-3">
-                      {(['pending', 'progress', 'completed'] as const).map(s => {
+                      {(['pending', 'review', 'resubmit', 'approved'] as const).map(s => {
                         const count = selectedAssignee.tasks.filter(t => t.status === s).length;
                         const cfg = statusConfig[s];
                         const Icon = cfg.icon;
@@ -570,6 +552,129 @@ export default function AdminTasks() {
           </div>
         )}
       </Modal>
+
+      <Modal open={!!reviewTask} onClose={() => setReviewTask(null)} title="Review Assignments">
+        {reviewTask && (
+          <AdminAssigneeReviewPanel
+            task={reviewTask}
+            onChanged={async () => {
+              await fetchTasksOnly();
+              setReviewTask(prev => (prev ? tasks.find(t => t.id === prev.id) ?? prev : prev));
+            }}
+          />
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+// Admin/batch_manager can always approve or request a resubmit, regardless
+// of who created the task (backend's assigned_by_id-or-admin check) — only
+// used for general/link_submission tasks; document tasks are reviewed from
+// the Submissions page instead.
+function AdminAssigneeReviewPanel({
+  task,
+  onChanged,
+}: {
+  task: ApiTask;
+  onChanged: () => Promise<void>;
+}) {
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [resubmitDraft, setResubmitDraft] = useState<Record<string, string>>({});
+  const assignments = task.assignments || [];
+
+  const handleApprove = async (assignment: ApiAssignment) => {
+    setSavingId(assignment.id);
+    try {
+      await apiApproveTask(task.id, assignment.id);
+      await onChanged();
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleResubmit = async (assignment: ApiAssignment) => {
+    const comment = resubmitDraft[assignment.id]?.trim();
+    if (!comment) return;
+    setSavingId(assignment.id);
+    try {
+      await apiRequestResubmit(task.id, assignment.id, comment);
+      setResubmitDraft(prev => ({ ...prev, [assignment.id]: '' }));
+      await onChanged();
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const statusDot: Record<ApiAssignmentStatus, string> = {
+    pending: 'bg-zinc-400',
+    review: 'bg-blue-400',
+    resubmit: 'bg-orange-400',
+    approved: 'bg-green-400',
+  };
+  const statusLabel: Record<ApiAssignmentStatus, string> = {
+    pending: 'Pending',
+    review: 'In Review',
+    resubmit: 'Resubmit',
+    approved: 'Approved',
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h4 className="text-white font-semibold">{task.title}</h4>
+        {task.description && <p className="text-gray-400 text-sm mt-1">{task.description}</p>}
+      </div>
+
+      <div className="space-y-3">
+        {assignments.map(assignment => {
+          const saving = savingId === assignment.id;
+          return (
+            <div key={assignment.id} className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 space-y-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-gray-200 truncate">{assignment.assignee?.full_name || assignment.assignee_id}</span>
+                <span className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap flex items-center gap-1.5 w-fit">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[assignment.status]}`} />
+                  {statusLabel[assignment.status]}
+                </span>
+              </div>
+
+              {assignment.status === 'review' && (
+                <div className="space-y-2">
+                  <textarea
+                    value={resubmitDraft[assignment.id] || ''}
+                    onChange={e => setResubmitDraft(prev => ({ ...prev, [assignment.id]: e.target.value }))}
+                    placeholder="Resubmit comment (required to send back for resubmission)"
+                    rows={2}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-gold transition-colors resize-none"
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button onClick={() => handleApprove(assignment)} disabled={saving} size="sm" className="flex-1">
+                      {saving ? <Loader2 size={13} className="animate-spin" /> : null}
+                      Approve
+                    </Button>
+                    <Button
+                      onClick={() => handleResubmit(assignment)}
+                      disabled={saving || !resubmitDraft[assignment.id]?.trim()}
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1"
+                    >
+                      Resubmit
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {assignment.status === 'resubmit' && (
+                <p className="text-[11px] text-gray-500">
+                  {assignment.resubmit_count} of {assignment.max_resubmit_count} resubmits used
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

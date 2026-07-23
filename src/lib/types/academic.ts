@@ -170,6 +170,11 @@ export interface Team {
   track: string;
   isIndividual: boolean;
   members: TeamMemberInfo[];
+  // Present on endpoints that serialize the backend's domain Team object
+  // directly (e.g. GET /teams/my-teams) — used to check whether this team's
+  // cohort has been published, since a task can't be assigned to a student
+  // before that.
+  cohortId?: string;
 }
 
 // A mentor's own team with its allocated project attached (GET
