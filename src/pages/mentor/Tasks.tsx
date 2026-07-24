@@ -112,13 +112,22 @@ export default function MentorTasks({ mentorId }: Props) {
   const publishedTeams = myTeams.filter(team => !!team.cohortId && publishedCohortIds.has(team.cohortId));
   const unpublishedTeamCount = myTeams.length - publishedTeams.length;
 
-  const teamOptions = publishedTeams.map(team => ({
+  // A task's track is a hard requirement (see canSave below), so once the
+  // mentor picks one, only teams/students actually on that track should be
+  // selectable — otherwise a track-specific task could get assigned to a
+  // student working a completely different track. Before a track is picked,
+  // every published team/student still shows, same as before.
+  const trackFilteredTeams = form.track
+    ? publishedTeams.filter(team => team.track === form.track)
+    : publishedTeams;
+
+  const teamOptions = trackFilteredTeams.map(team => ({
     value: team.id,
     label: team.members.map(m => m.fullName || 'Unnamed').join(', ') || team.track,
   }));
 
   const studentOptions = Array.from(
-    new Map(publishedTeams.flatMap(t => t.members).map(m => [m.studentId, m])).values()
+    new Map(trackFilteredTeams.flatMap(t => t.members).map(m => [m.studentId, m])).values()
   ).map(m => ({ value: m.studentId, label: m.fullName || m.studentId }));
 
   const canSave =
@@ -396,7 +405,7 @@ export default function MentorTasks({ mentorId }: Props) {
               <label className="block text-sm text-gray-400 mb-1">Track</label>
               <Select
                 value={form.track}
-                onChange={v => setForm({ ...form, track: v as string })}
+                onChange={v => setForm({ ...form, track: v as string, teamIds: [], assignees: [] })}
                 placeholder="Select track..."
                 options={TRACKS.map(t => ({ value: t, label: t }))}
                 className="w-full"
