@@ -104,8 +104,12 @@ export default function CreateTaskPage() {
   // yet from task assignment (they shouldn't get a task before they can even
   // see their own allocation) — filtered out here too so the picker doesn't
   // let admin select someone who'd just be dropped on save with no feedback.
+  // Checked against the sticky allocationPublishedAt rather than the live
+  // allocationRunStatus enum — that enum legitimately drops back to
+  // 'draft'/'review' whenever a later batch of teams gets run in the same
+  // cohort, which must not re-hide an already-published student here.
   const publishedCohortIds = new Set(
-    cohorts.filter(c => c.allocationRunStatus === 'published').map(c => c.id)
+    cohorts.filter(c => !!c.allocationPublishedAt).map(c => c.id)
   );
   const unpublishedStudentCount = students.filter(
     s => !s.activeCohortId || !publishedCohortIds.has(s.activeCohortId)
