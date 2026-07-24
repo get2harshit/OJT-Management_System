@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, Megaphone, X, ClipboardCheck, type LucideIcon } from 'lucide-react';
+import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, Megaphone, X, type LucideIcon } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import DataTable from '../../../components/DataTable';
-import EvaluationPanel from './EvaluationPanel';
 import type { CohortDetails, Project, ApiStudent, ApiMentor, TeamAllocationDetail } from '../../../lib/types';
 import { apiGetCohort, apiGetProjectsForCohort, apiGetProjectsForCohortPage, apiListStudentsPage, apiListMentorsPage } from '../../../lib/api';
 import { apiGetTeamsForCohortDetailed } from '../../../lib/api/allocations';
@@ -16,13 +15,12 @@ import { TRACKS } from '../../../lib/constants';
 import { mapBackendTrackToFrontend } from '../../../lib/api/trackMapping';
 import { createAnnouncement } from '../../../lib/announcements';
 
-type PanelView = '' | 'students' | 'projects' | 'mentors' | 'evaluation';
+type PanelView = '' | 'students' | 'projects' | 'mentors';
 
 const PANEL_OPTIONS: { value: PanelView; label: string }[] = [
   { value: 'students', label: 'Students' },
   { value: 'projects', label: 'Projects' },
   { value: 'mentors', label: 'Mentors' },
-  { value: 'evaluation', label: 'Evaluation' },
 ];
 
 interface AssignmentBranch {
@@ -724,13 +722,6 @@ export default function ViewCohortPage() {
   const cohortStudents = cohort.students || [];
   const cohortMentors = cohort.mentors || [];
 
-  // Evaluation only makes sense once teams are actually locked in and the
-  // cohort is a live, running one — `allocationPublishedAt` (a sticky
-  // one-way flag) is the source of truth for "ever published," not the
-  // volatile `allocationRunStatus` enum, which can cycle back to draft/review
-  // if new teams are added post-publish (see the allocations module).
-  const isEvaluationEligible = cohort.isActive && !!cohort.allocationPublishedAt;
-
   // Cross-reference indexes for detail cards — built from the full,
   // unpaginated cohort/projects/teams fetch above, so a teammate or roster
   // entry resolves correctly no matter what page it'd land on in the
@@ -865,23 +856,8 @@ export default function ViewCohortPage() {
         </div>
       </div>
 
-      {/* Evaluation */}
-      {panelView === 'evaluation' && (
-        isEvaluationEligible ? (
-          <EvaluationPanel cohortId={cohortId!} cohortMentors={cohortMentors} />
-        ) : (
-          <div className="border border-dashed border-zinc-800 rounded-xl py-16 flex flex-col items-center justify-center gap-2 text-center px-6">
-            <ClipboardCheck size={22} className="text-gray-600 mb-1" />
-            <p className="text-gray-400 text-sm font-medium">Evaluation isn't available yet for this cohort.</p>
-            <p className="text-gray-500 text-xs max-w-sm">
-              Evaluations can only be set up once this cohort's team allocations are published and the cohort is running.
-            </p>
-          </div>
-        )
-      )}
-
       {/* Students / Projects / Mentors */}
-      {panelView !== '' && panelView !== 'evaluation' && (
+      {panelView !== '' && (
         <div className="space-y-3">
           <div className="flex items-center gap-2 px-1">
             <div className="p-1.5 bg-gold/10 rounded-lg">
@@ -1066,7 +1042,7 @@ export default function ViewCohortPage() {
 
       {panelView === '' && (
         <div className="border border-dashed border-zinc-800 rounded-xl py-20 flex flex-col items-center justify-center gap-2">
-          <p className="text-gray-500 text-sm">Select Students, Projects, Mentors, or Evaluation from the dropdown above to view details.</p>
+          <p className="text-gray-500 text-sm">Select Students, Projects, or Mentors from the dropdown above to view details.</p>
         </div>
       )}
 

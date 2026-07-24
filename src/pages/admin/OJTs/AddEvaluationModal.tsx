@@ -2,13 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { ClipboardCheck, Plus, X } from 'lucide-react';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
-import type { ApiMentor, CohortEvaluationConfig, EvaluationTypeTemplate, RubricTemplate, EvaluationMode } from '../../../lib/types';
+import type { ApiMentor, EvaluationTypeTemplate, RubricTemplate, EvaluationMode } from '../../../lib/types';
 import {
   apiListEvaluationTypes,
   apiCreateEvaluationType,
   apiListRubricTemplates,
   apiCreateRubricTemplate,
-  apiListCohortEvaluationConfigs,
   apiCreateCohortEvaluationConfig,
   apiSetMentorPairings,
   apiActivateCohortEvaluation,
@@ -25,32 +24,11 @@ interface CriterionDraft {
   maxMarks: string;
 }
 
-function EvaluationConfigRow({ config }: { config: CohortEvaluationConfig }) {
-  const label = config.sequenceNo
-    ? `${config.evaluationTypeTemplate.name} ${config.sequenceNo}`
-    : config.evaluationTypeTemplate.name;
-  return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl">
-      <div className="min-w-0">
-        <p className="text-white text-sm font-semibold truncate">{label}</p>
-        <p className="text-gray-500 text-xs mt-0.5">
-          {new Date(config.startDate).toLocaleDateString()} → {new Date(config.endDate).toLocaleDateString()}
-          {' · '}Max {config.maxMarksSnapshot} marks
-          {' · '}{config.rubricTemplate.name}
-        </p>
-      </div>
-      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 font-semibold shrink-0">
-        Active
-      </span>
-    </div>
-  );
-}
-
 // Wizard-in-a-modal for setting up a new evaluation on this cohort. Kept as a
 // single scrollable form with sections that reveal themselves as choices are
 // made, rather than a multi-step Next/Back flow — the fields involved don't
 // need that much ceremony.
-function AddEvaluationModal({
+export function AddEvaluationModal({
   cohortId,
   cohortMentors,
   onClose,
@@ -434,68 +412,3 @@ function AddEvaluationModal({
   );
 }
 
-export default function EvaluationPanel({ cohortId, cohortMentors }: { cohortId: string; cohortMentors: ApiMentor[] }) {
-  const { showError } = useToast();
-  const [configs, setConfigs] = useState<CohortEvaluationConfig[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-
-  const loadConfigs = useCallback(async () => {
-    setLoading(true);
-    try {
-      setConfigs(await apiListCohortEvaluationConfigs(cohortId));
-    } catch (err: unknown) {
-      showError(err instanceof Error ? err.message : 'Failed to load evaluations');
-    } finally {
-      setLoading(false);
-    }
-  }, [cohortId, showError]);
-
-  useEffect(() => {
-    loadConfigs();
-  }, [loadConfigs]);
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 px-1">
-          <div className="p-1.5 bg-gold/10 rounded-lg">
-            <ClipboardCheck size={14} className="text-gold" />
-          </div>
-          <span className="text-white text-sm font-semibold">Evaluations</span>
-        </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover text-xs transition-all"
-        >
-          <Plus size={14} /> Add Evaluation
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <SpinnerSquare size={40} />
-        </div>
-      ) : configs.length === 0 ? (
-        <div className="border border-dashed border-zinc-800 rounded-xl py-16 flex flex-col items-center justify-center gap-2">
-          <p className="text-gray-500 text-sm">No evaluations set up for this cohort yet.</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {configs.map((config) => (
-            <EvaluationConfigRow key={config.id} config={config} />
-          ))}
-        </div>
-      )}
-
-      {showModal && (
-        <AddEvaluationModal
-          cohortId={cohortId}
-          cohortMentors={cohortMentors}
-          onClose={() => setShowModal(false)}
-          onCreated={loadConfigs}
-        />
-      )}
-    </div>
-  );
-}

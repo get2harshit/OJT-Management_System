@@ -5,6 +5,7 @@ import type {
   RubricCriterion,
   CohortEvaluationConfig,
   EvaluationMentorPairing,
+  StudentEvaluationSummary,
 } from '../types';
 import { apiFetch, invalidateCached } from './client';
 
@@ -190,4 +191,37 @@ export async function apiActivateCohortEvaluation(configId: string): Promise<{ n
   );
   invalidateEvaluationCaches();
   return res.data;
+}
+
+// ── Admin/mentor view of a specific student's evaluation status ────────────
+
+interface RawStudentEvaluation {
+  id: string;
+  final_marks_obtained: string | number | null;
+  evaluated_at: string | null;
+  cohort_evaluation_config: {
+    cohort_id: string;
+    sequence_no: number | null;
+    max_marks_snapshot: string | number;
+    evaluation_type_template: { name: string };
+  };
+  panelists: unknown[];
+}
+
+function mapStudentEvaluationSummary(raw: RawStudentEvaluation): StudentEvaluationSummary {
+  return {
+    id: raw.id,
+    cohortId: raw.cohort_evaluation_config.cohort_id,
+    evaluationTypeName: raw.cohort_evaluation_config.evaluation_type_template.name,
+    sequenceNo: raw.cohort_evaluation_config.sequence_no,
+    maxMarksSnapshot: Number(raw.cohort_evaluation_config.max_marks_snapshot),
+    finalMarksObtained: raw.final_marks_obtained !== null ? Number(raw.final_marks_obtained) : null,
+    evaluatedAt: raw.evaluated_at,
+    panelistCount: raw.panelists.length,
+  };
+}
+
+export async function apiGetEvaluationsForStudent(studentId: string): Promise<StudentEvaluationSummary[]> {
+  const res = await apiFetch<{ data: RawStudentEvaluation[] }>(`/api/v1/evaluations/students/${studentId}`);
+  return res.data.map(mapStudentEvaluationSummary);
 }
