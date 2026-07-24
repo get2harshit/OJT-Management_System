@@ -104,7 +104,7 @@ export default function Select({ value, onChange, options, placeholder, disabled
         <div
           ref={listRef}
           style={{ position: 'fixed', top: position.top, left: position.left, width: position.width }}
-          className="max-h-64 overflow-y-auto bg-zinc-850 border border-zinc-750 rounded-lg shadow-2xl z-50 py-1"
+          className="max-h-64 overflow-y-auto bg-zinc-850 border border-zinc-750 rounded-lg shadow-2xl z-[200] py-1"
         >
           {isSearchable && (
             <div className="px-2 pb-1 sticky top-0 bg-zinc-850 z-10 border-b border-zinc-750 mb-1">
