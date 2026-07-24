@@ -436,3 +436,52 @@ export interface DashboardMetrics {
   totalCreditsAvailable: number;
 }
 
+// ── Evaluation module ────────────────────────────────────────────────────────
+// Viva / Final Presentation / OJL Logbook Upload / PRD Upload / Attendance,
+// plus any custom type an admin defines. Only ever surfaced for a cohort
+// once its teams are published and the cohort itself is running — see
+// `isEvaluationEligible` in EvaluationPanel.tsx.
+
+export type EvaluationMode = 'upload' | 'rubric';
+export type EvaluatorRole = 'internal' | 'external';
+
+export interface EvaluationTypeTemplate {
+  id: string;
+  name: string;
+  mode: EvaluationMode;
+}
+
+export interface RubricCriterion {
+  id: string;
+  name: string;
+  maxMarks: number;
+  displayOrder: number;
+}
+
+export interface RubricTemplate {
+  id: string;
+  evaluationTypeTemplateId: string;
+  name: string;
+  criteria: RubricCriterion[];
+}
+
+export interface CohortEvaluationConfig {
+  id: string;
+  cohortId: string;
+  evaluationTypeTemplateId: string;
+  rubricTemplateId: string;
+  sequenceNo: number | null;
+  startDate: string;
+  endDate: string;
+  maxMarksSnapshot: number;
+  isActive: boolean;
+  evaluationTypeTemplate: EvaluationTypeTemplate;
+  rubricTemplate: RubricTemplate;
+}
+
+export interface EvaluationMentorPairing {
+  id: string;
+  internalMentorId: string;
+  externalMentorId: string;
+}
+
