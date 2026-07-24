@@ -95,7 +95,12 @@ export default function MentorTasks({ mentorId }: Props) {
       .then(([tasksRes, teamsRes, cohortsRes]) => {
         setTasks(tasksRes.data || []);
         setMyTeams(teamsRes);
-        setPublishedCohortIds(new Set(cohortsRes.filter(c => c.allocationRunStatus === 'published').map(c => c.id)));
+        // Checked against the sticky allocationPublishedAt rather than the
+        // live allocationRunStatus enum — that enum legitimately drops back
+        // to 'draft'/'review' whenever a later batch of teams gets run in
+        // the same cohort, which must not re-hide an already-published
+        // team from this picker.
+        setPublishedCohortIds(new Set(cohortsRes.filter(c => !!c.allocationPublishedAt).map(c => c.id)));
       })
       .catch(console.error);
   }, []);
