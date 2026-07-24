@@ -1,274 +1,354 @@
-import { useState, useMemo } from 'react';
-import { Award, CheckSquare, Square, Video, ExternalLink } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Award, Plus, ArrowLeft } from 'lucide-react';
+import SpinnerSquare from '../../components/SpinnerSquare';
+import Select from '../../components/Select';
 import DataTable from '../../components/DataTable';
-import Modal from '../../components/Modal';
-import type { Profile, Student, Attendance } from '../../lib/types';
-import { useStudentProfiles } from '../../hooks/useStudentProfiles';
+import { AddEvaluationModal } from './OJTs/AddEvaluationModal';
+import type { Cohort, CohortDetails, ApiStudent, StudentEvaluationSummary } from '../../lib/types';
+import { apiListCohorts, apiGetCohort, apiListStudentsPage } from '../../lib/api';
+import { apiGetEvaluationsForStudent } from '../../lib/api/evaluations';
+import { getCohortLabel, getSemesterSessionLabel } from '../../lib/cohortLabel';
+import { formatDateDisplay } from '../../lib/utils';
+import { TRACKS } from '../../lib/constants';
+import { useToast } from '../../toast';
 
-import { useData } from '../../context/DataContext';
-import { useAttendance } from '../../hooks/useAttendance';
+// A student's evaluation status for one cohort — fetched on demand once a
+// student is selected on the left, rendered on the right.
+function StudentEvaluationDetail({
+  student,
+  cohortId,
+  onBack,
+}: {
+  student: ApiStudent;
+  cohortId: string;
+  onBack: () => void;
+}) {
+  const { showError } = useToast();
+  const [evaluations, setEvaluations] = useState<StudentEvaluationSummary[]>([]);
+  const [loading, setLoading] = useState(true);
 
-interface Props {
-  profiles: Profile[];
-  students: Student[];
-  attendance: Attendance[];
-  updateStudent: (userId: string, patch: Partial<Student>) => void;
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const all = await apiGetEvaluationsForStudent(student.id);
+        if (!cancelled) setEvaluations(all.filter((e) => e.cohortId === cohortId));
+      } catch (err: unknown) {
+        if (!cancelled) showError(err instanceof Error ? err.message : 'Failed to load evaluations');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [student.id, cohortId, showError]);
+
+  return (
+    <div className="p-4 space-y-4">
+      <button
+        onClick={onBack}
+        className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-white px-2.5 py-1.5 -ml-2.5 rounded-lg hover:bg-zinc-800 transition-colors lg:hidden"
+      >
+        <ArrowLeft size={13} /> Back
+      </button>
+
+      <div className="text-center py-4 border-b border-zinc-800">
+        <h2 className="text-white text-lg font-bold">{student.fullName || student.email}</h2>
+        <p className="text-gray-500 text-xs mt-1">{student.rollNumber || '—'} · {student.batch || 'No batch'}</p>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-10">
+          <SpinnerSquare size={32} />
+        </div>
+      ) : evaluations.length === 0 ? (
+        <p className="text-gray-500 text-sm text-center py-8">No evaluations set up for this cohort yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {evaluations.map((e) => (
+            <div
+              key={e.id}
+              className="flex items-center justify-between gap-3 px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg"
+            >
+              <div className="min-w-0">
+                <p className="text-white text-sm font-semibold truncate">
+                  {e.sequenceNo ? `${e.evaluationTypeName} ${e.sequenceNo}` : e.evaluationTypeName}
+                </p>
+                <p className="text-gray-500 text-xs mt-0.5">
+                  {e.panelistCount} evaluator{e.panelistCount !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <span
+                className={`text-sm font-bold px-2.5 py-1 rounded-lg border shrink-0 ${
+                  e.finalMarksObtained !== null
+                    ? 'text-gold bg-gold/10 border-gold/25'
+                    : 'text-gray-500 bg-zinc-800 border-zinc-700'
+                }`}
+              >
+                {e.finalMarksObtained !== null ? `${e.finalMarksObtained}/${e.maxMarksSnapshot}` : 'Not evaluated'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
-export default function AdminEvaluationTracker({
-  profiles: propProfiles,
-  students: propStudents,
-  attendance: propAttendance,
-  updateStudent: propUpdateStudent,
-}: Partial<Props> = {}) {
-  const { profiles: hookProfiles, students: hookStudents, updateStudent: hookUpdateStudent } = useData();
-  const { attendance: hookAttendance } = useAttendance();
+// Task/Evaluation are inherently cohort-scoped, so this page is cohort-first:
+// pick a cohort, then manage its evaluations — filter/search its students on
+// the left, click one to see their evaluation status on the right. Mirrors
+// ViewCohortPage's own list->detail split, just for a different slice of the
+// same cohort (ViewCohortPage itself stays scoped to students/projects/mentors).
+export default function AdminEvaluationTracker() {
+  const { showError } = useToast();
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [loadingCohorts, setLoadingCohorts] = useState(true);
+  const [selectedCohort, setSelectedCohort] = useState<CohortDetails | null>(null);
+  const [loadingCohortDetail, setLoadingCohortDetail] = useState(false);
 
-  const profiles = propProfiles ?? hookProfiles;
-  const students = propStudents ?? hookStudents;
-  const attendance = propAttendance ?? hookAttendance;
-  const updateStudent = propUpdateStudent ?? hookUpdateStudent;
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    viva1: '', viva2: '', viva3: '', ojt_marks: '',
-    internal_marks: '', presentation_marks: '',
-    project_video_url: '', deployment_url: ''
-  });
+  const [batchFilter, setBatchFilter] = useState('');
+  const [trackFilter, setTrackFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
-  const studentProfiles = useStudentProfiles(profiles);
+  const [studentsList, setStudentsList] = useState<ApiStudent[]>([]);
+  const [listPage, setListPage] = useState(1);
+  const [listLimit, setListLimit] = useState(20);
+  const [listLoading, setListLoading] = useState(false);
+  const [listPagination, setListPagination] = useState({ totalPages: 1, total: 0 });
 
-  const totalUniqueDates = useMemo(() => {
-    return new Set(attendance.map((a) => a.date)).size;
-  }, [attendance]);
+  useEffect(() => {
+    (async () => {
+      try {
+        setCohorts(await apiListCohorts());
+      } catch (err: unknown) {
+        showError(err instanceof Error ? err.message : 'Failed to load cohorts');
+      } finally {
+        setLoadingCohorts(false);
+      }
+    })();
+  }, [showError]);
 
-  const targetDenominator = Math.max(totalUniqueDates, 5);
+  const selectCohort = useCallback(async (cohortId: string) => {
+    setLoadingCohortDetail(true);
+    try {
+      setSelectedCohort(await apiGetCohort(cohortId));
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to load cohort');
+    } finally {
+      setLoadingCohortDetail(false);
+    }
+  }, [showError]);
 
-  const data = useMemo(() => {
-    return students.map((s) => {
-      const prof = studentProfiles.find((p) => p.id === s.user_id);
-      const studentPresents = attendance.filter((a) => a.student_id === s.user_id).length;
-      const attPct = Math.round((studentPresents / targetDenominator) * 100);
-
-      // Total average calculation
-      const v1 = s.viva1 ?? 0;
-      const v2 = s.viva2 ?? 0;
-      const v3 = s.viva3 ?? 0;
-      const ojt = s.ojt_marks ?? 0;
-      const internal = s.internal_marks ?? 0;
-      const pres = s.presentation_marks ?? 0;
-
-      const scoresCount = [s.viva1, s.viva2, s.viva3, s.ojt_marks, s.internal_marks, s.presentation_marks]
-        .filter(x => x !== null && x !== undefined).length || 1;
-
-      const total = Math.round((v1 + v2 + v3 + ojt + internal + pres) / scoresCount);
-
-      return {
-        user_id: s.user_id,
-        name: prof?.name ?? '-',
-        roll_number: s.roll_number,
-        viva1: s.viva1 !== null ? `${s.viva1}/100` : 'Not Set',
-        viva2: s.viva2 !== null ? `${s.viva2}/100` : 'Not Set',
-        viva3: s.viva3 !== null ? `${s.viva3}/100` : 'Not Set',
-        internal_marks: s.internal_marks !== null ? `${s.internal_marks}/100` : 'Not Set',
-        presentation_marks: s.presentation_marks !== null ? `${s.presentation_marks}/100` : 'Not Set',
-        attendanceRate: `${attPct}%`,
-        ojt_marks: s.ojt_marks !== null ? `${s.ojt_marks}/100` : 'Not Set',
-        logbook_checked: !!s.logbook_checked,
-        project_video_url: s.project_video_url,
-        deployment_url: s.deployment_url,
-        totalScore: `${total}/100`,
-      };
-    });
-  }, [students, studentProfiles, attendance, targetDenominator]);
-
-  const handleEdit = (row: (typeof data)[number]) => {
-    const s = students.find((stud) => stud.user_id === row.user_id);
-    if (!s) return;
-    setEditingUserId(row.user_id);
-    setForm({
-      viva1: s.viva1 !== null ? String(s.viva1) : '',
-      viva2: s.viva2 !== null ? String(s.viva2) : '',
-      viva3: s.viva3 !== null ? String(s.viva3) : '',
-      ojt_marks: s.ojt_marks !== null ? String(s.ojt_marks) : '',
-      internal_marks: s.internal_marks !== null ? String(s.internal_marks) : '',
-      presentation_marks: s.presentation_marks !== null ? String(s.presentation_marks) : '',
-      project_video_url: s.project_video_url || '',
-      deployment_url: s.deployment_url || ''
-    });
-    setModalOpen(true);
+  const backToCohorts = () => {
+    setSelectedCohort(null);
+    setBatchFilter('');
+    setTrackFilter('');
+    setSearch('');
+    setSelectedStudentId(null);
   };
 
-  const handleSave = () => {
-    if (!editingUserId) return;
-    updateStudent(editingUserId, {
-      viva1: form.viva1 !== '' ? Number(form.viva1) : null,
-      viva2: form.viva2 !== '' ? Number(form.viva2) : null,
-      viva3: form.viva3 !== '' ? Number(form.viva3) : null,
-      ojt_marks: form.ojt_marks !== '' ? Number(form.ojt_marks) : null,
-      internal_marks: form.internal_marks !== '' ? Number(form.internal_marks) : null,
-      presentation_marks: form.presentation_marks !== '' ? Number(form.presentation_marks) : null,
-      project_video_url: form.project_video_url || null,
-      deployment_url: form.deployment_url || null,
-    });
-    setEditingUserId(null);
-    setModalOpen(false);
-  };
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setListPage(1);
+  }, [batchFilter, trackFilter, debouncedSearch, selectedCohort?.id]);
+
+  useEffect(() => {
+    if (!selectedCohort) return;
+    let cancelled = false;
+    setListLoading(true);
+    (async () => {
+      try {
+        const res = await apiListStudentsPage({
+          page: listPage,
+          limit: listLimit,
+          cohortId: selectedCohort.id,
+          batch: batchFilter || undefined,
+          track: trackFilter || undefined,
+          search: debouncedSearch || undefined,
+        });
+        if (cancelled) return;
+        setStudentsList(res.data);
+        setListPagination({ totalPages: res.pagination.totalPages, total: res.pagination.total });
+      } catch (err: unknown) {
+        if (!cancelled) showError(err instanceof Error ? err.message : 'Failed to load students');
+      } finally {
+        if (!cancelled) setListLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCohort, listPage, listLimit, batchFilter, trackFilter, debouncedSearch, showError]);
+
+  // Evaluations only make sense once teams are actually locked in and the
+  // cohort is a live, running one — `allocationPublishedAt` (a sticky
+  // one-way flag) is the source of truth for "ever published," not the
+  // volatile `allocationRunStatus` enum, which can cycle back to draft/review
+  // if new teams are added post-publish (see the allocations module).
+  const isEvaluationEligible = !!selectedCohort?.isActive && !!selectedCohort?.allocationPublishedAt;
+
+  const studentRows = studentsList.map((s) => ({
+    id: s.id,
+    name: s.fullName || s.email || s.id,
+    batch: s.batch || '—',
+  }));
+
+  const selectedStudent = studentsList.find((s) => s.id === selectedStudentId) || null;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Award className="text-gold" size={26} />
-            Evaluation Tracker
-          </h1>
-          <p className="text-gray-400 text-sm mt-1">Manage Viva, Internal, Presentation grades, check Logbooks and review student links.</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <Award className="text-gold" size={26} />
+          Evaluation Tracker
+        </h1>
+        <p className="text-gray-400 text-sm mt-1">Pick a cohort to set up and track its Viva, Final Presentation, Logbook, PRD and Attendance evaluations.</p>
       </div>
 
-      <DataTable
-        columns={[
-          { key: 'roll_number', header: 'Roll Number' },
-          { key: 'name', header: 'Student Name' },
-          { key: 'viva1', header: 'Viva 1' },
-          { key: 'viva2', header: 'Viva 2' },
-          { key: 'viva3', header: 'Viva 3' },
-          { key: 'internal_marks', header: 'Internal' },
-          { key: 'presentation_marks', header: 'Presentation' },
-          { key: 'ojt_marks', header: 'OJT Marks' },
-          { key: 'logbook_checked', header: 'Log Book', render: (row) => (
-            <button
-              onClick={() => updateStudent(row.user_id, { logbook_checked: !row.logbook_checked })}
-              className="text-gray-400 hover:text-gold transition-colors flex items-center justify-center w-full"
-            >
-              {row.logbook_checked ? (
-                <CheckSquare size={18} className="text-gold" />
-              ) : (
-                <Square size={18} />
-              )}
-            </button>
-          )},
-          { key: 'project_video_url', header: 'Video', render: (row) => (
-            row.project_video_url ? (
-              <a href={row.project_video_url} target="_blank" rel="noreferrer" className="text-gold hover:text-gold-hover flex items-center gap-0.5 text-xs font-semibold">
-                <Video size={14} />
-                Video
-              </a>
-            ) : <span className="text-gray-600 text-xs">-</span>
-          )},
-          { key: 'deployment_url', header: 'Deploy', render: (row) => (
-            row.deployment_url ? (
-              <a href={row.deployment_url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 flex items-center gap-0.5 text-xs font-semibold">
-                <ExternalLink size={14} />
-                Deploy
-              </a>
-            ) : <span className="text-gray-600 text-xs">-</span>
-          )},
-          { key: 'attendanceRate', header: 'Attendance' },
-          {
-            key: 'totalScore',
-            header: 'Overall',
-            render: (row) => (
-              <span className="font-bold text-gold bg-gold/10 px-2 py-0.5 rounded border border-gold/25">
-                {row.totalScore}
-              </span>
-            ),
-          },
-        ]}
-        data={data}
-        searchPlaceholder="Search evaluation sheet..."
-        actions={(row) => (
+      {!selectedCohort ? (
+        loadingCohorts ? (
+          <div className="flex justify-center py-16">
+            <SpinnerSquare size={40} />
+          </div>
+        ) : cohorts.length === 0 ? (
+          <p className="text-gray-500 text-sm">No cohorts found.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {cohorts.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => selectCohort(c.id)}
+                className="text-left px-4 py-3.5 rounded-xl border bg-zinc-900 border-zinc-800 text-gray-300 hover:bg-zinc-850 hover:text-white hover:border-zinc-700 transition-colors"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-sm truncate">{getCohortLabel(c)}</span>
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.isActive ? 'bg-emerald-400' : 'bg-gray-500'}`} />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {getSemesterSessionLabel(c.sessionTerm)} · {formatDateDisplay(c.startDate)} → {formatDateDisplay(c.endDate)}
+                </p>
+              </button>
+            ))}
+          </div>
+        )
+      ) : (
+        <div className="space-y-3">
           <button
-            onClick={() => handleEdit(row)}
-            className="p-1 px-2.5 bg-gold/15 hover:bg-gold/20 text-gold text-xs font-semibold rounded border border-gold/20 transition-colors"
+            onClick={backToCohorts}
+            className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-white px-2.5 py-1.5 -ml-2.5 rounded-lg hover:bg-zinc-800 transition-colors"
           >
-            Grade
+            <ArrowLeft size={13} /> Back to cohorts
           </button>
-        )}
-      />
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Update Grades & Project Deliverables">
-        <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Viva 1 (0-100)</label>
-              <input
-                type="number" min="0" max="100" value={form.viva1}
-                onChange={(e) => setForm({ ...form, viva1: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Viva 2 (0-100)</label>
-              <input
-                type="number" min="0" max="100" value={form.viva2}
-                onChange={(e) => setForm({ ...form, viva2: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Viva 3 (0-100)</label>
-              <input
-                type="number" min="0" max="100" value={form.viva3}
-                onChange={(e) => setForm({ ...form, viva3: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Internal Marks (0-100)</label>
-              <input
-                type="number" min="0" max="100" value={form.internal_marks}
-                onChange={(e) => setForm({ ...form, internal_marks: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Presentation Marks (0-100)</label>
-              <input
-                type="number" min="0" max="100" value={form.presentation_marks}
-                onChange={(e) => setForm({ ...form, presentation_marks: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">OJT Project Marks (0-100)</label>
-              <input
-                type="number" min="0" max="100" value={form.ojt_marks}
-                onChange={(e) => setForm({ ...form, ojt_marks: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              />
-            </div>
-          </div>
+          <h2 className="text-white text-lg font-bold">{getCohortLabel(selectedCohort)}</h2>
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Project Video Link</label>
-            <input
-              type="url" value={form.project_video_url}
-              onChange={(e) => setForm({ ...form, project_video_url: e.target.value })}
-              placeholder="e.g., https://youtube.com/watch?v=..."
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold font-mono text-xs"
-            />
-          </div>
+          {loadingCohortDetail ? (
+            <div className="flex justify-center py-16">
+              <SpinnerSquare size={40} />
+            </div>
+          ) : !isEvaluationEligible ? (
+            <div className="border border-dashed border-zinc-800 rounded-xl py-16 flex flex-col items-center justify-center gap-2 text-center px-6">
+              <Award size={22} className="text-gray-600 mb-1" />
+              <p className="text-gray-400 text-sm font-medium">Evaluation isn't available yet for this cohort.</p>
+              <p className="text-gray-500 text-xs max-w-sm">
+                Evaluations can only be set up once this cohort's team allocations are published and the cohort is running.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Select
+                    variant="filter"
+                    className="min-w-[160px]"
+                    value={batchFilter}
+                    onChange={setBatchFilter}
+                    placeholder="All Batches"
+                    options={(selectedCohort.allowedBatches || []).map((b) => ({ value: b, label: b }))}
+                  />
+                  <Select
+                    variant="filter"
+                    className="min-w-[160px]"
+                    value={trackFilter}
+                    onChange={setTrackFilter}
+                    placeholder="All Tracks"
+                    options={TRACKS.map((t) => ({ value: t, label: t }))}
+                  />
+                </div>
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 active:scale-95 transition-all duration-200 text-sm shadow-md shadow-gold/10"
+                >
+                  <Plus size={16} />
+                  Add Evaluation
+                </button>
+              </div>
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Deployment Link</label>
-            <input
-              type="url" value={form.deployment_url}
-              onChange={(e) => setForm({ ...form, deployment_url: e.target.value })}
-              placeholder="e.g., https://project-prod.vercel.app"
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold font-mono text-xs"
-            />
-          </div>
+              <div className="flex flex-col lg:flex-row gap-4">
+                <div className="lg:w-[420px] shrink-0 relative">
+                  {listLoading && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 rounded-xl">
+                      <SpinnerSquare size={32} />
+                    </div>
+                  )}
+                  <DataTable
+                    columns={[{ key: 'name', header: 'Name' }, { key: 'batch', header: 'Batch' }]}
+                    data={studentRows}
+                    searchPlaceholder="Search by name or roll number..."
+                    onRowClick={(row) => setSelectedStudentId(row.id as string)}
+                    onSearchChange={setSearch}
+                    serverPagination={{
+                      page: listPage,
+                      limit: listLimit,
+                      total: listPagination.total,
+                      totalPages: listPagination.totalPages,
+                      onPageChange: setListPage,
+                      limitOptions: [20, 40, 80, 100],
+                      onLimitChange: (value) => {
+                        setListPage(1);
+                        setListLimit(value);
+                      },
+                    }}
+                  />
+                </div>
 
-          <button
-            onClick={handleSave}
-            className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors"
-          >
-            Save Grades and Deliverables
-          </button>
+                <div className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+                  {selectedStudent ? (
+                    <StudentEvaluationDetail
+                      student={selectedStudent}
+                      cohortId={selectedCohort.id}
+                      onBack={() => setSelectedStudentId(null)}
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center py-20 px-6">
+                      <p className="text-gray-500 text-sm text-center">Select a student on the left to see their evaluation status.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
-      </Modal>
+      )}
+
+      {showAddModal && selectedCohort && (
+        <AddEvaluationModal
+          cohortId={selectedCohort.id}
+          cohortMentors={selectedCohort.mentors || []}
+          onClose={() => setShowAddModal(false)}
+          onCreated={() => setShowAddModal(false)}
+        />
+      )}
     </div>
   );
 }

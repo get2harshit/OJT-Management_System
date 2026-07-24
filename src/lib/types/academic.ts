@@ -485,3 +485,16 @@ export interface EvaluationMentorPairing {
   externalMentorId: string;
 }
 
+// One student's status for one evaluation event — the Evaluation Tracker's
+// per-student detail pane shows one row of these per configured evaluation.
+export interface StudentEvaluationSummary {
+  id: string;
+  cohortId: string;
+  evaluationTypeName: string;
+  sequenceNo: number | null;
+  maxMarksSnapshot: number;
+  finalMarksObtained: number | null;
+  evaluatedAt: string | null;
+  panelistCount: number;
+}
+
