@@ -6,7 +6,7 @@ import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import DataTable from '../../../components/DataTable';
 import type { CohortDetails, Project, ApiStudent, ApiMentor, TeamAllocationDetail } from '../../../lib/types';
-import { apiGetCohort, apiGetProjectsForCohort, apiGetProjectsForCohortPage, apiListStudentsPage, apiListMentorsPage } from '../../../lib/api';
+import { apiGetCohort, apiGetProjectsForCohortPage, apiListStudentsPage, apiListMentorsPage, apiGetStudent, apiGetMentorById, apiGetProject } from '../../../lib/api';
 import { apiGetTeamsForCohortDetailed } from '../../../lib/api/allocations';
 import { getDurationString, formatDateDisplay } from '../../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
@@ -22,6 +22,11 @@ const PANEL_OPTIONS: { value: PanelView; label: string }[] = [
   { value: 'projects', label: 'Projects' },
   { value: 'mentors', label: 'Mentors' },
 ];
+
+// resolveTeamAssignment falls back to the team's own track when a project
+// isn't in this map — detail cards that don't have (or need) the cohort's
+// full project catalog just pass this instead of fetching one.
+const EMPTY_PROJECTS_MAP = new Map<string, Project>();
 
 interface AssignmentBranch {
   label: string;
@@ -527,8 +532,6 @@ export default function ViewCohortPage() {
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
   const [cohort, setCohort] = useState<CohortDetails | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [teams, setTeams] = useState<TeamAllocationDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBatchFilter, setSelectedBatchFilter] = useState('');
   const [panelView, setPanelView] = useState<PanelView>('');
@@ -593,47 +596,76 @@ export default function ViewCohortPage() {
     fetchCohort();
   }, [fetchCohort]);
 
-  // Full projects + all-teams-pages fetch — only feeds the cross-reference
-  // maps a detail card needs (studentIdToTeam / projectIdToTeams /
-  // mentorIdToTeams below). The default landing state never touches those,
-  // so this used to run unconditionally on every page visit for nothing;
-  // now it's deferred to the first time a Students/Projects/Mentors panel
-  // is actually opened, and cached (via crossRefLoadedRef) after that.
-  const [crossRefLoading, setCrossRefLoading] = useState(false);
-  const crossRefLoadedRef = useRef(false);
-  const fetchCrossRefData = useCallback(async () => {
-    if (!cohortId || crossRefLoadedRef.current) return;
-    crossRefLoadedRef.current = true;
-    setCrossRefLoading(true);
-    try {
-      const [mappedProjects, firstTeamsPage] = await Promise.all([
-        apiGetProjectsForCohort(cohortId),
-        apiGetTeamsForCohortDetailed(cohortId, { limit: 200 }),
-      ]);
-      setProjects(mappedProjects);
+  // Detail cards fetch exactly the entity they show — the clicked
+  // student/project/mentor itself, plus only the team(s) tied to it (via
+  // getTeamsForCohortDetailed's studentId/projectId/mentorId filters) —
+  // instead of the whole cohort's roster/projects/teams. A teammate or team
+  // member's name+batch+email rides along on the team row itself, so no
+  // separate roster fetch is needed to resolve those either.
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailStudent, setDetailStudent] = useState<ApiStudent | null>(null);
+  const [detailStudentTeam, setDetailStudentTeam] = useState<TeamAllocationDetail | null>(null);
+  const [detailProject, setDetailProject] = useState<Project | null>(null);
+  const [detailProjectTeams, setDetailProjectTeams] = useState<TeamAllocationDetail[]>([]);
+  const [detailMentor, setDetailMentor] = useState<ApiMentor | null>(null);
+  const [detailMentorTeams, setDetailMentorTeams] = useState<TeamAllocationDetail[]>([]);
 
-      let allTeams = firstTeamsPage.data;
-      const { totalPages } = firstTeamsPage.pagination;
-      if (totalPages > 1) {
-        const restPages = await Promise.all(
-          Array.from({ length: totalPages - 1 }, (_, i) =>
-            apiGetTeamsForCohortDetailed(cohortId, { limit: 200, page: i + 2, skipCount: true })
-          )
-        );
-        allTeams = allTeams.concat(...restPages.map(p => p.data));
-      }
-      setTeams(allTeams);
+  const openStudentDetail = useCallback(async (studentId: string) => {
+    setDetailStudentId(studentId);
+    if (!cohortId) return;
+    setDetailLoading(true);
+    try {
+      const [student, teamsRes] = await Promise.all([
+        apiGetStudent(studentId),
+        apiGetTeamsForCohortDetailed(cohortId, { studentId, limit: 1 }),
+      ]);
+      setDetailStudent(student);
+      setDetailStudentTeam(teamsRes.data[0] ?? null);
     } catch (err: unknown) {
-      showError(err instanceof Error ? err.message : 'Failed to load cohort roster data');
-      crossRefLoadedRef.current = false; // allow retrying on the next panel open
+      showError(err instanceof Error ? err.message : 'Failed to load student detail');
+      setDetailStudent(null);
     } finally {
-      setCrossRefLoading(false);
+      setDetailLoading(false);
     }
   }, [cohortId, showError]);
 
-  useEffect(() => {
-    if (panelView) fetchCrossRefData();
-  }, [panelView, fetchCrossRefData]);
+  const openProjectDetail = useCallback(async (projectId: string) => {
+    setDetailProjectId(projectId);
+    if (!cohortId) return;
+    setDetailLoading(true);
+    try {
+      const [project, teamsRes] = await Promise.all([
+        apiGetProject(projectId),
+        apiGetTeamsForCohortDetailed(cohortId, { projectId, limit: 50 }),
+      ]);
+      setDetailProject(project);
+      setDetailProjectTeams(teamsRes.data);
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to load project detail');
+      setDetailProject(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [cohortId, showError]);
+
+  const openMentorDetail = useCallback(async (mentorId: string) => {
+    setSelectedMentorId(mentorId);
+    if (!cohortId) return;
+    setDetailLoading(true);
+    try {
+      const [mentor, teamsRes] = await Promise.all([
+        apiGetMentorById(mentorId),
+        apiGetTeamsForCohortDetailed(cohortId, { mentorId, limit: 50 }),
+      ]);
+      setDetailMentor(mentor);
+      setDetailMentorTeams(teamsRes.data);
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to load mentor detail');
+      setDetailMentor(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [cohortId, showError]);
 
   // Debounce free-text search so every keystroke doesn't fire a request.
   useEffect(() => {
@@ -719,37 +751,17 @@ export default function ViewCohortPage() {
     );
   }
 
-  const cohortStudents = cohort.students || [];
-  const cohortMentors = cohort.mentors || [];
+  // A team-member row already carries fullName/batch/email (see
+  // TeamRepositoryImpl.getTeamsForCohortDetailed), so the project/mentor
+  // detail cards' studentsById map is built straight from the small, scoped
+  // team list fetched for that one project/mentor — not the whole roster.
+  const projectDetailStudentsById = new Map(
+    detailProjectTeams.flatMap(t => t.members).map(m => [m.studentId, { id: m.studentId, fullName: m.fullName, batch: m.batch ?? undefined, email: m.email ?? undefined } as ApiStudent])
+  );
+  const mentorDetailStudentsById = new Map(
+    detailMentorTeams.flatMap(t => t.members).map(m => [m.studentId, { id: m.studentId, fullName: m.fullName, batch: m.batch ?? undefined, email: m.email ?? undefined } as ApiStudent])
+  );
 
-  // Cross-reference indexes for detail cards — built from the full,
-  // unpaginated cohort/projects/teams fetch above, so a teammate or roster
-  // entry resolves correctly no matter what page it'd land on in the
-  // browsable list.
-  const studentsById = new Map(cohortStudents.map(s => [s.id, s]));
-  const projectsById = new Map(projects.map(p => [p.id, p]));
-  const studentIdToTeam = new Map<string, TeamAllocationDetail>();
-  teams.forEach(t => t.members.forEach(m => studentIdToTeam.set(m.studentId, t)));
-  const projectIdToTeams = new Map<string, TeamAllocationDetail[]>();
-  teams.forEach(t => {
-    const relevantIds = t.allocatedProjectId
-      ? [t.allocatedProjectId]
-      : [t.preference1.projectId, t.preference2.projectId];
-    relevantIds.forEach(pid => {
-      const arr = projectIdToTeams.get(pid) || [];
-      arr.push(t);
-      projectIdToTeams.set(pid, arr);
-    });
-  });
-  const mentorIdToTeams = new Map<string, TeamAllocationDetail[]>();
-  teams.forEach(t => {
-    if (!t.allocatedMentorId) return;
-    const arr = mentorIdToTeams.get(t.allocatedMentorId) || [];
-    arr.push(t);
-    mentorIdToTeams.set(t.allocatedMentorId, arr);
-  });
-
-  const openStudentDetail = (studentId: string) => setDetailStudentId(studentId);
   const isBrowsingList = !detailStudentId && !detailProjectId && !selectedMentorId;
 
   // Plain display-row objects for DataTable — it infers its row type from
@@ -766,15 +778,16 @@ export default function ViewCohortPage() {
 
   const renderStudentDetail = () => {
     if (!detailStudentId) return null;
-    const student = studentsById.get(detailStudentId);
-    if (!student) return <p className="p-4 text-gray-500 text-xs">Student not found in this cohort's roster.</p>;
-    const team = studentIdToTeam.get(detailStudentId);
+    if (!detailStudent) return <p className="p-4 text-gray-500 text-xs">Student not found in this cohort's roster.</p>;
+    const team = detailStudentTeam ?? undefined;
     const teammateMember = team?.members.find(m => m.studentId !== detailStudentId);
-    const teammate = teammateMember ? studentsById.get(teammateMember.studentId) : undefined;
-    const assignment = team ? resolveTeamAssignment(team, projectsById) : null;
+    const teammate: ApiStudent | undefined = teammateMember
+      ? { id: teammateMember.studentId, fullName: teammateMember.fullName, batch: teammateMember.batch ?? undefined, email: teammateMember.email ?? undefined }
+      : undefined;
+    const assignment = team ? resolveTeamAssignment(team, EMPTY_PROJECTS_MAP) : null;
     return (
       <StudentDetailCard
-        student={student}
+        student={detailStudent}
         team={team}
         teammate={teammate}
         assignment={assignment}
@@ -880,7 +893,7 @@ export default function ViewCohortPage() {
               }}
               className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden"
             >
-              {crossRefLoading ? (
+              {detailLoading ? (
                 <div className="flex items-center justify-center py-16">
                   <SpinnerSquare size={40} />
                 </div>
@@ -889,34 +902,30 @@ export default function ViewCohortPage() {
               {panelView === 'students' && renderStudentDetail()}
 
               {panelView === 'projects' && (
-                detailStudentId ? renderStudentDetail() : (() => {
-                  const project = detailProjectId ? projectsById.get(detailProjectId) : undefined;
-                  if (!project) return <p className="p-4 text-gray-500 text-xs">Project not found.</p>;
-                  return (
+                detailStudentId ? renderStudentDetail() : (
+                  !detailProject ? <p className="p-4 text-gray-500 text-xs">Project not found.</p> : (
                     <ProjectDetailCard
-                      project={project}
-                      teams={projectIdToTeams.get(project.id) || []}
-                      studentsById={studentsById}
+                      project={detailProject}
+                      teams={detailProjectTeams}
+                      studentsById={projectDetailStudentsById}
                       onBack={() => setDetailProjectId(null)}
                       onSelectStudent={openStudentDetail}
                     />
-                  );
-                })()
+                  )
+                )
               )}
 
-              {panelView === 'mentors' && (() => {
-                const mentor = cohortMentors.find(m => m.id === selectedMentorId);
-                if (!mentor) return <p className="p-4 text-gray-500 text-xs">Mentor not found.</p>;
-                return (
+              {panelView === 'mentors' && (
+                !detailMentor ? <p className="p-4 text-gray-500 text-xs">Mentor not found.</p> : (
                   <MentorRoster
-                    mentor={mentor}
-                    teams={mentorIdToTeams.get(mentor.id) || []}
-                    studentsById={studentsById}
-                    projectsById={projectsById}
+                    mentor={detailMentor}
+                    teams={detailMentorTeams}
+                    studentsById={mentorDetailStudentsById}
+                    projectsById={EMPTY_PROJECTS_MAP}
                     onBack={() => setSelectedMentorId(null)}
                   />
-                );
-              })()}
+                )
+              )}
                 </>
               )}
             </div>
@@ -969,7 +978,7 @@ export default function ViewCohortPage() {
                   ]}
                   data={projectRows}
                   searchPlaceholder="Search projects..."
-                  onRowClick={(row) => setDetailProjectId(row.id as string)}
+                  onRowClick={(row) => openProjectDetail(row.id as string)}
                   onSearchChange={setPanelSearch}
                   leftHeaderContent={
                     <Select
@@ -1011,7 +1020,7 @@ export default function ViewCohortPage() {
                   ]}
                   data={mentorRows}
                   searchPlaceholder="Search mentors..."
-                  onRowClick={(row) => setSelectedMentorId(row.id as string)}
+                  onRowClick={(row) => openMentorDetail(row.id as string)}
                   onSearchChange={setPanelSearch}
                   leftHeaderContent={
                     <Select

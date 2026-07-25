@@ -27,7 +27,7 @@ export default function CohortMentorsPage() {
     try {
       const [mentors, details] = await Promise.all([
         apiListMentors(),
-        apiGetCohort(cohortId),
+        apiGetCohort(cohortId, true),
       ]);
       setAllMentors(mentors);
       setCohortLabel(getCohortLabel(details));

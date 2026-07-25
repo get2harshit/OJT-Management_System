@@ -62,3 +62,10 @@ export async function apiListStudentBatches(): Promise<string[]> {
   const res = await apiFetch<{ success: boolean; data: string[] }>('/api/v1/students/batches');
   return res.data;
 }
+
+// Single student, for a detail-card view — avoids pulling the whole roster
+// just to resolve one student's own profile fields.
+export async function apiGetStudent(id: string): Promise<ApiStudent> {
+  const res = await apiFetch<{ success: boolean; data: ApiStudent }>(`/api/v1/students/${id}`);
+  return res.data;
+}

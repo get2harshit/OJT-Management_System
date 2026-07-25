@@ -296,7 +296,7 @@ export interface TeamAllocationDetail {
   teamId: string;
   teamName: string | null;
   track: string;
-  members: { studentId: string; fullName: string | null }[];
+  members: { studentId: string; fullName: string | null; batch: string | null; email: string | null }[];
   tier: string;
   submittedAt: string;
   preference1: { projectId: string; projectTitle: string; mentorId: string | null; mentorName: string | null };

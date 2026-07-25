@@ -18,8 +18,13 @@ export async function apiListMyCohorts(): Promise<Cohort[]> {
   return cachedFetch('cohorts:mine', COHORTS_TTL, () => apiFetch<Cohort[]>('/api/v1/cohorts/mine'));
 }
 
-export async function apiGetCohort(id: string): Promise<CohortDetails> {
-  return cachedFetch(`cohorts:get:${id}`, COHORTS_TTL, () => apiFetch<CohortDetails>(`/api/v1/cohorts/${id}`));
+// includeRoster pulls the cohort's students/mentors/batchManagers arrays too
+// — each with a dozen-plus profile fields, expensive, and most callers just
+// want the cohort's own metadata (dates, status, allowed batches). Only pass
+// it when those roster arrays are actually going to be read.
+export async function apiGetCohort(id: string, includeRoster: boolean = false): Promise<CohortDetails> {
+  const url = includeRoster ? `/api/v1/cohorts/${id}?includeRoster=true` : `/api/v1/cohorts/${id}`;
+  return cachedFetch(`cohorts:get:${id}:${includeRoster}`, COHORTS_TTL, () => apiFetch<CohortDetails>(url));
 }
 
 export async function apiCreateCohort(body: CreateCohortBody): Promise<Cohort> {
