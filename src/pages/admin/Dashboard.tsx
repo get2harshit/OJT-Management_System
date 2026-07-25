@@ -1,22 +1,16 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Sparkles, Activity, UserCog, Briefcase, Download } from 'lucide-react';
+import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Activity, UserCog, Briefcase, Download } from 'lucide-react';
 import { exportToCSV } from '../../lib/csvExport';
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
-import type { Task, Submission, Attendance, DashboardMetrics, ApiMentor, ApiStudent, Cohort, CohortDetails, Project } from '../../lib/types';
+import type { Task, Submission, Attendance, DashboardMetrics, Cohort } from '../../lib/types';
 import {
   apiGetDashboardMetrics,
-  apiListMentors,
   apiListCohorts,
-  apiListStudents,
-  apiGetCohort,
-  apiGetProjectsForCohort,
-  apiListProjects
 } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
-import { TRACKS, TRACK_DOT_COLORS } from '../../lib/constants';
-import { mapFrontendTrackToBackend, mapBackendTrackToFrontend } from '../../lib/api/trackMapping';
+import { TRACKS } from '../../lib/constants';
 
 import { useTasks } from '../../hooks/useTasks';
 import { useSubmissions } from '../../hooks/useSubmissions';
@@ -47,55 +41,28 @@ export default function AdminDashboard({
   const [trackFilter, setTrackFilter] = useState('');
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [apiStudents, setApiStudents] = useState<ApiStudent[]>([]);
-  const [apiMentors, setApiMentors] = useState<ApiMentor[]>([]);
-  const [globalProjects, setGlobalProjects] = useState<Project[]>([]);
   const [loadingReal, setLoadingReal] = useState(true);
 
-  // Cohort details & projects (when semFilter/cohort is selected)
-  const [selectedCohortDetails, setSelectedCohortDetails] = useState<CohortDetails | null>(null);
-  const [cohortProjects, setCohortProjects] = useState<Project[]>([]);
-
   // Real backend counts (students/mentors/batch managers/projects/credits) —
-  // everything else on this page (progress tracker, mentor table, submission
-  // breakdown, activity feed) has no backend equivalent yet and stays mock.
+  // everything else on this page (submission breakdown, activity feed) is
+  // mock data (see DataContext's defaultSubmissions/defaultAttendance —
+  // never wired to a real backend endpoint), not derived from any roster.
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      apiGetDashboardMetrics(),
-      apiListCohorts(),
-      apiListStudents(),
-      apiListMentors(),
-      apiListProjects()
-    ])
-      .then(([metricsRes, cohortsRes, studentsRes, mentorsRes, projectsRes]) => {
-        setMetrics(metricsRes);
-        setCohorts(cohortsRes);
-        setApiStudents(studentsRes);
-        setApiMentors(mentorsRes);
-        setGlobalProjects(projectsRes);
-      })
-      .catch((err) => console.error('Dashboard failed to load real data', err))
+    apiListCohorts()
+      .then(setCohorts)
+      .catch((err) => console.error('Dashboard failed to load cohorts', err))
       .finally(() => setLoadingReal(false));
   }, []);
 
+  // Stat-card counts — server-filtered by the current cohort/batch/track
+  // selection, so no full roster needs to be downloaded just to show a number.
   useEffect(() => {
-    if (semFilter) {
-      Promise.all([
-        apiGetCohort(semFilter),
-        apiGetProjectsForCohort(semFilter)
-      ])
-        .then(([cohortDetails, cohortProj]) => {
-          setSelectedCohortDetails(cohortDetails);
-          setCohortProjects(cohortProj);
-        })
-        .catch((err) => console.error('Dashboard failed to load cohort details', err));
-    } else {
-      setSelectedCohortDetails(null);
-      setCohortProjects([]);
-    }
-  }, [semFilter]);
+    apiGetDashboardMetrics({ cohortId: semFilter || undefined, batch: batchFilter || undefined, track: trackFilter || undefined })
+      .then(setMetrics)
+      .catch((err) => console.error('Dashboard failed to load metrics', err));
+  }, [semFilter, batchFilter, trackFilter]);
 
   const semesterOptions = useMemo(() => {
     return cohorts.map(c => ({ value: c.id, label: getCohortLabel(c) }));
@@ -110,118 +77,27 @@ export default function AdminDashboard({
     return Array.from(new Set(all)).sort().map(b => ({ value: b, label: b }));
   }, [semFilter, cohorts]);
 
-  // Scoped student list
-  const cohortScopedStudents = useMemo(() => {
-    if (semFilter && selectedCohortDetails) {
-      return selectedCohortDetails.students || [];
-    }
-    return apiStudents;
-  }, [semFilter, selectedCohortDetails, apiStudents]);
-
-  const filteredStudents = useMemo(() => {
-    return cohortScopedStudents.filter(s => {
-      if (batchFilter && s.batch !== batchFilter) return false;
-      if (trackFilter) {
-        const studentTrack = s.track;
-        if (!studentTrack || studentTrack.toLowerCase() !== trackFilter.toLowerCase()) return false;
-      }
-      return true;
-    });
-  }, [cohortScopedStudents, batchFilter, trackFilter]);
-
-  const studentIds = new Set(filteredStudents.map(s => s.id));
-
-  // Scoped mentor list
-  const cohortScopedMentors = useMemo(() => {
-    if (semFilter && selectedCohortDetails) {
-      return selectedCohortDetails.mentors || [];
-    }
-    return apiMentors;
-  }, [semFilter, selectedCohortDetails, apiMentors]);
-
-  const filteredMentors = useMemo(() => {
-    return cohortScopedMentors.filter(m => {
-      if (trackFilter) {
-        const backendTrack = mapFrontendTrackToBackend(trackFilter);
-        return m.tracks?.includes(backendTrack) || m.tracks?.includes(trackFilter);
-      }
-      return true;
-    });
-  }, [cohortScopedMentors, trackFilter]);
-
-  // Scoped projects list
-  const cohortScopedProjects = useMemo(() => {
-    if (semFilter) {
-      return cohortProjects;
-    }
-    return globalProjects;
-  }, [semFilter, cohortProjects, globalProjects]);
-
-  const filteredProjects = useMemo(() => {
-    return cohortScopedProjects.filter(p => {
-      if (trackFilter && p.track !== trackFilter) return false;
-      return true;
-    });
-  }, [cohortScopedProjects, trackFilter]);
-
-  // Shape ApiMentor to the fields used in mentorTrackerList below
-  const mentors = filteredMentors.map(m => ({
-    id: m.id,
-    name: m.fullName || m.email || 'Unnamed Mentor',
-    track: m.isExternal ? 'External' : 'Internal',
-    tracks: (m.tracks && m.tracks.length > 0) ? m.tracks.map(mapBackendTrackToFrontend) : [m.isExternal ? 'External' : 'Internal'],
-  }));
-
   const taskCount = tasks.length;
-  const filteredSubmissions = submissions.filter(s => studentIds.has(s.student_id));
-  const pendingSubmissions = filteredSubmissions.filter(s => s.status === 'PENDING').length;
-  const filteredAttendance = attendance.filter(a => studentIds.has(a.student_id));
-  const attendanceCount = filteredAttendance.length;
+  // submissions/attendance are mock/localStorage data with no real student
+  // linkage worth scoping (see the state-declaration comment above) — shown
+  // as-is rather than filtered by a roster fetched just for this.
+  const pendingSubmissions = submissions.filter(s => s.status === 'PENDING').length;
+  const attendanceCount = attendance.length;
 
-  // Progress status counts
-  const onTrackCount = useMemo(() => filteredStudents.filter(s => s.progressStatus === 'ON_TRACK' || s.progress_status === 'ON_TRACK').length, [filteredStudents]);
-  const delayingCount = useMemo(() => filteredStudents.filter(s => s.progressStatus === 'DELAYING' || s.progress_status === 'DELAYING').length, [filteredStudents]);
-  const inProcessCount = useMemo(() => filteredStudents.filter(s => {
-    const status = s.progressStatus || s.progress_status;
-    return status === 'IN_PROCESS' || !status;
-  }).length, [filteredStudents]);
+  // Progress status counts — no backend field for this exists yet (see
+  // above), so every student is always "in process" and the roster's own
+  // total already lives on `metrics`; no per-student fetch needed to show it.
+  const onTrackCount = 0;
+  const delayingCount = 0;
+  const inProcessCount = metrics ? metrics.studentsCount : 0;
 
-  const totalUniqueDates = useMemo(() => {
-    return new Set(attendance.map((a) => a.date)).size || 5;
-  }, [attendance]);
-
-  // Mentor table data calculation
-  const mentorTrackerList = useMemo(() => {
-    return mentors.map(m => {
-      const assigned = filteredStudents.filter(s => s.mentorId === m.id || s.mentor_id === m.id);
-      const onTrack = assigned.filter(s => s.progressStatus === 'ON_TRACK' || s.progress_status === 'ON_TRACK').length;
-      const delaying = assigned.filter(s => s.progressStatus === 'DELAYING' || s.progress_status === 'DELAYING').length;
-      const inProcess = assigned.length - onTrack - delaying;
-
-      // Attendance calculation for this mentor's students
-      const presents = attendance.filter(a => assigned.some(s => s.id === a.student_id)).length;
-      const possiblePresents = assigned.length * totalUniqueDates;
-      const rate = possiblePresents > 0 ? Math.round((presents / possiblePresents) * 100) : 0;
-
-      return {
-        id: m.id,
-        name: m.name,
-        track: m.track ?? 'General',
-        tracks: m.tracks || (m.track ? [m.track] : []),
-        totalStudents: assigned.length,
-        onTrack,
-        delaying,
-        inProcess,
-        attendanceRate: `${rate}%`
-      };
-    });
-  }, [mentors, filteredStudents, attendance, totalUniqueDates]);
-
-  // Calculated count states for stats cards
-  const showStudentsCount = (semFilter || batchFilter || trackFilter) ? filteredStudents.length : (metrics ? metrics.studentsCount : '—');
-  const showMentorsCount = (semFilter || trackFilter) ? filteredMentors.length : (metrics ? metrics.mentorsCount : '—');
-  const showBatchManagersCount = semFilter ? (selectedCohortDetails?.batchManagers?.length || 0) : (metrics ? metrics.batchManagersCount : '—');
-  const showProjectsCount = (semFilter || trackFilter) ? filteredProjects.length : (metrics ? metrics.projectsCount : '—');
+  // Stat-card counts — always straight from /dashboard/metrics, which is
+  // re-fetched with the current cohort/batch/track filters above. No client
+  // list is downloaded just to compute one of these.
+  const showStudentsCount = metrics ? metrics.studentsCount : '—';
+  const showMentorsCount = metrics ? metrics.mentorsCount : '—';
+  const showBatchManagersCount = metrics ? metrics.batchManagersCount : '—';
+  const showProjectsCount = metrics ? metrics.projectsCount : '—';
 
   if (loadingReal) {
     return (
@@ -325,97 +201,6 @@ export default function AdminDashboard({
         </div>
       </div>
 
-      {/* Grouped by Mentors Tracker */}
-      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5 overflow-hidden">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-white flex items-center gap-2">
-            <Sparkles size={18} className="text-gold" />
-            Mentor Progress Tracker (Sorted by Mentor)
-          </h3>
-        </div>
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead>
-              <tr className="border-b border-zinc-750 bg-zinc-750/30 text-gray-400 text-xs font-semibold uppercase tracking-wider">
-                <th className="px-4 py-3">Mentor</th>
-                <th className="px-4 py-3">Track Specialty</th>
-                <th className="px-4 py-3">Total Students</th>
-                <th className="px-4 py-3 text-green-400">On Track</th>
-                <th className="px-4 py-3 text-yellow-500">In Process</th>
-                <th className="px-4 py-3 text-red-400">Delaying</th>
-                <th className="px-4 py-3">Attendance Rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mentorTrackerList.map(m => (
-                <tr key={m.id} className="border-b border-zinc-750/50 hover:bg-zinc-750/10 transition-colors">
-                  <td className="px-4 py-3 font-semibold text-white">{m.name}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {m.tracks.map((t: string) => {
-                        const style = TRACK_DOT_COLORS[t] ?? { dot: 'bg-gold', text: 'text-gold' };
-                        return (
-                          <span key={t} className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                            {t}
-                          </span>
-                        );
-                      })}
-                      {m.tracks.length === 0 && (
-                        <span className="text-gray-500 text-xs">General</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-300 font-mono font-bold">{m.totalStudents}</td>
-                  <td className="px-4 py-3 text-green-400 font-mono">{m.onTrack}</td>
-                  <td className="px-4 py-3 text-yellow-500 font-mono">{m.inProcess}</td>
-                  <td className="px-4 py-3 text-red-400 font-mono">{m.delaying}</td>
-                  <td className="px-4 py-3 text-gray-300 font-mono">{m.attendanceRate}</td>
-                </tr>
-              ))}
-              {mentorTrackerList.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">No mentors configured</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile: stacked cards instead of a wide scrolling table */}
-        <div className="md:hidden divide-y divide-zinc-750/50">
-          {mentorTrackerList.map(m => (
-            <div key={m.id} className="py-3 space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-semibold text-white text-sm">{m.name}</p>
-                <span className="text-gray-300 font-mono text-xs">{m.attendanceRate} attendance</span>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {m.tracks.map((t: string) => {
-                  const style = TRACK_DOT_COLORS[t] ?? { dot: 'bg-gold', text: 'text-gold' };
-                  return (
-                    <span key={t} className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                      {t}
-                    </span>
-                  );
-                })}
-                {m.tracks.length === 0 && <span className="text-gray-500 text-xs">General</span>}
-              </div>
-              <div className="flex items-center gap-4 text-xs font-mono">
-                <span className="text-gray-400">Total <span className="text-gray-200 font-bold">{m.totalStudents}</span></span>
-                <span className="text-green-400">On Track {m.onTrack}</span>
-                <span className="text-yellow-500">In Process {m.inProcess}</span>
-                <span className="text-red-400">Delaying {m.delaying}</span>
-              </div>
-            </div>
-          ))}
-          {mentorTrackerList.length === 0 && (
-            <div className="py-8 text-center text-gray-500 text-sm">No mentors configured</div>
-          )}
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
@@ -424,8 +209,8 @@ export default function AdminDashboard({
           </div>
           <div className="space-y-3">
             {(['PENDING', 'ACCEPTED', 'RETURNED'] as const).map((status) => {
-              const count = filteredSubmissions.filter(s => s.status === status).length;
-              const pct = filteredSubmissions.length ? Math.round((count / filteredSubmissions.length) * 100) : 0;
+              const count = submissions.filter(s => s.status === status).length;
+              const pct = submissions.length ? Math.round((count / submissions.length) * 100) : 0;
               return (
                 <div key={status}>
                   <div className="flex justify-between text-sm mb-1">
@@ -450,7 +235,7 @@ export default function AdminDashboard({
             <h3 className="text-lg font-semibold text-white">Recent Activity</h3>
           </div>
           <div className="space-y-3">
-            {filteredSubmissions.slice(-5).reverse().map(sub => (
+            {submissions.slice(-5).reverse().map(sub => (
               <div key={sub.id} className="flex items-center gap-3 text-sm">
                 <div className={`w-2 h-2 rounded-full ${sub.status === 'PENDING' ? 'bg-yellow-500' : sub.status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
                   }`} />
