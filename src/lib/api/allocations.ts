@@ -30,6 +30,11 @@ interface GetTeamsForCohortParams {
   page?: number;
   limit?: number;
   skipCount?: boolean;
+  // Scope down to the handful of teams tied to one student/project/mentor —
+  // for a detail-card view, instead of paging through the whole cohort.
+  studentId?: string;
+  projectId?: string;
+  mentorId?: string;
 }
 
 // Admin — full per-team preference detail for the allocation review panel,
@@ -46,6 +51,9 @@ export async function apiGetTeamsForCohortDetailed(
   if (params.page) query.set('page', String(params.page));
   if (params.limit) query.set('limit', String(params.limit));
   if (params.skipCount) query.set('skipCount', 'true');
+  if (params.studentId) query.set('studentId', params.studentId);
+  if (params.projectId) query.set('projectId', params.projectId);
+  if (params.mentorId) query.set('mentorId', params.mentorId);
   const qs = query.toString();
   return apiFetch<TeamsForCohortPage>(`/api/v1/teams/cohort/${cohortId}/detail${qs ? `?${qs}` : ''}`);
 }

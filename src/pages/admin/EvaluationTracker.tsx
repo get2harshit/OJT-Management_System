@@ -137,7 +137,7 @@ export default function AdminEvaluationTracker() {
   const selectCohort = useCallback(async (cohortId: string) => {
     setLoadingCohortDetail(true);
     try {
-      setSelectedCohort(await apiGetCohort(cohortId));
+      setSelectedCohort(await apiGetCohort(cohortId, true));
     } catch (err: unknown) {
       showError(err instanceof Error ? err.message : 'Failed to load cohort');
     } finally {

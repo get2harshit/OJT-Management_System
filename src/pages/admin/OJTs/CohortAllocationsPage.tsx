@@ -141,7 +141,7 @@ export default function CohortAllocationsPage() {
     if (!cohortId) return;
     try {
       const [cohort, loadSummary, runnable] = await Promise.all([
-        apiGetCohort(cohortId),
+        apiGetCohort(cohortId, true),
         apiGetMentorLoadSummary(cohortId),
         apiGetRunnableTeamCount(cohortId),
       ]);

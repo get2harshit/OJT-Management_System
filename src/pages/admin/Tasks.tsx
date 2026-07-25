@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
@@ -10,6 +10,8 @@ import Select from '../../components/Select';
 import ActionsMenu from '../../components/ActionsMenu';
 import { TRACKS } from '../../lib/constants';
 import { useToast } from '../../toast';
+import { apiListCohorts } from '../../lib/api';
+import type { Cohort } from '../../lib/types';
 
 interface Assignee {
   id: string;
@@ -18,14 +20,31 @@ interface Assignee {
   tasks: Array<{ taskId: string; taskTitle: string; week: string; status: ApiAssignmentStatus; deadline?: string }>;
 }
 
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 400;
+
 export default function AdminTasks() {
   const [tasks, setTasks] = useState<ApiTask[]>([]);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [search, setSearch] = useState('');
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
+  // roleFilter/statusFilter apply client-side, over whatever page is
+  // currently loaded — the backend has no target_role filter, and
+  // statusFilter is an aggregate rolled up across *all* of a task's
+  // assignments (there's no raw column for it to filter server-side on).
+  // With the real task counts this app runs at today that's not
+  // noticeable, but a filtered view can show fewer than `limit` rows on a
+  // page — a full server-side fix would need the backend to compute the
+  // aggregate itself.
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [editingTask, setEditingTask] = useState<ApiTask | null>(null);
   const [reviewTask, setReviewTask] = useState<ApiTask | null>(null);
 
   const [progressModalOpen, setProgressModalOpen] = useState(false);
+  const [progressModalLoading, setProgressModalLoading] = useState(false);
   const [allAssignees, setAllAssignees] = useState<Assignee[]>([]);
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null);
   const [boardRoleFilter, setBoardRoleFilter] = useState<'all' | 'student' | 'mentor'>('all');
@@ -40,22 +59,50 @@ export default function AdminTasks() {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
 
-  const fetchTasksOnly = async () => {
+  useEffect(() => {
+    apiListCohorts().then(setCohorts).catch(() => setCohorts([]));
+  }, []);
+
+  // Admins have no ojt_cohort_members row of their own (only students/
+  // mentors do), so the backend can't infer "their" cohort — same active-
+  // cohort assumption CreateTaskPage.tsx makes at creation time.
+  const activeCohort = useMemo(
+    () => cohorts.find(c => c.is_active || (c as { activeStatus?: boolean }).activeStatus) || cohorts[0],
+    [cohorts]
+  );
+
+  const fetchTasksOnly = useCallback(async () => {
     try {
-      const res = await apiListTasks();
+      const res = await apiListTasks({ page, limit, search: search || undefined, cohort_id: activeCohort?.id });
       setTasks(res.data || []);
+      setPagination(res.pagination);
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [page, limit, search, activeCohort]);
 
   useEffect(() => {
+    if (!activeCohort) return;
     fetchTasksOnly();
-  }, []);
+  }, [fetchTasksOnly, activeCohort]);
 
-  const buildAssigneeMap = () => {
+  const handleLimitChange = (value: number) => {
+    setPage(1);
+    setLimit(value);
+  };
+
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const handleSearchChange = (value: string) => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1);
+      setSearch(value);
+    }, SEARCH_DEBOUNCE_MS);
+  };
+
+  const buildAssigneeMap = (fromTasks: ApiTask[]) => {
     const map = new Map<string, Assignee>();
-    tasks.forEach(task => {
+    fromTasks.forEach(task => {
       (task.assignments || []).forEach(a => {
         const id = a.assignee_id;
         const name = a.assignee ? a.assignee.full_name : a.assignee_id;
@@ -75,11 +122,23 @@ export default function AdminTasks() {
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   };
 
-  const openProgressModal = (initialAssigneeId?: string) => {
-    const assignees = buildAssigneeMap();
-    setAllAssignees(assignees);
-    setSelectedAssigneeId(initialAssigneeId || (assignees[0]?.id ?? null));
+  // The Progress Board aggregates every assignee across *all* tasks, not
+  // just the current page — fetched separately on demand rather than
+  // folded into the paginated table load above.
+  const openProgressModal = async (initialAssigneeId?: string) => {
     setProgressModalOpen(true);
+    setProgressModalLoading(true);
+    try {
+      const res = await apiListTasks({ limit: 1000, cohort_id: activeCohort?.id });
+      const assignees = buildAssigneeMap(res.data || []);
+      setAllAssignees(assignees);
+      setSelectedAssigneeId(initialAssigneeId || (assignees[0]?.id ?? null));
+    } catch (e) {
+      console.error(e);
+      showError('Failed to load progress board');
+    } finally {
+      setProgressModalLoading(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -313,6 +372,16 @@ export default function AdminTasks() {
         ]}
         data={tableData}
         searchPlaceholder="Search weekly goals..."
+        onSearchChange={handleSearchChange}
+        serverPagination={{
+          page: pagination.page,
+          limit: pagination.limit,
+          total: pagination.total,
+          totalPages: pagination.pages,
+          onPageChange: setPage,
+          limitOptions: [20, 40, 80, 100],
+          onLimitChange: handleLimitChange,
+        }}
         actions={(row) => (
           <ActionsMenu
             items={[
@@ -387,7 +456,11 @@ export default function AdminTasks() {
 
       {/* ── Assignee Progress Board Modal ─────────────────────────────── */}
       <Modal size="xl" open={progressModalOpen} onClose={() => setProgressModalOpen(false)} title="Assignee Progress Board">
-        {allAssignees.length === 0 ? (
+        {progressModalLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 size={28} className="animate-spin text-gray-500" />
+          </div>
+        ) : allAssignees.length === 0 ? (
           <p className="text-gray-500 text-center py-8">No assignment data found.</p>
         ) : (
           <div className="flex gap-0 h-[65vh] -mx-6 -mb-6 overflow-hidden rounded-b-xl">

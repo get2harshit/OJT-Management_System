@@ -7,6 +7,12 @@ export async function apiListMentors(type?: 'internal' | 'external'): Promise<Ap
   return cachedFetch(`mentors:list:${type || 'all'}`, 15_000, () => apiFetch<ApiMentor[]>(url));
 }
 
+// Single mentor, for a detail-card view — avoids pulling every mentor just
+// to resolve one mentor's own profile fields.
+export async function apiGetMentorById(id: string): Promise<ApiMentor> {
+  return apiFetch<ApiMentor>(`/api/v1/mentors/${id}`);
+}
+
 export interface MentorsPage {
   data: ApiMentor[];
   pagination: { page: number; limit: number; total: number; totalPages: number };

@@ -92,6 +92,8 @@ export interface CreateTaskPayload {
   batch?: string;
   teamIds?: string[];
   assignees?: string[];
+  // Required by the backend — every task belongs to exactly one cohort.
+  cohort_id: string;
 }
 
 // Backend's PUT /tasks/:id only persists these fields (see updateTaskSchema in
@@ -122,7 +124,12 @@ export interface ApiTaskListFilter {
   batch?: string;
   track?: string;
   assignee?: string;
+  search?: string;
   sort?: 'deadline' | 'created_at' | 'week' | 'status';
+  // Admins have no ojt_cohort_members row of their own, so the backend
+  // can't infer "their" cohort the way it does for students/mentors —
+  // without this, an admin gets an empty list back.
+  cohort_id?: string;
 }
 
 export async function apiCreateTask(payload: CreateTaskPayload): Promise<{ success: boolean; message: string; data: ApiTask }> {
