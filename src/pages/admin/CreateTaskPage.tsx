@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -80,11 +80,18 @@ export default function CreateTaskPage() {
       .catch(console.error);
   }, []);
 
+  // Every task is created under whichever cohort is currently active — the
+  // form has no cohort picker of its own, it just targets "the" running
+  // cohort, same assumption the due-date auto-calculation below already made.
+  const activeCohort = useMemo(
+    () => cohorts.find(c => c.is_active || (c as { activeStatus?: boolean }).activeStatus) || cohorts[0],
+    [cohorts]
+  );
+
   // Auto-calculate due date when week changes
   useEffect(() => {
     if (!form.week_number || cohorts.length === 0) return;
-    const activeCohort = cohorts.find(c => c.is_active || (c as { activeStatus?: boolean }).activeStatus) || cohorts[0];
-      
+
     if (activeCohort && activeCohort.startDate) {
       const start = new Date(activeCohort.startDate);
       const weekOffset = parseInt(form.week_number, 10);
@@ -96,7 +103,7 @@ export default function CreateTaskPage() {
         }));
       }
     }
-  }, [form.week_number, cohorts]);
+  }, [form.week_number, cohorts, activeCohort]);
 
   const uniqueBatches = Array.from(new Set(students.map(s => s.batch).filter(Boolean))) as string[];
 
@@ -144,6 +151,10 @@ export default function CreateTaskPage() {
       showError('Start date must be before due date');
       return;
     }
+    if (!activeCohort) {
+      showError('No active cohort found — a task must belong to a running cohort');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -161,6 +172,7 @@ export default function CreateTaskPage() {
         deadline: new Date(form.due_date).toISOString(),
         week: `Week ${form.week_number}`,
         track: selectedTrack,
+        cohort_id: activeCohort.id,
       });
       showSuccess('Task created successfully');
       navigate('/admin/dashboard?tab=tasks');
