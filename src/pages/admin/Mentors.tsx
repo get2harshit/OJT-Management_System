@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Edit2, Percent } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
@@ -7,7 +7,7 @@ import Select from '../../components/Select';
 import ActionsMenu from '../../components/ActionsMenu';
 import type { ApiMentor, Cohort, MentorCapacitySummary } from '../../lib/types';
 import { TRACKS, TRACK_DOT_COLORS, MENTOR_TYPE_DOT_COLORS } from '../../lib/constants';
-import { apiListMentors, apiUpdateMentor, apiListCohorts, apiGetMentorCapacity, apiSetMentorCapacityOverride } from '../../lib/api';
+import { apiListMentorsPage, apiUpdateMentor, apiListCohorts, apiGetMentorCapacity, apiSetMentorCapacityOverride } from '../../lib/api';
 import { mapBackendTrackToFrontend, mapFrontendTrackToBackend } from '../../lib/api/trackMapping';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
@@ -16,10 +16,18 @@ interface MentorRow extends ApiMentor {
   assignedTracks: string[];
 }
 
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 400;
+
 export default function AdminMentors() {
   const { showSuccess, showError } = useToast();
   const [mentors, setMentors] = useState<MentorRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
   const [editingMentor, setEditingMentor] = useState<MentorRow | null>(null);
   const [selectedTracks, setSelectedTracks] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -33,16 +41,40 @@ export default function AdminMentors() {
   const [capacityInput, setCapacityInput] = useState('');
   const [capacitySaving, setCapacitySaving] = useState(false);
 
-  useEffect(() => {
-    setLoading(true);
-    apiListMentors()
-      .then(res => setMentors(res.map(m => ({
+  const fetchMentors = useCallback(async () => {
+    try {
+      const res = await apiListMentorsPage({ page, limit, search: search || undefined });
+      setMentors(res.data.map(m => ({
         ...m,
         assignedTracks: (m.tracks ?? []).map(mapBackendTrackToFrontend),
-      }))))
-      .catch(() => setMentors([]))
-      .finally(() => setLoading(false));
-  }, []);
+      })));
+      setPagination(res.pagination);
+    } catch {
+      setMentors([]);
+    }
+  }, [page, limit, search]);
+
+  useEffect(() => {
+    setTableLoading(true);
+    fetchMentors().finally(() => {
+      setTableLoading(false);
+      setLoading(false);
+    });
+  }, [fetchMentors]);
+
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const handleSearchChange = (value: string) => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1);
+      setSearch(value);
+    }, SEARCH_DEBOUNCE_MS);
+  };
+
+  const handleLimitChange = (value: number) => {
+    setPage(1);
+    setLimit(value);
+  };
 
   const handleOpenEdit = (mentor: MentorRow) => {
     setEditingMentor(mentor);
@@ -155,7 +187,14 @@ export default function AdminMentors() {
           <SpinnerSquare size={48} />
         </div>
       ) : (
-        <DataTable
+        <div className="relative">
+          {tableLoading && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center">
+              <SpinnerSquare size={56} />
+            </div>
+          )}
+          <div className={tableLoading ? 'opacity-20 transition-opacity' : 'transition-opacity'}>
+          <DataTable
           columns={[
             { key: 'name', header: 'Name' },
             { key: 'email', header: 'Email' },
@@ -195,6 +234,16 @@ export default function AdminMentors() {
           ]}
           data={tableData}
           searchPlaceholder="Search mentors..."
+          onSearchChange={handleSearchChange}
+          serverPagination={{
+            page: pagination.page,
+            limit: pagination.limit,
+            total: pagination.total,
+            totalPages: pagination.totalPages,
+            onPageChange: setPage,
+            limitOptions: [20, 40, 80, 100],
+            onLimitChange: handleLimitChange,
+          }}
           actions={(row) => (
             <ActionsMenu
               items={[
@@ -203,7 +252,9 @@ export default function AdminMentors() {
               ]}
             />
           )}
-        />
+          />
+          </div>
+        </div>
       )}
 
       {/* Assign Tracks Modal */}
