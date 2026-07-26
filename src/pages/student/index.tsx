@@ -52,7 +52,6 @@ function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
       case 'tasks':
         return (
           <Tasks
-            studentId={studentId}
             onViewSubmission={handleViewSubmission}
             onNewSubmission={handleNewSubmission}
           />

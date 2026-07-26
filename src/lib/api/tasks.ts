@@ -48,6 +48,35 @@ export interface ApiAssignment {
   comments?: ApiTaskComment[];
 }
 
+// The caller's own assignment row on a task, if they have one — resolved
+// server-side (it already knows who's asking) instead of making every page
+// search a full assignments array for "which one is mine".
+export interface ApiOwnAssignment {
+  id: string;
+  status: ApiAssignmentStatus;
+  resubmit_count: number;
+  max_resubmit_count: number;
+}
+
+export interface ApiAssignmentPreview {
+  assigneeId: string;
+  fullName: string | null;
+  role: string | null;
+  status: ApiAssignmentStatus;
+}
+
+// Per-task assignment aggregate for list views — a batch/track-wide task
+// can fan out to 100+ assignments, so GET /tasks never ships the full list;
+// `preview` is capped (currently 5) and just enough for a "name, name, +N
+// more" chip row. The full per-assignee list is only ever fetched via
+// GET /tasks/:id (apiGetTask), on demand, when something needs to act on
+// every assignee (e.g. a review panel).
+export interface ApiAssignmentsSummary {
+  total: number;
+  byStatus: Record<ApiAssignmentStatus, number>;
+  preview: ApiAssignmentPreview[];
+}
+
 export interface ApiTask {
   id: string;
   title: string;
@@ -68,7 +97,12 @@ export interface ApiTask {
     full_name: string;
     role: string;
   };
+  // Only present on GET /tasks/:id (apiGetTask) — the full per-assignee
+  // list for the review panels. List responses (apiListTasks) carry
+  // myAssignment + assignmentsSummary instead.
   assignments?: ApiAssignment[];
+  myAssignment?: ApiOwnAssignment | null;
+  assignmentsSummary?: ApiAssignmentsSummary;
 }
 
 export type ApiTaskType = 'prd' | 'db_schema' | 'hld' | 'lld' | 'api_contract' | 'others';
@@ -166,6 +200,33 @@ export async function apiListTasks(filter: ApiTaskListFilter = {}): Promise<{ su
     );
     return { success: res.success, data: res.data.data, pagination: res.data.pagination };
   });
+}
+
+export interface ApiAssigneeProgressTask {
+  taskId: string;
+  taskTitle: string;
+  week: string | null;
+  status: ApiAssignmentStatus;
+  deadline: string | null;
+}
+
+export interface ApiAssigneeProgress {
+  id: string;
+  name: string | null;
+  role: string;
+  tasks: ApiAssigneeProgressTask[];
+}
+
+// One row per assignee with every task assigned to them in the cohort —
+// computed server-side so the Progress Board doesn't need to pull every
+// task's full record (description, category, statusHistory, etc.) via
+// apiListTasks({ limit: 1000 }) just to throw most of it away client-side.
+export async function apiGetAssigneeProgress(cohortId: string): Promise<ApiAssigneeProgress[]> {
+  const res = await apiFetch<{ success: boolean; data: ApiAssigneeProgress[] }>(
+    `/api/v1/tasks/assignee-progress?cohort_id=${cohortId}`,
+    { method: 'GET' }
+  );
+  return res.data;
 }
 
 export async function apiGetTask(id: string): Promise<{ success: boolean; data: ApiTask }> {

@@ -6,6 +6,7 @@ import Select from '../../components/Select';
 import Button from '../../components/Button';
 import {
   apiListTasks,
+  apiGetTask,
   apiCreateTask,
   apiSubmitTask,
   apiResubmitTask,
@@ -79,7 +80,12 @@ export default function MentorTasks({ mentorId }: Props) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [bucket, setBucket] = useState<TaskBucket>('to-others');
   const [statusTask, setStatusTask] = useState<ApiTask | null>(null);
+  // The list only carries assignmentsSummary (a capped preview), never the
+  // full per-assignee list — reviewTaskId drives the modal's open state,
+  // reviewTask holds the full detail fetched on demand via apiGetTask.
+  const [reviewTaskId, setReviewTaskId] = useState<string | null>(null);
   const [reviewTask, setReviewTask] = useState<ApiTask | null>(null);
+  const [reviewTaskLoading, setReviewTaskLoading] = useState(false);
 
   const fetchTasksOnly = async () => {
     try {
@@ -87,6 +93,21 @@ export default function MentorTasks({ mentorId }: Props) {
       setTasks(res.data || []);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const openReviewModal = async (taskId: string) => {
+    setReviewTaskId(taskId);
+    setReviewTask(null);
+    setReviewTaskLoading(true);
+    try {
+      const res = await apiGetTask(taskId);
+      setReviewTask(res.data);
+    } catch {
+      showError('Failed to load task assignments');
+      setReviewTaskId(null);
+    } finally {
+      setReviewTaskLoading(false);
     }
   };
 
@@ -174,18 +195,17 @@ export default function MentorTasks({ mentorId }: Props) {
   // Mirrors the backend's own mentor scoping for GET /tasks (assigned_by_id
   // === me, OR I'm one of the assignees) — just split back into the two
   // halves for the two cards instead of one merged list.
-  const assignedToMe = tasks.filter(t => t.assignments?.some(a => a.assignee_id === mentorId));
+  const assignedToMe = tasks.filter(t => t.myAssignment != null);
   const assignedByMe = tasks.filter(t => t.assigned_by_id === mentorId);
   const visibleTasks = bucket === 'to-me' ? assignedToMe : assignedByMe;
 
   const tableData = visibleTasks.map(t => {
-    const myAssignment = t.assignments?.find(a => a.assignee_id === mentorId);
-    const assignees = (t.assignments && t.assignments.length > 0)
-      ? t.assignments.map(a => ({
-        name: a.assignee ? a.assignee.full_name : a.assignee_id,
-        status: a.status,
-      }))
+    const summary = t.assignmentsSummary;
+    const preview = summary?.preview ?? [];
+    const assignees = preview.length > 0
+      ? preview.map(a => ({ name: a.fullName || a.assigneeId, status: a.status }))
       : [{ name: 'All', status: undefined as ApiAssignmentStatus | undefined }];
+    const extraCount = (summary?.total ?? 0) - preview.length;
 
     return {
       id: t.id,
@@ -193,8 +213,9 @@ export default function MentorTasks({ mentorId }: Props) {
       description: t.description || '-',
       type: t.target_role === 'student' ? 'Student' : 'Mentor',
       assignedBy: t.assigner?.full_name ?? '-',
-      myStatus: myAssignment?.status,
+      myStatus: t.myAssignment?.status,
       assignees,
+      extraCount,
       start_date: t.start_date ? new Date(t.start_date).toLocaleDateString() : '-',
       due_date: t.deadline ? new Date(t.deadline).toLocaleDateString() : '-',
     };
@@ -247,6 +268,11 @@ export default function MentorTasks({ mentorId }: Props) {
               {a.name}
             </span>
           ))}
+          {row.extraCount > 0 && (
+            <span className="text-[10px] bg-zinc-800/50 text-gray-400 px-2 py-0.5 rounded border border-zinc-800 whitespace-nowrap">
+              +{row.extraCount} more
+            </span>
+          )}
         </div>
       ),
     },
@@ -255,10 +281,12 @@ export default function MentorTasks({ mentorId }: Props) {
   ];
 
   const handleRowClick = (row: (typeof tableData)[number]) => {
-    const task = tasks.find(t => t.id === row.id);
-    if (!task) return;
-    if (bucket === 'to-me') setStatusTask(task);
-    else setReviewTask(task);
+    if (bucket === 'to-me') {
+      const task = tasks.find(t => t.id === row.id);
+      if (task) setStatusTask(task);
+    } else {
+      openReviewModal(row.id);
+    }
   };
 
   return (
@@ -474,7 +502,6 @@ export default function MentorTasks({ mentorId }: Props) {
         {statusTask && (
           <TaskStatusPanel
             task={statusTask}
-            mentorId={mentorId}
             onChanged={async () => {
               await fetchTasksOnly();
             }}
@@ -482,17 +509,28 @@ export default function MentorTasks({ mentorId }: Props) {
         )}
       </Drawer>
 
-      <Drawer open={!!reviewTask} onClose={() => setReviewTask(null)} title="Review Assignments">
-        {reviewTask && (
+      <Drawer
+        open={!!reviewTaskId}
+        onClose={() => { setReviewTaskId(null); setReviewTask(null); }}
+        title="Review Assignments"
+      >
+        {reviewTaskLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 size={28} className="animate-spin text-gray-500" />
+          </div>
+        ) : reviewTask ? (
           <AssigneeReviewPanel
             task={reviewTask}
             onChanged={async () => {
               await fetchTasksOnly();
               // Keep the drawer's task data fresh after an approve/resubmit action.
-              setReviewTask(prev => (prev ? tasks.find(t => t.id === prev.id) ?? prev : prev));
+              if (reviewTaskId) {
+                const res = await apiGetTask(reviewTaskId);
+                setReviewTask(res.data);
+              }
             }}
           />
-        )}
+        ) : null}
       </Drawer>
     </div>
   );
@@ -505,15 +543,13 @@ export default function MentorTasks({ mentorId }: Props) {
 // there's no student allocation to attach a mentor's own submission to.
 function TaskStatusPanel({
   task,
-  mentorId,
   onChanged,
 }: {
   task: ApiTask;
-  mentorId: string;
   onChanged: () => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
-  const assignment = task.assignments?.find(a => a.assignee_id === mentorId);
+  const assignment = task.myAssignment;
 
   if (!assignment) {
     return <p className="text-gray-500 text-sm">You're not assigned to this task.</p>;

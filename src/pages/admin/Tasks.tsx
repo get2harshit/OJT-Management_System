@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
-import { apiListTasks, apiDeleteTask, apiUpdateTask, apiApproveTask, apiRequestResubmit } from '../../lib/api/tasks';
+import { apiListTasks, apiGetTask, apiDeleteTask, apiUpdateTask, apiApproveTask, apiRequestResubmit, apiGetAssigneeProgress } from '../../lib/api/tasks';
 import type { ApiTask, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
@@ -11,6 +11,7 @@ import ActionsMenu from '../../components/ActionsMenu';
 import { TRACKS } from '../../lib/constants';
 import { useToast } from '../../toast';
 import { apiListCohorts } from '../../lib/api';
+import { getCohortLabel } from '../../lib/cohortLabel';
 import type { Cohort } from '../../lib/types';
 
 interface Assignee {
@@ -41,7 +42,13 @@ export default function AdminTasks() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [editingTask, setEditingTask] = useState<ApiTask | null>(null);
+  // The list response only carries assignmentsSummary (a capped preview),
+  // never the full per-assignee list — reviewTaskId drives the modal's
+  // open state, reviewTask holds the full detail fetched on demand via
+  // apiGetTask once the admin actually opens it.
+  const [reviewTaskId, setReviewTaskId] = useState<string | null>(null);
   const [reviewTask, setReviewTask] = useState<ApiTask | null>(null);
+  const [reviewTaskLoading, setReviewTaskLoading] = useState(false);
 
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [progressModalLoading, setProgressModalLoading] = useState(false);
@@ -63,12 +70,22 @@ export default function AdminTasks() {
     apiListCohorts().then(setCohorts).catch(() => setCohorts([]));
   }, []);
 
+  // Defaults to the active cohort once cohorts load (same fallback
+  // CreateTaskPage.tsx uses), but — unlike before — the admin can now
+  // switch to any other cohort via the selector below instead of being
+  // silently locked to whichever one auto-detected as "active".
+  const [selectedCohortId, setSelectedCohortId] = useState('');
+  useEffect(() => {
+    if (selectedCohortId || cohorts.length === 0) return;
+    const active = cohorts.find(c => c.is_active || (c as { activeStatus?: boolean }).activeStatus) || cohorts[0];
+    if (active) setSelectedCohortId(active.id);
+  }, [cohorts, selectedCohortId]);
+
   // Admins have no ojt_cohort_members row of their own (only students/
-  // mentors do), so the backend can't infer "their" cohort — same active-
-  // cohort assumption CreateTaskPage.tsx makes at creation time.
+  // mentors do), so the backend can't infer "their" cohort on its own.
   const activeCohort = useMemo(
-    () => cohorts.find(c => c.is_active || (c as { activeStatus?: boolean }).activeStatus) || cohorts[0],
-    [cohorts]
+    () => cohorts.find(c => c.id === selectedCohortId),
+    [cohorts, selectedCohortId]
   );
 
   const fetchTasksOnly = useCallback(async () => {
@@ -100,38 +117,29 @@ export default function AdminTasks() {
     }, SEARCH_DEBOUNCE_MS);
   };
 
-  const buildAssigneeMap = (fromTasks: ApiTask[]) => {
-    const map = new Map<string, Assignee>();
-    fromTasks.forEach(task => {
-      (task.assignments || []).forEach(a => {
-        const id = a.assignee_id;
-        const name = a.assignee ? a.assignee.full_name : a.assignee_id;
-        const role = a.assignee ? a.assignee.role : 'unknown';
-        if (!map.has(id)) {
-          map.set(id, { id, name, role, tasks: [] });
-        }
-        map.get(id)!.tasks.push({
-          taskId: task.id,
-          taskTitle: task.title,
-          week: task.week || '-',
-          status: a.status,
-          deadline: task.deadline || undefined,
-        });
-      });
-    });
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  };
-
-  // The Progress Board aggregates every assignee across *all* tasks, not
-  // just the current page — fetched separately on demand rather than
-  // folded into the paginated table load above.
+  // The Progress Board aggregates every assignee across *all* tasks in the
+  // cohort, not just the current page — fetched separately on demand from a
+  // dedicated backend aggregation endpoint rather than pulling every task's
+  // full record (description, category, statusHistory, etc.) via
+  // apiListTasks({ limit: 1000 }) just to throw most of it away here.
   const openProgressModal = async (initialAssigneeId?: string) => {
     setProgressModalOpen(true);
     setProgressModalLoading(true);
     try {
-      const res = await apiListTasks({ limit: 1000, cohort_id: activeCohort?.id });
-      const assignees = buildAssigneeMap(res.data || []);
-      setAllAssignees(assignees);
+      if (!activeCohort) throw new Error('No active cohort');
+      const assignees = await apiGetAssigneeProgress(activeCohort.id);
+      setAllAssignees(assignees.map(a => ({
+        id: a.id,
+        name: a.name || a.id,
+        role: a.role,
+        tasks: a.tasks.map(t => ({
+          taskId: t.taskId,
+          taskTitle: t.taskTitle,
+          week: t.week || '-',
+          status: t.status,
+          deadline: t.deadline || undefined,
+        })),
+      })));
       setSelectedAssigneeId(initialAssigneeId || (assignees[0]?.id ?? null));
     } catch (e) {
       console.error(e);
@@ -148,6 +156,21 @@ export default function AdminTasks() {
       fetchTasksOnly();
     } catch {
       showError('Failed to delete task');
+    }
+  };
+
+  const openReviewModal = async (taskId: string) => {
+    setReviewTaskId(taskId);
+    setReviewTask(null);
+    setReviewTaskLoading(true);
+    try {
+      const res = await apiGetTask(taskId);
+      setReviewTask(res.data);
+    } catch {
+      showError('Failed to load task assignments');
+      setReviewTaskId(null);
+    } finally {
+      setReviewTaskLoading(false);
     }
   };
 
@@ -182,25 +205,18 @@ export default function AdminTasks() {
 
   const tableData = tasks
     .map(t => {
-      let assignedNames = ['All'];
-      let totalAssignments = 0;
-      let completedAssignments = 0;
-      
-      if (t.assignments && t.assignments.length > 0) {
-        assignedNames = t.assignments.map(a => a.assignee ? a.assignee.full_name : a.assignee_id);
-        totalAssignments = t.assignments.length;
-        completedAssignments = t.assignments.filter(a => a.status === 'approved').length;
-      }
+      const summary = t.assignmentsSummary;
+      const totalAssignments = summary?.total ?? 0;
+      const completedAssignments = summary?.byStatus.approved ?? 0;
 
       let aggregateStatus = 'pending';
       if (totalAssignments > 0) {
         if (completedAssignments === totalAssignments) aggregateStatus = 'approved';
-        else if (t.assignments!.some(a => a.status === 'review' || a.status === 'resubmit')) aggregateStatus = 'in_progress';
+        else if ((summary!.byStatus.review + summary!.byStatus.resubmit) > 0) aggregateStatus = 'in_progress';
       }
 
-      return { 
-        ...t, 
-        assigned_names: assignedNames,
+      return {
+        ...t,
         aggregateStatus,
         progressText: totalAssignments > 0 ? `${completedAssignments}/${totalAssignments}` : '-'
       };
@@ -227,8 +243,15 @@ export default function AdminTasks() {
           <p className="text-gray-400 text-sm mt-1">Map out structured goals, viva checkpoints, and sub-tasks for each tech stack track</p>
         </div>
         <div className="flex items-center gap-3">
-          <Select 
-            value={roleFilter} 
+          <Select
+            value={selectedCohortId}
+            onChange={(v) => { setPage(1); setSelectedCohortId(v as string); }}
+            variant="filter"
+            placeholder="Select cohort"
+            options={cohorts.map(c => ({ value: c.id, label: getCohortLabel(c) }))}
+          />
+          <Select
+            value={roleFilter}
             onChange={setRoleFilter} 
             variant="filter"
             options={[
@@ -323,36 +346,39 @@ export default function AdminTasks() {
               );
             }
           },
-          { 
-            key: 'assigned_names', 
+          {
+            key: 'assigned_names',
             header: 'Assigned To',
             render: (row) => {
               const maxDisplay = 3;
-              const names: string[] = row.assigned_names || [];
-              const assignmentList = row.assignments || [];
-              const displayNames = names.slice(0, maxDisplay);
-              const extraCount = names.length - maxDisplay;
-              
+              const preview = row.assignmentsSummary?.preview ?? [];
+              const total = row.assignmentsSummary?.total ?? 0;
+              const displayed = preview.slice(0, maxDisplay);
+              // extraCount is against the true total, not preview.length —
+              // the backend only ever sends up to 5 preview rows, so this
+              // must not be derived from how many names happened to arrive.
+              const extraCount = total - displayed.length;
+
               return (
                 <div className="max-w-[220px] flex flex-wrap gap-1.5 py-1">
-                  {displayNames.map((name: string, i: number) => {
-                    const assignment = assignmentList[i];
-                    const assigneeId = assignment?.assignee_id;
-                    return (
-                      <span 
-                        key={i} 
-                        className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap truncate max-w-[100px] cursor-pointer hover:bg-gold/10 hover:text-gold hover:border-gold/30 transition-colors" 
-                        title={`Click to view ${name}'s progress`}
-                        onClick={() => openProgressModal(assigneeId)}
-                      >
-                        {name}
-                      </span>
-                    );
-                  })}
+                  {displayed.length === 0 && total === 0 && (
+                    <span className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap">
+                      All
+                    </span>
+                  )}
+                  {displayed.map((a, i) => (
+                    <span
+                      key={i}
+                      className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap truncate max-w-[100px] cursor-pointer hover:bg-gold/10 hover:text-gold hover:border-gold/30 transition-colors"
+                      title={`Click to view ${a.fullName || a.assigneeId}'s progress`}
+                      onClick={() => openProgressModal(a.assigneeId)}
+                    >
+                      {a.fullName || a.assigneeId}
+                    </span>
+                  ))}
                   {extraCount > 0 && (
-                    <span 
+                    <span
                       className="text-[10px] bg-zinc-800/50 text-gray-400 px-2 py-0.5 rounded border border-zinc-800 whitespace-nowrap cursor-pointer hover:bg-gold/10 hover:text-gold hover:border-gold/30 transition-colors"
-                      title={names.slice(maxDisplay).join(', ')}
                       onClick={() => openProgressModal()}
                     >
                       +{extraCount} more
@@ -388,8 +414,8 @@ export default function AdminTasks() {
               // Document-category tasks are reviewed from the Submissions
               // page instead — this is only for general/link_submission
               // tasks, which have no submission record to review there.
-              ...(row.category !== 'document_submission' && (row.assignments?.length ?? 0) > 0
-                ? [{ label: 'Review Assignments', icon: ClipboardCheck, onClick: () => setReviewTask(row) }]
+              ...(row.category !== 'document_submission' && (row.assignmentsSummary?.total ?? 0) > 0
+                ? [{ label: 'Review Assignments', icon: ClipboardCheck, onClick: () => openReviewModal(row.id) }]
                 : []),
               { label: 'Edit Task', icon: Edit2, onClick: () => handleEditClick(row) },
               { label: 'Delete Task', icon: Trash2, onClick: () => handleDelete(row.id), danger: true },
@@ -626,16 +652,27 @@ export default function AdminTasks() {
         )}
       </Modal>
 
-      <Modal open={!!reviewTask} onClose={() => setReviewTask(null)} title="Review Assignments">
-        {reviewTask && (
+      <Modal
+        open={!!reviewTaskId}
+        onClose={() => { setReviewTaskId(null); setReviewTask(null); }}
+        title="Review Assignments"
+      >
+        {reviewTaskLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 size={28} className="animate-spin text-gray-500" />
+          </div>
+        ) : reviewTask ? (
           <AdminAssigneeReviewPanel
             task={reviewTask}
             onChanged={async () => {
               await fetchTasksOnly();
-              setReviewTask(prev => (prev ? tasks.find(t => t.id === prev.id) ?? prev : prev));
+              if (reviewTaskId) {
+                const res = await apiGetTask(reviewTaskId);
+                setReviewTask(res.data);
+              }
             }}
           />
-        )}
+        ) : null}
       </Modal>
     </div>
   );
