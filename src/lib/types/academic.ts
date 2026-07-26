@@ -286,6 +286,7 @@ export interface MentorCapacitySummary {
 export interface MentorLoadSummaryRow {
   mentorId: string;
   mentorName: string | null;
+  tracks: string[];
   allocatedCount: number;
   threshold: number;
 }

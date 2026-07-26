@@ -6,7 +6,7 @@ import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
-import type { TeamAllocationDetail, ApiMentor, MentorLoadSummaryRow, CohortAllocationRunStatus, Project, StudentWithoutTeam } from '../../../lib/types';
+import type { TeamAllocationDetail, MentorLoadSummaryRow, CohortAllocationRunStatus, Project, StudentWithoutTeam } from '../../../lib/types';
 import { TRACKS } from '../../../lib/constants';
 import {
   apiGetTeamsForCohortDetailed,
@@ -66,7 +66,6 @@ export default function CohortAllocationsPage() {
 
   const [cohortLabel, setCohortLabel] = useState('');
   const [teams, setTeams] = useState<TeamAllocationDetail[]>([]);
-  const [cohortMentors, setCohortMentors] = useState<ApiMentor[]>([]);
   const [loading, setLoading] = useState(true);
   const [tableLoading, setTableLoading] = useState(false);
   const [running, setRunning] = useState(false);
@@ -89,6 +88,7 @@ export default function CohortAllocationsPage() {
   const [resolveMentorSearch, setResolveMentorSearch] = useState('');
   const [savingResolve, setSavingResolve] = useState(false);
   const [mentorLoadSummary, setMentorLoadSummary] = useState<MentorLoadSummaryRow[]>([]);
+  const [mentorPickerLoading, setMentorPickerLoading] = useState(false);
   const [showLoadSummary, setShowLoadSummary] = useState(false);
   const [detailTeam, setDetailTeam] = useState<TeamAllocationDetail | null>(null);
 
@@ -135,18 +135,19 @@ export default function CohortAllocationsPage() {
     }
   }, [cohortId, limit, trackFilter, batchFilter, statusFilter, search, showError]);
 
-  // Cohort label/mentors/load-summary — only changes after an actual
-  // allocation mutation, not on every page/filter change.
+  // Cohort label/status/runnable-count — needed immediately for the header
+  // and button states. Deliberately excludes the mentor roster and load
+  // summary, which are only ever shown inside the 3 mentor-picker modals
+  // below (Load Summary, Assign Project & Mentor, Create Team) — those are
+  // fetched on demand by loadMentorPickerData() instead of on every mount.
   const fetchAuxData = useCallback(async () => {
     if (!cohortId) return;
     try {
-      const [cohort, loadSummary, runnable] = await Promise.all([
-        apiGetCohort(cohortId, true),
-        apiGetMentorLoadSummary(cohortId),
+      const [cohort, runnable] = await Promise.all([
+        apiGetCohort(cohortId, false),
         apiGetRunnableTeamCount(cohortId),
       ]);
       setCohortLabel(getCohortLabel(cohort));
-      setCohortMentors(cohort.mentors ?? []);
       setCohortBatches(cohort.allowedBatches ?? []);
       // Falls back to 'pending' if talking to a backend deployment that
       // doesn't have the publish-gate feature yet (allocationRunStatus
@@ -156,9 +157,28 @@ export default function CohortAllocationsPage() {
       setRunStatus(cohort.allocationRunStatus ?? 'pending');
       setPublishedAt(cohort.allocationPublishedAt ?? null);
       setRunnableCount(runnable);
-      setMentorLoadSummary(loadSummary);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load cohort data');
+    }
+  }, [cohortId, showError]);
+
+  // Mentor picker data — only needed once an admin actually opens one of the
+  // mentor-picker modals, so it's fetched on open rather than upfront.
+  // mentor-load-summary alone carries id/name/tracks/capacity for every
+  // mentor in the cohort, so there's no need for the separate (much
+  // heavier) full cohort-roster fetch just to get names and tracks.
+  // Always refetches (not cached past first load) so allocatedCount stays
+  // current after an override/resolve/run.
+  const loadMentorPickerData = useCallback(async () => {
+    if (!cohortId) return;
+    setMentorPickerLoading(true);
+    try {
+      const loadSummary = await apiGetMentorLoadSummary(cohortId);
+      setMentorLoadSummary(loadSummary);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load mentor data');
+    } finally {
+      setMentorPickerLoading(false);
     }
   }, [cohortId, showError]);
 
@@ -314,6 +334,7 @@ export default function CohortAllocationsPage() {
     setCreateTeamMentorSearch('');
     setCreateTeamSelectedMentorId(null);
     if (!cohortId) return;
+    loadMentorPickerData();
     setLoadingStudentsWithoutTeam(true);
     try {
       const students = await apiGetStudentsWithoutTeam(cohortId);
@@ -427,7 +448,7 @@ export default function CohortAllocationsPage() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => setShowLoadSummary(true)}
+            onClick={() => { setShowLoadSummary(true); loadMentorPickerData(); }}
             disabled={loading}
             title="Mentor load summary"
             className="flex items-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
@@ -582,7 +603,6 @@ export default function CohortAllocationsPage() {
             onPageChange: setPage,
             limitOptions: [20, 40, 80, 100],
             onLimitChange: handleLimitChange,
-            autoFit: true,
           }}
           leftHeaderContent={
             <>
@@ -695,6 +715,7 @@ export default function CohortAllocationsPage() {
                   setResolveProjectId(detailTeam.allocatedProjectId ?? null);
                   setResolveTeam(detailTeam);
                   setDetailTeam(null);
+                  loadMentorPickerData();
                 }}
                 className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
               >
@@ -802,28 +823,25 @@ export default function CohortAllocationsPage() {
                 className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold disabled:opacity-50 mb-2"
               />
               <div className="max-h-64 overflow-y-auto space-y-2">
-                {cohortMentors
-                  .filter((m) => (m.fullName || '').toLowerCase().includes(resolveMentorSearch.toLowerCase()))
+                {mentorLoadSummary
+                  .filter((m) => (m.mentorName || '').toLowerCase().includes(resolveMentorSearch.toLowerCase()))
                   .map((mentor) => {
-                    const load = mentorLoadSummary.find((m) => m.mentorId === mentor.id);
-                    const overCapacity = !!load && load.allocatedCount >= load.threshold;
+                    const overCapacity = mentor.allocatedCount >= mentor.threshold;
                     return (
                       <button
-                        key={mentor.id}
-                        onClick={() => handleResolveAllocation(mentor.id)}
+                        key={mentor.mentorId}
+                        onClick={() => handleResolveAllocation(mentor.mentorId)}
                         disabled={!resolveProjectId || savingResolve}
                         className="w-full text-left rounded-lg p-3 border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed bg-zinc-900 border-zinc-750 hover:border-zinc-600"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div>
-                            <p className="text-white font-semibold text-sm">{mentor.fullName || '—'}</p>
+                            <p className="text-white font-semibold text-sm">{mentor.mentorName || '—'}</p>
                             <p className="text-gray-500 text-xs">{(mentor.tracks ?? []).join(', ') || 'No tracks assigned'}</p>
                           </div>
-                          {load && (
-                            <span className={`text-xs font-bold shrink-0 ${overCapacity ? 'text-red-400' : 'text-gray-400'}`}>
-                              {load.allocatedCount}/{load.threshold}
-                            </span>
-                          )}
+                          <span className={`text-xs font-bold shrink-0 ${overCapacity ? 'text-red-400' : 'text-gray-400'}`}>
+                            {mentor.allocatedCount}/{mentor.threshold}
+                          </span>
                         </div>
                       </button>
                     );
@@ -953,16 +971,15 @@ export default function CohortAllocationsPage() {
               className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold disabled:opacity-50 mb-2"
             />
             <div className="max-h-48 overflow-y-auto space-y-2">
-              {cohortMentors
-                .filter((m) => (m.fullName || '').toLowerCase().includes(createTeamMentorSearch.toLowerCase()))
+              {mentorLoadSummary
+                .filter((m) => (m.mentorName || '').toLowerCase().includes(createTeamMentorSearch.toLowerCase()))
                 .map((mentor) => {
-                  const load = mentorLoadSummary.find((m) => m.mentorId === mentor.id);
-                  const overCapacity = !!load && load.allocatedCount >= load.threshold;
-                  const selected = createTeamSelectedMentorId === mentor.id;
+                  const overCapacity = mentor.allocatedCount >= mentor.threshold;
+                  const selected = createTeamSelectedMentorId === mentor.mentorId;
                   return (
                     <button
-                      key={mentor.id}
-                      onClick={() => setCreateTeamSelectedMentorId(mentor.id)}
+                      key={mentor.mentorId}
+                      onClick={() => setCreateTeamSelectedMentorId(mentor.mentorId)}
                       disabled={!createTeamSelectedProjectId}
                       className={`w-full text-left rounded-lg p-3 border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${
                         selected ? 'bg-gold/10 border-gold' : 'bg-zinc-900 border-zinc-750 hover:border-zinc-600'
@@ -970,15 +987,13 @@ export default function CohortAllocationsPage() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div>
-                          <p className="text-white font-semibold text-sm">{mentor.fullName || '—'}</p>
+                          <p className="text-white font-semibold text-sm">{mentor.mentorName || '—'}</p>
                           <p className="text-gray-500 text-xs">{(mentor.tracks ?? []).join(', ') || 'No tracks assigned'}</p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          {load && (
-                            <span className={`text-xs font-bold ${overCapacity ? 'text-red-400' : 'text-gray-400'}`}>
-                              {load.allocatedCount}/{load.threshold}
-                            </span>
-                          )}
+                          <span className={`text-xs font-bold ${overCapacity ? 'text-red-400' : 'text-gray-400'}`}>
+                            {mentor.allocatedCount}/{mentor.threshold}
+                          </span>
                           {selected && <CheckCircle2 size={16} className="text-gold shrink-0" />}
                         </div>
                       </div>
@@ -1009,14 +1024,15 @@ export default function CohortAllocationsPage() {
 
       <Modal open={showLoadSummary} onClose={() => setShowLoadSummary(false)} title="Mentor Load Summary">
         <div className="space-y-2 max-h-96 overflow-y-auto">
-          {mentorLoadSummary.length === 0 ? (
+          {mentorPickerLoading ? (
+            <div className="py-4 flex justify-center"><SpinnerSquare size={28} /></div>
+          ) : mentorLoadSummary.length === 0 ? (
             <p className="text-gray-400 text-sm">No mentor capacity configured for this cohort yet.</p>
           ) : (
             [...mentorLoadSummary]
               .sort((a, b) => (a.mentorName || '').localeCompare(b.mentorName || ''))
               .map((row) => {
                 const overCapacity = row.allocatedCount > row.threshold;
-                const mentorTracks = cohortMentors.find((m) => m.id === row.mentorId)?.tracks ?? [];
                 return (
                   <div
                     key={row.mentorId}
@@ -1024,7 +1040,7 @@ export default function CohortAllocationsPage() {
                   >
                     <div>
                       <p className="text-white text-sm font-medium">{row.mentorName || '—'}</p>
-                      <p className="text-gray-500 text-xs">{mentorTracks.join(', ') || 'No tracks assigned'}</p>
+                      <p className="text-gray-500 text-xs">{(row.tracks ?? []).join(', ') || 'No tracks assigned'}</p>
                     </div>
                     <span className={`text-sm font-bold ${overCapacity ? 'text-red-400' : 'text-gray-300'}`}>
                       {row.allocatedCount}/{row.threshold}
