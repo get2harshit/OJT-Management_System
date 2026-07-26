@@ -4,9 +4,9 @@ import SplitPane from '../../components/SplitPane';
 import RosterList from '../../components/RosterList';
 import SubmissionDetail from '../../components/SubmissionDetail';
 import ReviewActions from '../../components/ReviewActions';
-import type { PrdSubmission, StudentAllocation, DocumentType } from '../../lib/types';
+import type { PrdSubmission, DocumentType } from '../../lib/types';
 import { DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS } from '../../lib/types';
-import { apiGetAllPrdSubmissions, apiGetAllocation, apiGetPrdDownloadUrl, apiReviewPrdSubmission } from '../../lib/api';
+import { apiGetAllPrdSubmissions, apiGetPrdDownloadUrl, apiReviewPrdSubmission } from '../../lib/api';
 import { apiListMyTeamsDetailed } from '../../lib/api/teams';
 import { statusDotClass } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
@@ -62,18 +62,13 @@ export default function MentorSubmissions({ mentorId }: Partial<Props> & { mento
       });
       setMentees(Array.from(menteeMap.values()).sort((a, b) => a.fullName.localeCompare(b.fullName)));
 
-      const uniqueAllocationIds = Array.from(new Set(allSubs.map((s) => s.allocationId)));
-      const allocations = await Promise.all(uniqueAllocationIds.map((id) => apiGetAllocation(id).catch(() => null)));
-      const allocationsById = new Map<string, StudentAllocation>();
-      allocations.forEach((alloc, idx) => {
-        if (alloc) allocationsById.set(uniqueAllocationIds[idx], alloc);
-      });
-
+      // studentId/primaryMentorId/secondaryMentorId now come back inline on
+      // every submission (a backend join against ojt_allocations) — no more
+      // resolving each unique allocation with its own GET /allocations/:id.
       const mapped = allSubs.reduce<Row[]>((acc, s) => {
-        const alloc = allocationsById.get(s.allocationId);
-        if (!alloc) return acc;
-        if (alloc.primaryMentorId !== mentorId && alloc.secondaryMentorId !== mentorId) return acc;
-        acc.push({ ...s, studentId: alloc.studentId });
+        if (!s.studentId) return acc;
+        if (s.primaryMentorId !== mentorId && s.secondaryMentorId !== mentorId) return acc;
+        acc.push({ ...s, studentId: s.studentId });
         return acc;
       }, []);
       setRows(mapped);

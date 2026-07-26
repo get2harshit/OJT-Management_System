@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CheckCircle2, Search } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 
 export interface RosterItem {
   id: string;
@@ -15,6 +15,20 @@ interface RosterListProps {
   onSelect: (id: string) => void;
   searchPlaceholder?: string;
   emptyMessage?: string;
+  // When provided, `items` is assumed already filtered server-side (e.g. a
+  // paginated roster) and rendered as-is instead of being filtered again
+  // client-side. Every keystroke is still reported here immediately —
+  // debouncing before it actually triggers a fetch is the caller's job
+  // (mirrors DataTable's onSearchChange). Omit for the original behavior:
+  // an unbounded `items` list searched entirely client-side (mentor/student
+  // Submissions pages, whose rosters are small and never paginated).
+  onSearchChange?: (value: string) => void;
+  // Server pagination footer — omit for the original unpaginated behavior.
+  pagination?: {
+    page: number;
+    totalPages: number;
+    onPageChange: (page: number) => void;
+  };
 }
 
 // Searchable list-of-entities sidebar (students, or a student's own document
@@ -27,16 +41,25 @@ export default function RosterList({
   onSelect,
   searchPlaceholder = 'Search...',
   emptyMessage = 'Nothing to show.',
+  onSearchChange,
+  pagination,
 }: RosterListProps) {
   const [search, setSearch] = useState('');
+  const isServerDriven = onSearchChange !== undefined;
 
   const filtered = useMemo(() => {
+    if (isServerDriven) return items;
     const q = search.trim().toLowerCase();
     if (!q) return items;
     return items.filter(
       (i) => i.primaryLabel.toLowerCase().includes(q) || i.secondaryLabel?.toLowerCase().includes(q)
     );
-  }, [items, search]);
+  }, [items, search, isServerDriven]);
+
+  const handleSearchInput = (value: string) => {
+    setSearch(value);
+    onSearchChange?.(value);
+  };
 
   return (
     <>
@@ -45,7 +68,7 @@ export default function RosterList({
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchInput(e.target.value)}
             placeholder={searchPlaceholder}
             className="w-full bg-zinc-900 border border-zinc-750 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-gold transition-colors"
           />
@@ -96,6 +119,28 @@ export default function RosterList({
           })
         )}
       </div>
+
+      {pagination && pagination.totalPages > 1 && (
+        <div className="shrink-0 p-2 border-t border-zinc-750 flex items-center justify-between gap-2">
+          <button
+            onClick={() => pagination.onPageChange(Math.max(1, pagination.page - 1))}
+            disabled={pagination.page === 1}
+            className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <span className="text-[10px] text-gray-500">
+            Page {pagination.page} / {pagination.totalPages}
+          </span>
+          <button
+            onClick={() => pagination.onPageChange(Math.min(pagination.totalPages, pagination.page + 1))}
+            disabled={pagination.page === pagination.totalPages}
+            className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
     </>
   );
 }
