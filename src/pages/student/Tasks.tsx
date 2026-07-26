@@ -6,9 +6,8 @@ import type { ApiTask } from '../../lib/api/tasks';
 
 type TaskFilter = 'ALL' | 'MISSED' | 'IN_REVIEW' | 'RESUBMIT' | 'COMPLETED' | 'UPCOMING';
 
-function getTaskStatus(task: ApiTask, studentId: string): TaskFilter {
-  const myAssignment = task.assignments?.find(a => a.assignee_id === studentId);
-  const status = myAssignment?.status;
+function getTaskStatus(task: ApiTask): TaskFilter {
+  const status = task.myAssignment?.status;
   const isPastDue = task.deadline ? new Date(task.deadline) < new Date() : false;
 
   if (status === 'approved') return 'COMPLETED';
@@ -19,11 +18,9 @@ function getTaskStatus(task: ApiTask, studentId: string): TaskFilter {
 }
 
 export default function StudentTasks({
-  studentId,
   onViewSubmission,
   onNewSubmission,
 }: {
-  studentId: string;
   onViewSubmission: (taskId: string) => void;
   onNewSubmission: (taskId: string) => void;
 }) {
@@ -62,8 +59,8 @@ export default function StudentTasks({
 
   const taskData = useMemo(() => {
     return tasks.map((task) => {
-      const status = getTaskStatus(task, studentId);
-      const myAssignment = task.assignments?.find(a => a.assignee_id === studentId);
+      const status = getTaskStatus(task);
+      const myAssignment = task.myAssignment;
 
       return {
         id: task.id,
@@ -79,7 +76,7 @@ export default function StudentTasks({
         maxResubmitCount: myAssignment?.max_resubmit_count ?? 5,
       };
     });
-  }, [tasks, studentId]);
+  }, [tasks]);
 
   const filteredData = useMemo(() => {
     if (filter === 'ALL') return taskData;

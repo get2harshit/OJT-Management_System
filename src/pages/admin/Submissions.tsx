@@ -1,32 +1,59 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ArrowLeft, Eye, Loader2 } from 'lucide-react';
 import SplitPane from '../../components/SplitPane';
 import RosterList from '../../components/RosterList';
 import SubmissionDetail from '../../components/SubmissionDetail';
 import ReviewActions from '../../components/ReviewActions';
 import Select from '../../components/Select';
-import type { PrdSubmission, StudentAllocation, DocumentType, ApiStudent, ApiMentor } from '../../lib/types';
+import type { PrdSubmission, DocumentType, ApiMentor, Cohort } from '../../lib/types';
 import { DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS } from '../../lib/types';
 import {
   apiGetAllPrdSubmissions,
-  apiGetAllocation,
-  apiListStudents,
+  apiGetTeamsForCohortDetailed,
   apiListMentors,
   apiGetPrdDownloadUrl,
-  apiListProjects,
+  apiListCohorts,
   apiReviewPrdSubmission,
 } from '../../lib/api';
+import { getCohortLabel } from '../../lib/cohortLabel';
+import { TRACKS } from '../../lib/constants';
 import { statusDotClass } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
 
 type Row = PrdSubmission & { studentId: string; mentorId?: string };
 
+// A student only has a project/mentor (and so can only have submissions)
+// once their team's allocation is both resolved AND the cohort has been
+// published — there's no per-team "published" flag, publish is sticky and
+// cohort-wide (ojt_cohorts.allocation_published_at), same gate the
+// student's/mentor's own apps use (TeamService.getMyStatus,
+// getTeamsForMentorDetailed). Built from getTeamsForCohortDetailed's
+// members instead of a raw student list so batch/track/mentor/search and
+// pagination are all handled server-side by that (already paginated,
+// already filterable) endpoint.
+interface RosterStudent {
+  studentId: string;
+  fullName: string | null;
+  rollNumber: string | null;
+  batch: string | null;
+  track: string;
+}
+
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 400;
+
 export default function AdminSubmissions() {
   const { showSuccess, showError } = useToast();
 
-  const [students, setStudents] = useState<ApiStudent[]>([]);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [cohortFilter, setCohortFilter] = useState('');
+  const [cohortsLoaded, setCohortsLoaded] = useState(false);
   const [globalMentors, setGlobalMentors] = useState<ApiMentor[]>([]);
-  const [globalTracks, setGlobalTracks] = useState<string[]>([]);
+
+  const [page, setPage] = useState(1);
+  const [rosterSearch, setRosterSearch] = useState('');
+  const [rosterStudents, setRosterStudents] = useState<RosterStudent[]>([]);
+  const [rosterPagination, setRosterPagination] = useState({ page: 1, totalPages: 1 });
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,36 +71,71 @@ export default function AdminSubmissions() {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
-  const loadSubmissions = async () => {
+  // Resolves cohorts AND the default cohortFilter in the same state update
+  // (not a separate effect reacting to `cohorts`) — otherwise loadRoster
+  // below fires once with cohortFilter still '' and then again a render
+  // later once the default is picked, doubling every call for no reason.
+  useEffect(() => {
+    apiListCohorts()
+      .then((list) => {
+        setCohorts(list);
+        const active = list.find(c => c.is_active || (c as { activeStatus?: boolean }).activeStatus) || list[0];
+        if (active) setCohortFilter(active.id);
+      })
+      .catch(() => setCohorts([]))
+      .finally(() => setCohortsLoaded(true));
+  }, []);
+
+  useEffect(() => {
+    apiListMentors().then(setGlobalMentors).catch(() => setGlobalMentors([]));
+  }, []);
+
+  const selectedCohort = cohorts.find((c) => c.id === cohortFilter);
+  const isPublished = !!selectedCohort?.allocationPublishedAt;
+
+  const loadRoster = useCallback(async () => {
+    if (!cohortFilter) return;
     setLoading(true);
     setError(null);
     try {
-      const [allSubs, allStudents, allMentors, allProjects] = await Promise.all([
+      if (!isPublished) {
+        setRosterStudents([]);
+        setRosterPagination({ page: 1, totalPages: 1 });
+        setRows([]);
+        return;
+      }
+
+      const [teamsPage, allSubs] = await Promise.all([
+        apiGetTeamsForCohortDetailed(cohortFilter, {
+          status: 'allocated',
+          track: trackFilter !== 'ALL' ? trackFilter : undefined,
+          batch: batchFilter !== 'ALL' ? batchFilter : undefined,
+          mentorId: mentorFilter !== 'ALL' ? mentorFilter : undefined,
+          search: rosterSearch || undefined,
+          page,
+          limit: PAGE_SIZE,
+        }),
         apiGetAllPrdSubmissions(),
-        apiListStudents(),
-        apiListMentors(),
-        apiListProjects(),
       ]);
 
-      setStudents(allStudents);
-      setGlobalMentors(allMentors);
-      setGlobalTracks(
-        Array.from(new Set(allProjects.map((p) => p.track).filter((t): t is string => !!t && t !== '-'))).sort()
+      const flattenedStudents = teamsPage.data.flatMap((team) =>
+        team.members.map((m) => ({
+          studentId: m.studentId,
+          fullName: m.fullName,
+          rollNumber: m.rollNumber,
+          batch: m.batch,
+          track: team.track,
+        }))
       );
+      setRosterStudents(flattenedStudents);
+      setRosterPagination({ page: teamsPage.pagination.page, totalPages: teamsPage.pagination.totalPages });
 
-      const mentorsById = new Map(allMentors.map((m) => [m.id, m]));
-      const uniqueAllocationIds = Array.from(new Set(allSubs.map((s) => s.allocationId)));
-      const allocations = await Promise.all(uniqueAllocationIds.map((id) => apiGetAllocation(id).catch(() => null)));
-      const allocationsById = new Map<string, StudentAllocation>();
-      allocations.forEach((alloc, idx) => {
-        if (alloc) allocationsById.set(uniqueAllocationIds[idx], alloc);
-      });
-
+      // studentId/primaryMentorId/cohortId come back inline on every
+      // submission (a backend join against ojt_allocations) — no separate
+      // GET /allocations/:id per unique allocation needed.
       const mapped = allSubs.reduce<Row[]>((acc, s) => {
-        const alloc = allocationsById.get(s.allocationId);
-        if (!alloc) return acc;
-        const mentor = alloc.primaryMentorId ? mentorsById.get(alloc.primaryMentorId) : undefined;
-        acc.push({ ...s, studentId: alloc.studentId, mentorId: mentor?.id });
+        if (!s.studentId || s.cohortId !== cohortFilter) return acc;
+        acc.push({ ...s, studentId: s.studentId, mentorId: s.primaryMentorId });
         return acc;
       }, []);
       setRows(mapped);
@@ -82,11 +144,12 @@ export default function AdminSubmissions() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [cohortFilter, isPublished, trackFilter, batchFilter, mentorFilter, rosterSearch, page]);
 
   useEffect(() => {
-    loadSubmissions();
-  }, []);
+    if (!cohortsLoaded || !cohortFilter) return;
+    loadRoster();
+  }, [cohortsLoaded, cohortFilter, loadRoster]);
 
   // Pending-review count per student, shown as the roster badge.
   const pendingCountByStudent = useMemo(() => {
@@ -99,36 +162,44 @@ export default function AdminSubmissions() {
     return map;
   }, [rows]);
 
-  // Mentor filter operates on which mentor has reviewed/is reviewing a
-  // student's submissions — students with no submissions yet have no known
-  // mentor from this data, so they drop out only when a mentor filter is active.
-  const studentMentorMap = useMemo(() => {
-    const map = new Map<string, string>();
-    rows.forEach((r) => {
-      if (r.mentorId) map.set(r.studentId, r.mentorId);
-    });
-    return map;
-  }, [rows]);
-
-  const rosterItems = useMemo(() => {
-    return students
-      .filter((s) => batchFilter === 'ALL' || s.batch === batchFilter)
-      .filter((s) => trackFilter === 'ALL' || s.track === trackFilter)
-      .filter((s) => mentorFilter === 'ALL' || studentMentorMap.get(s.id) === mentorFilter)
-      .map((s) => ({
-        id: s.id,
-        primaryLabel: s.fullName || s.email || s.id,
+  const rosterItems = useMemo(
+    () =>
+      rosterStudents.map((s) => ({
+        id: s.studentId,
+        primaryLabel: s.fullName || s.studentId,
         secondaryLabel: [s.rollNumber, s.batch].filter(Boolean).join(' · '),
-        badge: pendingCountByStudent.get(s.id) ?? 0,
-      }));
-  }, [students, batchFilter, trackFilter, mentorFilter, studentMentorMap, pendingCountByStudent]);
-
-  const globalBatches = useMemo(
-    () => Array.from(new Set(students.map((s) => s.batch).filter((b): b is string => !!b && b !== '-'))).sort(),
-    [students]
+        badge: pendingCountByStudent.get(s.studentId) ?? 0,
+      })),
+    [rosterStudents, pendingCountByStudent]
   );
 
-  const selectedStudent = students.find((s) => s.id === selectedStudentId);
+  const handleCohortChange = (value: string) => {
+    setPage(1);
+    setCohortFilter(value);
+  };
+  const handleBatchFilterChange = (value: string) => {
+    setPage(1);
+    setBatchFilter(value);
+  };
+  const handleTrackFilterChange = (value: string) => {
+    setPage(1);
+    setTrackFilter(value);
+  };
+  const handleMentorFilterChange = (value: string) => {
+    setPage(1);
+    setMentorFilter(value);
+  };
+
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const handleRosterSearchChange = (value: string) => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1);
+      setRosterSearch(value);
+    }, SEARCH_DEBOUNCE_MS);
+  };
+
+  const selectedStudent = rosterStudents.find((s) => s.studentId === selectedStudentId);
   const studentRows = rows
     .filter((r) => r.studentId === selectedStudentId)
     .filter((r) => docTypeFilter === 'ALL' || r.documentType === docTypeFilter);
@@ -167,7 +238,7 @@ export default function AdminSubmissions() {
     try {
       await apiReviewPrdSubmission(activeSub.id, status, feedback);
       showSuccess(status === 'approved' ? 'Submission approved.' : 'Changes requested — the student has been notified.');
-      await loadSubmissions();
+      await loadRoster();
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to update review');
     } finally {
@@ -183,9 +254,44 @@ export default function AdminSubmissions() {
 
   return (
     <div className="space-y-6 h-full flex flex-col">
-      <div className="shrink-0">
-        <h1 className="text-2xl font-bold text-white">Submissions</h1>
-        <p className="text-gray-400 text-sm mt-1">Review and manage student submissions</p>
+      <div className="shrink-0 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Submissions</h1>
+          <p className="text-gray-400 text-sm mt-1">Review and manage student submissions</p>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Select
+            value={cohortFilter}
+            onChange={(v) => handleCohortChange(v as string)}
+            variant="filter"
+            placeholder="Select cohort"
+            options={cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }))}
+          />
+          <Select
+            value={batchFilter}
+            onChange={(v) => handleBatchFilterChange(v as string)}
+            variant="filter"
+            options={[
+              { value: 'ALL', label: 'All Batches' },
+              ...(selectedCohort?.allowedBatches ?? []).map((b) => ({ value: b, label: b })),
+            ]}
+          />
+          <Select
+            value={trackFilter}
+            onChange={(v) => handleTrackFilterChange(v as string)}
+            variant="filter"
+            options={[{ value: 'ALL', label: 'All Tracks' }, ...TRACKS.map((t) => ({ value: t, label: t }))]}
+          />
+          <Select
+            value={mentorFilter}
+            onChange={(v) => handleMentorFilterChange(v as string)}
+            variant="filter"
+            options={[
+              { value: 'ALL', label: 'All Mentors' },
+              ...globalMentors.map((m) => ({ value: m.id, label: m.fullName || m.email || m.id })),
+            ]}
+          />
+        </div>
       </div>
 
       {error && (
@@ -195,43 +301,26 @@ export default function AdminSubmissions() {
       <SplitPane
         sidebarCollapsed={!!activeSub}
         sidebar={
-          <>
-            <div className="p-3 border-b border-zinc-750 space-y-2">
-              <Select
-                value={batchFilter}
-                onChange={(v) => setBatchFilter(v as string)}
-                variant="filter"
-                options={[{ value: 'ALL', label: 'All Batches' }, ...globalBatches.map((b) => ({ value: b, label: b }))]}
-              />
-              <Select
-                value={trackFilter}
-                onChange={(v) => setTrackFilter(v as string)}
-                variant="filter"
-                options={[{ value: 'ALL', label: 'All Tracks' }, ...globalTracks.map((t) => ({ value: t, label: t }))]}
-              />
-              <Select
-                value={mentorFilter}
-                onChange={(v) => setMentorFilter(v as string)}
-                variant="filter"
-                options={[
-                  { value: 'ALL', label: 'All Mentors' },
-                  ...globalMentors.map((m) => ({ value: m.id, label: m.fullName || m.email || m.id })),
-                ]}
-              />
-            </div>
-            <RosterList
-              items={rosterItems}
-              selectedId={selectedStudentId}
-              onSelect={selectStudent}
-              searchPlaceholder="Search students..."
-              emptyMessage={loading ? 'Loading students…' : 'No students match these filters.'}
-            />
-          </>
+          <RosterList
+            items={rosterItems}
+            selectedId={selectedStudentId}
+            onSelect={selectStudent}
+            onSearchChange={handleRosterSearchChange}
+            pagination={{ page: rosterPagination.page, totalPages: rosterPagination.totalPages, onPageChange: setPage }}
+            searchPlaceholder="Search students..."
+            emptyMessage={
+              loading
+                ? 'Loading students…'
+                : !isPublished
+                ? "This cohort's allocation hasn't been published yet."
+                : 'No students match these filters.'
+            }
+          />
         }
       >
         {!selectedStudent ? (
-          <div className="h-full flex items-center justify-center text-gray-500 text-sm">
-            Select a student to view their submissions.
+          <div className="h-full flex items-center justify-center text-gray-500 text-sm text-center px-6">
+            {isPublished ? 'Select a student to view their submissions.' : "This cohort's allocation hasn't been published yet — students only appear here once their project and mentor are live."}
           </div>
         ) : activeSub ? (
           <div className="space-y-0">

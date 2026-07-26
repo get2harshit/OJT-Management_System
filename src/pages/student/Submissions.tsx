@@ -70,7 +70,7 @@ export default function StudentSubmissions({
     for (const task of myTasks) {
       const type = task.task_type as ApiTaskType | null | undefined;
       if (!type) continue;
-      const myAssignment = task.assignments?.find((a) => a.assignee_id === studentId);
+      const myAssignment = task.myAssignment;
       const isOpen = myAssignment?.status === 'pending' || myAssignment?.status === 'resubmit';
       const existing = map[type];
       if (!existing || (isOpen && existing.status === 'done')) {
@@ -78,7 +78,7 @@ export default function StudentSubmissions({
       }
     }
     return map;
-  }, [myTasks, studentId]);
+  }, [myTasks]);
 
   const openTypeOptions = DOCUMENT_TYPES
     .filter((t) => typeStatus[t]?.status === 'open')

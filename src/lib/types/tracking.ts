@@ -72,6 +72,13 @@ export interface PrdSubmission {
   mentorFeedback?: string;
   reviewedBy?: string;
   updatedAt: string;
+  // Denormalized via a backend join — only present on the "review
+  // everything" list (apiGetAllPrdSubmissions), not on a single allocation's
+  // own submissions (apiGetPrdSubmissionsByAllocation already implies them).
+  studentId?: string;
+  primaryMentorId?: string;
+  secondaryMentorId?: string;
+  cohortId?: string;
 }
 
 export interface StudentAllocation {
