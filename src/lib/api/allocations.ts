@@ -1,4 +1,4 @@
-import type { TeamAllocationDetail, StudentAllocation, MentorLoadSummaryRow } from '../types';
+import type { TeamAllocationDetail, StudentAllocation, MentorLoadSummaryRow, AllocationPreviewEntry } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
 import { mapFrontendTrackToBackend } from './trackMapping';
 
@@ -26,7 +26,7 @@ interface GetTeamsForCohortParams {
   track?: string;
   batch?: string;
   search?: string;
-  status?: 'pending' | 'allocated' | 'overridden';
+  status?: 'pending' | 'allocated' | 'overridden' | 'published';
   page?: number;
   limit?: number;
   skipCount?: boolean;
@@ -58,10 +58,31 @@ export async function apiGetTeamsForCohortDetailed(
   return apiFetch<TeamsForCohortPage>(`/api/v1/teams/cohort/${cohortId}/detail${qs ? `?${qs}` : ''}`);
 }
 
-// Admin — runs the deferred-acceptance resolution across every pending team in the cohort.
-export async function apiRunAllocation(cohortId: string): Promise<void> {
-  await apiFetch<void>(`/api/v1/teams/cohort/${cohortId}/allocate`, { method: 'POST' });
+// Admin — computes the deferred-acceptance preview across every pending
+// team in the cohort. Nothing is persisted — the admin reviews/manually
+// reassigns entirely client-side, then commits everything via
+// apiDraftAllocation.
+export async function apiPreviewAllocation(cohortId: string): Promise<AllocationPreviewEntry[]> {
+  const res = await apiFetch<{ data: AllocationPreviewEntry[] }>(`/api/v1/teams/cohort/${cohortId}/allocate`, {
+    method: 'POST',
+  });
+  return res.data;
+}
+
+// Admin — commits a previewed (and possibly manually adjusted) batch. Every
+// team the preview returned must be present, resolved to a project+mentor —
+// the backend re-validates everything (2-teams-per-project cap, track/
+// cohort-mapping for any manual pick) before persisting.
+export async function apiDraftAllocation(
+  cohortId: string,
+  finalMapping: { teamId: string; allocatedProjectId: string; mentorId: string }[]
+): Promise<void> {
+  await apiFetch<void>(`/api/v1/teams/cohort/${cohortId}/draft-allocation`, {
+    method: 'POST',
+    body: JSON.stringify({ finalMapping }),
+  });
   invalidateCached('allocation');
+  invalidateCached('cohorts:get');
 }
 
 // Admin — manual override, restricted server-side to the team's own two preferences.

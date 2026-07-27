@@ -312,6 +312,30 @@ export interface TeamAllocationDetail {
   allocatedMentorName: string | null;
   // Set the moment an admin manually overrides this team (project or mentor).
   overriddenAt: string | null;
+  // True once this team's own result was drafted/overridden/resolved at or
+  // before the cohort's last publish — i.e. the student can currently see it.
+  visibleToStudent: boolean;
+}
+
+// One row of a Run Allocation preview — computed server-side, nothing
+// persisted yet. `mentorId`/`projectId` are mutable client-side until Draft:
+// the admin can reassign either before committing.
+export interface AllocationPreviewEntry {
+  teamId: string;
+  teamName: string | null;
+  members: { studentId: string; fullName: string | null }[];
+  track: string;
+  tier: string;
+  submittedAt: string;
+  status: 'allocated' | 'needs_review';
+  projectId: string | null;
+  projectTitle: string | null;
+  mentorId: string | null;
+  mentorName: string | null;
+  // The team's own 2 submitted preferences — lets Reallocate offer "assign
+  // from student preference" alongside a fully freeform pick.
+  preference1: { projectId: string; projectTitle: string | null; mentorId: string | null; mentorName: string | null };
+  preference2: { projectId: string; projectTitle: string | null; mentorId: string | null; mentorName: string | null };
 }
 
 // Cohort student not yet in any team (GET /api/v1/teams/cohort/:cohortId/students-without-team)
