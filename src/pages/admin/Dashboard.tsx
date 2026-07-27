@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Activity, UserCog, Briefcase, Download } from 'lucide-react';
+import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, UserCog, Briefcase, Download } from 'lucide-react';
 import { exportToCSV } from '../../lib/csvExport';
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
@@ -84,13 +84,6 @@ export default function AdminDashboard({
   const pendingSubmissions = submissions.filter(s => s.status === 'PENDING').length;
   const attendanceCount = attendance.length;
 
-  // Progress status counts — no backend field for this exists yet (see
-  // above), so every student is always "in process" and the roster's own
-  // total already lives on `metrics`; no per-student fetch needed to show it.
-  const onTrackCount = 0;
-  const delayingCount = 0;
-  const inProcessCount = metrics ? metrics.studentsCount : 0;
-
   // Stat-card counts — always straight from /dashboard/metrics, which is
   // re-fetched with the current cohort/batch/track filters above. No client
   // list is downloaded just to compute one of these.
@@ -174,31 +167,6 @@ export default function AdminDashboard({
         <StatCard title="Tasks" value={taskCount} icon={CheckSquare} onClick={() => onNavigateToTab('tasks')} />
         <StatCard title="Pending Submissions" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToTab('submissions')} />
         <StatCard title="Attendance Records" value={attendanceCount} icon={CalendarCheck} onClick={() => onNavigateToTab('attendance')} />
-      </div>
-
-      {/* Progress Status Analytics */}
-      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
-        <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-          <Activity size={18} className="text-gold" />
-          OJT Student Progress Tracker
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="p-4 bg-zinc-800/30 rounded-xl border border-zinc-750 flex flex-col items-center">
-            <span className="text-xs text-green-400 font-bold uppercase tracking-wider">On Track</span>
-            <span className="text-3xl font-extrabold text-white mt-2">{onTrackCount}</span>
-            <span className="text-xs text-gray-500 mt-1">Progressing smoothly</span>
-          </div>
-          <div className="p-4 bg-zinc-800/30 rounded-xl border border-zinc-750 flex flex-col items-center">
-            <span className="text-xs text-yellow-500 font-bold uppercase tracking-wider">In Process</span>
-            <span className="text-3xl font-extrabold text-white mt-2">{inProcessCount}</span>
-            <span className="text-xs text-gray-500 mt-1">Ongoing implementation</span>
-          </div>
-          <div className="p-4 bg-zinc-800/30 rounded-xl border border-zinc-750 flex flex-col items-center">
-            <span className="text-xs text-red-400 font-bold uppercase tracking-wider">Delaying</span>
-            <span className="text-3xl font-extrabold text-white mt-2">{delayingCount}</span>
-            <span className="text-xs text-gray-500 mt-1">Requiring immediate support</span>
-          </div>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

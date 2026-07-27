@@ -110,7 +110,7 @@ export default function AdminAllocations() {
           actions={(row) => (
             <button
               onClick={() => goToAllocations(row.id)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gold/10 hover:bg-gold/20 text-gold font-semibold rounded-lg border border-gold/20 transition-colors"
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
             >
               <Shuffle size={14} />
               Allocate Projects
