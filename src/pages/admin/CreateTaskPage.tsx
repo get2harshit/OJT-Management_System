@@ -88,7 +88,7 @@ export default function CreateTaskPage() {
   // form has no cohort picker of its own, it just targets "the" running
   // cohort, same assumption the due-date auto-calculation below already made.
   const activeCohort = useMemo(
-    () => cohorts.find(c => c.is_active || (c as { activeStatus?: boolean }).activeStatus) || cohorts[0],
+    () => cohorts.find(c => c.isActive) || cohorts[0],
     [cohorts]
   );
 

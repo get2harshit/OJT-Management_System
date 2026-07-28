@@ -1,8 +1,10 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus, UserCheck, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import Modal from '../../components/Modal';
 import { TRACKS } from '../../lib/constants';
-import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project, PreferenceReviewStatus, ProjectLevel } from '../../lib/types';
+import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project, PreferenceReviewStatus, PreferenceResubmissionMode } from '../../lib/types';
+import type { ProjectSummary, ProjectDetail } from '../../lib/api';
 import {
   apiGetMyCohort,
   apiGetMyTeamStatus,
@@ -12,6 +14,8 @@ import {
   apiRevokeTeamRequest,
   apiCreateIndividualTeam,
   apiGetAvailableProjects,
+  apiGetAvailableProjectsPage,
+  apiGetProjectDetail,
   apiGetAvailableMentors,
   apiProposeProject,
   apiSubmitProjectPreferences,
@@ -151,12 +155,20 @@ export default function ProjectPicker() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Briefcase size={24} className="text-gold" />
-          Select Project
-        </h1>
-        <p className="text-gray-400 text-sm mt-1">Pick a track, team up, and lock in your projects.</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <Briefcase size={24} className="text-gold" />
+            Select Project
+          </h1>
+          <p className="text-gray-400 text-sm mt-1">Pick a track, team up, and lock in your projects.</p>
+        </div>
+        {status?.team && !status.projectPreferences && (
+          <p className="text-xs text-gray-500 flex items-center gap-1.5 shrink-0 mt-1">
+            <Layers size={13} className="text-gold shrink-0" />
+            Choose <span className="text-gold font-semibold">2 projects</span> — your 1st and 2nd preference
+          </p>
+        )}
       </div>
 
       {status?.team ? (
@@ -166,7 +178,6 @@ export default function ProjectPicker() {
             team={status.team}
             preferences={status.projectPreferences}
             availableMentors={availableMentors}
-            availableProjects={availableProjects}
             onResubmitted={() => refreshStatus(cohortId)}
           />
         ) : (
@@ -204,6 +215,10 @@ export default function ProjectPicker() {
 
 // ── Step 1 & 2: pick a track, then a teammate ────────────────────────────────
 
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 400;
+const LIMIT_OPTIONS = [20, 40, 80, 100];
+
 function TrackAndTeammateScreen({
   cohortId,
   canInviteTeammate,
@@ -224,45 +239,74 @@ function TrackAndTeammateScreen({
   const [track, setTrack] = useState<string | null>(pendingSentRequests[0]?.track ?? null);
   const [teammates, setTeammates] = useState<AvailableTeammate[]>([]);
   const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
   const [sendingTo, setSendingTo] = useState<string | null>(null);
   const [creatingIndividual, setCreatingIndividual] = useState(false);
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
   const SEND_QUOTA = 3;
-  const PAGE_SIZE = 12;
   const quotaFull = pendingSentRequests.length >= SEND_QUOTA;
 
   const fetchTeammates = useCallback(async () => {
-    if (!canInviteTeammate) return;
+    if (!canInviteTeammate || !track) return;
     setLoading(true);
     try {
-      const res = await apiGetAvailableTeammates(cohortId);
-      setTeammates(res);
-      setPage(1);
+      const res = await apiGetAvailableTeammates(cohortId, { page, limit, search: search || undefined });
+      setTeammates(res.data);
+      setPagination(res.pagination);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load available teammates');
       setTeammates([]);
     } finally {
       setLoading(false);
     }
-  }, [cohortId, canInviteTeammate, showError]);
+  }, [cohortId, canInviteTeammate, track, page, limit, search, showError]);
 
-  const handlePickTrack = useCallback(async (t: string) => {
-    setTrack(t);
-    await fetchTeammates();
+  // Covers both the initial fetch (once a track is picked or already implied
+  // by a pending invite) and every subsequent page/limit/search change.
+  useEffect(() => {
+    fetchTeammates();
   }, [fetchTeammates]);
 
-  // Covers resuming with a track already implied by pending invites (see
-  // the initial state above) — handlePickTrack only fires from the picker
-  // click, so a reload with existing invites needs its own fetch trigger.
-  const teammatesFetchedRef = useRef(false);
+  const handlePickTrack = (t: string) => setTrack(t);
+
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const handleSearchInputChange = (value: string) => {
+    setSearchInput(value);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1);
+      setSearch(value);
+    }, SEARCH_DEBOUNCE_MS);
+  };
+
+  const handleLimitChange = (value: number) => {
+    setPage(1);
+    setLimit(value);
+  };
+
+  // Sizes the card grid to fill the space actually available below it,
+  // mirroring DataTable's own body-height mechanism so this screen scrolls
+  // and paginates the same way every other list in the app does.
+  const gridWrapRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  const [maxGridHeight, setMaxGridHeight] = useState<number | undefined>(undefined);
   useEffect(() => {
-    if (!track || teammatesFetchedRef.current) return;
-    teammatesFetchedRef.current = true;
-    fetchTeammates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track]);
+    const computeMaxHeight = () => {
+      const wrap = gridWrapRef.current;
+      if (!wrap) return;
+      const wrapTop = wrap.getBoundingClientRect().top;
+      const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 60;
+      const available = window.innerHeight - wrapTop - footerHeight - 16;
+      setMaxGridHeight(Math.max(200, available));
+    };
+    computeMaxHeight();
+    window.addEventListener('resize', computeMaxHeight);
+    return () => window.removeEventListener('resize', computeMaxHeight);
+  }, []);
 
   const handleSendRequest = async (teammate: AvailableTeammate) => {
     if (!track) return;
@@ -291,24 +335,6 @@ function TrackAndTeammateScreen({
       setCreatingIndividual(false);
     }
   };
-
-  const filteredTeammates = teammates.filter(t => {
-    return !searchQuery || (
-      t.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.rollNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.batch?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }).sort((a, b) => {
-    const aPending = pendingSentRequests.some(r => r.receiverId === a.studentId);
-    const bPending = pendingSentRequests.some(r => r.receiverId === b.studentId);
-    if (aPending && !bPending) return -1;
-    if (!aPending && bPending) return 1;
-    return 0;
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filteredTeammates.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const paginatedTeammates = filteredTeammates.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   if (!track) {
     return (
@@ -387,11 +413,8 @@ function TrackAndTeammateScreen({
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
         <input
           type="text"
-          value={searchQuery}
-          onChange={e => {
-            setSearchQuery(e.target.value);
-            setPage(1);
-          }}
+          value={searchInput}
+          onChange={e => handleSearchInputChange(e.target.value)}
           placeholder="Search by name or roll number..."
           className="w-full bg-zinc-850 border border-zinc-750 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
         />
@@ -402,8 +425,12 @@ function TrackAndTeammateScreen({
           <SpinnerSquare size={40} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {paginatedTeammates.map(t => {
+        <div
+          ref={gridWrapRef}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 content-start overflow-y-auto"
+          style={maxGridHeight ? { height: maxGridHeight } : undefined}
+        >
+          {teammates.map(t => {
             const pendingReq = pendingSentRequests.find(r => r.receiverId === t.studentId);
             return (
               <div
@@ -444,7 +471,7 @@ function TrackAndTeammateScreen({
               </div>
             );
           })}
-          {filteredTeammates.length === 0 && (
+          {teammates.length === 0 && (
             <div className="col-span-full bg-zinc-850 border border-zinc-750 rounded-xl p-12 text-center">
               <Users size={40} className="mx-auto text-gray-600 mb-3" />
               <p className="text-gray-400">No available teammates found.</p>
@@ -453,37 +480,52 @@ function TrackAndTeammateScreen({
         </div>
       )}
 
-      {!loading && totalPages > 1 && (
-        <div className="flex items-center justify-between flex-wrap gap-3 pt-1">
-          <span className="text-xs text-gray-500">
-            Showing {(currentPage - 1) * PAGE_SIZE + 1} - {Math.min(currentPage * PAGE_SIZE, filteredTeammates.length)} of {filteredTeammates.length}
-          </span>
+      {!loading && pagination.totalPages > 1 && (
+        <div ref={footerRef} className="flex items-center justify-between flex-wrap gap-3 pt-1">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-500">
+              Showing {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
+            </span>
+            <div className="flex items-center gap-1">
+              {LIMIT_OPTIONS.map(opt => (
+                <button
+                  key={opt}
+                  onClick={() => handleLimitChange(opt)}
+                  className={`text-xs px-2 py-1 rounded-md transition-colors ${
+                    opt === limit ? 'bg-gold/20 text-gold font-semibold' : 'text-gray-400 hover:text-white hover:bg-zinc-750'
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setPage(1)}
-              disabled={currentPage === 1}
+              disabled={pagination.page === 1}
               className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
             >
               <ChevronsLeft size={16} />
             </button>
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
+              disabled={pagination.page === 1}
               className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
             >
               <ChevronLeft size={16} />
             </button>
-            <span className="text-sm text-gray-400">{currentPage} / {totalPages}</span>
+            <span className="text-sm text-gray-400">{pagination.page} / {pagination.totalPages}</span>
             <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
+              onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
+              disabled={pagination.page === pagination.totalPages}
               className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
             >
               <ChevronRight size={16} />
             </button>
             <button
-              onClick={() => setPage(totalPages)}
-              disabled={currentPage === totalPages}
+              onClick={() => setPage(pagination.totalPages)}
+              disabled={pagination.page === pagination.totalPages}
               className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
             >
               <ChevronsRight size={16} />
@@ -583,6 +625,11 @@ function ProjectSelectionScreen({
   const [mentor1Id, setMentor1Id] = useState<string | null>(null);
   const [mentor2Id, setMentor2Id] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Which preference slot the mentor-picker modal is currently open for —
+  // null means closed. One shared modal instance serves both slots instead
+  // of duplicating it, since only one is ever relevant at a time (steps 1
+  // and 2 are mutually exclusive).
+  const [mentorModalFor, setMentorModalFor] = useState<1 | 2 | null>(null);
 
   useEffect(() => {
     const own = availableProjects.find(p => p.projectBy === 'STUDENT');
@@ -596,10 +643,20 @@ function ProjectSelectionScreen({
     if (selfProject && mode === null) setMode('own-existing');
   }, [selfProject, mode]);
 
-  const catalogProjects = useMemo(
-    () => availableProjects.filter(p => p.projectBy === 'PST'),
-    [availableProjects]
-  );
+  // Once the current step's project is picked but its mentor isn't yet,
+  // prompt for one right away — covers both "just picked it" and "reloaded
+  // with it already picked." Doesn't fight a manual close: this only
+  // re-fires when its dependencies actually change.
+  useEffect(() => {
+    if (step === 1 && !mentor1Id) {
+      if (mode === 'own-existing' && selfProject) setMentorModalFor(1);
+      if (mode === 'two-existing' && existingProjectId1) setMentorModalFor(1);
+    }
+    if (step === 2 && !mentor2Id) {
+      if (mode === 'own-existing' && existingProjectId) setMentorModalFor(2);
+      if (mode === 'two-existing' && existingProjectId2) setMentorModalFor(2);
+    }
+  }, [mode, step, selfProject, existingProjectId1, existingProjectId, existingProjectId2, mentor1Id, mentor2Id]);
 
   const preference1Id = mode === 'own-existing' ? (selfProject?.id ?? null) : existingProjectId1;
   const preference2Id = mode === 'own-existing' ? existingProjectId : existingProjectId2;
@@ -635,13 +692,6 @@ function ProjectSelectionScreen({
 
   return (
     <div className="space-y-6">
-      <div className="bg-gold/5 border border-gold/20 rounded-xl px-5 py-4 flex items-center gap-3">
-        <Layers size={20} className="text-gold shrink-0" />
-        <p className="text-white text-sm font-medium">
-          You need to choose <span className="text-gold font-bold">2 projects</span> — your 1st and 2nd preference.
-        </p>
-      </div>
-
       {mode === null ? (
         <div className="space-y-4">
           <h2 className="text-white font-semibold">How do you want to pick your projects?</h2>
@@ -685,60 +735,41 @@ function ProjectSelectionScreen({
           </div>
 
           {step === 1 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Preference 1 project — left */}
+            mode === 'own-existing' ? (
               <div className="space-y-2">
                 <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 1 project</p>
-                {mode === 'own-existing' ? (
-                  <SelfProjectProposer cohortId={cohortId} selfProject={selfProject} onCreated={setSelfProject} />
-                ) : (
-                  <ExistingProjectPicker
-                    catalogProjects={catalogProjects}
-                    selectedId={existingProjectId1}
-                    onSelect={setExistingProjectId1}
-                    excludeId={existingProjectId2}
-                  />
-                )}
-              </div>
-
-              {/* Preference 1 mentor — right */}
-              <div className="space-y-2">
-                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 1 mentor</p>
-                <MentorPicker
-                  label="Preference 1 mentor"
-                  mentors={availableMentors}
-                  loading={mentorsLoading}
-                  selectedId={mentor1Id}
-                  onSelect={setMentor1Id}
-                  excludeId={mentor2Id}
+                <SelfProjectProposer
+                  cohortId={cohortId}
+                  selfProject={selfProject}
+                  onCreated={setSelfProject}
+                  selectedMentor={availableMentors.find(m => m.id === mentor1Id) ?? null}
+                  onChooseMentor={() => setMentorModalFor(1)}
                 />
               </div>
-            </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 1 project</p>
+                <ProjectCatalogBrowser
+                  cohortId={cohortId}
+                  selectedId={existingProjectId1}
+                  onSelect={setExistingProjectId1}
+                  excludeId={existingProjectId2}
+                  selectedMentor={availableMentors.find(m => m.id === mentor1Id) ?? null}
+                  onChooseMentor={() => setMentorModalFor(1)}
+                />
+              </div>
+            )
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Preference 2 project — left */}
-              <div className="space-y-2">
-                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 2 project</p>
-                <ExistingProjectPicker
-                  catalogProjects={catalogProjects}
-                  selectedId={mode === 'own-existing' ? existingProjectId : existingProjectId2}
-                  onSelect={mode === 'own-existing' ? setExistingProjectId : setExistingProjectId2}
-                  excludeId={mode === 'own-existing' ? undefined : existingProjectId1}
-                />
-              </div>
-
-              {/* Preference 2 mentor — right */}
-              <div className="space-y-2">
-                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 2 mentor</p>
-                <MentorPicker
-                  label="Preference 2 mentor"
-                  mentors={availableMentors}
-                  loading={mentorsLoading}
-                  selectedId={mentor2Id}
-                  onSelect={setMentor2Id}
-                  excludeId={mentor1Id}
-                />
-              </div>
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 2 project</p>
+              <ProjectCatalogBrowser
+                cohortId={cohortId}
+                selectedId={mode === 'own-existing' ? existingProjectId : existingProjectId2}
+                onSelect={mode === 'own-existing' ? setExistingProjectId : setExistingProjectId2}
+                excludeId={mode === 'own-existing' ? undefined : existingProjectId1}
+                selectedMentor={availableMentors.find(m => m.id === mentor2Id) ?? null}
+                onChooseMentor={() => setMentorModalFor(2)}
+              />
             </div>
           )}
 
@@ -774,6 +805,27 @@ function ProjectSelectionScreen({
           </div>
         </div>
       )}
+
+      <Modal
+        open={mentorModalFor !== null}
+        onClose={() => setMentorModalFor(null)}
+        title={`Choose your Preference ${mentorModalFor ?? 1} mentor`}
+        size="xl"
+      >
+        <MentorPicker
+          label={`Preference ${mentorModalFor ?? 1} mentor`}
+          mentors={availableMentors}
+          loading={mentorsLoading}
+          selectedId={mentorModalFor === 2 ? mentor2Id : mentor1Id}
+          onSelect={(id) => {
+            if (mentorModalFor === 2) setMentor2Id(id);
+            else setMentor1Id(id);
+            setMentorModalFor(null);
+          }}
+          excludeId={mentorModalFor === 2 ? mentor1Id : mentor2Id}
+          bare
+        />
+      </Modal>
     </div>
   );
 }
@@ -785,6 +837,7 @@ function MentorPicker({
   selectedId,
   onSelect,
   excludeId,
+  bare = false,
 }: {
   label: string;
   mentors: TeamAvailableMentor[];
@@ -792,41 +845,66 @@ function MentorPicker({
   selectedId: string | null;
   onSelect: (id: string) => void;
   excludeId?: string | null;
+  // Skips the outer card chrome + label — for callers that already provide
+  // their own framing (e.g. inside a Modal, whose title already says what
+  // this list is) so we don't end up with a card nested inside a card, or
+  // the same heading repeated twice.
+  bare?: boolean;
 }) {
   const options = mentors.filter(m => m.id !== excludeId);
 
-  return (
-    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-4 space-y-3 h-full">
-      <label className="text-xs text-gray-500 uppercase font-bold tracking-wider">{label}</label>
+  const body = (
+    <>
       {loading ? (
         <div className="py-6 flex justify-center"><SpinnerSquare size={24} /></div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[45vh] overflow-y-auto pr-1">
-          {options.map(m => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => onSelect(m.id)}
-              className={`flex items-center gap-2.5 text-left rounded-lg p-2.5 border transition-all duration-200 ${
-                selectedId === m.id
-                  ? 'bg-gold/10 border-gold shadow-lg shadow-gold/5'
-                  : 'bg-zinc-900 border-zinc-750 hover:border-zinc-600'
-              }`}
-            >
-              <MentorAvatar name={m.fullName} selected={selectedId === m.id} />
-              <div className="min-w-0">
-                <p className="text-white font-semibold text-xs truncate">{m.fullName}</p>
-                <p className="text-gray-500 text-[10px] truncate">
-                  {m.organization || (m.isExternal ? 'External' : 'Internal')}
-                </p>
-              </div>
-            </button>
-          ))}
+        <div
+          className={`grid grid-cols-1 sm:grid-cols-2 ${bare ? 'lg:grid-cols-3' : ''} gap-2 ${
+            bare ? '' : 'max-h-[45vh] overflow-y-auto pr-1'
+          }`}
+        >
+          {options.map(m => {
+            const isSelected = selectedId === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => onSelect(m.id)}
+                className={`relative flex items-center gap-3 text-left rounded-lg p-3 border transition-all duration-200 ${
+                  isSelected
+                    ? 'bg-gold/10 border-gold shadow-lg shadow-gold/10'
+                    : 'bg-zinc-900 border-zinc-750 hover:border-gold/30 hover:-translate-y-0.5'
+                }`}
+              >
+                <MentorAvatar name={m.fullName} selected={isSelected} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-white font-semibold text-sm truncate">{m.fullName}</p>
+                  <span
+                    className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-medium truncate max-w-full ${
+                      isSelected ? 'bg-gold/15 text-gold' : 'bg-zinc-800 text-gray-400'
+                    }`}
+                  >
+                    {m.organization || (m.isExternal ? 'External' : 'Internal')}
+                  </span>
+                </div>
+                {isSelected && <CheckCircle2 size={16} className="absolute top-2.5 right-2.5 text-gold shrink-0" />}
+              </button>
+            );
+          })}
         </div>
       )}
       {!loading && options.length === 0 && (
         <p className="text-gray-500 text-xs">No mentors available for this track right now.</p>
       )}
+    </>
+  );
+
+  if (bare) return body;
+
+  return (
+    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-4 space-y-3 h-full">
+      <label className="text-xs text-gray-500 uppercase font-bold tracking-wider">{label}</label>
+      {body}
     </div>
   );
 }
@@ -841,7 +919,7 @@ function MentorAvatar({ name, selected }: { name: string; selected: boolean }) {
 
   return (
     <div
-      className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold ${
+      className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold ${
         selected ? 'bg-gold text-black' : 'bg-zinc-750 text-gray-300'
       }`}
     >
@@ -850,76 +928,433 @@ function MentorAvatar({ name, selected }: { name: string; selected: boolean }) {
   );
 }
 
-function ExistingProjectPicker({
-  catalogProjects,
+// Full-width, paginated catalog browser — a click opens the full detail
+// screen (ProjectDetailView) instead of selecting immediately, since picking
+// off a title + one line is not enough to actually decide. Used for every
+// catalog pick in this flow: Preference 1 in "two existing projects" mode,
+// Preference 2 in both modes, and the post-rejection catalog-only resubmit.
+function ProjectCatalogBrowser({
+  cohortId,
   selectedId,
   onSelect,
   excludeId,
+  selectedMentor,
+  onChooseMentor,
 }: {
-  catalogProjects: TeamProject[];
+  cohortId: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
   excludeId?: string | null;
+  selectedMentor?: TeamAvailableMentor | null;
+  onChooseMentor?: () => void;
 }) {
-  const [searchQuery, setSearchQuery] = useState('');
+  const { showError } = useToast();
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
-  const filteredCatalog = catalogProjects.filter(p => {
-    if (excludeId && p.id === excludeId) return false;
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return p.title.toLowerCase().includes(q) || (p.problemStatement || '').toLowerCase().includes(q);
-  });
+  const [viewingProjectId, setViewingProjectId] = useState<string | null>(null);
+  const [viewingDetail, setViewingDetail] = useState<ProjectDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  // Detail of whichever project is currently the confirmed selection — kept
+  // locally so the "Selected" summary always has a title, whether the pick
+  // just happened or selectedId arrived already set (e.g. page reload).
+  const [selectedDetail, setSelectedDetail] = useState<ProjectDetail | null>(null);
+  const [browsingAfterSelect, setBrowsingAfterSelect] = useState(false);
+
+  const fetchProjects = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiGetAvailableProjectsPage(cohortId, { page, limit, search: search || undefined, excludeId: excludeId ?? undefined });
+      setProjects(res.data);
+      setPagination(res.pagination);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load projects');
+      setProjects([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [cohortId, page, limit, search, excludeId, showError]);
+
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
+
+  useEffect(() => {
+    if (!selectedId || selectedDetail?.id === selectedId) return;
+    apiGetProjectDetail(cohortId, selectedId).then(setSelectedDetail).catch(() => {});
+  }, [cohortId, selectedId, selectedDetail]);
+
+  const openDetail = async (id: string) => {
+    setViewingProjectId(id);
+    setDetailLoading(true);
+    try {
+      setViewingDetail(await apiGetProjectDetail(cohortId, id));
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load project details');
+      setViewingProjectId(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const handleSelectFromDetail = () => {
+    if (!viewingDetail) return;
+    onSelect(viewingDetail.id);
+    setSelectedDetail(viewingDetail);
+    setViewingProjectId(null);
+    setViewingDetail(null);
+    setBrowsingAfterSelect(false);
+  };
+
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const handleSearchInputChange = (value: string) => {
+    setSearchInput(value);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1);
+      setSearch(value);
+    }, SEARCH_DEBOUNCE_MS);
+  };
+
+  const handleLimitChange = (value: number) => {
+    setPage(1);
+    setLimit(value);
+  };
+
+  const gridWrapRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  const [maxGridHeight, setMaxGridHeight] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const computeMaxHeight = () => {
+      const wrap = gridWrapRef.current;
+      if (!wrap) return;
+      const wrapTop = wrap.getBoundingClientRect().top;
+      const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 60;
+      const available = window.innerHeight - wrapTop - footerHeight - 16;
+      setMaxGridHeight(Math.max(200, available));
+    };
+    computeMaxHeight();
+    window.addEventListener('resize', computeMaxHeight);
+    return () => window.removeEventListener('resize', computeMaxHeight);
+  }, []);
+
+  if (viewingProjectId) {
+    return (
+      <ProjectDetailView
+        detail={viewingDetail}
+        loading={detailLoading}
+        onBack={() => { setViewingProjectId(null); setViewingDetail(null); }}
+        onSelect={handleSelectFromDetail}
+      />
+    );
+  }
+
+  if (selectedId && !browsingAfterSelect) {
+    return (
+      <div className="group bg-zinc-850 border border-zinc-750 rounded-xl p-6 sm:p-8 space-y-4 transition-all duration-300 hover:border-gold/20 hover:shadow-lg hover:shadow-gold/5">
+        <h2 className="text-white font-semibold flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
+            <Briefcase size={18} className="text-gold" />
+          </div>
+          Recommended Project
+        </h2>
+        <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 space-y-1">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-green-400 text-xs font-semibold">
+              <CheckCircle2 size={14} />
+              Selected
+            </div>
+            <button type="button" onClick={() => setBrowsingAfterSelect(true)} className="text-xs text-gold hover:underline">
+              Change project
+            </button>
+          </div>
+          <p className="text-white font-bold">{selectedDetail?.title ?? '…'}</p>
+          {selectedDetail?.problemStatement && <p className="text-gray-400 text-sm">{selectedDetail.problemStatement}</p>}
+        </div>
+
+        {onChooseMentor && (
+          <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4 flex items-center justify-between gap-3">
+            {selectedMentor ? (
+              <div className="flex items-center gap-2.5 min-w-0">
+                <MentorAvatar name={selectedMentor.fullName} selected />
+                <div className="min-w-0">
+                  <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Mentor</p>
+                  <p className="text-white font-semibold text-sm truncate">{selectedMentor.fullName}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-400 text-sm">No mentor chosen yet.</p>
+            )}
+            <button
+              type="button"
+              onClick={onChooseMentor}
+              className="text-xs px-3 py-1.5 bg-zinc-800 border border-zinc-700 text-gold hover:bg-zinc-750 rounded-lg font-medium transition-colors shrink-0"
+            >
+              {selectedMentor ? 'Change mentor' : 'Choose mentor'}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="group bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4 h-full transition-all duration-300 hover:border-gold/20 hover:shadow-lg hover:shadow-gold/5">
-      <h2 className="text-white font-semibold flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h2 className="text-white font-semibold flex items-center gap-3">
           <Briefcase size={18} className="text-gold" />
-        </div>
-        Recommended Project
-      </h2>
+          Recommended Projects
+        </h2>
+        {browsingAfterSelect && (
+          <button type="button" onClick={() => setBrowsingAfterSelect(false)} className="text-sm text-gray-400 hover:text-white transition-colors">
+            ← Back to selected project
+          </button>
+        )}
+      </div>
 
-      <div className="relative">
+      <div className="relative max-w-sm">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
         <input
           type="text"
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
+          value={searchInput}
+          onChange={e => handleSearchInputChange(e.target.value)}
           placeholder="Search projects..."
-          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+          className="w-full bg-zinc-850 border border-zinc-750 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 max-h-[45vh] overflow-y-auto pr-1">
-        {filteredCatalog.map(p => (
-          <button
-            key={p.id}
-            onClick={() => onSelect(p.id)}
-            className={`text-left rounded-lg p-4 border transition-all duration-200 ${
-              selectedId === p.id
-                ? 'bg-gold/10 border-gold shadow-lg shadow-gold/5'
-                : 'bg-zinc-900 border-zinc-750 hover:border-zinc-600 hover:scale-[1.01]'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <p className="text-white font-semibold text-sm">{p.title}</p>
-              {p.isRecommended && (
-                <span className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gold/10 text-gold font-semibold uppercase tracking-wider">
-                  <Sparkles size={10} />
-                  Suggested for you
-                </span>
-              )}
+      {loading ? (
+        <div className="min-h-[30vh] flex items-center justify-center">
+          <SpinnerSquare size={40} />
+        </div>
+      ) : (
+        <div
+          ref={gridWrapRef}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 content-start overflow-y-auto"
+          style={maxGridHeight ? { height: maxGridHeight } : undefined}
+        >
+          {projects.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => openDetail(p.id)}
+              className="text-left bg-zinc-850 border border-zinc-750 rounded-xl p-4 hover:border-gold/40 hover:-translate-y-0.5 transition-all duration-200"
+            >
+              <div className="flex items-center gap-2">
+                <p className="text-white font-semibold text-sm">{p.title}</p>
+                {p.isRecommended && (
+                  <span className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gold/10 text-gold font-semibold uppercase tracking-wider">
+                    <Sparkles size={10} />
+                    Suggested
+                  </span>
+                )}
+              </div>
+              {p.problemStatement && <p className="text-gray-400 text-xs mt-1 line-clamp-2">{p.problemStatement}</p>}
+            </button>
+          ))}
+          {projects.length === 0 && (
+            <div className="col-span-full bg-zinc-850 border border-zinc-750 rounded-xl p-12 text-center">
+              <Briefcase size={40} className="mx-auto text-gray-600 mb-3" />
+              <p className="text-gray-400">No projects available for this track.</p>
             </div>
-            {p.problemStatement && (
-              <p className="text-gray-400 text-xs mt-1 line-clamp-2">{p.problemStatement}</p>
-            )}
-          </button>
-        ))}
-        {filteredCatalog.length === 0 && (
-          <div className="text-center py-8">
-            <p className="text-gray-400 text-sm">No recommended projects available for this track.</p>
+          )}
+        </div>
+      )}
+
+      {!loading && pagination.totalPages > 1 && (
+        <div ref={footerRef} className="flex items-center justify-between flex-wrap gap-3 pt-1">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-500">
+              Showing {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
+            </span>
+            <div className="flex items-center gap-1">
+              {LIMIT_OPTIONS.map(opt => (
+                <button
+                  key={opt}
+                  onClick={() => handleLimitChange(opt)}
+                  className={`text-xs px-2 py-1 rounded-md transition-colors ${
+                    opt === limit ? 'bg-gold/20 text-gold font-semibold' : 'text-gray-400 hover:text-white hover:bg-zinc-750'
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(1)}
+              disabled={pagination.page === 1}
+              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+            >
+              <ChevronsLeft size={16} />
+            </button>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={pagination.page === 1}
+              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-sm text-gray-400">{pagination.page} / {pagination.totalPages}</span>
+            <button
+              onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
+              disabled={pagination.page === pagination.totalPages}
+              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+            >
+              <ChevronRight size={16} />
+            </button>
+            <button
+              onClick={() => setPage(pagination.totalPages)}
+              disabled={pagination.page === pagination.totalPages}
+              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+            >
+              <ChevronsRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Read-only full detail for one catalog project — every field the student
+// asked to see before committing, nothing else (no industry/theme/level/
+// estimated duration — those are admin-facing catalog metadata, not part of
+// what a student needs to decide).
+function ProjectDetailView({
+  detail,
+  loading,
+  onBack,
+  onSelect,
+}: {
+  detail: ProjectDetail | null;
+  loading: boolean;
+  onBack: () => void;
+  onSelect: () => void;
+}) {
+  // Sizes the field content to the space actually available below it, same
+  // mechanism as the browse grid/teammate grid — the page itself never
+  // scrolls, only this content box does, and the back/select buttons stay
+  // put instead of scrolling out of reach.
+  const contentWrapRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  const [maxContentHeight, setMaxContentHeight] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const computeMaxHeight = () => {
+      const wrap = contentWrapRef.current;
+      if (!wrap) return;
+      const wrapTop = wrap.getBoundingClientRect().top;
+      const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 60;
+      const available = window.innerHeight - wrapTop - footerHeight - 16;
+      setMaxContentHeight(Math.max(200, available));
+    };
+    computeMaxHeight();
+    window.addEventListener('resize', computeMaxHeight);
+    return () => window.removeEventListener('resize', computeMaxHeight);
+    // Re-run once loading flips to false and the real content div actually
+    // mounts — on first mount (still loading) contentWrapRef.current is
+    // null, so a mount-only effect would silently measure nothing and the
+    // page would fall back to normal document flow (sticky footer then
+    // overlaps content instead of pinning to this card's own bottom).
+  }, [loading, detail]);
+
+  if (loading || !detail) {
+    return (
+      <div className="space-y-4">
+        <button type="button" onClick={onBack} className="text-sm text-gray-400 hover:text-white transition-colors">
+          ← Back to projects
+        </button>
+        <div className="min-h-[30vh] flex items-center justify-center">
+          <SpinnerSquare size={40} />
+        </div>
+      </div>
+    );
+  }
+
+  const textField = (label: string, value?: string) =>
+    value ? (
+      <div>
+        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">{label}</p>
+        <p className="text-gray-300 text-sm whitespace-pre-wrap">{value}</p>
+      </div>
+    ) : null;
+  const listField = (label: string, values: string[]) =>
+    values.length > 0 ? (
+      <div>
+        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">{label}</p>
+        <p className="text-gray-300 text-sm">{values.join(', ')}</p>
+      </div>
+    ) : null;
+
+  return (
+    <div className="space-y-4">
+      <button type="button" onClick={onBack} className="text-sm text-gray-400 hover:text-white transition-colors">
+        ← Back to projects
+      </button>
+
+      <div
+        ref={contentWrapRef}
+        className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 sm:p-8 space-y-6 overflow-y-auto"
+        style={maxContentHeight ? { height: maxContentHeight } : undefined}
+      >
+        <h2 className="text-white font-bold text-xl">{detail.title}</h2>
+
+        <div className="space-y-3">
+          <p className="text-xs text-gold uppercase font-bold tracking-wider">Overview</p>
+          {textField('Problem statement', detail.problemStatement)}
+          {textField('Project description (short)', detail.projectDescription)}
+          {textField('Description (detailed)', detail.description)}
+          {textField('End users defined', detail.endUsersDefined)}
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-xs text-gold uppercase font-bold tracking-wider">Scope</p>
+          {listField('Tech stack', detail.techStack)}
+          {listField('Framework', detail.framework)}
+          {listField('Suggested libraries', detail.suggestedLibrariesTools)}
+          {listField('Core learning goals', detail.coreLearningGoals)}
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-xs text-gold uppercase font-bold tracking-wider">Features & evaluation</p>
+          {listField('Must-have features', detail.mustHaveFeatures)}
+          {listField('Good-to-have features', detail.goodToHaveFeatures)}
+          {listField('Expected output', detail.expectedOutput)}
+          {listField('Evaluation metrics', detail.evaluationMetrics)}
+          {listField('Stretch goal', detail.stretchGoal)}
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-xs text-gold uppercase font-bold tracking-wider">Milestones</p>
+          {listField('First month', detail.firstMonthMilestones)}
+          {listField('Second month', detail.secondMonthMilestones)}
+          {listField('Third month', detail.thirdMonthMilestones)}
+        </div>
+
+        {detail.referenceDocs && (
+          <div className="space-y-3">
+            <p className="text-xs text-gold uppercase font-bold tracking-wider">Reference docs</p>
+            <p className="text-gray-300 text-sm whitespace-pre-wrap">{detail.referenceDocs}</p>
           </div>
         )}
+      </div>
+
+      <div ref={footerRef} className="sticky bottom-0 z-10 pt-3 pb-1 flex justify-end bg-gradient-to-t from-black via-black/95 to-transparent">
+        <button
+          type="button"
+          onClick={onSelect}
+          className="w-full sm:w-auto flex items-center justify-center gap-1.5 text-sm px-6 py-3 bg-gold text-black font-semibold rounded-lg shadow-xl shadow-black/40 hover:bg-gold-hover transition-all duration-200"
+        >
+          <CheckCircle2 size={16} />
+          Select this project
+        </button>
       </div>
     </div>
   );
@@ -932,41 +1367,69 @@ function SelfProjectProposer({
   cohortId,
   selfProject,
   onCreated,
+  selectedMentor,
+  onChooseMentor,
+  initialValues,
 }: {
   cohortId: string;
   selfProject: TeamProject | null;
   onCreated: (project: TeamProject) => void;
+  // Omitted by callers where the mentor isn't pickable here at all (e.g.
+  // ResubmitPreference1Panel, where the mentor is fixed/read-only and shown
+  // separately) — the mentor-status block below only renders when present.
+  selectedMentor?: TeamAvailableMentor | null;
+  onChooseMentor?: () => void;
+  // The student's previously-rejected proposal, when resubmitting — seeds
+  // the form so they're editing what they already wrote instead of retyping
+  // it, since only the mentor-flagged parts usually need to change.
+  initialValues?: Project | null;
 }) {
   const { showError, showSuccess } = useToast();
   const [proposing, setProposing] = useState(false);
-  const [showMore, setShowMore] = useState(false);
+  const toCommaList = (values?: string[]) => values?.join(', ') ?? '';
+  // Only pre-expand if the earlier submission actually used one of these —
+  // an empty optional section shouldn't force itself open on resubmit.
+  const hasInitialOptionalData = !!(
+    initialValues?.endUsersDefined ||
+    initialValues?.projectDescription ||
+    initialValues?.framework?.length ||
+    initialValues?.suggestedLibrariesTools?.length ||
+    initialValues?.stretchGoal?.length ||
+    initialValues?.firstMonthMilestones?.length ||
+    initialValues?.secondMonthMilestones?.length ||
+    initialValues?.thirdMonthMilestones?.length ||
+    initialValues?.theme ||
+    initialValues?.referenceDocs ||
+    initialValues?.estimatedDuration ||
+    initialValues?.sourceStartupSchool
+  );
+  const [showMore, setShowMore] = useState(hasInitialOptionalData);
   const [form, setForm] = useState({
     // Required (studentProposeProjectSchema on the backend)
-    title: '',
-    description: '',
-    problemStatement: '',
-    techStack: '',
-    courseCovered: '',
-    coreLearningGoals: '',
-    expectedOutput: '',
-    industry: '',
-    mustHaveFeatures: '',
-    goodToHaveFeatures: '',
-    evaluationMetrics: '',
+    title: initialValues?.title ?? '',
+    description: initialValues?.description ?? '',
+    problemStatement: initialValues?.problemStatement ?? '',
+    techStack: toCommaList(initialValues?.techStack),
+    courseCovered: toCommaList(initialValues?.courseCovered),
+    coreLearningGoals: toCommaList(initialValues?.coreLearningGoals),
+    expectedOutput: toCommaList(initialValues?.expectedOutput),
+    industry: initialValues?.industry ?? '',
+    mustHaveFeatures: toCommaList(initialValues?.mustHaveFeatures),
+    goodToHaveFeatures: toCommaList(initialValues?.goodToHaveFeatures),
+    evaluationMetrics: toCommaList(initialValues?.evaluationMetrics),
     // Optional
-    endUsersDefined: '',
-    projectDescription: '',
-    framework: '',
-    suggestedLibrariesTools: '',
-    stretchGoal: '',
-    firstMonthMilestones: '',
-    secondMonthMilestones: '',
-    thirdMonthMilestones: '',
-    level: '' as '' | ProjectLevel,
-    theme: '',
-    referenceDocs: '',
-    estimatedDuration: '',
-    sourceStartupSchool: '',
+    endUsersDefined: initialValues?.endUsersDefined ?? '',
+    projectDescription: initialValues?.projectDescription ?? '',
+    framework: toCommaList(initialValues?.framework),
+    suggestedLibrariesTools: toCommaList(initialValues?.suggestedLibrariesTools),
+    stretchGoal: toCommaList(initialValues?.stretchGoal),
+    firstMonthMilestones: toCommaList(initialValues?.firstMonthMilestones),
+    secondMonthMilestones: toCommaList(initialValues?.secondMonthMilestones),
+    thirdMonthMilestones: toCommaList(initialValues?.thirdMonthMilestones),
+    theme: initialValues?.theme ?? '',
+    referenceDocs: initialValues?.referenceDocs ?? '',
+    estimatedDuration: initialValues?.estimatedDuration ? String(initialValues.estimatedDuration) : '',
+    sourceStartupSchool: initialValues?.sourceStartupSchool ?? '',
   });
 
   const setField = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -1012,7 +1475,6 @@ function SelfProjectProposer({
         firstMonthMilestones: form.firstMonthMilestones.trim() ? toList(form.firstMonthMilestones) : undefined,
         secondMonthMilestones: form.secondMonthMilestones.trim() ? toList(form.secondMonthMilestones) : undefined,
         thirdMonthMilestones: form.thirdMonthMilestones.trim() ? toList(form.thirdMonthMilestones) : undefined,
-        level: form.level || undefined,
         theme: form.theme.trim() || undefined,
         referenceDocs: form.referenceDocs.trim() || undefined,
         estimatedDuration: form.estimatedDuration.trim() ? Number(form.estimatedDuration) : undefined,
@@ -1030,7 +1492,7 @@ function SelfProjectProposer({
   const inputClass = 'w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold';
 
   return (
-    <div className="group bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4 h-full transition-all duration-300 hover:border-gold/20 hover:shadow-lg hover:shadow-gold/5">
+    <div className="group bg-zinc-850 border border-zinc-750 rounded-xl p-6 sm:p-8 space-y-6 transition-all duration-300 hover:border-gold/20 hover:shadow-lg hover:shadow-gold/5">
       <h2 className="text-white font-semibold flex items-center gap-3">
         <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
           <Sparkles size={18} className="text-gold" />
@@ -1039,52 +1501,93 @@ function SelfProjectProposer({
       </h2>
 
       {selfProject ? (
-        <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 space-y-1">
-          <div className="flex items-center gap-2 text-green-400 text-xs font-semibold">
-            <CheckCircle2 size={14} />
-            Selected
+        <div className="space-y-3">
+          <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 space-y-1">
+            <div className="flex items-center gap-2 text-green-400 text-xs font-semibold">
+              <CheckCircle2 size={14} />
+              Selected
+            </div>
+            <p className="text-white font-bold">{selfProject.title}</p>
+            {selfProject.description && <p className="text-gray-400 text-sm">{selfProject.description}</p>}
           </div>
-          <p className="text-white font-bold">{selfProject.title}</p>
-          {selfProject.description && <p className="text-gray-400 text-sm">{selfProject.description}</p>}
+
+          {onChooseMentor && (
+            <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4 flex items-center justify-between gap-3">
+              {selectedMentor ? (
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <MentorAvatar name={selectedMentor.fullName} selected />
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Mentor</p>
+                    <p className="text-white font-semibold text-sm truncate">{selectedMentor.fullName}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-gray-400 text-sm">No mentor chosen yet.</p>
+              )}
+              <button
+                type="button"
+                onClick={onChooseMentor}
+                className="text-xs px-3 py-1.5 bg-zinc-800 border border-zinc-700 text-gold hover:bg-zinc-750 rounded-lg font-medium transition-colors shrink-0"
+              >
+                {selectedMentor ? 'Change mentor' : 'Choose mentor'}
+              </button>
+            </div>
+          )}
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <input type="text" required placeholder="Project title" value={form.title} onChange={setField('title')} className={inputClass} />
-          <textarea required placeholder="Description (detailed)" value={form.description} onChange={setField('description')} rows={2} className={`${inputClass} resize-none`} />
-          <textarea required placeholder="Problem statement" value={form.problemStatement} onChange={setField('problemStatement')} rows={2} className={`${inputClass} resize-none`} />
-          <input type="text" required placeholder="Tech stack (comma separated)" value={form.techStack} onChange={setField('techStack')} className={inputClass} />
-          <input type="text" required placeholder="Course(s) covered (comma separated)" value={form.courseCovered} onChange={setField('courseCovered')} className={inputClass} />
-          <input type="text" required placeholder="Core learning goals (comma separated)" value={form.coreLearningGoals} onChange={setField('coreLearningGoals')} className={inputClass} />
-          <textarea required placeholder="Expected output (comma separated)" value={form.expectedOutput} onChange={setField('expectedOutput')} rows={2} className={`${inputClass} resize-none`} />
-          <input type="text" required placeholder="Industry" value={form.industry} onChange={setField('industry')} className={inputClass} />
-          <textarea required placeholder="Must-have features (comma separated)" value={form.mustHaveFeatures} onChange={setField('mustHaveFeatures')} rows={2} className={`${inputClass} resize-none`} />
-          <textarea required placeholder="Good-to-have features (comma separated)" value={form.goodToHaveFeatures} onChange={setField('goodToHaveFeatures')} rows={2} className={`${inputClass} resize-none`} />
-          <textarea required placeholder="Evaluation metrics (comma separated)" value={form.evaluationMetrics} onChange={setField('evaluationMetrics')} rows={2} className={`${inputClass} resize-none`} />
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-3">
+            <p className="text-xs text-gold uppercase font-bold tracking-wider">Overview</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input type="text" required placeholder="Project title" value={form.title} onChange={setField('title')} className={inputClass} />
+              <input type="text" required placeholder="Industry" value={form.industry} onChange={setField('industry')} className={inputClass} />
+            </div>
+            <textarea required placeholder="Description (detailed)" value={form.description} onChange={setField('description')} rows={2} className={`${inputClass} resize-none`} />
+            <textarea required placeholder="Problem statement" value={form.problemStatement} onChange={setField('problemStatement')} rows={2} className={`${inputClass} resize-none`} />
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-xs text-gold uppercase font-bold tracking-wider">Scope</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input type="text" required placeholder="Tech stack (comma separated)" value={form.techStack} onChange={setField('techStack')} className={inputClass} />
+              <input type="text" required placeholder="Course(s) covered (comma separated)" value={form.courseCovered} onChange={setField('courseCovered')} className={inputClass} />
+              <input type="text" required placeholder="Core learning goals (comma separated)" value={form.coreLearningGoals} onChange={setField('coreLearningGoals')} className={inputClass} />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-xs text-gold uppercase font-bold tracking-wider">Features & evaluation</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <textarea required placeholder="Must-have features (comma separated)" value={form.mustHaveFeatures} onChange={setField('mustHaveFeatures')} rows={2} className={`${inputClass} resize-none`} />
+              <textarea required placeholder="Good-to-have features (comma separated)" value={form.goodToHaveFeatures} onChange={setField('goodToHaveFeatures')} rows={2} className={`${inputClass} resize-none`} />
+              <textarea required placeholder="Expected output (comma separated)" value={form.expectedOutput} onChange={setField('expectedOutput')} rows={2} className={`${inputClass} resize-none`} />
+              <textarea required placeholder="Evaluation metrics (comma separated)" value={form.evaluationMetrics} onChange={setField('evaluationMetrics')} rows={2} className={`${inputClass} resize-none`} />
+            </div>
+          </div>
 
           <button type="button" onClick={() => setShowMore(s => !s)} className="text-xs text-gold hover:underline">
             {showMore ? 'Hide optional details' : '+ Add optional details (end users, milestones...)'}
           </button>
 
           {showMore && (
-            <div className="space-y-3 border-t border-zinc-800 pt-3">
-              <input type="text" placeholder="End users" value={form.endUsersDefined} onChange={setField('endUsersDefined')} className={inputClass} />
+            <div className="space-y-3 border-t border-zinc-800 pt-4">
+              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Optional details</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input type="text" placeholder="End users" value={form.endUsersDefined} onChange={setField('endUsersDefined')} className={inputClass} />
+                <input type="text" placeholder="Theme" value={form.theme} onChange={setField('theme')} className={inputClass} />
+                <input type="text" placeholder="Framework (comma separated)" value={form.framework} onChange={setField('framework')} className={inputClass} />
+                <input type="text" placeholder="Suggested libraries / tools (comma separated)" value={form.suggestedLibrariesTools} onChange={setField('suggestedLibrariesTools')} className={inputClass} />
+                <input type="number" min={1} max={52} placeholder="Estimated duration (weeks)" value={form.estimatedDuration} onChange={setField('estimatedDuration')} className={inputClass} />
+                <input type="text" placeholder="Source / Startup School" value={form.sourceStartupSchool} onChange={setField('sourceStartupSchool')} className={inputClass} />
+                <input type="text" placeholder="Reference docs (links / notes)" value={form.referenceDocs} onChange={setField('referenceDocs')} className={inputClass} />
+              </div>
               <textarea placeholder="Short project description" value={form.projectDescription} onChange={setField('projectDescription')} rows={2} className={`${inputClass} resize-none`} />
-              <input type="text" placeholder="Framework (comma separated)" value={form.framework} onChange={setField('framework')} className={inputClass} />
-              <input type="text" placeholder="Suggested libraries / tools (comma separated)" value={form.suggestedLibrariesTools} onChange={setField('suggestedLibrariesTools')} className={inputClass} />
               <textarea placeholder="Stretch goal (comma separated)" value={form.stretchGoal} onChange={setField('stretchGoal')} rows={2} className={`${inputClass} resize-none`} />
-              <input type="text" placeholder="1st month milestones (comma separated)" value={form.firstMonthMilestones} onChange={setField('firstMonthMilestones')} className={inputClass} />
-              <input type="text" placeholder="2nd month milestones (comma separated)" value={form.secondMonthMilestones} onChange={setField('secondMonthMilestones')} className={inputClass} />
-              <input type="text" placeholder="3rd month milestones (comma separated)" value={form.thirdMonthMilestones} onChange={setField('thirdMonthMilestones')} className={inputClass} />
-              <input type="text" placeholder="Theme" value={form.theme} onChange={setField('theme')} className={inputClass} />
-              <input type="text" placeholder="Reference docs (links / notes)" value={form.referenceDocs} onChange={setField('referenceDocs')} className={inputClass} />
-              <input type="number" min={1} max={52} placeholder="Estimated duration (weeks)" value={form.estimatedDuration} onChange={setField('estimatedDuration')} className={inputClass} />
-              <input type="text" placeholder="Source / Startup School" value={form.sourceStartupSchool} onChange={setField('sourceStartupSchool')} className={inputClass} />
-              <select value={form.level} onChange={setField('level')} className={inputClass}>
-                <option value="">Level (optional)</option>
-                <option value="beginner">Beginner</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="advanced">Advanced</option>
-              </select>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input type="text" placeholder="1st month milestones (comma separated)" value={form.firstMonthMilestones} onChange={setField('firstMonthMilestones')} className={inputClass} />
+                <input type="text" placeholder="2nd month milestones (comma separated)" value={form.secondMonthMilestones} onChange={setField('secondMonthMilestones')} className={inputClass} />
+                <input type="text" placeholder="3rd month milestones (comma separated)" value={form.thirdMonthMilestones} onChange={setField('thirdMonthMilestones')} className={inputClass} />
+              </div>
             </div>
           )}
 
@@ -1107,38 +1610,58 @@ function SelfProjectProposer({
 // pick a recommended catalog project (approved immediately) — but they can
 // NOT change the mentor here; it stays whoever reviewed. Preference 2 is
 // untouched; only preference 1 is ever replaced this way.
+// Which project types are acceptable here is dictated by the mentor's
+// decision, not a free student choice — 'own_only' (Resubmit) only shows the
+// self-proposal form, 'catalog_only' (Return) only shows the catalog browser.
 function ResubmitPreference1Panel({
   cohortId,
-  catalogProjects,
+  mode,
   pref1MentorName,
   preference2Id,
+  rejectedProject,
   onResubmitted,
 }: {
   cohortId: string;
-  catalogProjects: TeamProject[];
+  mode: PreferenceResubmissionMode;
   pref1MentorName: string | null;
   preference2Id: string | null;
+  // The rejected proposal's own data, only relevant for 'own_only' — seeds
+  // SelfProjectProposer so the student edits what they already wrote.
+  rejectedProject: Project | null;
   onResubmitted: () => void;
 }) {
   const { showError, showSuccess } = useToast();
-  const [mode, setMode] = useState<'own' | 'recommended'>('own');
   const [newProject, setNewProject] = useState<TeamProject | null>(null);
   const [selectedCatalogId, setSelectedCatalogId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const chosenProjectId = mode === 'own' ? newProject?.id ?? null : selectedCatalogId;
-
-  const handleResubmit = async () => {
-    if (!chosenProjectId) return;
+  const handleResubmitOwn = async () => {
+    if (!newProject) return;
     setSubmitting(true);
     try {
-      await apiResubmitPreference1(cohortId, chosenProjectId);
-      showSuccess(mode === 'own' ? 'New proposal submitted for review.' : 'Recommended project selected.');
+      await apiResubmitPreference1(cohortId, newProject.id);
+      showSuccess('New proposal submitted for review.');
       onResubmitted();
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to resubmit your project preference');
-    } finally {
       setSubmitting(false);
+    }
+  };
+
+  // The catalog browser's "Select this project" is itself the confirming
+  // action here (mentor is fixed, nothing else to combine it with) — so
+  // picking one submits immediately instead of needing a separate button.
+  const handleSelectFromCatalog = async (projectId: string) => {
+    setSelectedCatalogId(projectId);
+    setSubmitting(true);
+    try {
+      await apiResubmitPreference1(cohortId, projectId);
+      showSuccess('Recommended project selected.');
+      onResubmitted();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to select this project');
+      setSubmitting(false);
+      setSelectedCatalogId(null);
     }
   };
 
@@ -1147,48 +1670,34 @@ function ResubmitPreference1Panel({
       {/* Mentor stays the same — shown read-only so it's clear it can't change. */}
       <div className="flex items-center gap-2 text-sm bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2">
         <UserCheck size={15} className="text-gold shrink-0" />
-        <span className="text-gray-400">Mentor (can't be changed):</span>
+        <span className="text-gray-400">Selected mentor:</span>
         <span className="text-white font-medium">{pref1MentorName ?? '—'}</span>
       </div>
 
-      {/* Choice: resubmit own project vs pick from recommended. */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setMode('own')}
-          className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${
-            mode === 'own' ? 'bg-gold/10 border-gold text-gold' : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-zinc-600'
-          }`}
-        >
-          Propose own project
-        </button>
-        <button
-          onClick={() => setMode('recommended')}
-          className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${
-            mode === 'recommended' ? 'bg-gold/10 border-gold text-gold' : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-zinc-600'
-          }`}
-        >
-          Pick from recommended
-        </button>
-      </div>
-
-      {mode === 'own' ? (
-        <SelfProjectProposer cohortId={cohortId} selfProject={newProject} onCreated={setNewProject} />
+      {mode === 'own_only' ? (
+        <>
+          <SelfProjectProposer
+            cohortId={cohortId}
+            selfProject={newProject}
+            onCreated={setNewProject}
+            initialValues={rejectedProject}
+          />
+          <button
+            onClick={handleResubmitOwn}
+            disabled={!newProject || submitting}
+            className="py-3 px-6 bg-gold text-black font-semibold rounded-lg shadow-xl shadow-black/40 hover:bg-gold-hover hover:shadow-lg hover:shadow-gold/10 transition-all duration-200 disabled:opacity-40 disabled:hover:shadow-none"
+          >
+            {submitting ? 'Submitting...' : 'Resubmit for Review'}
+          </button>
+        </>
       ) : (
-        <ExistingProjectPicker
-          catalogProjects={catalogProjects}
+        <ProjectCatalogBrowser
+          cohortId={cohortId}
           selectedId={selectedCatalogId}
-          onSelect={setSelectedCatalogId}
+          onSelect={handleSelectFromCatalog}
           excludeId={preference2Id}
         />
       )}
-
-      <button
-        onClick={handleResubmit}
-        disabled={!chosenProjectId || submitting}
-        className="py-3 px-6 bg-gold text-black font-semibold rounded-lg shadow-xl shadow-black/40 hover:bg-gold-hover hover:shadow-lg hover:shadow-gold/10 transition-all duration-200 disabled:opacity-40 disabled:hover:shadow-none"
-      >
-        {submitting ? 'Submitting...' : mode === 'own' ? 'Resubmit for Review' : 'Select This Project'}
-      </button>
     </div>
   );
 }
@@ -1201,7 +1710,7 @@ function ResubmitPreference1Panel({
 const REVIEW_BANNER: Record<PreferenceReviewStatus, { icon: typeof CheckCircle2; className: string; label: string }> = {
   approved: { icon: CheckCircle2, className: 'text-green-400', label: 'Your selections are locked in' },
   pending_review: { icon: Clock, className: 'text-amber-400', label: 'Preference 1 is under review by your mentor' },
-  rejected: { icon: XCircle, className: 'text-red-400', label: 'Preference 1 was rejected — resubmit below' },
+  rejected: { icon: RotateCcw, className: 'text-amber-400', label: 'Preference 1 needs resubmission — see below' },
 };
 
 function SummaryScreen({
@@ -1209,7 +1718,6 @@ function SummaryScreen({
   team,
   preferences,
   availableMentors,
-  availableProjects,
   onResubmitted,
 }: {
   cohortId: string;
@@ -1225,18 +1733,29 @@ function SummaryScreen({
     allocatedMentorName: string | null;
     preference1ReviewStatus: PreferenceReviewStatus;
     preference1ReviewNote: string | null;
+    preference1ResubmissionMode: PreferenceResubmissionMode | null;
   };
   availableMentors: TeamAvailableMentor[];
-  availableProjects: TeamProject[];
   onResubmitted: () => void;
 }) {
   const mentor1 = availableMentors.find(m => m.id === preferences.preference1MentorId) ?? null;
   const mentor2 = availableMentors.find(m => m.id === preferences.preference2MentorId) ?? null;
-  const catalogProjects = availableProjects.filter(p => p.projectBy === 'PST');
+  // Rejected rows from before this mode split existed have no resubmission
+  // mode recorded — default to 'own_only' (the old flow's own primary path).
+  const resubmissionMode: PreferenceResubmissionMode = preferences.preference1ResubmissionMode ?? 'own_only';
   const [selfProject, setSelfProject] = useState<Project | null>(null);
   const [existingProject, setExistingProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const fetchedRef = useRef(false);
+
+  // Resubmit form stays collapsed behind an explicit button next to the
+  // mentor's note, instead of dumping the full form the moment a rejection
+  // loads — re-collapses whenever a fresh decision lands (a later round of
+  // reject/resubmit shouldn't inherit the previous round's expanded state).
+  const [showResubmitForm, setShowResubmitForm] = useState(false);
+  useEffect(() => {
+    setShowResubmitForm(false);
+  }, [preferences.preference1ReviewStatus, preferences.preference1ResubmissionMode]);
 
   useEffect(() => {
     fetchedRef.current = false;
@@ -1272,6 +1791,39 @@ function SummaryScreen({
       : preferences.allocatedProjectId === existingProject?.id
       ? existingProject?.title
       : null;
+
+  // A dedicated page, not a section appended below the summary — same
+  // pattern as ProjectDetailView replacing the browse grid instead of
+  // stacking underneath it.
+  if (isRejected && showResubmitForm) {
+    return (
+      <div className="space-y-4">
+        <button
+          type="button"
+          onClick={() => setShowResubmitForm(false)}
+          className="text-sm text-gray-400 hover:text-white transition-colors"
+        >
+          ← Back
+        </button>
+        <div>
+          <h1 className="text-xl font-bold text-white">Submit a new preference 1</h1>
+          <p className="text-gray-400 text-sm mt-1">
+            {resubmissionMode === 'catalog_only'
+              ? 'Your mentor returned this to catalog selection — pick a recommended project below. Your mentor stays the same.'
+              : 'Your mentor asked for a revised self-proposal — submit an updated version below. Your mentor stays the same.'}
+          </p>
+        </div>
+        <ResubmitPreference1Panel
+          cohortId={cohortId}
+          mode={resubmissionMode}
+          pref1MentorName={mentor1?.fullName ?? null}
+          preference2Id={preferences.preference2Id}
+          rejectedProject={selfProject}
+          onResubmitted={onResubmitted}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -1348,13 +1900,26 @@ function SummaryScreen({
                   </span>
                 )}
                 {isRejected && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 font-semibold uppercase tracking-wider">
-                    Rejected
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-semibold uppercase tracking-wider">
+                    Resubmit
                   </span>
                 )}
               </div>
               {isRejected && preferences.preference1ReviewNote && (
-                <p className="text-red-400 text-xs mt-1">Mentor's note: {preferences.preference1ReviewNote}</p>
+                <div className="bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2 mt-2">
+                  <p className="text-[10px] text-amber-400 uppercase font-bold tracking-wider">Mentor's note</p>
+                  <p className="text-white text-sm mt-0.5">{preferences.preference1ReviewNote}</p>
+                </div>
+              )}
+              {isRejected && !showResubmitForm && (
+                <button
+                  type="button"
+                  onClick={() => setShowResubmitForm(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 mt-2 bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold rounded-lg hover:bg-amber-500/20 transition-colors"
+                >
+                  <RotateCcw size={13} />
+                  {resubmissionMode === 'catalog_only' ? 'Pick a recommended project' : 'Review and resubmit'}
+                </button>
               )}
             </div>
             <div>
@@ -1397,24 +1962,6 @@ function SummaryScreen({
               )}
             </div>
           </div>
-        </div>
-      )}
-
-      {isRejected && (
-        <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4">
-          <div>
-            <h2 className="text-white font-semibold">Submit a new preference 1</h2>
-            <p className="text-gray-400 text-sm mt-1">
-              Your mentor rejected this project. Propose a new one, or pick a recommended project. Your mentor stays the same.
-            </p>
-          </div>
-          <ResubmitPreference1Panel
-            cohortId={cohortId}
-            catalogProjects={catalogProjects}
-            pref1MentorName={mentor1?.fullName ?? null}
-            preference2Id={preferences.preference2Id}
-            onResubmitted={onResubmitted}
-          />
         </div>
       )}
     </div>

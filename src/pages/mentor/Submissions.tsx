@@ -226,6 +226,7 @@ export default function MentorSubmissions({ mentorId }: Partial<Props> & { mento
               documentLink={activeSub.documentLink}
               messageContent={activeSub.messageContent}
               mentorFeedback={activeSub.mentorFeedback}
+              reviewedByName={activeSub.reviewedByName}
               viewerUrl={viewerUrl}
               downloading={downloadingId === activeSub.id}
               downloadError={downloadError}

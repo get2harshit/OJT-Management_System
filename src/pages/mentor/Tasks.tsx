@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Plus, Calendar, Inbox, Send, Loader2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Plus, Calendar, Loader2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Drawer from '../../components/Drawer';
 import Select from '../../components/Select';
@@ -16,7 +16,7 @@ import {
 import type { ApiTask, ApiTaskCategory, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
 import { apiListMyTeams } from '../../lib/api/teams';
 import { apiListMyCohorts } from '../../lib/api/cohorts';
-import type { Team } from '../../lib/types';
+import type { Team, Cohort } from '../../lib/types';
 import { TRACKS } from '../../lib/constants';
 import { useToast } from '../../toast';
 
@@ -65,10 +65,12 @@ export default function MentorTasks({ mentorId }: Props) {
   const { showSuccess, showError } = useToast();
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [myTeams, setMyTeams] = useState<Team[]>([]);
+  const [myCohorts, setMyCohorts] = useState<Cohort[]>([]);
   const [publishedCohortIds, setPublishedCohortIds] = useState<Set<string>>(new Set());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
-  const [bucket, setBucket] = useState<TaskBucket>('to-others');
+  const [bucket, setBucket] = useState<TaskBucket>('to-me');
+  const [assignedByFilter, setAssignedByFilter] = useState('all');
   const [statusTask, setStatusTask] = useState<ApiTask | null>(null);
   // The list only carries assignmentsSummary (a capped preview), never the
   // full per-assignee list — reviewTaskId drives the modal's open state,
@@ -106,6 +108,7 @@ export default function MentorTasks({ mentorId }: Props) {
       .then(([tasksRes, teamsRes, cohortsRes]) => {
         setTasks(tasksRes.data || []);
         setMyTeams(teamsRes);
+        setMyCohorts(cohortsRes);
         // Checked against the sticky allocationPublishedAt rather than the
         // live allocationRunStatus enum — that enum legitimately drops back
         // to 'draft'/'review' whenever a later batch of teams gets run in
@@ -115,6 +118,14 @@ export default function MentorTasks({ mentorId }: Props) {
       })
       .catch(console.error);
   }, []);
+
+  // A task must belong to exactly one cohort (backend requirement), and the
+  // system only ever allows one active cohort at a time — so the mentor's
+  // active membership is the one, unambiguous cohort any task they create
+  // right now can belong to. The backend rejects creation entirely if this
+  // is missing or inactive, so this is resolved once here instead of adding
+  // a picker for a choice that never actually has more than one valid answer.
+  const activeCohortId = myCohorts.find(c => c.isActive)?.id;
 
   // A student can't be assigned a task before their team's project
   // allocation is published — same rule the backend now enforces, applied
@@ -153,6 +164,10 @@ export default function MentorTasks({ mentorId }: Props) {
 
   const handleSave = async () => {
     if (!canSave) return;
+    if (!activeCohortId) {
+      showError('No active cohort found for your account — cannot create a task.');
+      return;
+    }
 
     setSavingTask(true);
     try {
@@ -168,6 +183,7 @@ export default function MentorTasks({ mentorId }: Props) {
         deadline: new Date(form.dueDate).toISOString(),
         week: `Week ${form.week}`,
         track: form.track,
+        cohort_id: activeCohortId,
       });
 
       setForm(EMPTY_FORM);
@@ -181,12 +197,36 @@ export default function MentorTasks({ mentorId }: Props) {
     }
   };
 
-  // Mirrors the backend's own mentor scoping for GET /tasks (assigned_by_id
-  // === me, OR I'm one of the assignees) — just split back into the two
-  // halves for the two cards instead of one merged list.
+  // Mirrors the backend's own mentor scoping for GET /tasks: assigned_by_id
+  // === me, OR I'm personally an assignee, OR one of my own students is an
+  // assignee (e.g. admin gave the task straight to a mentee) — the list is
+  // already exactly this set, so the two buckets below just split "my own
+  // assignment" from "everything else I'm allowed to see" (both my own
+  // creations and my students' admin-assigned work land in the latter).
   const assignedToMe = tasks.filter(t => t.myAssignment != null);
-  const assignedByMe = tasks.filter(t => t.assigned_by_id === mentorId);
-  const visibleTasks = bucket === 'to-me' ? assignedToMe : assignedByMe;
+  const studentTasks = tasks.filter(t => t.myAssignment == null);
+  const bucketTasks = bucket === 'to-me' ? assignedToMe : studentTasks;
+
+  // Independent of the bucket toggle above — narrows either bucket down to
+  // just what I created myself vs. what admin handed down. Within this
+  // mentor's visible task set the assigner is always either me or an admin/
+  // batch_manager (a mentor can only ever create tasks for their own teams),
+  // so a simple identity check is all "assigned by admin" needs.
+  const visibleTasks = bucketTasks.filter(t => {
+    if (assignedByFilter === 'me') return t.assigned_by_id === mentorId;
+    if (assignedByFilter === 'admin') return t.assigned_by_id !== mentorId;
+    return true;
+  });
+
+  // Who can approve/resubmit which assignment row, per the backend's own
+  // rule: the task's own assigner, or the assignee's own mentor. Computed
+  // once here (from the roster already loaded for the Create Task drawer)
+  // instead of per-row, since a batch-assigned task can mix students across
+  // different mentors.
+  const myStudentIds = useMemo(
+    () => new Set(myTeams.flatMap(t => t.members.map(m => m.studentId))),
+    [myTeams]
+  );
 
   const tableData = visibleTasks.map(t => {
     const summary = t.assignmentsSummary;
@@ -201,7 +241,8 @@ export default function MentorTasks({ mentorId }: Props) {
       title: t.title,
       description: t.description || '-',
       type: t.target_role === 'student' ? 'Student' : 'Mentor',
-      assignedBy: t.assigner?.full_name ?? '-',
+      assignerName: t.assigner?.full_name,
+      assignerRole: t.assigner?.role,
       myStatus: t.myAssignment?.status,
       assignees,
       extraCount,
@@ -210,10 +251,27 @@ export default function MentorTasks({ mentorId }: Props) {
     };
   });
 
+  const renderAssignedBy = (row: (typeof tableData)[number]) => {
+    if (!row.assignerName) return <span className="text-xs text-gray-500">-</span>;
+    const isAdmin = row.assignerRole === 'admin' || row.assignerRole === 'batch_manager';
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-gray-200 whitespace-nowrap">
+        {row.assignerName}
+        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${
+          isAdmin
+            ? 'bg-gold/10 text-gold border-gold/25'
+            : 'bg-purple-500/10 text-purple-400 border-purple-500/25'
+        }`}>
+          {isAdmin ? 'Admin' : 'Mentor'}
+        </span>
+      </span>
+    );
+  };
+
   const toMeColumns = [
     { key: 'title', header: 'Title' },
     { key: 'description', header: 'Description' },
-    { key: 'assignedBy', header: 'Assigned By' },
+    { key: 'assignedBy', header: 'Assigned By', render: renderAssignedBy },
     {
       key: 'myStatus',
       header: 'My Status',
@@ -242,6 +300,7 @@ export default function MentorTasks({ mentorId }: Props) {
         </span>
       ),
     },
+    { key: 'assignedBy', header: 'Assigned By', render: renderAssignedBy },
     {
       key: 'assignees',
       header: 'Assigned To',
@@ -285,39 +344,32 @@ export default function MentorTasks({ mentorId }: Props) {
           <h1 className="text-2xl font-bold text-white">Tasks</h1>
           <p className="text-gray-400 text-sm mt-1">View tasks assigned to you or your students</p>
         </div>
-        <Button onClick={() => setDrawerOpen(true)} leftIcon={<Plus size={18} />} className="hover:scale-105">
-          Create Task
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <button
-          onClick={() => setBucket('to-me')}
-          className={`text-left bg-zinc-850 border rounded-xl p-5 transition-all duration-200 ${
-            bucket === 'to-me' ? 'border-gold' : 'border-zinc-750 hover:border-zinc-600'
-          }`}
-        >
-          <div className="flex items-center gap-2 text-gray-400 mb-2">
-            <Inbox size={16} />
-            <span className="text-sm">Assigned to Me</span>
-          </div>
-          <p className="text-2xl font-bold text-white">{assignedToMe.length}</p>
-          <p className="text-gray-500 text-xs mt-1">Tasks admin gave you</p>
-        </button>
-
-        <button
-          onClick={() => setBucket('to-others')}
-          className={`text-left bg-zinc-850 border rounded-xl p-5 transition-all duration-200 ${
-            bucket === 'to-others' ? 'border-gold' : 'border-zinc-750 hover:border-zinc-600'
-          }`}
-        >
-          <div className="flex items-center gap-2 text-gray-400 mb-2">
-            <Send size={16} />
-            <span className="text-sm">Assigned to Teams/Student</span>
-          </div>
-          <p className="text-2xl font-bold text-white">{assignedByMe.length}</p>
-          <p className="text-gray-500 text-xs mt-1">Tasks you gave your students</p>
-        </button>
+        <div className="flex items-center gap-2">
+          <Select
+            value={bucket}
+            onChange={(v) => setBucket(v as TaskBucket)}
+            variant="filter"
+            className="w-[180px]"
+            options={[
+              { value: 'to-others', label: `Students' Tasks (${studentTasks.length})` },
+              { value: 'to-me', label: `My Tasks (${assignedToMe.length})` },
+            ]}
+          />
+          <Select
+            value={assignedByFilter}
+            onChange={(v) => setAssignedByFilter(v as string)}
+            variant="filter"
+            className="w-[160px]"
+            options={[
+              { value: 'all', label: 'Assigned by anyone' },
+              { value: 'me', label: 'Assigned by me' },
+              { value: 'admin', label: 'Assigned by admin' },
+            ]}
+          />
+          <Button onClick={() => setDrawerOpen(true)} leftIcon={<Plus size={18} />} className="hover:scale-105">
+            Create Task
+          </Button>
+        </div>
       </div>
 
       <DataTable
@@ -499,6 +551,8 @@ export default function MentorTasks({ mentorId }: Props) {
         ) : reviewTask ? (
           <AssigneeReviewPanel
             task={reviewTask}
+            mentorId={mentorId}
+            myStudentIds={myStudentIds}
             onChanged={async () => {
               await fetchTasksOnly();
               // Keep the drawer's task data fresh after an approve/resubmit action.
@@ -613,14 +667,24 @@ function StatusBadge({ status }: { status: ApiAssignmentStatus }) {
 function AssigneeReviewPanel({
   task,
   onChanged,
+  mentorId,
+  myStudentIds,
 }: {
   task: ApiTask;
   onChanged: () => Promise<void>;
+  mentorId: string;
+  // Mirrors the backend's approve/resubmit rule: the task's own assigner,
+  // or the assignee's own mentor, can act on a row — checked per-assignment
+  // (not per-task) since a batch-assigned task can mix students across
+  // different mentors.
+  myStudentIds: Set<string>;
 }) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [resubmitDraft, setResubmitDraft] = useState<Record<string, string>>({});
   const isDocumentTask = task.category === 'document_submission';
   const assignments = task.assignments || [];
+  const isTaskAssigner = task.assigned_by_id === mentorId;
+  const canReviewAssignment = (assignment: ApiAssignment) => isTaskAssigner || myStudentIds.has(assignment.assignee_id);
 
   const handleApprove = async (assignment: ApiAssignment) => {
     setSavingId(assignment.id);
@@ -658,9 +722,16 @@ function AssigneeReviewPanel({
         </p>
       )}
 
+      {!isTaskAssigner && (
+        <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+          Assigned by admin — as your students' mentor, you can still approve or request changes on their rows below.
+        </p>
+      )}
+
       <div className="space-y-3">
         {assignments.map(assignment => {
           const saving = savingId === assignment.id;
+          const canReview = canReviewAssignment(assignment);
           return (
             <div key={assignment.id} className="bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-3 space-y-2.5">
               <div className="flex items-center justify-between gap-3">
@@ -668,7 +739,11 @@ function AssigneeReviewPanel({
                 <StatusBadge status={assignment.status} />
               </div>
 
-              {!isDocumentTask && assignment.status === 'review' && (
+              {!canReview && assignment.status === 'review' && (
+                <p className="text-[11px] text-gray-500">Not one of your students — you can view this but can't review it.</p>
+              )}
+
+              {canReview && !isDocumentTask && assignment.status === 'review' && (
                 <div className="space-y-2">
                   <textarea
                     value={resubmitDraft[assignment.id] || ''}

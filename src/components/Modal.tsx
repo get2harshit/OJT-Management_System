@@ -29,15 +29,19 @@ export default function Modal({ open, onClose, title, children, size = 'lg' }: M
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
       <div
         ref={ref}
-        className={`relative bg-zinc-850 border border-zinc-750 rounded-xl w-full ${SIZE_CLASSES[size]} shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] flex flex-col`}
+        className={`relative bg-zinc-850 border border-zinc-750 rounded-2xl w-full ${SIZE_CLASSES[size]} shadow-2xl shadow-black/50 ring-1 ring-white/[0.04] animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] flex flex-col overflow-hidden`}
       >
+        <div className="h-1 bg-gradient-to-r from-gold/50 via-gold to-gold/50 shrink-0" />
         <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-zinc-750 shrink-0">
-          <h3 className="text-lg font-semibold text-white">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-            <X size={20} />
+          <h3 className="text-lg font-semibold text-white tracking-tight">{title}</h3>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-full text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
+          >
+            <X size={18} />
           </button>
         </div>
         <div className="px-4 sm:px-6 py-5 overflow-y-auto">{children}</div>

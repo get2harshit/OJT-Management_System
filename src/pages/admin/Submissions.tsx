@@ -87,7 +87,7 @@ export default function AdminSubmissions() {
     apiListCohorts()
       .then((list) => {
         setCohorts(list);
-        const active = list.find(c => c.is_active || (c as { activeStatus?: boolean }).activeStatus) || list[0];
+        const active = list.find(c => c.isActive) || list[0];
         if (active) setCohortFilter(active.id);
       })
       .catch(() => setCohorts([]))
@@ -363,6 +363,7 @@ export default function AdminSubmissions() {
               documentLink={activeSub.documentLink}
               messageContent={activeSub.messageContent}
               mentorFeedback={activeSub.mentorFeedback}
+              reviewedByName={activeSub.reviewedByName}
               viewerUrl={viewerUrl}
               downloading={downloadingId === activeSub.id}
               downloadError={downloadError}

@@ -17,7 +17,7 @@ import { useConfirm } from '../../../confirm';
 
 export default function CohortsPanel() {
   const navigate = useNavigate();
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
   const confirm = useConfirm();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,13 +72,14 @@ export default function CohortsPanel() {
         endDate: cohortForm.endDate,
         isActive: cohortForm.isActive,
       };
-      if (editingCohortId) {
-        await apiUpdateCohort(editingCohortId, body);
-      } else {
-        await apiCreateCohort(body);
-      }
+      const saved = editingCohortId
+        ? await apiUpdateCohort(editingCohortId, body)
+        : await apiCreateCohort(body);
       closeCohortModal();
       await fetchCohorts();
+      if (saved.studentsAutoAdded) {
+        showSuccess(`${editingCohortId ? 'Cohort updated' : 'Cohort created'} — ${saved.studentsAutoAdded} student${saved.studentsAutoAdded === 1 ? '' : 's'} auto-added`);
+      }
     } catch (err: unknown) {
       showError(err instanceof Error ? err.message : 'Failed to save cohort');
     }
