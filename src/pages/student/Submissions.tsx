@@ -315,6 +315,7 @@ export default function StudentSubmissions({
               documentLink={activeSub.documentLink}
               messageContent={activeSub.messageContent}
               mentorFeedback={activeSub.mentorFeedback}
+              reviewedByName={activeSub.reviewedByName}
               viewerUrl={viewerUrl}
               downloading={downloadingId === activeSub.id}
               downloadError={downloadError}

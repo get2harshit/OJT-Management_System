@@ -14,6 +14,7 @@ import { useToast } from '../../toast';
 import { apiListCohorts } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import type { Cohort } from '../../lib/types';
+import { useAuth } from '../../context/useAuth';
 
 interface Assignee {
   id: string;
@@ -26,6 +27,8 @@ const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
 export default function AdminTasks() {
+  const { user } = useAuth();
+  const myId = user?.id;
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [page, setPage] = useState(1);
@@ -42,6 +45,10 @@ export default function AdminTasks() {
   // aggregate itself.
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  // 'me' = tasks this admin personally created, 'mentor' = created by any
+  // mentor (mentors can create tasks for their own students too) — same
+  // client-side-over-current-page approach as roleFilter/statusFilter above.
+  const [assignedByFilter, setAssignedByFilter] = useState('all');
   const [editingTask, setEditingTask] = useState<ApiTask | null>(null);
   // The list response only carries assignmentsSummary (a capped preview),
   // never the full per-assignee list — reviewTaskId drives the modal's
@@ -78,7 +85,7 @@ export default function AdminTasks() {
   const [selectedCohortId, setSelectedCohortId] = useState('');
   useEffect(() => {
     if (selectedCohortId || cohorts.length === 0) return;
-    const active = cohorts.find(c => c.is_active || (c as { activeStatus?: boolean }).activeStatus) || cohorts[0];
+    const active = cohorts.find(c => c.isActive) || cohorts[0];
     if (active) setSelectedCohortId(active.id);
   }, [cohorts, selectedCohortId]);
 
@@ -225,6 +232,8 @@ export default function AdminTasks() {
     .filter(t => {
       if (roleFilter !== 'all' && t.target_role !== roleFilter) return false;
       if (statusFilter !== 'all' && t.aggregateStatus !== statusFilter) return false;
+      if (assignedByFilter === 'me' && t.assigned_by_id !== myId) return false;
+      if (assignedByFilter === 'mentor' && t.assigner?.role !== 'mentor') return false;
       return true;
     });
 
@@ -278,6 +287,17 @@ export default function AdminTasks() {
               { value: 'pending', label: 'Pending' },
               { value: 'in_progress', label: 'In Progress' },
               { value: 'approved', label: 'Approved' },
+            ]}
+          />
+          <Select
+            value={assignedByFilter}
+            onChange={setAssignedByFilter}
+            variant="filter"
+            className="w-[160px]"
+            options={[
+              { value: 'all', label: 'Assigned by anyone' },
+              { value: 'me', label: 'Assigned by me' },
+              { value: 'mentor', label: 'Assigned by mentor' },
             ]}
           />
           <Button
@@ -364,6 +384,26 @@ export default function AdminTasks() {
                 </div>
               );
             }
+          },
+          {
+            key: 'assigned_by',
+            header: 'Assigned By',
+            render: (row) => {
+              if (!row.assigner) return <span className="text-xs text-gray-500">-</span>;
+              const isMentor = row.assigner.role === 'mentor';
+              return (
+                <span className="inline-flex items-center gap-1.5 text-xs text-gray-200 whitespace-nowrap">
+                  {row.assigner.full_name}
+                  <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${
+                    isMentor
+                      ? 'bg-purple-500/10 text-purple-400 border-purple-500/25'
+                      : 'bg-gold/10 text-gold border-gold/25'
+                  }`}>
+                    {isMentor ? 'Mentor' : 'Admin'}
+                  </span>
+                </span>
+              );
+            },
           },
           {
             key: 'assigned_names',

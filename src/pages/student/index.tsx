@@ -45,6 +45,7 @@ function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
         return (
           <Dashboard
             studentId={studentId}
+            onNavigateToTab={setActiveTab}
           />
         );
       case 'projects':
@@ -77,6 +78,7 @@ function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
         return (
           <Dashboard
             studentId={studentId}
+            onNavigateToTab={setActiveTab}
           />
         );
     }

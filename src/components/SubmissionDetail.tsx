@@ -14,6 +14,9 @@ interface SubmissionDetailProps {
   documentLink?: string;
   messageContent?: string;
   mentorFeedback?: string;
+  // Whoever actually approved/requested changes — mentor or admin, either
+  // way, so each side can see who on the other side acted on it.
+  reviewedByName?: string;
   viewerUrl: string | null;
   downloading: boolean;
   downloadError?: string | null;
@@ -45,6 +48,7 @@ export default function SubmissionDetail({
   documentLink,
   messageContent,
   mentorFeedback,
+  reviewedByName,
   viewerUrl,
   downloading,
   downloadError,
@@ -131,6 +135,12 @@ export default function SubmissionDetail({
         <div className="bg-zinc-900 border border-zinc-750 rounded-xl p-5 flex flex-col gap-4">
           <div>
             <h3 className="text-sm font-semibold text-white mb-2 uppercase tracking-wider">Review & Feedback</h3>
+            {(status === 'approved' || status === 'changes_requested') && reviewedByName && (
+              <p className="text-xs text-gray-500 mb-2">
+                {status === 'approved' ? 'Approved' : 'Changes requested'} by{' '}
+                <span className="text-gray-300 font-medium">{reviewedByName}</span>
+              </p>
+            )}
             {mentorFeedback ? (
               <div className="p-4 rounded-lg bg-zinc-800/50 border border-zinc-700/50 text-gray-300 text-sm whitespace-pre-wrap">{mentorFeedback}</div>
             ) : (

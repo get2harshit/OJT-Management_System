@@ -79,6 +79,10 @@ export interface PrdSubmission {
   status: PrdStatus;
   mentorFeedback?: string;
   reviewedBy?: string;
+  // Whoever actually approved/requested changes — mentor or admin, either
+  // way. Backend-resolved (a join on reviewedBy), always present whenever
+  // reviewedBy is.
+  reviewedByName?: string;
   updatedAt: string;
   // Denormalized via a backend join — only present on the "review
   // everything" list (apiGetAllPrdSubmissions), not on a single allocation's

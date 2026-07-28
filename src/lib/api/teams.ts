@@ -7,6 +7,7 @@ import type {
   PendingReceivedRequest,
   TeamProjectPreferences,
   PreferenceReviewStatus,
+  PreferenceResubmissionMode,
   PendingProposal,
   AvailableTeammate,
   TeamAvailableMentor,
@@ -87,6 +88,7 @@ interface RawPreferences {
   allocatedMentorName?: string | null;
   preference1ReviewStatus: PreferenceReviewStatus;
   preference1ReviewNote?: string | null;
+  preference1ResubmissionMode?: PreferenceResubmissionMode | null;
   submittedAt: string;
 }
 
@@ -99,9 +101,6 @@ interface RawPendingProposal {
   project: {
     id: string;
     title: string;
-    description: string | null;
-    problemStatement: string | null;
-    techStack: string[];
   };
 }
 
@@ -194,6 +193,11 @@ interface RawAvailableTeammate {
   full_name: string;
 }
 
+export interface AvailableTeammatesPage {
+  data: AvailableTeammate[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
 function mapTeam(t: RawTeam): Team {
   return {
     id: t.id,
@@ -250,6 +254,7 @@ function mapPreferences(p: RawPreferences): TeamProjectPreferences {
     allocatedMentorName: p.allocatedMentorName ?? null,
     preference1ReviewStatus: p.preference1ReviewStatus,
     preference1ReviewNote: p.preference1ReviewNote ?? null,
+    preference1ResubmissionMode: p.preference1ResubmissionMode ?? null,
     submittedAt: p.submittedAt,
   };
 }
@@ -342,16 +347,27 @@ export async function apiGetMyTeamStatus(cohortId: string): Promise<MyTeamStatus
   });
 }
 
-export async function apiGetAvailableTeammates(cohortId: string): Promise<AvailableTeammate[]> {
-  return cachedFetch(`teams:availableteammates:${cohortId}`, TEAMS_TTL, async () => {
-    const res = await apiFetch<RawAvailableTeammate[]>(`/api/v1/teams/available-teammates?cohortId=${cohortId}`);
-    return res.map(s => ({
+export async function apiGetAvailableTeammates(
+  cohortId: string,
+  params: { page: number; limit: number; search?: string }
+): Promise<AvailableTeammatesPage> {
+  const query = new URLSearchParams();
+  query.set('cohortId', cohortId);
+  query.set('page', String(params.page));
+  query.set('limit', String(params.limit));
+  if (params.search) query.set('search', params.search);
+  const res = await apiFetch<{ success: boolean; data: RawAvailableTeammate[]; pagination: AvailableTeammatesPage['pagination'] }>(
+    `/api/v1/teams/available-teammates?${query.toString()}`
+  );
+  return {
+    data: res.data.map(s => ({
       studentId: s.id,
       rollNumber: s.roll_number,
       batch: s.batch,
       fullName: s.full_name,
-    }));
-  });
+    })),
+    pagination: res.pagination,
+  };
 }
 
 export async function apiSendTeamRequest(receiverId: string, cohortId: string, track: string): Promise<void> {
@@ -429,6 +445,65 @@ export async function apiGetAvailableProjects(cohortId: string): Promise<TeamPro
   });
 }
 
+export interface ProjectSummary {
+  id: string;
+  title: string;
+  problemStatement?: string;
+  isRecommended: boolean;
+}
+
+export interface AvailableProjectsPage {
+  data: ProjectSummary[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+// Paginated, field-trimmed sibling of apiGetAvailableProjects — the browse
+// list only ever needs enough per row to render a card, not every field.
+export async function apiGetAvailableProjectsPage(
+  cohortId: string,
+  params: { page: number; limit: number; search?: string; excludeId?: string }
+): Promise<AvailableProjectsPage> {
+  const query = new URLSearchParams();
+  query.set('cohortId', cohortId);
+  query.set('page', String(params.page));
+  query.set('limit', String(params.limit));
+  if (params.search) query.set('search', params.search);
+  if (params.excludeId) query.set('excludeId', params.excludeId);
+  const res = await apiFetch<{ success: boolean; data: ProjectSummary[]; pagination: AvailableProjectsPage['pagination'] }>(
+    `/api/v1/teams/projects/browse?${query.toString()}`
+  );
+  return { data: res.data, pagination: res.pagination };
+}
+
+// Full read-only detail for the "click a project to see everything" step —
+// deliberately scoped to exactly the fields the detail screen shows, not
+// the whole TeamProject shape.
+export interface ProjectDetail {
+  id: string;
+  title: string;
+  problemStatement?: string;
+  projectDescription?: string;
+  description?: string;
+  endUsersDefined?: string;
+  techStack: string[];
+  framework: string[];
+  suggestedLibrariesTools: string[];
+  coreLearningGoals: string[];
+  stretchGoal: string[];
+  evaluationMetrics: string[];
+  expectedOutput: string[];
+  firstMonthMilestones: string[];
+  secondMonthMilestones: string[];
+  thirdMonthMilestones: string[];
+  mustHaveFeatures: string[];
+  goodToHaveFeatures: string[];
+  referenceDocs?: string;
+}
+
+export async function apiGetProjectDetail(cohortId: string, projectId: string): Promise<ProjectDetail> {
+  return apiFetch<ProjectDetail>(`/api/v1/teams/projects/${projectId}/detail?cohortId=${cohortId}`);
+}
+
 export async function apiProposeProject(cohortId: string, data: ProposeProjectInput): Promise<TeamProject> {
   const p = await apiFetch<RawProject>('/api/v1/teams/projects/propose', {
     method: 'POST',
@@ -480,8 +555,51 @@ export async function apiGetPendingProposals(): Promise<PendingProposal[]> {
   });
 }
 
-// Mentor — approves or rejects a self-proposed preference-1, with an optional note.
-export async function apiDecideOnProposal(preferenceId: string, action: 'approve' | 'reject', note?: string): Promise<void> {
+// Full self-proposed project write-up for the mentor's click-through detail
+// modal — same field set as ProjectDetail plus the self-proposal-only ones
+// (course covered, industry, level, duration...) that a catalog PST project
+// doesn't collect.
+export interface ProposalDetail {
+  id: string;
+  title: string;
+  description?: string;
+  problemStatement?: string;
+  projectDescription?: string;
+  endUsersDefined?: string;
+  techStack: string[];
+  framework: string[];
+  suggestedLibrariesTools: string[];
+  courseCovered: string[];
+  coreLearningGoals: string[];
+  stretchGoal: string[];
+  evaluationMetrics: string[];
+  expectedOutput: string[];
+  firstMonthMilestones: string[];
+  secondMonthMilestones: string[];
+  thirdMonthMilestones: string[];
+  mustHaveFeatures: string[];
+  goodToHaveFeatures: string[];
+  industry?: string;
+  level?: string;
+  theme?: string;
+  referenceDocs?: string;
+  estimatedDuration?: number;
+  sourceStartupSchool?: string;
+}
+
+export async function apiGetProposalDetail(preferenceId: string): Promise<ProposalDetail> {
+  return apiFetch<ProposalDetail>(`/api/v1/teams/proposals/${preferenceId}/detail`);
+}
+
+// Mentor — decides on a self-proposed preference-1. 'approve' keeps the
+// existing flow; 'resubmit' sends the student back to revise their own
+// project; 'return' sends them to pick a recommended/catalog project
+// instead — note is mandatory for the latter two (enforced server-side too).
+export async function apiDecideOnProposal(
+  preferenceId: string,
+  action: 'approve' | 'resubmit' | 'return',
+  note?: string
+): Promise<void> {
   await apiFetch<void>(`/api/v1/teams/proposals/${preferenceId}/decide`, {
     method: 'POST',
     body: JSON.stringify({ action, note }),

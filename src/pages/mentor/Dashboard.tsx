@@ -3,17 +3,15 @@ import { Users, CheckSquare, FolderOpen, CalendarCheck, TrendingUp } from 'lucid
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
-import type { Task, Submission, Attendance, ApiStudent, Team } from '../../lib/types';
-import { apiListMyTeams, apiListStudents } from '../../lib/api';
+import type { Attendance, ApiStudent, Team, PrdSubmission, PrdStatus } from '../../lib/types';
+import { apiListMyTeams, apiListStudents, apiGetAllPrdSubmissions } from '../../lib/api';
+import { apiListTasks } from '../../lib/api/tasks';
+import type { ApiTask } from '../../lib/api/tasks';
 
-import { useTasks } from '../../hooks/useTasks';
-import { useSubmissions } from '../../hooks/useSubmissions';
 import { useAttendance } from '../../hooks/useAttendance';
 
 interface Props {
   mentorId: string;
-  tasks: Task[];
-  submissions: Submission[];
   attendance: Attendance[];
   onNavigateToTab: (tab: string) => void;
 }
@@ -26,19 +24,23 @@ interface MentorStudent {
   track: string;
 }
 
+// Draft submissions aren't a mentor's concern yet (still being edited by the
+// student) — only these three are meaningful review-status buckets.
+const SUBMISSION_STATUS_BUCKETS: { label: string; statuses: PrdStatus[]; barClass: string }[] = [
+  { label: 'Pending Review', statuses: ['submitted', 'under_review'], barClass: 'bg-yellow-500' },
+  { label: 'Approved', statuses: ['approved'], barClass: 'bg-green-500' },
+  { label: 'Changes Requested', statuses: ['changes_requested'], barClass: 'bg-red-500' },
+];
+
 export default function MentorDashboard({
-  mentorId,
-  tasks: propTasks,
-  submissions: propSubmissions,
   attendance: propAttendance,
   onNavigateToTab,
 }: Partial<Props> & Pick<Props, 'mentorId' | 'onNavigateToTab'>) {
-  const { tasks: hookTasks } = useTasks();
-  const { submissions: hookSubmissions } = useSubmissions();
+  // mentorId is no longer needed here — GET /tasks and the submissions list
+  // both scope to the authenticated caller server-side, not a passed id.
+  // Attendance has no real backend endpoint anywhere in this app yet — still
+  // the localStorage/DataContext mock until that module exists for real.
   const { attendance: hookAttendance } = useAttendance();
-
-  const tasks = propTasks ?? hookTasks ?? [];
-  const submissions = propSubmissions ?? hookSubmissions ?? [];
   const attendance = propAttendance ?? hookAttendance ?? [];
 
   // Real roster: teams this mentor is actually allocated to (primary or
@@ -47,15 +49,24 @@ export default function MentorDashboard({
   // per-student track field, only a per-team one.
   const [myTeams, setMyTeams] = useState<Team[]>([]);
   const [apiStudents, setApiStudents] = useState<ApiStudent[]>([]);
+  // GET /tasks already scopes to "assigned to me or created by me" for a
+  // mentor caller server-side — no client-side filtering needed.
+  const [tasks, setTasks] = useState<ApiTask[]>([]);
+  // apiGetAllPrdSubmissions has no mentor-scoping param (matches the same
+  // fetch-all-then-filter-by-mentee pattern mentor/Submissions.tsx already
+  // uses) — filtered below via studentIds once the roster is known.
+  const [submissions, setSubmissions] = useState<PrdSubmission[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(true);
 
   useEffect(() => {
-    Promise.all([apiListMyTeams(), apiListStudents()])
-      .then(([teams, students]) => {
+    Promise.all([apiListMyTeams(), apiListStudents(), apiListTasks(), apiGetAllPrdSubmissions()])
+      .then(([teams, students, taskRes, submissionRes]) => {
         setMyTeams(teams);
         setApiStudents(students);
+        setTasks(taskRes.data);
+        setSubmissions(submissionRes);
       })
-      .catch((err) => console.error('Mentor dashboard failed to load roster', err))
+      .catch((err) => console.error('Mentor dashboard failed to load', err))
       .finally(() => setLoadingRoster(false));
   }, []);
 
@@ -100,9 +111,8 @@ export default function MentorDashboard({
 
   const studentIds = new Set(filteredStudents.map(s => s.id));
 
-  const myTasks = tasks.filter(t => t.mentor_id === mentorId || t.assigned_to === null);
-  const mySubmissions = submissions.filter(s => studentIds.has(s.student_id));
-  const pendingSubmissions = mySubmissions.filter(s => s.status === 'PENDING').length;
+  const mySubmissions = submissions.filter(s => s.studentId && studentIds.has(s.studentId));
+  const pendingSubmissions = mySubmissions.filter(s => s.status === 'submitted' || s.status === 'under_review').length;
   const filteredAttendance = attendance.filter(a => studentIds.has(a.student_id));
 
   if (loadingRoster) {
@@ -142,58 +152,36 @@ export default function MentorDashboard({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-6">
         <StatCard title="My Teams" value={myTeams.length} icon={Users} onClick={() => onNavigateToTab('ojts')} />
-        <StatCard title="My Tasks" value={myTasks.length} icon={CheckSquare} />
-        <StatCard title="Pending Reviews" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" />
+        <StatCard title="My Tasks" value={tasks.length} icon={CheckSquare} onClick={() => onNavigateToTab('tasks')} />
+        <StatCard title="Pending Reviews" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToTab('submissions')} />
         <StatCard title="Attendance Records" value={filteredAttendance.length} icon={CalendarCheck} />
         <StatCard title="Avg Progress" value="72%" icon={TrendingUp} trend="+5%" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Submission Status</h3>
-            <TrendingUp size={18} className="text-gold" />
-          </div>
-          <div className="space-y-3">
-            {(['PENDING', 'ACCEPTED', 'RETURNED'] as const).map((status) => {
-              const count = mySubmissions.filter(s => s.status === status).length;
-              const pct = mySubmissions.length ? Math.round((count / mySubmissions.length) * 100) : 0;
-              return (
-                <div key={status}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-300">{status}</span>
-                    <span className="text-gray-400">{count} ({pct}%)</span>
-                  </div>
-                  <div className="h-2 bg-zinc-750 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${status === 'PENDING' ? 'bg-yellow-500' : status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
-                        }`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Submission Status</h3>
+          <TrendingUp size={18} className="text-gold" />
         </div>
-
-        <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Upcoming Deadlines</h3>
-          </div>
-          <div className="space-y-3">
-            {myTasks
-              .filter(t => t.due_date)
-              .sort((a, b) => new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime())
-              .slice(0, 5)
-              .map(task => (
-                <div key={task.id} className="flex items-center gap-3 text-sm">
-                  <div className="w-2 h-2 rounded-full bg-gold" />
-                  <span className="text-gray-300 flex-1">{task.title}</span>
-                  <span className="text-gray-500 text-xs">{task.due_date}</span>
+        <div className="space-y-3">
+          {SUBMISSION_STATUS_BUCKETS.map(({ label, statuses, barClass }) => {
+            const count = mySubmissions.filter(s => statuses.includes(s.status)).length;
+            const pct = mySubmissions.length ? Math.round((count / mySubmissions.length) * 100) : 0;
+            return (
+              <div key={label}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-gray-300">{label}</span>
+                  <span className="text-gray-400">{count} ({pct}%)</span>
                 </div>
-              ))}
-          </div>
+                <div className="h-2 bg-zinc-750 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${barClass}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

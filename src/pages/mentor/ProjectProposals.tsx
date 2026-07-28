@@ -1,18 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ClipboardCheck, CheckCircle2, XCircle, Users } from 'lucide-react';
+import { ClipboardCheck, CheckCircle2, RotateCcw, Undo2, Users, AlertTriangle, ChevronRight } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import Modal from '../../components/Modal';
 import type { PendingProposal } from '../../lib/types';
-import { apiGetPendingProposals, apiDecideOnProposal } from '../../lib/api';
+import type { ProposalDetail } from '../../lib/api';
+import { apiGetPendingProposals, apiGetProposalDetail, apiDecideOnProposal } from '../../lib/api';
 import { useToast } from '../../toast';
+
+type PendingAction = 'resubmit' | 'return' | null;
 
 export default function ProjectProposals() {
   const { showError, showSuccess } = useToast();
 
   const [proposals, setProposals] = useState<PendingProposal[]>([]);
   const [loading, setLoading] = useState(true);
-  const [decidingId, setDecidingId] = useState<string | null>(null);
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
-  const [rejectNote, setRejectNote] = useState('');
+
+  const [selected, setSelected] = useState<PendingProposal | null>(null);
+  const [detail, setDetail] = useState<ProposalDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [actionNote, setActionNote] = useState('');
+  const [deciding, setDeciding] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -30,33 +39,58 @@ export default function ProjectProposals() {
     load();
   }, [load]);
 
-  const handleApprove = async (preferenceId: string) => {
-    setDecidingId(preferenceId);
+  const closeModal = () => {
+    setSelected(null);
+    setDetail(null);
+    setPendingAction(null);
+    setActionNote('');
+  };
+
+  useEffect(() => {
+    if (!selected) return;
+    setDetailLoading(true);
+    apiGetProposalDetail(selected.preferenceId)
+      .then(setDetail)
+      .catch((err) => showError(err instanceof Error ? err.message : 'Failed to load project detail'))
+      .finally(() => setDetailLoading(false));
+  }, [selected, showError]);
+
+  const handleDecide = async (action: 'approve' | 'resubmit' | 'return') => {
+    if (!selected) return;
+    if (action !== 'approve' && !actionNote.trim()) return;
+    setDeciding(true);
     try {
-      await apiDecideOnProposal(preferenceId, 'approve');
-      showSuccess('Project approved.');
-      setProposals((prev) => prev.filter((p) => p.preferenceId !== preferenceId));
+      await apiDecideOnProposal(selected.preferenceId, action, action === 'approve' ? undefined : actionNote.trim());
+      showSuccess(
+        action === 'approve'
+          ? 'Project approved.'
+          : action === 'resubmit'
+            ? 'Sent back to the student for resubmission.'
+            : 'Returned — the student will now pick from recommended projects.'
+      );
+      setProposals((prev) => prev.filter((p) => p.preferenceId !== selected.preferenceId));
+      closeModal();
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to approve this proposal');
+      showError(err instanceof Error ? err.message : 'Failed to record your decision');
     } finally {
-      setDecidingId(null);
+      setDeciding(false);
     }
   };
 
-  const handleConfirmReject = async (preferenceId: string) => {
-    setDecidingId(preferenceId);
-    try {
-      await apiDecideOnProposal(preferenceId, 'reject', rejectNote.trim() || undefined);
-      showSuccess('Project rejected.');
-      setProposals((prev) => prev.filter((p) => p.preferenceId !== preferenceId));
-      setRejectingId(null);
-      setRejectNote('');
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to reject this proposal');
-    } finally {
-      setDecidingId(null);
-    }
-  };
+  const textField = (label: string, value?: string) =>
+    value ? (
+      <div>
+        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">{label}</p>
+        <p className="text-gray-300 text-sm whitespace-pre-wrap">{value}</p>
+      </div>
+    ) : null;
+  const listField = (label: string, values: string[]) =>
+    values.length > 0 ? (
+      <div>
+        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">{label}</p>
+        <p className="text-gray-300 text-sm">{values.join(', ')}</p>
+      </div>
+    ) : null;
 
   return (
     <div className="space-y-6">
@@ -80,100 +114,165 @@ export default function ProjectProposals() {
           <p className="text-gray-400">No proposals waiting on your review right now.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {proposals.map((proposal) => {
-            const isDeciding = decidingId === proposal.preferenceId;
-            const isRejecting = rejectingId === proposal.preferenceId;
-
-            return (
-              <div
-                key={proposal.preferenceId}
-                className="bg-zinc-850 border border-zinc-750 rounded-xl p-5 space-y-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-white font-semibold">{proposal.project.title}</h2>
-                    <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium mt-1 inline-block">
-                      {proposal.track}
-                    </span>
-                  </div>
+        <div className="space-y-2">
+          {proposals.map((proposal) => (
+            <button
+              key={proposal.preferenceId}
+              onClick={() => setSelected(proposal)}
+              className="w-full flex items-center justify-between gap-4 bg-zinc-850 border border-zinc-750 rounded-xl px-5 py-4 text-left hover:border-gold/30 hover:bg-zinc-800 transition-colors"
+            >
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-white font-semibold truncate">{proposal.project.title}</p>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-gold/10 text-gold font-semibold uppercase tracking-wider shrink-0">
+                    {proposal.track}
+                  </span>
                 </div>
-
-                {proposal.project.description && (
-                  <p className="text-gray-400 text-sm">{proposal.project.description}</p>
-                )}
-                {proposal.project.problemStatement && (
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Problem statement</p>
-                    <p className="text-gray-300 text-sm">{proposal.project.problemStatement}</p>
-                  </div>
-                )}
-                {proposal.project.techStack.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {proposal.project.techStack.map((tech) => (
-                      <span key={tech} className="text-xs px-2 py-1 rounded-md bg-zinc-750 text-gray-300">
-                        {tech}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
                 <div className="flex items-center gap-1.5 text-gray-400 text-xs">
-                  <Users size={14} />
+                  <Users size={13} />
                   {proposal.members.map((m) => m.fullName ?? 'Unknown').join(', ')}
                 </div>
-
-                {isRejecting ? (
-                  <div className="space-y-2 pt-1">
-                    <textarea
-                      value={rejectNote}
-                      onChange={(e) => setRejectNote(e.target.value)}
-                      placeholder="Reason for rejection (optional)"
-                      rows={2}
-                      className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
-                    />
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleConfirmReject(proposal.preferenceId)}
-                        disabled={isDeciding}
-                        className="text-xs px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 font-semibold rounded-lg hover:bg-red-500/20 transition-colors disabled:opacity-50"
-                      >
-                        {isDeciding ? 'Rejecting...' : 'Confirm Reject'}
-                      </button>
-                      <button
-                        onClick={() => { setRejectingId(null); setRejectNote(''); }}
-                        disabled={isDeciding}
-                        className="text-xs px-3 py-1.5 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      onClick={() => handleApprove(proposal.preferenceId)}
-                      disabled={isDeciding}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
-                    >
-                      <CheckCircle2 size={14} />
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => setRejectingId(proposal.preferenceId)}
-                      disabled={isDeciding}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
-                    >
-                      <XCircle size={14} />
-                      Reject
-                    </button>
-                  </div>
-                )}
               </div>
-            );
-          })}
+              <ChevronRight size={18} className="text-gray-500 shrink-0" />
+            </button>
+          ))}
         </div>
       )}
+
+      <Modal open={!!selected} onClose={closeModal} title={selected?.project.title ?? 'Proposal'} size="xl">
+        {detailLoading || !detail ? (
+          <div className="min-h-[30vh] flex items-center justify-center">
+            <SpinnerSquare size={40} />
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {selected && (
+              <div className="flex items-center gap-1.5 text-gray-400 text-xs -mt-2">
+                <Users size={13} />
+                {selected.members.map((m) => m.fullName ?? 'Unknown').join(', ')}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <p className="text-xs text-gold uppercase font-bold tracking-wider">Overview</p>
+              {textField('Problem statement', detail.problemStatement)}
+              {textField('Project description (short)', detail.projectDescription)}
+              {textField('Description (detailed)', detail.description)}
+              {textField('End users defined', detail.endUsersDefined)}
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs text-gold uppercase font-bold tracking-wider">Scope</p>
+              {listField('Tech stack', detail.techStack)}
+              {listField('Framework', detail.framework)}
+              {listField('Suggested libraries', detail.suggestedLibrariesTools)}
+              {listField('Course(s) covered', detail.courseCovered)}
+              {listField('Core learning goals', detail.coreLearningGoals)}
+              {textField('Industry', detail.industry)}
+              {textField('Level', detail.level)}
+              {textField('Theme', detail.theme)}
+              {textField('Estimated duration (weeks)', detail.estimatedDuration ? String(detail.estimatedDuration) : undefined)}
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs text-gold uppercase font-bold tracking-wider">Features & evaluation</p>
+              {listField('Must-have features', detail.mustHaveFeatures)}
+              {listField('Good-to-have features', detail.goodToHaveFeatures)}
+              {listField('Expected output', detail.expectedOutput)}
+              {listField('Evaluation metrics', detail.evaluationMetrics)}
+              {listField('Stretch goal', detail.stretchGoal)}
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs text-gold uppercase font-bold tracking-wider">Milestones</p>
+              {listField('First month', detail.firstMonthMilestones)}
+              {listField('Second month', detail.secondMonthMilestones)}
+              {listField('Third month', detail.thirdMonthMilestones)}
+            </div>
+
+            {(detail.referenceDocs || detail.sourceStartupSchool) && (
+              <div className="space-y-3">
+                <p className="text-xs text-gold uppercase font-bold tracking-wider">Reference</p>
+                {textField('Reference docs', detail.referenceDocs)}
+                {textField('Source / Startup School', detail.sourceStartupSchool)}
+              </div>
+            )}
+
+            {pendingAction ? (
+              <div className="space-y-3 border-t border-zinc-800 pt-4">
+                {pendingAction === 'return' && (
+                  <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2.5 text-amber-300 text-xs">
+                    <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                    <span>
+                      The student won't be able to submit their own project again after this — they'll only be able
+                      to pick a recommended project.
+                    </span>
+                  </div>
+                )}
+                <textarea
+                  value={actionNote}
+                  onChange={(e) => setActionNote(e.target.value)}
+                  placeholder={
+                    pendingAction === 'resubmit'
+                      ? 'What needs to change? (required)'
+                      : 'Why is this being returned to catalog selection? (required)'
+                  }
+                  rows={3}
+                  autoFocus
+                  className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleDecide(pendingAction)}
+                    disabled={deciding || !actionNote.trim()}
+                    className={`text-xs px-3 py-1.5 border font-semibold rounded-lg transition-colors disabled:opacity-50 ${
+                      pendingAction === 'resubmit'
+                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
+                        : 'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20'
+                    }`}
+                  >
+                    {deciding ? 'Submitting...' : pendingAction === 'resubmit' ? 'Confirm Resubmit' : 'Confirm Return'}
+                  </button>
+                  <button
+                    onClick={() => { setPendingAction(null); setActionNote(''); }}
+                    disabled={deciding}
+                    className="text-xs px-3 py-1.5 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 border-t border-zinc-800 pt-4">
+                <button
+                  onClick={() => handleDecide('approve')}
+                  disabled={deciding}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+                >
+                  <CheckCircle2 size={14} />
+                  Approve
+                </button>
+                <button
+                  onClick={() => setPendingAction('resubmit')}
+                  disabled={deciding}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                >
+                  <RotateCcw size={14} />
+                  Resubmit
+                </button>
+                <button
+                  onClick={() => setPendingAction('return')}
+                  disabled={deciding}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 font-semibold rounded-lg hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                >
+                  <Undo2 size={14} />
+                  Return
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

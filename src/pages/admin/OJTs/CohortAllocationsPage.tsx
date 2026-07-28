@@ -561,6 +561,15 @@ export default function CohortAllocationsPage() {
 
   const proposalPendingCount = pendingProposals.filter((p) => p.reviewStatus === 'pending_review').length;
   const proposalRejectedCount = pendingProposals.filter((p) => p.reviewStatus === 'rejected').length;
+  // Hard gate confirmed with the admin: Run Allocation / Draft / Publish all
+  // stay disabled cohort-wide while any self-proposed pref1 hasn't cleared
+  // mentor review (or is sitting rejected awaiting the student's resubmit/
+  // return) — a team could otherwise get algorithm-allocated to its
+  // preference-2 and published before its own project was ever decided on.
+  // The backend enforces this too; this just keeps the buttons honest about
+  // it instead of letting the admin hit a surprise error. Resolving it is
+  // manual — the banner below already shows exactly which team/mentor is why.
+  const hasBlockingProposals = pendingProposals.length > 0;
 
   return (
     <div className="space-y-6">
@@ -624,9 +633,11 @@ export default function CohortAllocationsPage() {
           </button>
           <button
             onClick={handleRunAllocation}
-            disabled={mutationInFlight || loading || runnableCount === 0 || previewMode}
+            disabled={mutationInFlight || loading || runnableCount === 0 || previewMode || hasBlockingProposals}
             title={
-              previewMode
+              hasBlockingProposals
+                ? 'Resolve every self-proposed project still awaiting mentor review or student resubmission first'
+                : previewMode
                 ? 'Discard or draft the current preview first'
                 : runnableCount === 0
                 ? 'Nothing to run — no team is pending or needs review right now'
@@ -648,9 +659,11 @@ export default function CohortAllocationsPage() {
           </button>
           <button
             onClick={handleDraftAllocation}
-            disabled={!previewMode || drafting || !allPreviewResolved}
+            disabled={!previewMode || drafting || !allPreviewResolved || hasBlockingProposals}
             title={
-              !previewMode
+              hasBlockingProposals
+                ? 'Resolve every self-proposed project still awaiting mentor review or student resubmission first'
+                : !previewMode
                 ? 'Run Allocation first to get a preview'
                 : !allPreviewResolved
                 ? 'Every team must be resolved to a project and mentor before drafting'
@@ -663,9 +676,11 @@ export default function CohortAllocationsPage() {
           </button>
           <button
             onClick={handlePublishAllocation}
-            disabled={mutationInFlight || loading || runStatus !== 'draft' || previewMode}
+            disabled={mutationInFlight || loading || runStatus !== 'draft' || previewMode || hasBlockingProposals}
             title={
-              previewMode
+              hasBlockingProposals
+                ? 'Resolve every self-proposed project still awaiting mentor review or student resubmission first'
+                : previewMode
                 ? 'Discard or draft the current preview first'
                 : runStatus !== 'draft'
                 ? 'Only enabled once every team has cleared needs_review'
@@ -680,10 +695,10 @@ export default function CohortAllocationsPage() {
       </div>
 
       {/* Some teams proposed their own project and its mentor review isn't a
-          clean approval — still pending, or rejected. Either way the team is
-          allocated its 2nd preference (not its own project). This warns the
-          admin before they draft/publish, with a View of exactly who's in
-          which state. */}
+          clean approval — still pending, or rejected awaiting the student's
+          resubmit/return. This now hard-blocks Run Allocation, Draft, and
+          Publish for the whole cohort (see hasBlockingProposals above) —
+          the View here shows exactly who/which mentor to chase. */}
       {pendingProposals.length > 0 && (
         <div className="flex items-center justify-between gap-3 flex-wrap bg-amber-500/10 border border-amber-500/25 rounded-lg px-4 py-3">
           <div className="flex items-center gap-2 text-amber-300 text-sm">
@@ -691,11 +706,11 @@ export default function CohortAllocationsPage() {
             <span>
               {[
                 proposalPendingCount > 0 ? `${proposalPendingCount} under review by mentor` : null,
-                proposalRejectedCount > 0 ? `${proposalRejectedCount} rejected by mentor` : null,
+                proposalRejectedCount > 0 ? `${proposalRejectedCount} awaiting student resubmission` : null,
               ]
                 .filter(Boolean)
                 .join(' · ')}
-              {' '}— these teams' own projects aren't approved, so they're on their 2nd preference.
+              {' '}— blocking Run Allocation, Draft, and Publish until resolved.
             </span>
           </div>
           <button
@@ -864,11 +879,11 @@ export default function CohortAllocationsPage() {
                     )}
                     {row.pref1Rejected && (
                       <span
-                        title="This team's self-proposed project was rejected by the mentor — it's allocated its 2nd preference instead"
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-red-400"
+                        title="The mentor asked for a resubmission on this team's self-proposed project — blocking allocation until the student acts"
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-400"
                       >
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-                        Proposal rejected
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        Awaiting resubmission
                       </span>
                     )}
                   </span>
@@ -936,7 +951,8 @@ export default function CohortAllocationsPage() {
       <Modal open={showProposalsModal} onClose={() => setShowProposalsModal(false)} title="Self-proposed projects — mentor review">
         <div className="space-y-3">
           <p className="text-xs text-gray-400">
-            These teams proposed their own project. Until the mentor approves it, the team is allocated its second preference instead.
+            Run Allocation, Draft, and Publish are blocked for this cohort until every one of these clears —
+            "Under review" needs the mentor to decide; "Awaiting resubmission" needs the student to act next.
           </p>
           {pendingProposals.length === 0 ? (
             <p className="text-gray-500 text-sm text-center py-6">No self-proposed projects awaiting or failing review.</p>
@@ -944,6 +960,11 @@ export default function CohortAllocationsPage() {
             pendingProposals.map((p) => {
               const memberNames = p.members.map((m) => m.fullName || m.studentId).join(', ');
               const rejected = p.reviewStatus === 'rejected';
+              // Returned-to-catalog is the more consequential outcome (own
+              // project is off the table for good), so it keeps the red
+              // treatment; a plain resubmit ask stays amber like "under
+              // review" — same severity split as the mentor's own page.
+              const isSevere = rejected && p.resubmissionMode === 'catalog_only';
               return (
                 <div key={p.teamId} className="bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-3">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -953,13 +974,17 @@ export default function CohortAllocationsPage() {
                     </p>
                     <span
                       className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
-                        rejected
+                        isSevere
                           ? 'text-red-400 bg-red-500/10 border-red-500/25'
                           : 'text-amber-400 bg-amber-500/10 border-amber-500/25'
                       }`}
                     >
-                      <span className={`w-1.5 h-1.5 rounded-full ${rejected ? 'bg-red-400' : 'bg-amber-400'}`} />
-                      {rejected ? 'Rejected' : 'Under review'}
+                      <span className={`w-1.5 h-1.5 rounded-full ${isSevere ? 'bg-red-400' : 'bg-amber-400'}`} />
+                      {rejected
+                        ? p.resubmissionMode === 'catalog_only'
+                          ? 'Awaiting resubmission — picking recommended'
+                          : 'Awaiting resubmission — revising own project'
+                        : 'Under review by mentor'}
                     </span>
                   </div>
                   {p.projectTitle && (

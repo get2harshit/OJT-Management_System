@@ -1,8 +1,9 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, ListFilter, RotateCcw, Upload } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { AlertTriangle, CheckCircle2, Clock, RotateCcw, Upload } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import Select from '../../components/Select';
 import { apiListTasks } from '../../lib/api/tasks';
-import type { ApiTask } from '../../lib/api/tasks';
+import type { ApiTask, ApiAssignmentStatus } from '../../lib/api/tasks';
 
 type TaskFilter = 'ALL' | 'MISSED' | 'IN_REVIEW' | 'RESUBMIT' | 'COMPLETED' | 'UPCOMING';
 
@@ -17,6 +18,19 @@ function getTaskStatus(task: ApiTask): TaskFilter {
   return 'UPCOMING';
 }
 
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 400;
+
+// Only real, stored assignment statuses — "Missed"/"Upcoming" are derived
+// client-side from deadline vs. status, not a column the backend can filter on.
+const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'review', label: 'In Review' },
+  { value: 'resubmit', label: 'Resubmit' },
+  { value: 'approved', label: 'Approved' },
+];
+
 export default function StudentTasks({
   onViewSubmission,
   onNewSubmission,
@@ -25,18 +39,36 @@ export default function StudentTasks({
   onNewSubmission: (taskId: string) => void;
 }) {
   const [tasks, setTasks] = useState<ApiTask[]>([]);
-  const [filter, setFilter] = useState<TaskFilter>('ALL');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
 
   const loadTasks = useCallback(() => {
-    return apiListTasks().then(res => {
-      const t = Array.isArray(res) ? res : (res?.data || []);
-      setTasks(Array.isArray(t) ? t : []);
+    return apiListTasks({
+      page,
+      limit,
+      search: search || undefined,
+      status: statusFilter === 'all' ? undefined : (statusFilter as ApiAssignmentStatus),
+    }).then(res => {
+      setTasks(Array.isArray(res.data) ? res.data : []);
+      setPagination(res.pagination);
     }).catch(console.error);
-  }, []);
+  }, [page, limit, search, statusFilter]);
 
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const handleSearchChange = (value: string) => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1);
+      setSearch(value);
+    }, SEARCH_DEBOUNCE_MS);
+  };
 
   const taskData = useMemo(() => {
     return tasks.map((task) => {
@@ -59,79 +91,23 @@ export default function StudentTasks({
     });
   }, [tasks]);
 
-  const filteredData = useMemo(() => {
-    if (filter === 'ALL') return taskData;
-    return taskData.filter(t => t.status === filter);
-  }, [taskData, filter]);
-
-  const completed = taskData.filter(t => t.status === 'COMPLETED').length;
-  const missed = taskData.filter(t => t.status === 'MISSED').length;
-  const inReview = taskData.filter(t => t.status === 'IN_REVIEW').length;
-  const resubmit = taskData.filter(t => t.status === 'RESUBMIT').length;
-  const upcoming = taskData.filter(t => t.status === 'UPCOMING').length;
-  const total = taskData.length || 1;
-  const completedPct = Math.round((completed / total) * 100);
-  const missedPct = Math.round((missed / total) * 100);
-  const activePct = Math.round(((inReview + resubmit) / total) * 100);
-
-  const filters: { key: TaskFilter; label: string; count: number }[] = [
-    { key: 'ALL', label: 'All Tasks', count: taskData.length },
-    { key: 'MISSED', label: 'Missed', count: missed },
-    { key: 'RESUBMIT', label: 'Resubmit', count: resubmit },
-    { key: 'IN_REVIEW', label: 'In Review', count: inReview },
-    { key: 'COMPLETED', label: 'Completed', count: completed },
-    { key: 'UPCOMING', label: 'Upcoming', count: upcoming },
-  ];
+  // Clicking anywhere on the row does what the action button would do —
+  // approved has nothing to act on, so it opens the read-only submission
+  // view; pending/resubmit open the same submit popup the button does.
+  const handleRowClick = (row: (typeof taskData)[number]) => {
+    const canAct = row.assignmentStatus === 'pending' || row.assignmentStatus === 'resubmit';
+    if (canAct) {
+      onNewSubmission(row.id);
+    } else {
+      onViewSubmission(row.id);
+    }
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">My Tasks</h1>
         <p className="text-gray-400 text-sm mt-1">Track your assigned tasks and identify missed deadlines</p>
-      </div>
-
-      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Task Progress</h3>
-          <span className="text-sm text-gold font-bold">{completedPct}% Approved</span>
-        </div>
-        <div className="flex h-3 bg-zinc-750 rounded-full overflow-hidden">
-          {completedPct > 0 && (
-            <div className="bg-green-500 transition-all duration-500" style={{ width: `${completedPct}%` }} title={`Approved: ${completed}`} />
-          )}
-          {activePct > 0 && (
-            <div className="bg-yellow-500 transition-all duration-500" style={{ width: `${activePct}%` }} title={`In review/resubmit: ${inReview + resubmit}`} />
-          )}
-          {missedPct > 0 && (
-            <div className="bg-red-500 transition-all duration-500" style={{ width: `${missedPct}%` }} title={`Missed: ${missed}`} />
-          )}
-        </div>
-        <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Approved ({completed})</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" /> In Review ({inReview})</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" /> Resubmit ({resubmit})</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Missed ({missed})</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-500 inline-block" /> Upcoming ({upcoming})</span>
-        </div>
-      </div>
-
-      <div className="flex gap-1.5 p-1 bg-zinc-850 border border-zinc-750 rounded-xl w-full sm:w-fit overflow-x-auto">
-        {filters.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`shrink-0 px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-              filter === f.key ? 'bg-gold text-black' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            {f.key === 'ALL' && <ListFilter size={13} />}
-            {f.key === 'MISSED' && <AlertTriangle size={13} />}
-            {f.key === 'RESUBMIT' && <RotateCcw size={13} />}
-            {f.key === 'IN_REVIEW' && <Clock size={13} />}
-            {f.key === 'COMPLETED' && <CheckCircle2 size={13} />}
-            {f.label} ({f.count})
-          </button>
-        ))}
       </div>
 
       <DataTable
@@ -162,8 +138,28 @@ export default function StudentTasks({
             },
           },
         ]}
-        data={filteredData}
+        data={taskData}
         searchPlaceholder="Search tasks..."
+        onSearchChange={handleSearchChange}
+        onRowClick={handleRowClick}
+        leftHeaderContent={
+          <Select
+            value={statusFilter}
+            onChange={(v) => { setPage(1); setStatusFilter(v); }}
+            options={STATUS_FILTER_OPTIONS}
+            variant="filter"
+            className="w-[160px]"
+          />
+        }
+        serverPagination={{
+          page: pagination.page,
+          limit: pagination.limit,
+          total: pagination.total,
+          totalPages: pagination.pages,
+          onPageChange: setPage,
+          limitOptions: [20, 40, 80, 100],
+          onLimitChange: (l) => { setPage(1); setLimit(l); },
+        }}
         actions={(row) => {
           const canAct = row.assignmentStatus === 'pending' || row.assignmentStatus === 'resubmit';
           const isResubmit = row.assignmentStatus === 'resubmit';

@@ -91,6 +91,8 @@ export interface Cohort {
   createdAt: string;
   allocationRunStatus: CohortAllocationRunStatus;
   allocationPublishedAt: string | null;
+  /** Only present on the create/update response — count of students auto-enrolled by batch match. */
+  studentsAutoAdded?: number;
 }
 
 export interface CreateCohortBody {
@@ -207,6 +209,10 @@ export interface TeamWithProject {
   project: TeamProjectSummary | null;
 }
 
+// Only meaningful when a preference1 has been rejected — which resubmission
+// path the mentor's decision left open for the student.
+export type PreferenceResubmissionMode = 'own_only' | 'catalog_only';
+
 // A self-proposed pref1 project in the cohort still awaiting mentor approval —
 // the admin allocation "projects under review by mentor" warning list.
 export interface CohortPendingProposal {
@@ -217,6 +223,7 @@ export interface CohortPendingProposal {
   mentorId: string | null;
   mentorName: string | null;
   reviewStatus: 'pending_review' | 'rejected';
+  resubmissionMode: PreferenceResubmissionMode | null;
 }
 
 export type TeamRequestStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
@@ -271,11 +278,14 @@ export interface TeamProjectPreferences {
   allocatedMentorName: string | null;
   preference1ReviewStatus: PreferenceReviewStatus;
   preference1ReviewNote: string | null;
+  preference1ResubmissionMode: PreferenceResubmissionMode | null;
   submittedAt: string;
 }
 
 // A team's self-proposed preference-1 project awaiting the chosen mentor's
-// approve/reject decision (GET /api/v1/teams/proposals/pending).
+// approve/resubmit/return decision (GET /api/v1/teams/proposals/pending).
+// Deliberately just id/title for the row — the full write-up is a separate
+// fetch (apiGetProposalDetail) once the mentor opens it.
 export interface PendingProposal {
   preferenceId: string;
   teamId: string;
@@ -285,9 +295,6 @@ export interface PendingProposal {
   project: {
     id: string;
     title: string;
-    description: string | null;
-    problemStatement: string | null;
-    techStack: string[];
   };
 }
 
