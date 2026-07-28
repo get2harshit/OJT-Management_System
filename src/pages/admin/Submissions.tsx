@@ -1,14 +1,14 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ArrowLeft, Eye, Loader2 } from 'lucide-react';
+import { ArrowLeft, Eye, Loader2, Users } from 'lucide-react';
 import SplitPane from '../../components/SplitPane';
 import RosterList from '../../components/RosterList';
 import SubmissionDetail from '../../components/SubmissionDetail';
 import ReviewActions from '../../components/ReviewActions';
 import Select from '../../components/Select';
-import type { PrdSubmission, DocumentType, ApiMentor, Cohort } from '../../lib/types';
-import { DOCUMENT_TYPES, DOCUMENT_TYPE_LABELS } from '../../lib/types';
+import type { PrdSubmission, ApiMentor, Cohort, SubmissionKind } from '../../lib/types';
+import { DOCUMENT_TYPE_LABELS } from '../../lib/types';
 import {
-  apiGetAllPrdSubmissions,
+  apiGetSubmissionsByStudent,
   apiGetTeamsForCohortDetailed,
   apiListMentors,
   apiGetPrdDownloadUrl,
@@ -37,6 +37,7 @@ interface RosterStudent {
   rollNumber: string | null;
   batch: string | null;
   track: string;
+  pendingReviewCount: number;
 }
 
 const PAGE_SIZE = 20;
@@ -54,14 +55,21 @@ export default function AdminSubmissions() {
   const [rosterSearch, setRosterSearch] = useState('');
   const [rosterStudents, setRosterStudents] = useState<RosterStudent[]>([]);
   const [rosterPagination, setRosterPagination] = useState({ page: 1, totalPages: 1 });
-  const [rows, setRows] = useState<Row[]>([]);
+  // Only the clicked student's submissions — fetched per-student, never the
+  // whole cohort's at once.
+  const [studentSubmissions, setStudentSubmissions] = useState<Row[]>([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [batchFilter, setBatchFilter] = useState('ALL');
   const [trackFilter, setTrackFilter] = useState('ALL');
   const [mentorFilter, setMentorFilter] = useState('ALL');
-  const [docTypeFilter, setDocTypeFilter] = useState<DocumentType | 'ALL'>('ALL');
+  // Keyed by taskId when a submission is linked to one, else a synthetic
+  // `type:<documentType>` key for older/unlinked submissions — a task's
+  // title is what identifies a submission now, not a fixed document-type
+  // enum, so filtering groups by task rather than by type.
+  const [taskFilter, setTaskFilter] = useState<string>('ALL');
 
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
@@ -101,22 +109,22 @@ export default function AdminSubmissions() {
       if (!isPublished) {
         setRosterStudents([]);
         setRosterPagination({ page: 1, totalPages: 1 });
-        setRows([]);
         return;
       }
 
-      const [teamsPage, allSubs] = await Promise.all([
-        apiGetTeamsForCohortDetailed(cohortFilter, {
-          status: 'allocated',
-          track: trackFilter !== 'ALL' ? trackFilter : undefined,
-          batch: batchFilter !== 'ALL' ? batchFilter : undefined,
-          mentorId: mentorFilter !== 'ALL' ? mentorFilter : undefined,
-          search: rosterSearch || undefined,
-          page,
-          limit: PAGE_SIZE,
-        }),
-        apiGetAllPrdSubmissions(),
-      ]);
+      // Just the visible page of students — with each one's pending-review
+      // count attached server-side (withPendingReviewCounts), so the badge
+      // needs no separate submissions fetch.
+      const teamsPage = await apiGetTeamsForCohortDetailed(cohortFilter, {
+        status: 'allocated',
+        track: trackFilter !== 'ALL' ? trackFilter : undefined,
+        batch: batchFilter !== 'ALL' ? batchFilter : undefined,
+        mentorId: mentorFilter !== 'ALL' ? mentorFilter : undefined,
+        search: rosterSearch || undefined,
+        page,
+        limit: PAGE_SIZE,
+        withPendingReviewCounts: true,
+      });
 
       const flattenedStudents = teamsPage.data.flatMap((team) =>
         team.members.map((m) => ({
@@ -125,20 +133,11 @@ export default function AdminSubmissions() {
           rollNumber: m.rollNumber,
           batch: m.batch,
           track: team.track,
+          pendingReviewCount: m.pendingReviewCount ?? 0,
         }))
       );
       setRosterStudents(flattenedStudents);
       setRosterPagination({ page: teamsPage.pagination.page, totalPages: teamsPage.pagination.totalPages });
-
-      // studentId/primaryMentorId/cohortId come back inline on every
-      // submission (a backend join against ojt_allocations) — no separate
-      // GET /allocations/:id per unique allocation needed.
-      const mapped = allSubs.reduce<Row[]>((acc, s) => {
-        if (!s.studentId || s.cohortId !== cohortFilter) return acc;
-        acc.push({ ...s, studentId: s.studentId, mentorId: s.primaryMentorId });
-        return acc;
-      }, []);
-      setRows(mapped);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load submissions');
     } finally {
@@ -151,16 +150,19 @@ export default function AdminSubmissions() {
     loadRoster();
   }, [cohortsLoaded, cohortFilter, loadRoster]);
 
-  // Pending-review count per student, shown as the roster badge.
-  const pendingCountByStudent = useMemo(() => {
-    const map = new Map<string, number>();
-    rows.forEach((r) => {
-      if (r.status === 'submitted' || r.status === 'under_review') {
-        map.set(r.studentId, (map.get(r.studentId) ?? 0) + 1);
-      }
-    });
-    return map;
-  }, [rows]);
+  // The clicked student's own submissions — backend-scoped by studentId.
+  const loadStudentSubmissions = useCallback(async (studentId: string) => {
+    setSubmissionsLoading(true);
+    try {
+      const subs = await apiGetSubmissionsByStudent(studentId);
+      setStudentSubmissions(subs.map((s) => ({ ...s, studentId, mentorId: s.primaryMentorId })));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load submissions');
+      setStudentSubmissions([]);
+    } finally {
+      setSubmissionsLoading(false);
+    }
+  }, []);
 
   const rosterItems = useMemo(
     () =>
@@ -168,9 +170,9 @@ export default function AdminSubmissions() {
         id: s.studentId,
         primaryLabel: s.fullName || s.studentId,
         secondaryLabel: [s.rollNumber, s.batch].filter(Boolean).join(' · '),
-        badge: pendingCountByStudent.get(s.studentId) ?? 0,
+        badge: s.pendingReviewCount,
       })),
-    [rosterStudents, pendingCountByStudent]
+    [rosterStudents]
   );
 
   const handleCohortChange = (value: string) => {
@@ -200,13 +202,26 @@ export default function AdminSubmissions() {
   };
 
   const selectedStudent = rosterStudents.find((s) => s.studentId === selectedStudentId);
-  const studentRows = rows
-    .filter((r) => r.studentId === selectedStudentId)
-    .filter((r) => docTypeFilter === 'ALL' || r.documentType === docTypeFilter);
-  const activeSub = rows.find((r) => r.id === selectedSubId);
+  const submissionTaskKey = (r: Row) => r.taskId ?? `type:${r.documentType}`;
+  const submissionTaskLabel = (r: Row) => r.taskTitle ?? DOCUMENT_TYPE_LABELS[r.documentType];
+  const taskFilterOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const r of studentSubmissions) {
+      const key = submissionTaskKey(r);
+      if (!seen.has(key)) seen.set(key, submissionTaskLabel(r));
+    }
+    return Array.from(seen.entries()).map(([key, label]) => ({ key, label }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentSubmissions]);
+  const studentRows = studentSubmissions.filter(
+    (r) => taskFilter === 'ALL' || submissionTaskKey(r) === taskFilter
+  );
+  const activeSub = studentSubmissions.find((r) => r.id === selectedSubId);
+  const activeSubKind: SubmissionKind = activeSub?.submissionType ?? 'document';
 
   useEffect(() => {
-    if (!activeSub) {
+    // Only a document submission has a stored file to view.
+    if (!activeSub || activeSubKind !== 'document') {
       setViewerUrl(null);
       return;
     }
@@ -238,7 +253,12 @@ export default function AdminSubmissions() {
     try {
       await apiReviewPrdSubmission(activeSub.id, status, feedback);
       showSuccess(status === 'approved' ? 'Submission approved.' : 'Changes requested — the student has been notified.');
-      await loadRoster();
+      // Refresh just this student's submissions (the reviewed status) and the
+      // roster (its pending-review badge) — not the whole cohort.
+      await Promise.all([
+        selectedStudentId ? loadStudentSubmissions(selectedStudentId) : Promise.resolve(),
+        loadRoster(),
+      ]);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to update review');
     } finally {
@@ -249,7 +269,9 @@ export default function AdminSubmissions() {
   const selectStudent = (id: string) => {
     setSelectedStudentId(id);
     setSelectedSubId(null);
-    setDocTypeFilter('ALL');
+    setTaskFilter('ALL');
+    setStudentSubmissions([]);
+    loadStudentSubmissions(id);
   };
 
   return (
@@ -335,7 +357,7 @@ export default function AdminSubmissions() {
             </div>
             <SubmissionDetail
               status={activeSub.status}
-              documentType={activeSub.documentType}
+              submissionKind={activeSubKind}
               versionNumber={activeSub.versionNumber}
               updatedAt={activeSub.updatedAt}
               documentLink={activeSub.documentLink}
@@ -370,23 +392,23 @@ export default function AdminSubmissions() {
 
             <div className="flex flex-wrap gap-1.5">
               <button
-                onClick={() => setDocTypeFilter('ALL')}
-                className={`text-xs px-3 py-1 rounded-full border transition-colors ${docTypeFilter === 'ALL' ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
+                onClick={() => setTaskFilter('ALL')}
+                className={`text-xs px-3 py-1 rounded-full border transition-colors ${taskFilter === 'ALL' ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
               >
                 All
               </button>
-              {DOCUMENT_TYPES.map((type) => (
+              {taskFilterOptions.map(({ key, label }) => (
                 <button
-                  key={type}
-                  onClick={() => setDocTypeFilter(type)}
-                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${docTypeFilter === type ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
+                  key={key}
+                  onClick={() => setTaskFilter(key)}
+                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${taskFilter === key ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
                 >
-                  {DOCUMENT_TYPE_LABELS[type]}
+                  {label}
                 </button>
               ))}
             </div>
 
-            {loading ? (
+            {submissionsLoading ? (
               <div className="flex items-center justify-center py-10">
                 <Loader2 size={22} className="animate-spin text-gray-500" />
               </div>
@@ -403,10 +425,19 @@ export default function AdminSubmissions() {
                       className="w-full flex items-center justify-between gap-3 bg-zinc-900 border border-zinc-750 hover:border-zinc-600 rounded-lg px-4 py-3 transition-colors text-left"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-white truncate">
-                          {DOCUMENT_TYPE_LABELS[row.documentType]} · v{row.versionNumber}
+                        <p className="text-sm font-medium text-white truncate flex items-center gap-2">
+                          <span className="truncate">{submissionTaskLabel(row)} · v{row.versionNumber}</span>
+                          {row.isTeam && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-gold/10 text-gold border border-gold/25 shrink-0">
+                              <Users size={10} />
+                              {row.teamName ? `Team ${row.teamName}` : 'Team'}
+                            </span>
+                          )}
                         </p>
-                        <p className="text-xs text-gray-500">{row.updatedAt.slice(0, 10)}</p>
+                        <p className="text-xs text-gray-500">
+                          {row.updatedAt.slice(0, 10)}
+                          {row.isTeam && row.submitterName && <> · by {row.submitterName}</>}
+                        </p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
                         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>

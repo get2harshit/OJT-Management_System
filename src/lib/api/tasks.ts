@@ -109,9 +109,12 @@ export type ApiTaskType = 'prd' | 'db_schema' | 'hld' | 'lld' | 'api_contract' |
 export type ApiTaskCategory = 'document_submission' | 'general' | 'link_submission';
 export type ApiTaskAssignMode = 'team' | 'individual';
 
-// Backend requires week/track/start_date/deadline/target_role/task_type/
-// category/assign_mode unconditionally now (only `title` used to be
-// required) — see createTaskSchema in task.routes.ts.
+// Backend requires week/track/start_date/deadline/target_role/category/
+// assign_mode unconditionally now (only `title` used to be required) — see
+// createTaskSchema in task.routes.ts. task_type is no longer set at
+// creation — the task's title already conveys what deliverable is expected,
+// and category (document_submission/general/link_submission) is what
+// actually drives submission behavior.
 export interface CreateTaskPayload {
   title: string;
   description?: string;
@@ -120,7 +123,6 @@ export interface CreateTaskPayload {
   start_date: string; // ISO datetime string, must be before deadline
   deadline: string; // ISO datetime string
   target_role: 'student' | 'mentor' | 'batch_manager';
-  task_type: ApiTaskType;
   category: ApiTaskCategory;
   assign_mode: ApiTaskAssignMode;
   batch?: string;

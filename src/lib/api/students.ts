@@ -2,11 +2,27 @@ import type { ApiStudent } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
 import { mapFrontendTrackToBackend } from './trackMapping';
 
-// cohortId asks the backend to resolve that cohort's allowedBatches and
-// return only students in those batches, instead of the full roster.
-export async function apiListStudents(cohortId?: string): Promise<ApiStudent[]> {
-  const url = cohortId ? `/api/v1/students?cohortId=${cohortId}` : '/api/v1/students';
-  return cachedFetch(`students:list:${cohortId || 'all'}`, 15_000, async () => {
+export interface ListStudentsFilters {
+  /** Resolves that cohort's allowedBatches and returns only students in those batches. */
+  cohortId?: string;
+  batch?: string[];
+  /** Frontend track label, e.g. "Gen AI" — mapped to the backend enum here. */
+  track?: string;
+  /** Only students whose own team allocation has actually been published to
+   * them — same rule used everywhere else a student's allocation visibility
+   * is checked. Use this instead of filtering an unscoped fetch client-side. */
+  publishedOnly?: boolean;
+}
+
+export async function apiListStudents(filters: ListStudentsFilters = {}): Promise<ApiStudent[]> {
+  const query = new URLSearchParams();
+  if (filters.cohortId) query.set('cohortId', filters.cohortId);
+  if (filters.batch && filters.batch.length > 0) query.set('batch', filters.batch.join(','));
+  if (filters.track) query.set('track', mapFrontendTrackToBackend(filters.track));
+  if (filters.publishedOnly) query.set('publishedOnly', 'true');
+  const queryString = query.toString();
+  const url = queryString ? `/api/v1/students?${queryString}` : '/api/v1/students';
+  return cachedFetch(`students:list:${queryString || 'all'}`, 15_000, async () => {
     const res = await apiFetch<{ success: boolean; data: ApiStudent[] }>(url);
     return res.data;
   });

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
-import Students from './Students';
 import OJTs from './OJTs';
 import ProjectProposals from './ProjectProposals';
 import Tasks from './Tasks';
@@ -28,10 +27,9 @@ function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
         return (
           <Dashboard
             mentorId={mentorId}
+            onNavigateToTab={setActiveTab}
           />
         );
-      case 'students':
-        return <Students />;
       case 'ojts':
         return <OJTs />;
       case 'proposals':
@@ -50,6 +48,7 @@ function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
         return (
           <Dashboard
             mentorId={mentorId}
+            onNavigateToTab={setActiveTab}
           />
         );
     }

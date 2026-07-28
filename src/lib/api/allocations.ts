@@ -1,8 +1,15 @@
-import type { TeamAllocationDetail, StudentAllocation, MentorLoadSummaryRow, AllocationPreviewEntry } from '../types';
+import type { TeamAllocationDetail, StudentAllocation, MentorLoadSummaryRow, AllocationPreviewEntry, CohortPendingProposal } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
 import { mapFrontendTrackToBackend } from './trackMapping';
 
 const ALLOCATION_TTL = 15_000;
+
+// Admin — self-proposed pref1 projects in the cohort still awaiting mentor
+// approval (the "under review by mentor" warning list on the allocation page).
+export async function apiGetCohortPendingProposals(cohortId: string): Promise<CohortPendingProposal[]> {
+  const res = await apiFetch<{ data: CohortPendingProposal[] }>(`/api/v1/teams/cohort/${cohortId}/pending-proposals`);
+  return res.data;
+}
 
 // Student — the logged-in student's own project allocation, if any.
 export async function apiGetMyAllocation(): Promise<StudentAllocation> {
@@ -35,6 +42,9 @@ interface GetTeamsForCohortParams {
   studentId?: string;
   projectId?: string;
   mentorId?: string;
+  // Attach each member's pending-review submission count — only the
+  // submissions review roster needs this badge.
+  withPendingReviewCounts?: boolean;
 }
 
 // Admin — full per-team preference detail for the allocation review panel,
@@ -54,6 +64,7 @@ export async function apiGetTeamsForCohortDetailed(
   if (params.studentId) query.set('studentId', params.studentId);
   if (params.projectId) query.set('projectId', params.projectId);
   if (params.mentorId) query.set('mentorId', params.mentorId);
+  if (params.withPendingReviewCounts) query.set('withPendingReviewCounts', 'true');
   const qs = query.toString();
   return apiFetch<TeamsForCohortPage>(`/api/v1/teams/cohort/${cohortId}/detail${qs ? `?${qs}` : ''}`);
 }

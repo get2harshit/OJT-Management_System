@@ -183,6 +183,9 @@ export interface TeamMemberDetail {
   studentId: string;
   fullName: string | null;
   rollNumber: string | null;
+  // Only present when the caller asked for it (submissions review roster) —
+  // this mentee's count of pending-review submissions, for the badge.
+  pendingReviewCount?: number;
 }
 
 export interface TeamProjectSummary {
@@ -194,10 +197,26 @@ export interface TeamProjectSummary {
 
 export interface TeamWithProject {
   teamId: string;
+  /** The team's number/name, e.g. "G1". */
+  name: string | null;
+  /** Cohort this team belongs to — lets the mentor OJTs page filter by cohort. */
+  cohortId: string;
   track: string;
   isIndividual: boolean;
   members: TeamMemberDetail[];
   project: TeamProjectSummary | null;
+}
+
+// A self-proposed pref1 project in the cohort still awaiting mentor approval —
+// the admin allocation "projects under review by mentor" warning list.
+export interface CohortPendingProposal {
+  teamId: string;
+  teamName: string | null;
+  members: { studentId: string; fullName: string | null }[];
+  projectTitle: string | null;
+  mentorId: string | null;
+  mentorName: string | null;
+  reviewStatus: 'pending_review' | 'rejected';
 }
 
 export type TeamRequestStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
@@ -297,7 +316,7 @@ export interface TeamAllocationDetail {
   teamId: string;
   teamName: string | null;
   track: string;
-  members: { studentId: string; fullName: string | null; batch: string | null; email: string | null; rollNumber: string | null }[];
+  members: { studentId: string; fullName: string | null; batch: string | null; email: string | null; rollNumber: string | null; pendingReviewCount?: number }[];
   tier: string;
   submittedAt: string;
   preference1: { projectId: string; projectTitle: string; mentorId: string | null; mentorName: string | null };

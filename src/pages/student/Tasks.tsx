@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, ListFilter, Loader2, RotateCcw, Upload } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, ListFilter, RotateCcw, Upload } from 'lucide-react';
 import DataTable from '../../components/DataTable';
-import { apiListTasks, apiSubmitTask, apiResubmitTask } from '../../lib/api/tasks';
+import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask } from '../../lib/api/tasks';
 
 type TaskFilter = 'ALL' | 'MISSED' | 'IN_REVIEW' | 'RESUBMIT' | 'COMPLETED' | 'UPCOMING';
@@ -26,7 +26,6 @@ export default function StudentTasks({
 }) {
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [filter, setFilter] = useState<TaskFilter>('ALL');
-  const [savingId, setSavingId] = useState<string | null>(null);
 
   const loadTasks = useCallback(() => {
     return apiListTasks().then(res => {
@@ -38,24 +37,6 @@ export default function StudentTasks({
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
-
-  // For a general/link_submission task (no document to upload), Submit and
-  // Resubmit hit the workflow endpoints directly instead of routing through
-  // the Submissions tab — a document_submission task's transition happens
-  // automatically server-side the moment the document is uploaded there.
-  const handleInlineSubmit = async (task: ApiTask, assignmentId: string, isResubmit: boolean) => {
-    setSavingId(assignmentId);
-    try {
-      if (isResubmit) {
-        await apiResubmitTask(task.id, assignmentId);
-      } else {
-        await apiSubmitTask(task.id, assignmentId);
-      }
-      await loadTasks();
-    } finally {
-      setSavingId(null);
-    }
-  };
 
   const taskData = useMemo(() => {
     return tasks.map((task) => {
@@ -184,10 +165,8 @@ export default function StudentTasks({
         data={filteredData}
         searchPlaceholder="Search tasks..."
         actions={(row) => {
-          const isDocumentTask = row.category === 'document_submission';
           const canAct = row.assignmentStatus === 'pending' || row.assignmentStatus === 'resubmit';
           const isResubmit = row.assignmentStatus === 'resubmit';
-          const saving = savingId === row.assignmentId;
 
           if (row.assignmentStatus === 'approved') {
             return (
@@ -198,49 +177,32 @@ export default function StudentTasks({
             );
           }
 
-          if (isDocumentTask) {
-            // Document tasks always route through the Submissions tab —
-            // uploading there is what drives the pending/resubmit -> review
-            // transition automatically.
-            if (canAct) {
-              return (
-                <button
-                  onClick={() => onNewSubmission(row.id)}
-                  className="p-1 px-2.5 bg-zinc-800 hover:bg-zinc-700 text-gray-300 text-xs font-semibold rounded border border-zinc-700 transition-all flex items-center gap-1"
-                  title={isResubmit ? 'Resubmit Deliverable' : 'Submit Deliverable'}
-                >
-                  <Upload size={13} />
-                  {isResubmit ? 'Resubmit' : 'Submit'}
-                </button>
-              );
-            }
+          // Every task — document, text (general) or link — is submitted from
+          // the same popup on the Submissions tab, which shows the right input
+          // for the task's category and drives the pending/resubmit -> review
+          // transition on submit.
+          if (canAct) {
             return (
               <button
-                onClick={() => onViewSubmission(row.id)}
+                onClick={() => onNewSubmission(row.id)}
                 className="p-1 px-2.5 bg-zinc-800 hover:bg-zinc-700 text-gray-300 text-xs font-semibold rounded border border-zinc-700 transition-all flex items-center gap-1"
-                title="View Submission"
+                title={isResubmit ? 'Resubmit' : 'Submit'}
               >
-                View Submission
-              </button>
-            );
-          }
-
-          // Non-document tasks: no file to upload, call the workflow
-          // endpoints directly.
-          if (canAct && row.assignmentId) {
-            return (
-              <button
-                onClick={() => handleInlineSubmit(tasks.find(t => t.id === row.id)!, row.assignmentId!, isResubmit)}
-                disabled={saving}
-                className="p-1 px-2.5 bg-zinc-800 hover:bg-zinc-700 text-gray-300 text-xs font-semibold rounded border border-zinc-700 transition-all flex items-center gap-1 disabled:opacity-50"
-              >
-                {saving ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                <Upload size={13} />
                 {isResubmit ? 'Resubmit' : 'Submit'}
               </button>
             );
           }
 
-          return <span className="text-xs text-gray-500">Waiting for review</span>;
+          return (
+            <button
+              onClick={() => onViewSubmission(row.id)}
+              className="p-1 px-2.5 bg-zinc-800 hover:bg-zinc-700 text-gray-300 text-xs font-semibold rounded border border-zinc-700 transition-all flex items-center gap-1"
+              title="View Submission"
+            >
+              View Submission
+            </button>
+          );
         }}
       />
     </div>

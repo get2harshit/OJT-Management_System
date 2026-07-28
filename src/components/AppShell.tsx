@@ -39,7 +39,6 @@ function getDisplayName(user: { fullName?: string; email?: string } | null): str
 // desktop, hamburger-triggered off-canvas drawer below the lg breakpoint.
 export default function AppShell({ panel, activeTab, onTabChange, onLogout, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { theme, toggleTheme } = useTheme();
@@ -67,14 +66,6 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [profileOpen]);
 
-  // Auto-collapses the sidebar to its icon rail the moment any nav item is
-  // picked, so the content area gets the space back immediately — the user
-  // can still pin it back open with the collapse toggle at any time.
-  const handleTabChange = (tab: string) => {
-    setCollapsed(true);
-    onTabChange(tab);
-  };
-
   return (
     <div className="flex h-screen bg-black">
       {mobileOpen && (
@@ -87,17 +78,17 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
       <Sidebar
         panel={panel}
         activeTab={activeTab}
-        onTabChange={handleTabChange}
+        onTabChange={onTabChange}
         onLogout={onLogout}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
-        collapsed={collapsed}
-        onToggleCollapse={() => setCollapsed(c => !c)}
       />
 
-      {/* The sidebar is fixed (so it stays put while this pane scrolls), which
-          takes it out of normal flow — this margin reserves its width instead. */}
-      <div className={`flex-1 flex flex-col min-w-0 min-h-0 transition-all duration-300 ${collapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
+      {/* The sidebar is fixed (out of normal flow); this margin reserves its
+          resting icon-rail width. On hover it flies out to the full 64 as an
+          overlay on top of this content — the margin deliberately stays at 16
+          so the page never shifts under the pointer. */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 lg:ml-16">
         <header className="flex items-center justify-between h-16 px-4 sm:px-6 bg-black">
           <div className="flex items-center gap-3">
             <button

@@ -166,7 +166,7 @@ export default function ProjectPicker() {
             team={status.team}
             preferences={status.projectPreferences}
             availableMentors={availableMentors}
-            mentorsLoading={mentorsLoading}
+            availableProjects={availableProjects}
             onResubmitted={() => refreshStatus(cohortId)}
           />
         ) : (
@@ -1102,33 +1102,38 @@ function SelfProjectProposer({
   );
 }
 
-// A fresh preference-1 proposal after a mentor rejection — propose a new
-// self project and pick a mentor for it, then resubmit for review.
-// Preference 2 is untouched; only preference 1 is ever replaced this way.
+// A fresh preference-1 after a mentor rejection. The student can EITHER
+// propose a new own project (goes back to that same mentor for review) OR
+// pick a recommended catalog project (approved immediately) — but they can
+// NOT change the mentor here; it stays whoever reviewed. Preference 2 is
+// untouched; only preference 1 is ever replaced this way.
 function ResubmitPreference1Panel({
   cohortId,
-  availableMentors,
-  mentorsLoading,
-  preference2MentorId,
+  catalogProjects,
+  pref1MentorName,
+  preference2Id,
   onResubmitted,
 }: {
   cohortId: string;
-  availableMentors: TeamAvailableMentor[];
-  mentorsLoading: boolean;
-  preference2MentorId: string | null;
+  catalogProjects: TeamProject[];
+  pref1MentorName: string | null;
+  preference2Id: string | null;
   onResubmitted: () => void;
 }) {
   const { showError, showSuccess } = useToast();
+  const [mode, setMode] = useState<'own' | 'recommended'>('own');
   const [newProject, setNewProject] = useState<TeamProject | null>(null);
-  const [newMentorId, setNewMentorId] = useState<string | null>(null);
+  const [selectedCatalogId, setSelectedCatalogId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const chosenProjectId = mode === 'own' ? newProject?.id ?? null : selectedCatalogId;
+
   const handleResubmit = async () => {
-    if (!newProject || !newMentorId) return;
+    if (!chosenProjectId) return;
     setSubmitting(true);
     try {
-      await apiResubmitPreference1(cohortId, newProject.id, newMentorId);
-      showSuccess('New proposal submitted for review.');
+      await apiResubmitPreference1(cohortId, chosenProjectId);
+      showSuccess(mode === 'own' ? 'New proposal submitted for review.' : 'Recommended project selected.');
       onResubmitted();
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to resubmit your project preference');
@@ -1139,23 +1144,50 @@ function ResubmitPreference1Panel({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SelfProjectProposer cohortId={cohortId} selfProject={newProject} onCreated={setNewProject} />
-        <MentorPicker
-          label="New preference 1 mentor"
-          mentors={availableMentors}
-          loading={mentorsLoading}
-          selectedId={newMentorId}
-          onSelect={setNewMentorId}
-          excludeId={preference2MentorId}
-        />
+      {/* Mentor stays the same — shown read-only so it's clear it can't change. */}
+      <div className="flex items-center gap-2 text-sm bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2">
+        <UserCheck size={15} className="text-gold shrink-0" />
+        <span className="text-gray-400">Mentor (can't be changed):</span>
+        <span className="text-white font-medium">{pref1MentorName ?? '—'}</span>
       </div>
+
+      {/* Choice: resubmit own project vs pick from recommended. */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setMode('own')}
+          className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${
+            mode === 'own' ? 'bg-gold/10 border-gold text-gold' : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-zinc-600'
+          }`}
+        >
+          Propose own project
+        </button>
+        <button
+          onClick={() => setMode('recommended')}
+          className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${
+            mode === 'recommended' ? 'bg-gold/10 border-gold text-gold' : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-zinc-600'
+          }`}
+        >
+          Pick from recommended
+        </button>
+      </div>
+
+      {mode === 'own' ? (
+        <SelfProjectProposer cohortId={cohortId} selfProject={newProject} onCreated={setNewProject} />
+      ) : (
+        <ExistingProjectPicker
+          catalogProjects={catalogProjects}
+          selectedId={selectedCatalogId}
+          onSelect={setSelectedCatalogId}
+          excludeId={preference2Id}
+        />
+      )}
+
       <button
         onClick={handleResubmit}
-        disabled={!newProject || !newMentorId || submitting}
+        disabled={!chosenProjectId || submitting}
         className="py-3 px-6 bg-gold text-black font-semibold rounded-lg shadow-xl shadow-black/40 hover:bg-gold-hover hover:shadow-lg hover:shadow-gold/10 transition-all duration-200 disabled:opacity-40 disabled:hover:shadow-none"
       >
-        {submitting ? 'Submitting...' : 'Resubmit for Review'}
+        {submitting ? 'Submitting...' : mode === 'own' ? 'Resubmit for Review' : 'Select This Project'}
       </button>
     </div>
   );
@@ -1177,7 +1209,7 @@ function SummaryScreen({
   team,
   preferences,
   availableMentors,
-  mentorsLoading,
+  availableProjects,
   onResubmitted,
 }: {
   cohortId: string;
@@ -1195,11 +1227,12 @@ function SummaryScreen({
     preference1ReviewNote: string | null;
   };
   availableMentors: TeamAvailableMentor[];
-  mentorsLoading: boolean;
+  availableProjects: TeamProject[];
   onResubmitted: () => void;
 }) {
   const mentor1 = availableMentors.find(m => m.id === preferences.preference1MentorId) ?? null;
   const mentor2 = availableMentors.find(m => m.id === preferences.preference2MentorId) ?? null;
+  const catalogProjects = availableProjects.filter(p => p.projectBy === 'PST');
   const [selfProject, setSelfProject] = useState<Project | null>(null);
   const [existingProject, setExistingProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1372,14 +1405,14 @@ function SummaryScreen({
           <div>
             <h2 className="text-white font-semibold">Submit a new preference 1</h2>
             <p className="text-gray-400 text-sm mt-1">
-              Your mentor rejected this project. Propose a new one and pick a mentor to resubmit for review.
+              Your mentor rejected this project. Propose a new one, or pick a recommended project. Your mentor stays the same.
             </p>
           </div>
           <ResubmitPreference1Panel
             cohortId={cohortId}
-            availableMentors={availableMentors}
-            mentorsLoading={mentorsLoading}
-            preference2MentorId={preferences.preference2MentorId}
+            catalogProjects={catalogProjects}
+            pref1MentorName={mentor1?.fullName ?? null}
+            preference2Id={preferences.preference2Id}
             onResubmitted={onResubmitted}
           />
         </div>

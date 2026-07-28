@@ -8,7 +8,8 @@ import Button from '../../components/Button';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import ActionsMenu from '../../components/ActionsMenu';
-import { TRACKS } from '../../lib/constants';
+import { TRACKS, TRACK_DOT_COLORS } from '../../lib/constants';
+import { mapBackendTrackToFrontend } from '../../lib/api/trackMapping';
 import { useToast } from '../../toast';
 import { apiListCohorts } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
@@ -228,11 +229,13 @@ export default function AdminTasks() {
     });
 
   const selectedAssignee = allAssignees.find(a => a.id === selectedAssigneeId);
+  // Same status palette the rest of the app uses (colour-500 at low opacity),
+  // not the darker 900-based shades that read off-theme here.
   const statusConfig: Record<ApiAssignmentStatus, { label: string; icon: typeof Circle; cls: string }> = {
     pending: { label: 'Pending', icon: Circle, cls: 'text-zinc-400 bg-zinc-800 border-zinc-700' },
-    review: { label: 'In Review', icon: Clock, cls: 'text-blue-400 bg-blue-900/20 border-blue-800' },
-    resubmit: { label: 'Resubmit', icon: Clock, cls: 'text-orange-400 bg-orange-900/20 border-orange-800' },
-    approved: { label: 'Approved', icon: CheckCircle2, cls: 'text-green-400 bg-green-900/20 border-green-800' },
+    review: { label: 'In Review', icon: Clock, cls: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+    resubmit: { label: 'Resubmit', icon: Clock, cls: 'text-orange-400 bg-orange-500/10 border-orange-500/20' },
+    approved: { label: 'Approved', icon: CheckCircle2, cls: 'text-green-400 bg-green-500/10 border-green-500/20' },
   };
 
   return (
@@ -242,28 +245,34 @@ export default function AdminTasks() {
           <h1 className="text-2xl font-bold text-white">Week-wise Goals & Tasks</h1>
           <p className="text-gray-400 text-sm mt-1">Map out structured goals, viva checkpoints, and sub-tasks for each tech stack track</p>
         </div>
-        <div className="flex items-center gap-3">
+        {/* Fixed-width filters so selecting a longer option (e.g. "In
+            Progress") doesn't resize the control and shove the whole row
+            around — the layout stays put as filters change. */}
+        <div className="flex flex-wrap items-center gap-2.5">
           <Select
             value={selectedCohortId}
             onChange={(v) => { setPage(1); setSelectedCohortId(v as string); }}
             variant="filter"
             placeholder="Select cohort"
+            className="w-[168px]"
             options={cohorts.map(c => ({ value: c.id, label: getCohortLabel(c) }))}
           />
           <Select
             value={roleFilter}
-            onChange={setRoleFilter} 
+            onChange={setRoleFilter}
             variant="filter"
+            className="w-[140px]"
             options={[
               { value: 'all', label: 'All Targets' },
               { value: 'student', label: 'Students Only' },
               { value: 'mentor', label: 'Mentors Only' },
             ]}
           />
-          <Select 
-            value={statusFilter} 
-            onChange={setStatusFilter} 
+          <Select
+            value={statusFilter}
+            onChange={setStatusFilter}
             variant="filter"
+            className="w-[140px]"
             options={[
               { value: 'all', label: 'All Status' },
               { value: 'pending', label: 'Pending' },
@@ -274,12 +283,11 @@ export default function AdminTasks() {
           <Button
             onClick={() => openProgressModal()}
             leftIcon={<User size={16} />}
-            variant="ghost"
-            className="hover:scale-105 border border-zinc-700 text-gray-300"
+            variant="secondary"
           >
             Progress Board
           </Button>
-          <Button onClick={() => navigate('/admin/dashboard/tasks/create')} leftIcon={<Plus size={18} />} className="hover:scale-105">
+          <Button onClick={() => navigate('/admin/dashboard/tasks/create')} leftIcon={<Plus size={18} />}>
             Create Task / Goal
           </Button>
         </div>
@@ -296,11 +304,22 @@ export default function AdminTasks() {
             )
           },
           {
-            key: 'track', header: 'Tech Stack/Track', render: (row) => (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-gray-300 font-medium border border-zinc-700">
-                {row.track || 'All'}
-              </span>
-            )
+            key: 'track', header: 'Tech Stack/Track', render: (row) => {
+              if (!row.track) {
+                return <span className="text-xs text-gray-500">All</span>;
+              }
+              // The row carries the raw backend enum (product_development) —
+              // map it to the readable label + the same track colour used
+              // everywhere else, instead of showing the snake_case string.
+              const label = mapBackendTrackToFrontend(row.track);
+              const color = TRACK_DOT_COLORS[label];
+              return (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-200 whitespace-nowrap">
+                  <span className={`w-1.5 h-1.5 rounded-full ${color?.dot ?? 'bg-gray-400'}`} />
+                  {label}
+                </span>
+              );
+            }
           },
           {
             key: 'title', header: 'Task Title', render: (row) => (
@@ -313,7 +332,7 @@ export default function AdminTasks() {
             render: (row) => {
               const isStudent = row.target_role === 'student';
               return (
-                <span className={`inline-flex items-center gap-1.5 text-[10px] uppercase font-bold ${isStudent ? 'text-blue-400' : 'text-purple-400'}`}>
+                <span className={`inline-flex items-center gap-1.5 text-[11px] uppercase font-bold ${isStudent ? 'text-blue-400' : 'text-purple-400'}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${isStudent ? 'bg-blue-400' : 'bg-purple-400'}`} />
                   {isStudent ? 'Student' : 'Mentor'}
                 </span>
@@ -335,12 +354,12 @@ export default function AdminTasks() {
                   onClick={() => openProgressModal()}
                   title="Click to view detailed progress"
                 >
-                  <span className={`inline-flex items-center gap-1.5 text-[10px] whitespace-nowrap uppercase font-bold ${style.text}`}>
+                  <span className={`inline-flex items-center gap-1.5 text-[11px] whitespace-nowrap uppercase font-bold ${style.text}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                     {label}
                   </span>
                   {row.progressText !== '-' && (
-                    <span className="text-[10px] text-gray-500 font-mono pl-1">{row.progressText} done</span>
+                    <span className="text-[11px] text-gray-500 font-mono pl-1">{row.progressText} done</span>
                   )}
                 </div>
               );
@@ -360,16 +379,16 @@ export default function AdminTasks() {
               const extraCount = total - displayed.length;
 
               return (
-                <div className="max-w-[220px] flex flex-wrap gap-1.5 py-1">
+                <div className="max-w-[240px] flex flex-wrap gap-1.5 py-1">
                   {displayed.length === 0 && total === 0 && (
-                    <span className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap">
+                    <span className="text-[11px] bg-zinc-750 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap">
                       All
                     </span>
                   )}
                   {displayed.map((a, i) => (
                     <span
                       key={i}
-                      className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap truncate max-w-[100px] cursor-pointer hover:bg-gold/10 hover:text-gold hover:border-gold/30 transition-colors"
+                      className="text-[11px] bg-zinc-750 text-gray-200 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap truncate max-w-[110px] cursor-pointer hover:bg-gold/10 hover:text-gold hover:border-gold/30 transition-colors"
                       title={`Click to view ${a.fullName || a.assigneeId}'s progress`}
                       onClick={() => openProgressModal(a.assigneeId)}
                     >
@@ -378,7 +397,7 @@ export default function AdminTasks() {
                   ))}
                   {extraCount > 0 && (
                     <span
-                      className="text-[10px] bg-zinc-800/50 text-gray-400 px-2 py-0.5 rounded border border-zinc-800 whitespace-nowrap cursor-pointer hover:bg-gold/10 hover:text-gold hover:border-gold/30 transition-colors"
+                      className="text-[11px] bg-zinc-800 text-gray-400 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap cursor-pointer hover:bg-gold/10 hover:text-gold hover:border-gold/30 transition-colors"
                       onClick={() => openProgressModal()}
                     >
                       +{extraCount} more
@@ -492,10 +511,10 @@ export default function AdminTasks() {
           <div className="flex gap-0 h-[65vh] -mx-6 -mb-6 overflow-hidden rounded-b-xl">
 
             {/* Left sidebar: assignee list */}
-            <div className="w-60 shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col">
+            <div className="w-60 shrink-0 bg-zinc-900 border-r border-zinc-750 flex flex-col">
               {/* Role tabs */}
               <div className="px-2 pt-3 pb-2">
-                <div className="flex gap-1 bg-zinc-800/80 rounded-lg p-1">
+                <div className="flex gap-1 bg-zinc-800 rounded-lg p-1">
                   {(['all', 'student', 'mentor'] as const).map(r => (
                     <button
                       key={r}
@@ -561,11 +580,11 @@ export default function AdminTasks() {
             </div>
 
             {/* Right panel: selected assignee's tasks */}
-            <div className="flex-1 flex flex-col overflow-hidden bg-zinc-950">
+            <div className="flex-1 flex flex-col overflow-hidden bg-zinc-900">
               {selectedAssignee ? (
                 <>
                   {/* Header */}
-                  <div className="px-6 py-4 border-b border-zinc-800 flex items-center gap-4 bg-zinc-900/50">
+                  <div className="px-6 py-4 border-b border-zinc-750 flex items-center gap-4 bg-zinc-850/50">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-base font-bold ${
                       selectedAssignee.role === 'mentor'
                         ? 'bg-purple-500/20 border border-purple-500/40 text-purple-300'
@@ -588,16 +607,23 @@ export default function AdminTasks() {
                         {selectedAssignee.tasks.length} task{selectedAssignee.tasks.length !== 1 ? 's' : ''} assigned
                       </p>
                     </div>
-                    {/* Quick stat pills */}
-                    <div className="ml-auto flex gap-3">
+                    {/* Quick stat pills — a zero-count status is muted so the
+                        eye lands on what actually needs attention. */}
+                    <div className="ml-auto flex gap-2">
                       {(['pending', 'review', 'resubmit', 'approved'] as const).map(s => {
                         const count = selectedAssignee.tasks.filter(t => t.status === s).length;
                         const cfg = statusConfig[s];
                         const Icon = cfg.icon;
+                        const muted = count === 0;
                         return (
-                          <div key={s} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold ${cfg.cls}`}>
-                            <Icon size={13} />
-                            <span>{count} {cfg.label}</span>
+                          <div
+                            key={s}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold ${
+                              muted ? 'text-zinc-600 bg-zinc-850 border-zinc-750' : cfg.cls
+                            }`}
+                          >
+                            <Icon size={12} />
+                            <span><span className="font-bold">{count}</span> {cfg.label}</span>
                           </div>
                         );
                       })}
@@ -615,7 +641,7 @@ export default function AdminTasks() {
                         return (
                           <div
                             key={idx}
-                            className="flex items-center justify-between bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-4 hover:border-zinc-600 transition-colors group"
+                            className="flex items-center justify-between bg-zinc-850 border border-zinc-750 rounded-xl px-5 py-4 hover:border-gold/30 transition-colors group"
                           >
                             <div className="flex items-center gap-4 min-w-0">
                               <Icon size={18} className={cfg.cls.split(' ')[0]} strokeWidth={2} />
