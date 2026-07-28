@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus, UserCheck } from 'lucide-react';
+import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus, UserCheck, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import { TRACKS } from '../../lib/constants';
 import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project, PreferenceReviewStatus, ProjectLevel } from '../../lib/types';
@@ -227,8 +227,10 @@ function TrackAndTeammateScreen({
   const [searchQuery, setSearchQuery] = useState('');
   const [sendingTo, setSendingTo] = useState<string | null>(null);
   const [creatingIndividual, setCreatingIndividual] = useState(false);
+  const [page, setPage] = useState(1);
 
   const SEND_QUOTA = 3;
+  const PAGE_SIZE = 12;
   const quotaFull = pendingSentRequests.length >= SEND_QUOTA;
 
   const fetchTeammates = useCallback(async () => {
@@ -237,6 +239,7 @@ function TrackAndTeammateScreen({
     try {
       const res = await apiGetAvailableTeammates(cohortId);
       setTeammates(res);
+      setPage(1);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load available teammates');
       setTeammates([]);
@@ -302,6 +305,10 @@ function TrackAndTeammateScreen({
     if (!aPending && bPending) return 1;
     return 0;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredTeammates.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedTeammates = filteredTeammates.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   if (!track) {
     return (
@@ -381,7 +388,10 @@ function TrackAndTeammateScreen({
         <input
           type="text"
           value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
+          onChange={e => {
+            setSearchQuery(e.target.value);
+            setPage(1);
+          }}
           placeholder="Search by name or roll number..."
           className="w-full bg-zinc-850 border border-zinc-750 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
         />
@@ -393,7 +403,7 @@ function TrackAndTeammateScreen({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTeammates.map(t => {
+          {paginatedTeammates.map(t => {
             const pendingReq = pendingSentRequests.find(r => r.receiverId === t.studentId);
             return (
               <div
@@ -440,6 +450,45 @@ function TrackAndTeammateScreen({
               <p className="text-gray-400">No available teammates found.</p>
             </div>
           )}
+        </div>
+      )}
+
+      {!loading && totalPages > 1 && (
+        <div className="flex items-center justify-between flex-wrap gap-3 pt-1">
+          <span className="text-xs text-gray-500">
+            Showing {(currentPage - 1) * PAGE_SIZE + 1} - {Math.min(currentPage * PAGE_SIZE, filteredTeammates.length)} of {filteredTeammates.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(1)}
+              disabled={currentPage === 1}
+              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+            >
+              <ChevronsLeft size={16} />
+            </button>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-sm text-gray-400">{currentPage} / {totalPages}</span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+            >
+              <ChevronRight size={16} />
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
+            >
+              <ChevronsRight size={16} />
+            </button>
+          </div>
         </div>
       )}
     </div>
