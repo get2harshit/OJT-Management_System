@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, ArrowLeft, UserCog, UserPlus, Gauge, RotateCcw } from 'lucide-react';
+import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, ArrowLeft, UserCog, UserPlus, Gauge, RotateCcw, AlertTriangle } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
-import type { TeamAllocationDetail, MentorLoadSummaryRow, CohortAllocationRunStatus, Project, StudentWithoutTeam, AllocationPreviewEntry } from '../../../lib/types';
+import type { TeamAllocationDetail, MentorLoadSummaryRow, CohortAllocationRunStatus, Project, StudentWithoutTeam, AllocationPreviewEntry, CohortPendingProposal } from '../../../lib/types';
 import { TRACKS } from '../../../lib/constants';
 import {
   apiGetTeamsForCohortDetailed,
@@ -22,6 +22,7 @@ import {
   apiGetStudentsWithoutTeam,
   apiCreateManualTeam,
   apiGetProjectsForCohortPage,
+  apiGetCohortPendingProposals,
 } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { formatDateDisplay } from '../../../lib/utils';
@@ -92,6 +93,11 @@ export default function CohortAllocationsPage() {
   const [mentorPickerLoading, setMentorPickerLoading] = useState(false);
   const [showLoadSummary, setShowLoadSummary] = useState(false);
   const [detailTeam, setDetailTeam] = useState<TeamAllocationDetail | null>(null);
+  // Self-proposed pref1 projects still awaiting mentor approval — teams still
+  // go into allocation (on their pref2), but the admin is warned these are
+  // pending so they can chase the mentor before publishing.
+  const [pendingProposals, setPendingProposals] = useState<CohortPendingProposal[]>([]);
+  const [showProposalsModal, setShowProposalsModal] = useState(false);
 
   // Run Allocation preview — computed server-side, held here until Draft
   // commits it. Nothing here is persisted; a manual reassignment just
@@ -162,10 +168,12 @@ export default function CohortAllocationsPage() {
   const fetchAuxData = useCallback(async () => {
     if (!cohortId) return;
     try {
-      const [cohort, runnable] = await Promise.all([
+      const [cohort, runnable, proposals] = await Promise.all([
         apiGetCohort(cohortId, false),
         apiGetRunnableTeamCount(cohortId),
+        apiGetCohortPendingProposals(cohortId),
       ]);
+      setPendingProposals(proposals);
       setCohortLabel(getCohortLabel(cohort));
       setCohortBatches(cohort.allowedBatches ?? []);
       // Falls back to 'pending' if talking to a backend deployment that
@@ -528,6 +536,11 @@ export default function CohortAllocationsPage() {
     pref2Title: t.preference2.projectTitle,
     pref2Mentor: t.preference2.mentorName,
     status: t.allocationStatus,
+    // A self-proposed pref1's mentor-review state — surfaced as an extra tag
+    // next to the allocation status (still under review, or rejected → the
+    // team ends up on its 2nd preference).
+    pref1UnderReview: t.preference1ReviewStatus === 'pending_review',
+    pref1Rejected: t.preference1ReviewStatus === 'rejected',
     overriddenAt: t.overriddenAt,
     allocatedPrefNum: t.allocatedProjectId === t.preference1.projectId ? 1 : t.allocatedProjectId === t.preference2.projectId ? 2 : null,
     allocatedProjectTitle:
@@ -545,6 +558,9 @@ export default function CohortAllocationsPage() {
   // Reverse Allocation stays locked forever once this is true.
   const everPublished = !!publishedAt;
   const mutationInFlight = running || reversing || publishing;
+
+  const proposalPendingCount = pendingProposals.filter((p) => p.reviewStatus === 'pending_review').length;
+  const proposalRejectedCount = pendingProposals.filter((p) => p.reviewStatus === 'rejected').length;
 
   return (
     <div className="space-y-6">
@@ -662,6 +678,34 @@ export default function CohortAllocationsPage() {
           </button>
         </div>
       </div>
+
+      {/* Some teams proposed their own project and its mentor review isn't a
+          clean approval — still pending, or rejected. Either way the team is
+          allocated its 2nd preference (not its own project). This warns the
+          admin before they draft/publish, with a View of exactly who's in
+          which state. */}
+      {pendingProposals.length > 0 && (
+        <div className="flex items-center justify-between gap-3 flex-wrap bg-amber-500/10 border border-amber-500/25 rounded-lg px-4 py-3">
+          <div className="flex items-center gap-2 text-amber-300 text-sm">
+            <AlertTriangle size={16} className="shrink-0" />
+            <span>
+              {[
+                proposalPendingCount > 0 ? `${proposalPendingCount} under review by mentor` : null,
+                proposalRejectedCount > 0 ? `${proposalRejectedCount} rejected by mentor` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+              {' '}— these teams' own projects aren't approved, so they're on their 2nd preference.
+            </span>
+          </div>
+          <button
+            onClick={() => setShowProposalsModal(true)}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-200 border border-amber-500/30 hover:bg-amber-500/25 transition-colors shrink-0"
+          >
+            View
+          </button>
+        </div>
+      )}
 
       {previewMode && (
         <p className="text-xs text-gray-400 -mt-2">
@@ -809,6 +853,24 @@ export default function CohortAllocationsPage() {
                         Overridden
                       </span>
                     )}
+                    {row.pref1UnderReview && (
+                      <span
+                        title="This team proposed its own project — awaiting the mentor's approval"
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-400"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        Under review by mentor
+                      </span>
+                    )}
+                    {row.pref1Rejected && (
+                      <span
+                        title="This team's self-proposed project was rejected by the mentor — it's allocated its 2nd preference instead"
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-red-400"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                        Proposal rejected
+                      </span>
+                    )}
                   </span>
                   {row.allocatedProjectTitle && (
                     <p className="text-gray-400 text-xs">
@@ -870,6 +932,48 @@ export default function CohortAllocationsPage() {
         />
         </div>
       )}
+
+      <Modal open={showProposalsModal} onClose={() => setShowProposalsModal(false)} title="Self-proposed projects — mentor review">
+        <div className="space-y-3">
+          <p className="text-xs text-gray-400">
+            These teams proposed their own project. Until the mentor approves it, the team is allocated its second preference instead.
+          </p>
+          {pendingProposals.length === 0 ? (
+            <p className="text-gray-500 text-sm text-center py-6">No self-proposed projects awaiting or failing review.</p>
+          ) : (
+            pendingProposals.map((p) => {
+              const memberNames = p.members.map((m) => m.fullName || m.studentId).join(', ');
+              const rejected = p.reviewStatus === 'rejected';
+              return (
+                <div key={p.teamId} className="bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <p className="text-sm font-semibold text-white flex items-center gap-2">
+                      <Users2 size={14} className="text-gold shrink-0" />
+                      {p.teamName ?? 'Team'}{memberNames && <span className="text-gray-400 font-normal">({memberNames})</span>}
+                    </p>
+                    <span
+                      className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                        rejected
+                          ? 'text-red-400 bg-red-500/10 border-red-500/25'
+                          : 'text-amber-400 bg-amber-500/10 border-amber-500/25'
+                      }`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${rejected ? 'bg-red-400' : 'bg-amber-400'}`} />
+                      {rejected ? 'Rejected' : 'Under review'}
+                    </span>
+                  </div>
+                  {p.projectTitle && (
+                    <p className="text-xs text-gray-400 mt-1">Project: <span className="text-gray-300">{p.projectTitle}</span></p>
+                  )}
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    With mentor: <span className="text-gray-300">{p.mentorName ?? '—'}</span>
+                  </p>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </Modal>
 
       <Modal open={!!detailTeam} onClose={() => setDetailTeam(null)} title="Team Detail">
         {detailTeam && (

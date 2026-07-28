@@ -1,4 +1,4 @@
-import type { PrdSubmission, PrdStatus, DocumentType } from '../types';
+import type { PrdSubmission, PrdStatus, SubmissionKind } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
 
 const SUBMISSIONS_TTL = 15_000;
@@ -10,9 +10,29 @@ export async function apiGetPrdSubmissionsByAllocation(allocationId: string): Pr
   );
 }
 
+export interface MySubmissions {
+  // Whether the student is in a real (>1 member) team — gates the "Team"
+  // section. Solo / individual-OJT students don't get one.
+  isInTeam: boolean;
+  // The team's name/number (e.g. "G1"), shown as the Team section label.
+  teamName: string | null;
+  submissions: PrdSubmission[];
+}
+
+// Student — their own submissions plus any shared team submissions (a
+// teammate's upload on a team-assigned task), in one scoped call. Replaces
+// the per-allocation fetch on the student Submissions page so team work is
+// visible to every member.
+export async function apiGetMySubmissions(): Promise<MySubmissions> {
+  return cachedFetch('submissions:my', SUBMISSIONS_TTL, () =>
+    apiFetch<MySubmissions>('/api/v1/submissions/my')
+  );
+}
+
 // Mentor/Admin/Batch Manager — every PRD submission across all allocations,
-// for review dashboards. Both the admin and mentor Submissions pages
-// independently fetch this whole list on mount, then filter client-side.
+// for review dashboards. Kept for callers that genuinely need the whole set;
+// the admin/mentor review roster now fetches per-student on click instead
+// (apiGetSubmissionsByStudent) rather than pulling everything up front.
 export async function apiGetAllPrdSubmissions(status?: PrdStatus): Promise<PrdSubmission[]> {
   const qs = status ? `?status=${status}` : '';
   return cachedFetch(`submissions:all:${status || 'all'}`, SUBMISSIONS_TTL, () =>
@@ -20,33 +40,47 @@ export async function apiGetAllPrdSubmissions(status?: PrdStatus): Promise<PrdSu
   );
 }
 
+// Mentor/Admin/Batch Manager — one clicked student's submissions only. The
+// backend scopes by studentId and, for a mentor, enforces they actually
+// mentor that student — so no over-fetching the whole system and filtering
+// client-side.
+export async function apiGetSubmissionsByStudent(studentId: string): Promise<PrdSubmission[]> {
+  return cachedFetch(`submissions:byStudent:${studentId}`, SUBMISSIONS_TTL, () =>
+    apiFetch<PrdSubmission[]>(`/api/v1/submissions?studentId=${studentId}`)
+  );
+}
+
 export async function apiGetPrdSubmission(id: string): Promise<PrdSubmission> {
   return apiFetch<PrdSubmission>(`/api/v1/submissions/${id}`);
 }
 
-// Student — uploads a file (or, for 'others', a plain text message) and
-// creates the versioned submission record in one call. Pass `taskId` to link
-// the submission to a specific task — the backend enforces that `docType`
-// matches that task's required type and that the student is assigned to it.
-export async function apiUploadPrd(params: {
+// Student — submits a task's deliverable and creates the versioned record in
+// one call. The shape depends on the task's category:
+//   document → a `file` (PDF)
+//   text     → `content` (a written answer)
+//   link     → `content` (one or more URLs, newline-separated)
+// `taskId` links it to the task; the backend transitions that task to review.
+export async function apiSubmitTaskWork(params: {
   allocationId: string;
-  docType: DocumentType;
+  submissionType: SubmissionKind;
+  taskId: string;
   file?: File;
-  message?: string;
-  taskId?: string;
+  content?: string;
 }): Promise<PrdSubmission> {
-  const { allocationId, docType, file, message, taskId } = params;
+  const { allocationId, submissionType, file, content, taskId } = params;
   const formData = new FormData();
   formData.append('allocationId', allocationId);
-  formData.append('docType', docType);
+  formData.append('submissionType', submissionType);
+  formData.append('taskId', taskId);
   if (file) formData.append('file', file);
-  if (message) formData.append('message', message);
-  if (taskId) formData.append('taskId', taskId);
+  if (content) formData.append('content', content);
   const res = await apiFetch<{ message: string; submission: PrdSubmission }>('/api/v1/submissions/upload', {
     method: 'POST',
     body: formData,
   });
   invalidateCached('submissions:all');
+  invalidateCached('submissions:byStudent');
+  invalidateCached('submissions:my');
   invalidateCached(`submissions:byAllocation:${allocationId}`);
   // A task-linked upload also auto-transitions that task's assignment status
   // server-side (see SubmissionService.syncAssignmentStatus) — the task
@@ -69,7 +103,13 @@ export async function apiReviewPrdSubmission(
     body: JSON.stringify({ status, mentorFeedback }),
   });
   invalidateCached('submissions:all');
+  invalidateCached('submissions:byStudent');
+  invalidateCached('submissions:my');
   invalidateCached('submissions:byAllocation');
+  // The mentor submissions roster caches each mentee's pending-review count
+  // (teams:mine:detailed:counts) — a review changes it, so drop that too or
+  // the badge would stay stale for the cache's TTL after reviewing.
+  invalidateCached('teams:mine:detailed');
   // A review decision also drives the linked task's assignment status
   // (approved/resubmit) — invalidate broadly since the task id isn't known
   // here, only the submission id.

@@ -17,7 +17,7 @@ import Select from '../../components/Select';
 import Button from '../../components/Button';
 import { TRACKS } from '../../lib/constants';
 import { apiCreateTask } from '../../lib/api/tasks';
-import type { ApiTaskType, ApiTaskCategory } from '../../lib/api/tasks';
+import type { ApiTaskCategory } from '../../lib/api/tasks';
 import { apiListMentors } from '../../lib/api/mentors';
 import { apiListStudents } from '../../lib/api/students';
 import type { ApiMentor, ApiStudent, Cohort } from '../../lib/types';
@@ -25,15 +25,6 @@ import { useToast } from '../../toast';
 import { apiListCohorts } from '../../lib/api';
 
 const WEEKS = Array.from({ length: 12 }, (_, i) => i + 1);
-
-const TASK_TYPE_OPTIONS = [
-  { value: 'prd', label: 'PRD' },
-  { value: 'db_schema', label: 'DB Schema' },
-  { value: 'hld', label: 'HLD' },
-  { value: 'lld', label: 'LLD' },
-  { value: 'api_contract', label: 'API Contract' },
-  { value: 'others', label: 'Others' },
-];
 
 const TASK_CATEGORY_OPTIONS: { value: ApiTaskCategory; label: string }[] = [
   { value: 'document_submission', label: 'Document Submission' },
@@ -66,19 +57,32 @@ export default function CreateTaskPage() {
     assignMode: 'individual' as 'individual' | 'team',
     assigned_to: [] as string[],
     week_number: '1',
-    taskType: 'others' as ApiTaskType,
     category: 'document_submission' as ApiTaskCategory,
   });
 
   useEffect(() => {
-    Promise.all([apiListMentors(), apiListStudents(), apiListCohorts()])
-      .then(([mentorsRes, studentsRes, cohortsRes]) => {
+    Promise.all([apiListMentors(), apiListCohorts()])
+      .then(([mentorsRes, cohortsRes]) => {
         setMentors(mentorsRes || []);
-        setStudents(studentsRes || []);
         setCohorts(cohortsRes || []);
       })
       .catch(console.error);
   }, []);
+
+  // The assignable student pool — scoped backend-side to the current
+  // batch/track filters, plus publishedOnly so a student whose team
+  // allocation isn't visible to them yet can never be picked here (they'd
+  // just be silently dropped by TaskService's own publish gate on save).
+  useEffect(() => {
+    if (form.targetRole !== 'student') return;
+    apiListStudents({
+      batch: selectedBatches.length > 0 ? selectedBatches : undefined,
+      track: selectedTrack || undefined,
+      publishedOnly: true,
+    })
+      .then(setStudents)
+      .catch(console.error);
+  }, [form.targetRole, selectedBatches, selectedTrack]);
 
   // Every task is created under whichever cohort is currently active — the
   // form has no cohort picker of its own, it just targets "the" running
@@ -105,29 +109,13 @@ export default function CreateTaskPage() {
     }
   }, [form.week_number, cohorts, activeCohort]);
 
-  const uniqueBatches = Array.from(new Set(students.map(s => s.batch).filter(Boolean))) as string[];
-
-  // The backend silently drops any student whose team hasn't been published
-  // yet from task assignment (they shouldn't get a task before they can even
-  // see their own allocation) — filtered out here too so the picker doesn't
-  // let admin select someone who'd just be dropped on save with no feedback.
-  // Checked against the sticky allocationPublishedAt rather than the live
-  // allocationRunStatus enum — that enum legitimately drops back to
-  // 'draft'/'review' whenever a later batch of teams gets run in the same
-  // cohort, which must not re-hide an already-published student here.
-  const publishedCohortIds = new Set(
-    cohorts.filter(c => !!c.allocationPublishedAt).map(c => c.id)
-  );
-  const unpublishedStudentCount = students.filter(
-    s => !s.activeCohortId || !publishedCohortIds.has(s.activeCohortId)
-  ).length;
+  // Batch options come from the cohort's own allowedBatches, not the
+  // (now already-filtered) students list — otherwise picking one batch would
+  // shrink the dropdown's own option list down to just that batch.
+  const uniqueBatches = activeCohort?.allowedBatches || [];
 
   const assignableList = form.targetRole === 'student'
-    ? students
-        .filter(s => !!s.activeCohortId && publishedCohortIds.has(s.activeCohortId))
-        .filter(s => (selectedBatches.length > 0 ? selectedBatches.includes(s.batch!) : true))
-        .filter(s => (selectedTrack ? s.track === selectedTrack : true))
-        .map(s => ({ id: s.id, label: `${s.fullName || s.email} (${s.rollNumber || 'N/A'})` }))
+    ? students.map(s => ({ id: s.id, label: `${s.fullName || s.email} (${s.rollNumber || 'N/A'})` }))
     : mentors.map(m => ({ id: m.id, label: m.fullName || m.email || m.id }));
 
   const handleSave = async () => {
@@ -162,7 +150,6 @@ export default function CreateTaskPage() {
         title: form.title,
         description: form.description || undefined,
         target_role: form.targetRole,
-        task_type: form.taskType,
         category: form.category,
         assign_mode: form.targetRole === 'student' ? form.assignMode : 'individual',
         // Team-submission mode assigns whole teams matching the track/batch
@@ -393,9 +380,9 @@ export default function CreateTaskPage() {
                   placeholder={`Search and select ${form.targetRole}(s)...`}
                   options={assignableList.map(a => ({ value: a.id, label: a.label }))}
                 />
-                {form.targetRole === 'student' && unpublishedStudentCount > 0 && (
+                {form.targetRole === 'student' && (
                   <p className="text-[11px] text-gray-500 mt-1.5">
-                    {unpublishedStudentCount} student{unpublishedStudentCount !== 1 ? 's' : ''} hidden — their team's project allocation hasn't been published yet.
+                    Only students whose team's project allocation has been published are shown here.
                   </p>
                 )}
               </div>
@@ -423,33 +410,22 @@ export default function CreateTaskPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                  <Target size={15} className="text-gold" />
-                  Deliverable Type *
-                </label>
-                <Select
-                  value={form.taskType}
-                  onChange={v => setForm({ ...form, taskType: v as ApiTaskType })}
-                  options={TASK_TYPE_OPTIONS}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Category *</label>
-                <Select
-                  value={form.category}
-                  onChange={v => setForm({ ...form, category: v as ApiTaskCategory })}
-                  options={TASK_CATEGORY_OPTIONS}
-                  className="w-full"
-                />
-                <p className="text-[11px] text-gray-500 mt-1.5">
-                  {form.category === 'document_submission'
-                    ? 'Student submits a file via the Submissions tab.'
-                    : 'No file/link expected — reviewed directly from the Tasks tab.'}
-                </p>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                <Target size={15} className="text-gold" />
+                Category *
+              </label>
+              <Select
+                value={form.category}
+                onChange={v => setForm({ ...form, category: v as ApiTaskCategory })}
+                options={TASK_CATEGORY_OPTIONS}
+                className="w-full"
+              />
+              <p className="text-[11px] text-gray-500 mt-1.5">
+                {form.category === 'document_submission'
+                  ? 'Student submits a file via the Submissions tab.'
+                  : 'No file/link expected — reviewed directly from the Tasks tab.'}
+              </p>
             </div>
 
             <div>

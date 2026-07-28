@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useAuth } from '../context/useAuth';
 import {
   LayoutDashboard,
@@ -6,14 +7,11 @@ import {
   CalendarCheck,
   FolderOpen,
   CheckSquare,
-  ChevronLeft,
-  ChevronRight,
   LogOut,
   Upload,
   CreditCard,
   Briefcase,
   Award,
-  Percent,
   ClipboardCheck,
   X,
 } from 'lucide-react';
@@ -26,8 +24,6 @@ interface SidebarProps {
   onLogout?: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
-  collapsed: boolean;
-  onToggleCollapse: () => void;
 }
 
 const adminTabs = [
@@ -45,7 +41,6 @@ const adminTabs = [
 
 const mentorTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'students', label: 'My Students', icon: Users },
   { id: 'ojts', label: 'OJTs & Projects', icon: Briefcase },
   { id: 'proposals', label: 'Project Proposals', icon: ClipboardCheck },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
@@ -64,7 +59,14 @@ const studentTabs = [
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
 ];
 
-export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobileOpen, onCloseMobile, collapsed, onToggleCollapse }: SidebarProps) {
+export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobileOpen, onCloseMobile }: SidebarProps) {
+  // Desktop: the bar rests as a 16-wide icon rail and expands to its full
+  // 64 width only while the pointer is over it — a temporary flyout that
+  // overlays the content (which stays pinned at lg:ml-16), never shifting it.
+  // Below lg this state is inert: the responsive classes it drives are all
+  // lg:-prefixed, and the bar is a full-width off-canvas drawer there.
+  const [hovered, setHovered] = useState(false);
+
   let user = null;
   let logout: (() => Promise<void>) | null = null;
   try {
@@ -85,22 +87,22 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
       panel === 'mentor' ? 'Mentor' :
         'Student';
 
+  // On desktop, the expanded (labelled) look is driven purely by hover.
+  const labelHidden = hovered ? '' : 'lg:hidden';
+  const railCenter = hovered ? '' : 'lg:justify-center';
+
   return (
     <aside
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-zinc-850 border-r border-zinc-750 transition-all duration-300 w-64 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 ${collapsed ? 'lg:w-16' : 'lg:w-64'
+        } lg:translate-x-0 ${hovered ? 'lg:w-64 lg:shadow-2xl lg:shadow-black/50' : 'lg:w-16'
         }`}
     >
       <div className="flex items-center justify-between h-16 px-4 border-b border-zinc-750">
-        <span className={`text-lg font-bold text-gold tracking-wider uppercase ${collapsed ? 'lg:hidden' : ''}`}>
+        <span className={`text-lg font-bold text-gold tracking-wider uppercase whitespace-nowrap ${labelHidden}`}>
           {panelLabel}
         </span>
-        <button
-          onClick={onToggleCollapse}
-          className="hidden lg:block p-1 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
-        >
-          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-        </button>
         <button
           onClick={onCloseMobile}
           className="lg:hidden p-1 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
@@ -109,7 +111,7 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
         </button>
       </div>
 
-      <nav className="flex-1 py-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 py-4 space-y-1 overflow-y-auto overflow-x-hidden">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -120,10 +122,10 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
               className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200 ${isActive
                   ? 'text-gold bg-zinc-750 border-l-2 border-gold'
                   : 'text-gray-400 hover:text-white hover:bg-zinc-750'
-                } ${collapsed ? 'lg:justify-center' : ''}`}
+                } ${railCenter}`}
             >
-              <Icon size={18} />
-              <span className={collapsed ? 'lg:hidden' : ''}>{tab.label}</span>
+              <Icon size={18} className="shrink-0" />
+              <span className={`whitespace-nowrap ${labelHidden}`}>{tab.label}</span>
             </button>
           );
         })}
@@ -140,11 +142,10 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
               window.location.reload();
             }
           }}
-          className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors w-full ${collapsed ? 'lg:justify-center' : ''
-            }`}
+          className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors w-full ${railCenter}`}
         >
-          <LogOut size={18} />
-          <span className={collapsed ? 'lg:hidden' : ''}>{(onLogout || logout) ? 'Sign Out' : 'Switch Panel'}</span>
+          <LogOut size={18} className="shrink-0" />
+          <span className={`whitespace-nowrap ${labelHidden}`}>{(onLogout || logout) ? 'Sign Out' : 'Switch Panel'}</span>
         </button>
       </div>
     </aside>

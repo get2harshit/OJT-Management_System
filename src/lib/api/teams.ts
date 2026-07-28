@@ -460,12 +460,13 @@ export async function apiSubmitProjectPreferences(
   return mapPreferences(res);
 }
 
-// Team — replaces a mentor-rejected preference-1 with a new project and/or
-// mentor, looping it back to pending review.
-export async function apiResubmitPreference1(cohortId: string, projectId: string, mentorId: string): Promise<TeamProjectPreferences> {
+// Team — replaces a mentor-rejected preference-1 with a new project. The
+// mentor is fixed (can't change on resubmit): a fresh self proposal loops
+// back to pending review, a recommended catalog pick is approved immediately.
+export async function apiResubmitPreference1(cohortId: string, projectId: string): Promise<TeamProjectPreferences> {
   const res = await apiFetch<RawPreferences>('/api/v1/teams/projects/preferences/resubmit', {
     method: 'POST',
-    body: JSON.stringify({ cohortId, projectId, mentorId }),
+    body: JSON.stringify({ cohortId, projectId }),
   });
   invalidateTeamCaches();
   return mapPreferences(res);
@@ -507,20 +508,26 @@ export async function apiListMyTeams(): Promise<Team[]> {
 
 interface RawTeamMentorDetail {
   teamId: string;
+  name: string | null;
+  cohortId: string;
   track: string;
   isIndividual: boolean;
-  members: { studentId: string; fullName: string | null; rollNumber: string | null }[];
+  members: { studentId: string; fullName: string | null; rollNumber: string | null; pendingReviewCount?: number }[];
   project: { id: string; title: string; description: string | null; track: string } | null;
 }
 
 // Mentor — same team scope as apiListMyTeams, with each team's allocated
 // project (title/description) attached, for the OJTs & Projects page's
-// team → project drill-down.
-export async function apiListMyTeamsDetailed(): Promise<TeamWithProject[]> {
-  return cachedFetch('teams:mine:detailed', TEAMS_TTL, async () => {
-    const res = await apiFetch<RawTeamMentorDetail[]>('/api/v1/teams/my-teams/detailed');
+// team → project drill-down. Pass withPendingReviewCounts for the
+// submissions roster, which needs each mentee's pending-review badge.
+export async function apiListMyTeamsDetailed(withPendingReviewCounts = false): Promise<TeamWithProject[]> {
+  const qs = withPendingReviewCounts ? '?withPendingReviewCounts=true' : '';
+  return cachedFetch(`teams:mine:detailed:${withPendingReviewCounts ? 'counts' : 'plain'}`, TEAMS_TTL, async () => {
+    const res = await apiFetch<RawTeamMentorDetail[]>(`/api/v1/teams/my-teams/detailed${qs}`);
     return res.map((t) => ({
       teamId: t.teamId,
+      name: t.name,
+      cohortId: t.cohortId,
       track: mapBackendTrackToFrontend(t.track),
       isIndividual: t.isIndividual,
       members: t.members,

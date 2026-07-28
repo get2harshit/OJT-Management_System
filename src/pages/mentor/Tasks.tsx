@@ -13,21 +13,12 @@ import {
   apiApproveTask,
   apiRequestResubmit,
 } from '../../lib/api/tasks';
-import type { ApiTask, ApiTaskType, ApiTaskCategory, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
+import type { ApiTask, ApiTaskCategory, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
 import { apiListMyTeams } from '../../lib/api/teams';
 import { apiListMyCohorts } from '../../lib/api/cohorts';
 import type { Team } from '../../lib/types';
 import { TRACKS } from '../../lib/constants';
 import { useToast } from '../../toast';
-
-const TASK_TYPE_OPTIONS: { value: ApiTaskType; label: string }[] = [
-  { value: 'prd', label: 'PRD' },
-  { value: 'hld', label: 'HLD' },
-  { value: 'lld', label: 'LLD' },
-  { value: 'db_schema', label: 'DB Schema' },
-  { value: 'api_contract', label: 'API Contract' },
-  { value: 'others', label: 'Others' },
-];
 
 const CATEGORY_OPTIONS: { value: ApiTaskCategory; label: string }[] = [
   { value: 'document_submission', label: 'Document Submission' },
@@ -40,7 +31,6 @@ const WEEKS = Array.from({ length: 12 }, (_, i) => String(i + 1));
 const EMPTY_FORM = {
   title: '',
   description: '',
-  taskType: 'prd' as ApiTaskType,
   category: 'document_submission' as ApiTaskCategory,
   assignMode: 'team' as 'team' | 'individual',
   teamIds: [] as string[],
@@ -170,7 +160,6 @@ export default function MentorTasks({ mentorId }: Props) {
         title: form.title,
         description: form.description || undefined,
         target_role: 'student',
-        task_type: form.taskType,
         category: form.category,
         assign_mode: form.assignMode,
         teamIds: form.assignMode === 'team' ? form.teamIds : undefined,
@@ -398,25 +387,14 @@ export default function MentorTasks({ mentorId }: Props) {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Task Type</label>
-              <Select
-                value={form.taskType}
-                onChange={v => setForm({ ...form, taskType: v as ApiTaskType })}
-                options={TASK_TYPE_OPTIONS}
-                className="w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Category</label>
-              <Select
-                value={form.category}
-                onChange={v => setForm({ ...form, category: v as ApiTaskCategory })}
-                options={CATEGORY_OPTIONS}
-                className="w-full"
-              />
-            </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Category</label>
+            <Select
+              value={form.category}
+              onChange={v => setForm({ ...form, category: v as ApiTaskCategory })}
+              options={CATEGORY_OPTIONS}
+              className="w-full"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

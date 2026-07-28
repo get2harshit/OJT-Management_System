@@ -25,7 +25,7 @@ export default function CohortStudentsPage() {
     setLoading(true);
     try {
       const [students, details] = await Promise.all([
-        apiListStudents(cohortId),
+        apiListStudents({ cohortId }),
         apiGetCohort(cohortId, true),
       ]);
       setEligibleStudents(students);

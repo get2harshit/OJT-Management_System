@@ -15,6 +15,7 @@ interface Props {
   tasks: Task[];
   submissions: Submission[];
   attendance: Attendance[];
+  onNavigateToTab: (tab: string) => void;
 }
 
 interface MentorStudent {
@@ -30,7 +31,8 @@ export default function MentorDashboard({
   tasks: propTasks,
   submissions: propSubmissions,
   attendance: propAttendance,
-}: Partial<Props> & { mentorId: string }) {
+  onNavigateToTab,
+}: Partial<Props> & Pick<Props, 'mentorId' | 'onNavigateToTab'>) {
   const { tasks: hookTasks } = useTasks();
   const { submissions: hookSubmissions } = useSubmissions();
   const { attendance: hookAttendance } = useAttendance();
@@ -139,7 +141,7 @@ export default function MentorDashboard({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-6">
-        <StatCard title="My Students" value={filteredStudents.length} icon={Users} />
+        <StatCard title="My Teams" value={myTeams.length} icon={Users} onClick={() => onNavigateToTab('ojts')} />
         <StatCard title="My Tasks" value={myTasks.length} icon={CheckSquare} />
         <StatCard title="Pending Reviews" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" />
         <StatCard title="Attendance Records" value={filteredAttendance.length} icon={CalendarCheck} />

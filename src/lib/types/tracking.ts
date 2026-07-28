@@ -60,6 +60,8 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   others: 'Others',
 };
 
+export type SubmissionKind = 'document' | 'text' | 'link';
+
 export interface PrdSubmission {
   id: string;
   allocationId: string;
@@ -67,7 +69,13 @@ export interface PrdSubmission {
   versionNumber: number;
   documentType: DocumentType;
   documentLink?: string;
+  // The written answer (text) or newline-separated URLs (link). Interpreted
+  // per submissionType.
   messageContent?: string;
+  // How to render this submission's content — 'document' (file at
+  // documentLink), 'text' (answer in messageContent), 'link' (URLs in
+  // messageContent). Absent on legacy rows, which are documents.
+  submissionType?: SubmissionKind;
   status: PrdStatus;
   mentorFeedback?: string;
   reviewedBy?: string;
@@ -79,6 +87,19 @@ export interface PrdSubmission {
   primaryMentorId?: string;
   secondaryMentorId?: string;
   cohortId?: string;
+  // Also only present on the "review everything" list — the task's title is
+  // what identifies a submission now (tasks no longer declare a document
+  // type), so admin/mentor review UIs group and label by this instead of
+  // documentType.
+  taskTitle?: string;
+  // Only on the student's own "my submissions" fetch — who uploaded this
+  // version (for team submissions, could be a teammate) and whether it
+  // belongs to the shared team scope.
+  submitterName?: string;
+  isTeam?: boolean;
+  // The team's name/number (e.g. "G1") for a team submission — shown to the
+  // student and the assigned mentor.
+  teamName?: string;
 }
 
 export interface StudentAllocation {
