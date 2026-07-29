@@ -12,6 +12,10 @@ import { useAuth } from '../../context/useAuth';
 
 function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
+  // Set by Tasks' "View Submission" action to hand off which student+task
+  // the Submissions tab should jump straight to; cleared once Submissions
+  // consumes it so a later manual visit to the tab doesn't re-trigger it.
+  const [submissionFocus, setSubmissionFocus] = useState<{ studentId: string; taskId: string } | null>(null);
   let authUser = null;
   try {
     const auth = useAuth();
@@ -35,9 +39,24 @@ function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
       case 'proposals':
         return <ProjectProposals />;
       case 'tasks':
-        return <Tasks mentorId={mentorId} />;
+        return (
+          <Tasks
+            mentorId={mentorId}
+            onViewSubmission={(studentId, taskId) => {
+              setSubmissionFocus({ studentId, taskId });
+              setActiveTab('submissions');
+            }}
+          />
+        );
       case 'submissions':
-        return <Submissions mentorId={mentorId} />;
+        return (
+          <Submissions
+            mentorId={mentorId}
+            focusStudentId={submissionFocus?.studentId ?? null}
+            focusTaskId={submissionFocus?.taskId ?? null}
+            onFocusHandled={() => setSubmissionFocus(null)}
+          />
+        );
       case 'credits':
         return <Credits mentorId={mentorId} />;
       case 'attendance':

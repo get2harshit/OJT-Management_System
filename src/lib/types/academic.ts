@@ -549,3 +549,45 @@ export interface StudentEvaluationSummary {
   panelistCount: number;
 }
 
+// One row in an evaluator's (mentor/external mentor) own scoring queue —
+// an evaluation they're a panelist on, myTotalMarks is null until they
+// submit their own score.
+export interface EvaluatorQueueItem {
+  id: string;
+  studentId: string;
+  studentName: string | null;
+  evaluationTypeName: string;
+  sequenceNo: number | null;
+  maxMarksSnapshot: number;
+  myRole: EvaluatorRole;
+  myTotalMarks: number | null;
+  finalMarksObtained: number | null;
+}
+
+// One panelist's own breakdown on an evaluation — null fields mean that
+// panelist hasn't submitted a score yet.
+export interface EvaluationPanelistScore {
+  evaluatorId: string;
+  evaluatorName: string | null;
+  role: EvaluatorRole;
+  scoreBreakdown: Record<string, number> | null;
+  totalMarks: number | null;
+  feedback: string | null;
+}
+
+// Full detail for one evaluation — the rubric criteria to score against,
+// plus every panelist's own breakdown (a panelist fetching this sees the
+// other evaluator's score too, matching the backend's own access rule).
+export interface EvaluationDetail {
+  id: string;
+  studentId: string;
+  studentName: string | null;
+  evaluationTypeName: string;
+  sequenceNo: number | null;
+  maxMarksSnapshot: number;
+  criteria: RubricCriterion[];
+  panelists: EvaluationPanelistScore[];
+  finalMarksObtained: number | null;
+  evaluatedAt: string | null;
+}
+

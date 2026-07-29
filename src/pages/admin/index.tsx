@@ -21,6 +21,12 @@ import CohortAllocationsPage from './OJTs/CohortAllocationsPage';
 
 function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
+  // Set by Tasks' "View Submission" action to hand off which student+task
+  // (and cohort — a task belongs to exactly one, which may differ from
+  // Submissions' currently-selected one) the Submissions tab should jump
+  // straight to; cleared once Submissions consumes it so a later manual
+  // visit to the tab doesn't re-trigger it.
+  const [submissionFocus, setSubmissionFocus] = useState<{ studentId: string; taskId: string; cohortId: string } | null>(null);
   const navigate = useNavigate();
 
   // Sidebar tab clicks only flip local state; while a cohort sub-page route
@@ -49,9 +55,23 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
       case 'ojts':
         return <OJTs />;
       case 'tasks':
-        return <Tasks />;
+        return (
+          <Tasks
+            onViewSubmission={(studentId, taskId, cohortId) => {
+              setSubmissionFocus({ studentId, taskId, cohortId });
+              handleTabChange('submissions');
+            }}
+          />
+        );
       case 'submissions':
-        return <Submissions />;
+        return (
+          <Submissions
+            focusStudentId={submissionFocus?.studentId ?? null}
+            focusTaskId={submissionFocus?.taskId ?? null}
+            focusCohortId={submissionFocus?.cohortId ?? null}
+            onFocusHandled={() => setSubmissionFocus(null)}
+          />
+        );
       case 'credits':
         return <Credits />;
       case 'attendance':

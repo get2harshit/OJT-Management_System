@@ -9,3 +9,4 @@ export * from './teams';
 export * from './allocations';
 export * from './submissions';
 export * from './evaluations';
+export * from './notifications';
