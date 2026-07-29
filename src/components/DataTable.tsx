@@ -109,14 +109,24 @@ export default function DataTable<T extends Record<string, unknown>>({
       const wrap = tableWrapRef.current;
       if (!wrap) return;
       const wrapTop = wrap.getBoundingClientRect().top;
-      const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 60;
-      const available = window.innerHeight - wrapTop - footerHeight - 16;
-      setMaxBodyHeight(Math.max(200, available));
+      const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 56;
+      const paddingBottom = window.innerWidth >= 1024 ? 36 : 24;
+      const available = window.innerHeight - wrapTop - footerHeight - paddingBottom;
+      setMaxBodyHeight(Math.max(180, Math.floor(available)));
     };
+
     computeMaxHeight();
+    const rafId = requestAnimationFrame(computeMaxHeight);
+    const timerId = setTimeout(computeMaxHeight, 100);
+
     window.addEventListener('resize', computeMaxHeight);
-    return () => window.removeEventListener('resize', computeMaxHeight);
-  }, []);
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timerId);
+      window.removeEventListener('resize', computeMaxHeight);
+    };
+  }, [data.length]);
+
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -193,7 +203,7 @@ export default function DataTable<T extends Record<string, unknown>>({
       <div
         ref={tableWrapRef}
         className="hidden md:block overflow-x-auto"
-        style={maxBodyHeight ? { height: maxBodyHeight, overflowY: 'auto' } : undefined}
+        style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: 'auto' } : undefined}
       >
         <table className="w-full text-sm">
           <thead>
@@ -255,7 +265,10 @@ export default function DataTable<T extends Record<string, unknown>>({
 
       {/* Mobile: one stacked card per row instead of a horizontally-scrolling
           table — nothing gets clipped, and there's nothing to swipe sideways. */}
-      <div className="md:hidden divide-y divide-zinc-750/50">
+      <div 
+        className="md:hidden divide-y divide-zinc-750/50"
+        style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: 'auto' } : undefined}
+      >
         {paginated.map((row, idx) => (
           <div
             key={typeof row.id === 'string' || typeof row.id === 'number' ? row.id : idx}

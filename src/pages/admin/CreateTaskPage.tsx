@@ -23,6 +23,7 @@ import { apiListStudents } from '../../lib/api/students';
 import type { ApiMentor, ApiStudent, Cohort } from '../../lib/types';
 import { useToast } from '../../toast';
 import { apiListCohorts } from '../../lib/api';
+import { toDateOnly } from '../../lib/utils';
 
 const WEEKS = Array.from({ length: 12 }, (_, i) => i + 1);
 
@@ -92,22 +93,6 @@ export default function CreateTaskPage() {
     [cohorts]
   );
 
-  // Auto-calculate due date when week changes
-  useEffect(() => {
-    if (!form.week_number || cohorts.length === 0) return;
-
-    if (activeCohort && activeCohort.startDate) {
-      const start = new Date(activeCohort.startDate);
-      const weekOffset = parseInt(form.week_number, 10);
-      if (!isNaN(weekOffset)) {
-        const due = new Date(start.getTime() + (weekOffset * 7 * 24 * 60 * 60 * 1000));
-        setForm(prev => ({
-          ...prev,
-          due_date: due.toISOString().split('T')[0]
-        }));
-      }
-    }
-  }, [form.week_number, cohorts, activeCohort]);
 
   // Batch options come from the cohort's own allowedBatches, not the
   // (now already-filtered) students list — otherwise picking one batch would
@@ -472,7 +457,20 @@ export default function CreateTaskPage() {
                 type="date"
                 style={{ colorScheme: 'dark' }}
                 value={form.start_date}
-                onChange={e => setForm({ ...form, start_date: e.target.value })}
+                onChange={e => {
+                  const newStart = e.target.value;
+                  let newDue = form.due_date;
+                  if (newStart) {
+                    const [y, m, d] = newStart.split('-').map(Number);
+                    if (y && m && d) {
+                      const dueObj = new Date(Date.UTC(y, m - 1, d + 7));
+                      newDue = dueObj.toISOString().split('T')[0];
+                    }
+                  } else {
+                    newDue = '';
+                  }
+                  setForm(prev => ({ ...prev, start_date: newStart, due_date: newDue }));
+                }}
                 className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
               />
             </div>
@@ -486,13 +484,13 @@ export default function CreateTaskPage() {
                   type="date"
                   style={{ colorScheme: 'dark' }}
                   value={form.due_date}
-                  onChange={e => setForm({ ...form, due_date: e.target.value })}
+                  onChange={e => setForm(prev => ({ ...prev, due_date: e.target.value }))}
                   className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
                 />
               </div>
               <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1">
                 <Clock size={12} />
-                Calculated automatically from active cohort timeline
+                Calculated automatically (+7 days) when start date is selected
               </p>
             </div>
           </div>
