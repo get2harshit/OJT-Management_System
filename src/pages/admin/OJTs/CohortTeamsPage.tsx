@@ -9,6 +9,7 @@ import { apiListTeamsForCohort, apiBreakTeam, apiGetCohort } from '../../../lib/
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
+import { usePageRefresh } from '../../../context/RefreshContext';
 
 // Admin view of every team formed within a cohort, with a Break action that
 // disbands a team so its members drop back to the teammate-invite step —
@@ -43,6 +44,8 @@ export default function CohortTeamsPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  usePageRefresh(fetchData);
 
   const handleBreakTeam = async (team: AdminTeam) => {
     const memberNames = team.members.map(m => m.fullName || m.studentId).join(', ');

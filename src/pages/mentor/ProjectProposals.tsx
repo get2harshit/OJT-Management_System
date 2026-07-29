@@ -6,6 +6,7 @@ import type { PendingProposal } from '../../lib/types';
 import type { ProposalDetail } from '../../lib/api';
 import { apiGetPendingProposals, apiGetProposalDetail, apiDecideOnProposal } from '../../lib/api';
 import { useToast } from '../../toast';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 type PendingAction = 'resubmit' | 'return' | null;
 
@@ -38,6 +39,8 @@ export default function ProjectProposals() {
   useEffect(() => {
     load();
   }, [load]);
+
+  usePageRefresh(load);
 
   const closeModal = () => {
     setSelected(null);

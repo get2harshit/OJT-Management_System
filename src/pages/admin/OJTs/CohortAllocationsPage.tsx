@@ -28,6 +28,7 @@ import { getCohortLabel } from '../../../lib/cohortLabel';
 import { formatDateDisplay } from '../../../lib/utils';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
+import { usePageRefresh } from '../../../context/RefreshContext';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
@@ -219,6 +220,8 @@ export default function CohortAllocationsPage() {
     fetchAuxData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cohortId]);
+
+  usePageRefresh(refreshAfterMutation);
 
   // `loading` only gates the full-page spinner on first mount — once the
   // table has rendered once, a page/filter change just dims it briefly

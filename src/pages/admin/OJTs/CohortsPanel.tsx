@@ -14,6 +14,7 @@ import { EMPTY_COHORT_FORM, validateCohortForm } from '../../../lib/cohortForm';
 import Button from '../../../components/Button';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
+import { usePageRefresh } from '../../../context/RefreshContext';
 
 export default function CohortsPanel() {
   const navigate = useNavigate();
@@ -45,11 +46,20 @@ export default function CohortsPanel() {
     fetchCohorts();
   }, [fetchCohorts]);
 
-  useEffect(() => {
-    apiListStudentBatches()
+  const loadEligibleBatches = useCallback(() => {
+    return apiListStudentBatches()
       .then(setEligibleBatchOptions)
       .catch(() => setEligibleBatchOptions([]));
   }, []);
+
+  useEffect(() => {
+    loadEligibleBatches();
+  }, [loadEligibleBatches]);
+
+  usePageRefresh(useCallback(
+    () => Promise.all([fetchCohorts(), loadEligibleBatches()]),
+    [fetchCohorts, loadEligibleBatches]
+  ));
 
   const closeCohortModal = () => {
     setCohortModalOpen(false);

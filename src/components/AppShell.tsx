@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { Menu, Sun, Moon, User, LogOut } from 'lucide-react';
+import { Menu, Sun, Moon, User, LogOut, RefreshCw } from 'lucide-react';
 import Sidebar from './Sidebar';
 import NotificationCenter from './NotificationCenter';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/useAuth';
+import { useRefreshContext } from '../context/RefreshContext';
 import type { PanelType } from '../lib/types';
 
 interface AppShellProps {
@@ -42,6 +43,7 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
   const [profileOpen, setProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { theme, toggleTheme } = useTheme();
+  const { refreshCurrentPage, isRefreshing } = useRefreshContext();
 
   let user = null;
   let logout: (() => Promise<void>) | null = null;
@@ -89,7 +91,7 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
           overlay on top of this content — the margin deliberately stays at 16
           so the page never shifts under the pointer. */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0 lg:ml-16">
-        <header className="flex items-center justify-between h-16 px-4 sm:px-6 bg-black">
+        <header className="flex items-center justify-between h-12 px-4 sm:px-6 bg-black">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileOpen(true)}
@@ -101,6 +103,14 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 ml-auto">
+            <button
+              onClick={refreshCurrentPage}
+              disabled={isRefreshing}
+              title="Refresh this page"
+              className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
+            </button>
             <NotificationCenter />
             <button
               onClick={toggleTheme}

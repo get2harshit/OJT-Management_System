@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Users, GitBranch, FolderGit2, Loader2, Briefcase } from 'lucide-react';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
@@ -6,6 +6,7 @@ import SpinnerSquare from '../../components/SpinnerSquare';
 import type { TeamWithProject, Cohort, Project } from '../../lib/types';
 import { apiListMyTeamsDetailed, apiListMyCohorts, apiGetProject } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 // "G1 (Aditya, Subham)" — the team's number plus its members on one line.
 function teamLabel(team: TeamWithProject): string {
@@ -22,8 +23,8 @@ export default function MentorOJTs() {
 
   const [selectedTeam, setSelectedTeam] = useState<TeamWithProject | null>(null);
 
-  useEffect(() => {
-    Promise.all([apiListMyCohorts(), apiListMyTeamsDetailed()])
+  const loadCohortsAndTeams = useCallback(() => {
+    return Promise.all([apiListMyCohorts(), apiListMyTeamsDetailed()])
       .then(([cohortsRes, teamsRes]) => {
         setCohorts(cohortsRes || []);
         setTeams(teamsRes || []);
@@ -34,6 +35,12 @@ export default function MentorOJTs() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadCohortsAndTeams();
+  }, [loadCohortsAndTeams]);
+
+  usePageRefresh(loadCohortsAndTeams);
 
   // Only this mentor's teams in the chosen cohort — the mentor picks a cohort
   // first, then sees its projects and students.

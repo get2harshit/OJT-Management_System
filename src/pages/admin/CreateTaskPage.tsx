@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -24,6 +24,7 @@ import type { ApiMentor, ApiStudent, Cohort } from '../../lib/types';
 import { useToast } from '../../toast';
 import { apiListCohorts } from '../../lib/api';
 import { toDateOnly } from '../../lib/utils';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 const WEEKS = Array.from({ length: 12 }, (_, i) => i + 1);
 
@@ -61,8 +62,8 @@ export default function CreateTaskPage() {
     category: 'document_submission' as ApiTaskCategory,
   });
 
-  useEffect(() => {
-    Promise.all([apiListMentors(), apiListCohorts()])
+  const loadMentorsAndCohorts = useCallback(() => {
+    return Promise.all([apiListMentors(), apiListCohorts()])
       .then(([mentorsRes, cohortsRes]) => {
         setMentors(mentorsRes || []);
         setCohorts(cohortsRes || []);
@@ -70,13 +71,17 @@ export default function CreateTaskPage() {
       .catch(console.error);
   }, []);
 
+  useEffect(() => {
+    loadMentorsAndCohorts();
+  }, [loadMentorsAndCohorts]);
+
   // The assignable student pool — scoped backend-side to the current
   // batch/track filters, plus publishedOnly so a student whose team
   // allocation isn't visible to them yet can never be picked here (they'd
   // just be silently dropped by TaskService's own publish gate on save).
-  useEffect(() => {
-    if (form.targetRole !== 'student') return;
-    apiListStudents({
+  const loadStudents = useCallback(() => {
+    if (form.targetRole !== 'student') return Promise.resolve();
+    return apiListStudents({
       batch: selectedBatches.length > 0 ? selectedBatches : undefined,
       track: selectedTrack || undefined,
       publishedOnly: true,
@@ -84,6 +89,12 @@ export default function CreateTaskPage() {
       .then(setStudents)
       .catch(console.error);
   }, [form.targetRole, selectedBatches, selectedTrack]);
+
+  useEffect(() => {
+    loadStudents();
+  }, [loadStudents]);
+
+  usePageRefresh(useCallback(() => Promise.all([loadMentorsAndCohorts(), loadStudents()]), [loadMentorsAndCohorts, loadStudents]));
 
   // Every task is created under whichever cohort is currently active — the
   // form has no cohort picker of its own, it just targets "the" running

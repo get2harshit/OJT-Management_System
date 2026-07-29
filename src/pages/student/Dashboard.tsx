@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Clock } from 'lucide-react';
 import StatCard from '../../components/StatCard';
 import SpinnerSquare from '../../components/SpinnerSquare';
@@ -9,6 +9,7 @@ import type { ApiTask } from '../../lib/api/tasks';
 
 import { useCredits } from '../../hooks/useCredits';
 import { useAttendance } from '../../hooks/useAttendance';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 interface Props {
   studentId: string;
@@ -46,8 +47,8 @@ export default function StudentDashboard({
   const [submissions, setSubmissions] = useState<PrdSubmission[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    Promise.all([apiListTasks(), apiGetMySubmissions()])
+  const loadDashboardData = useCallback(() => {
+    return Promise.all([apiListTasks(), apiGetMySubmissions()])
       .then(([taskRes, mySubs]) => {
         setTasks(taskRes.data);
         setSubmissions(mySubs.submissions);
@@ -55,6 +56,12 @@ export default function StudentDashboard({
       .catch((err) => console.error('Student dashboard failed to load', err))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
+
+  usePageRefresh(loadDashboardData);
 
   const myCredits = useMemo(() => credits.filter((c) => c.student_id === studentId), [credits, studentId]);
   const myAttendance = useMemo(() => attendance.filter((a) => a.student_id === studentId), [attendance, studentId]);

@@ -4,6 +4,7 @@ import DataTable from '../../components/DataTable';
 import Select from '../../components/Select';
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask, ApiAssignmentStatus } from '../../lib/api/tasks';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 type TaskFilter = 'ALL' | 'MISSED' | 'IN_REVIEW' | 'RESUBMIT' | 'COMPLETED' | 'UPCOMING';
 
@@ -60,6 +61,8 @@ export default function StudentTasks({
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  usePageRefresh(loadTasks);
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleSearchChange = (value: string) => {

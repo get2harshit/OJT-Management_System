@@ -14,6 +14,7 @@ import { useToast } from '../../../toast';
 import { TRACKS } from '../../../lib/constants';
 import { mapBackendTrackToFrontend, mapFrontendTrackToBackend } from '../../../lib/api/trackMapping';
 import { apiCreateAnnouncement } from '../../../lib/api/notifications';
+import { usePageRefresh } from '../../../context/RefreshContext';
 
 type PanelView = '' | 'students' | 'projects' | 'mentors';
 
@@ -680,48 +681,47 @@ export default function ViewCohortPage() {
   }, [panelView, debouncedSearch, panelTrack, selectedBatchFilter]);
 
   // The actual server-paginated fetch for the active category's list.
-  useEffect(() => {
+  const loadList = useCallback(async () => {
     if (!panelView || !cohortId) return;
-    let cancelled = false;
     setListLoading(true);
-    (async () => {
-      try {
-        if (panelView === 'students') {
-          const res = await apiListStudentsPage({
-            page: listPage, limit: listLimit, cohortId,
-            batch: selectedBatchFilter || undefined,
-            search: debouncedSearch || undefined,
-          });
-          if (cancelled) return;
-          setStudentsList(res.data);
-          setListPagination({ totalPages: res.pagination.totalPages, total: res.pagination.total });
-        } else if (panelView === 'projects') {
-          const res = await apiGetProjectsForCohortPage(cohortId, {
-            page: listPage, limit: listLimit,
-            search: debouncedSearch || undefined,
-            track: panelTrack || undefined,
-          });
-          if (cancelled) return;
-          setProjectsList(res.data);
-          setListPagination({ totalPages: res.pagination.totalPages, total: res.pagination.total });
-        } else if (panelView === 'mentors') {
-          const res = await apiListMentorsPage({
-            page: listPage, limit: listLimit, cohortId,
-            search: debouncedSearch || undefined,
-            track: panelTrack || undefined,
-          });
-          if (cancelled) return;
-          setMentorsList(res.data);
-          setListPagination({ totalPages: res.pagination.totalPages, total: res.pagination.total });
-        }
-      } catch (err: unknown) {
-        if (!cancelled) showError(err instanceof Error ? err.message : 'Failed to load list');
-      } finally {
-        if (!cancelled) setListLoading(false);
+    try {
+      if (panelView === 'students') {
+        const res = await apiListStudentsPage({
+          page: listPage, limit: listLimit, cohortId,
+          batch: selectedBatchFilter || undefined,
+          search: debouncedSearch || undefined,
+        });
+        setStudentsList(res.data);
+        setListPagination({ totalPages: res.pagination.totalPages, total: res.pagination.total });
+      } else if (panelView === 'projects') {
+        const res = await apiGetProjectsForCohortPage(cohortId, {
+          page: listPage, limit: listLimit,
+          search: debouncedSearch || undefined,
+          track: panelTrack || undefined,
+        });
+        setProjectsList(res.data);
+        setListPagination({ totalPages: res.pagination.totalPages, total: res.pagination.total });
+      } else if (panelView === 'mentors') {
+        const res = await apiListMentorsPage({
+          page: listPage, limit: listLimit, cohortId,
+          search: debouncedSearch || undefined,
+          track: panelTrack || undefined,
+        });
+        setMentorsList(res.data);
+        setListPagination({ totalPages: res.pagination.totalPages, total: res.pagination.total });
       }
-    })();
-    return () => { cancelled = true; };
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to load list');
+    } finally {
+      setListLoading(false);
+    }
   }, [panelView, listPage, listLimit, debouncedSearch, panelTrack, selectedBatchFilter, cohortId, showError]);
+
+  useEffect(() => {
+    loadList();
+  }, [loadList]);
+
+  usePageRefresh(useCallback(() => Promise.all([fetchCohort(), loadList()]), [fetchCohort, loadList]));
 
   // Detail cards (student/project/mentor roster) aren't a DataTable, so they
   // don't get its auto-fit-to-viewport sizing for free — this mirrors the

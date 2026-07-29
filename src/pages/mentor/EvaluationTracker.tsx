@@ -7,6 +7,7 @@ import { apiGetMyEvaluationQueue, apiGetEvaluationDetail, apiScoreEvaluation } f
 import type { EvaluatorQueueItem, EvaluationDetail } from '../../lib/types';
 import { useAuth } from '../../context/useAuth';
 import { useToast } from '../../toast';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 const PAGE_SIZE = 20;
 
@@ -49,6 +50,8 @@ export default function MentorEvaluationTracker() {
   useEffect(() => {
     loadQueue();
   }, [loadQueue]);
+
+  usePageRefresh(loadQueue);
 
   const openEvaluation = async (id: string) => {
     setSelectedId(id);

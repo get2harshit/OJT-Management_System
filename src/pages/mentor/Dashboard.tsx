@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Users, CheckSquare, FolderOpen, CalendarCheck, TrendingUp } from 'lucide-react';
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
@@ -9,6 +9,7 @@ import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask } from '../../lib/api/tasks';
 
 import { useAttendance } from '../../hooks/useAttendance';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 interface Props {
   mentorId: string;
@@ -58,8 +59,8 @@ export default function MentorDashboard({
   const [submissions, setSubmissions] = useState<PrdSubmission[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(true);
 
-  useEffect(() => {
-    Promise.all([apiListMyTeams(), apiListStudents(), apiListTasks(), apiGetAllPrdSubmissions()])
+  const loadDashboardData = useCallback(() => {
+    return Promise.all([apiListMyTeams(), apiListStudents(), apiListTasks(), apiGetAllPrdSubmissions()])
       .then(([teams, students, taskRes, submissionRes]) => {
         setMyTeams(teams);
         setApiStudents(students);
@@ -69,6 +70,12 @@ export default function MentorDashboard({
       .catch((err) => console.error('Mentor dashboard failed to load', err))
       .finally(() => setLoadingRoster(false));
   }, []);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
+
+  usePageRefresh(loadDashboardData);
 
   const myStudents = useMemo<MentorStudent[]>(() => {
     const profileById = new Map(apiStudents.map(s => [s.id, s]));

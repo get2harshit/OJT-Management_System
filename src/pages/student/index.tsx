@@ -7,6 +7,7 @@ import Submissions from './Submissions';
 import Credits from './Credits';
 import Attendance from './Attendance';
 import { useAuth } from '../../context/useAuth';
+import { useNotificationNavigate } from '../../context/NotificationNavigateContext';
 
 function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -38,6 +39,26 @@ function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
     setInitialSelectedSubId(null);
     setInitialNewSubTaskId(null);
   };
+
+  useNotificationNavigate((n) => {
+    switch (n.type) {
+      case 'submission':
+        if (n.referenceId) setInitialSelectedSubId(n.referenceId);
+        setActiveTab('submissions');
+        break;
+      case 'task':
+        setActiveTab('tasks');
+        break;
+      case 'allocation':
+        setActiveTab('projects');
+        break;
+      default:
+        // team_invite / announcement have no dedicated tab of their own —
+        // the notification itself (Accept/Reject for an invite) is the
+        // whole interaction, nothing further to navigate to.
+        break;
+    }
+  });
 
   const renderTab = () => {
     switch (activeTab) {

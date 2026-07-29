@@ -10,6 +10,7 @@ import { apiGetSubmissionsByStudent, apiGetPrdDownloadUrl, apiReviewPrdSubmissio
 import { apiListMyTeamsDetailed } from '../../lib/api/teams';
 import { statusDotClass } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 interface Props {
   mentorId: string;
@@ -95,6 +96,11 @@ export default function MentorSubmissions({
     loadRoster();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mentorId]);
+
+  usePageRefresh(() => Promise.all([
+    loadRoster(),
+    selectedStudentId ? loadStudentSubmissions(selectedStudentId) : Promise.resolve(),
+  ]));
 
   const loadStudentSubmissions = async (studentId: string) => {
     setSubmissionsLoading(true);

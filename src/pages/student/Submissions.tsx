@@ -14,6 +14,7 @@ import {
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask, ApiTaskCategory } from '../../lib/api/tasks';
 import { statusDotClass } from '../../lib/submissionDisplay';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 // A task's category maps to how its deliverable is submitted/rendered.
 const submissionKindForCategory = (category?: ApiTaskCategory | null): SubmissionKind =>
@@ -60,13 +61,16 @@ export default function StudentSubmissions({
 
   const [myTasks, setMyTasks] = useState<ApiTask[]>([]);
 
+  const loadMyTasks = async () => {
+    const res = await apiListTasks();
+    let t = Array.isArray(res) ? res : (res?.data || []);
+    if (!Array.isArray(t)) t = [];
+    setMyTasks(t);
+  };
+
   useEffect(() => {
     if (!studentId) return;
-    apiListTasks().then((res) => {
-      let t = Array.isArray(res) ? res : (res?.data || []);
-      if (!Array.isArray(t)) t = [];
-      setMyTasks(t);
-    }).catch(console.error);
+    loadMyTasks().catch(console.error);
   }, [studentId]);
 
   // Every task the student has to submit something for — the left sidebar
@@ -100,35 +104,38 @@ export default function StudentSubmissions({
     setTeamName(tName);
   };
 
+  const loadAll = async (onCancelledCheck: () => boolean) => {
+    setLoading(true);
+    setError(null);
+    // The submission list (team-aware) is independent of the allocation
+    // lookup — one failing must not blank the other.
+    const submissionsPromise = loadSubmissions().catch((err) => {
+      if (!onCancelledCheck()) setError(err instanceof Error ? err.message : 'Failed to load submissions');
+    });
+    try {
+      // Allocation is still needed as the upload target — a student uploads
+      // under their own allocation.
+      const myAllocation = await apiGetMyAllocation();
+      if (!onCancelledCheck()) setAllocation(myAllocation);
+    } catch {
+      // A 404 here just means "not allocated yet" — not a real error.
+      if (!onCancelledCheck()) setAllocation(null);
+    }
+    await submissionsPromise;
+    if (!onCancelledCheck()) setLoading(false);
+  };
+
   useEffect(() => {
     if (!studentId) return;
     let cancelled = false;
-
-    (async () => {
-      setLoading(true);
-      setError(null);
-      // The submission list (team-aware) is independent of the allocation
-      // lookup — one failing must not blank the other.
-      const submissionsPromise = loadSubmissions().catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load submissions');
-      });
-      try {
-        // Allocation is still needed as the upload target — a student uploads
-        // under their own allocation.
-        const myAllocation = await apiGetMyAllocation();
-        if (!cancelled) setAllocation(myAllocation);
-      } catch {
-        // A 404 here just means "not allocated yet" — not a real error.
-        if (!cancelled) setAllocation(null);
-      }
-      await submissionsPromise;
-      if (!cancelled) setLoading(false);
-    })();
-
+    loadAll(() => cancelled);
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId]);
+
+  usePageRefresh(() => Promise.all([loadMyTasks().catch(console.error), loadAll(() => false)]));
 
   useEffect(() => {
     if (initialSelectedSubId) {

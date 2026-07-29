@@ -7,6 +7,7 @@ import { MENTOR_TYPE_DOT_COLORS } from '../../../lib/constants';
 import { apiListMentors, apiGetCohort, apiAddMentorsToCohort } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
+import { usePageRefresh } from '../../../context/RefreshContext';
 
 export default function CohortMentorsPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
@@ -46,6 +47,8 @@ export default function CohortMentorsPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  usePageRefresh(fetchData);
 
   const handleToggle = (mentorId: string) => {
     setMappedMentorIds(prev =>

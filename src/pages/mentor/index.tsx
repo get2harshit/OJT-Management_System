@@ -9,13 +9,16 @@ import Attendance from './Attendance';
 import EvaluationTracker from './EvaluationTracker';
 import Credits from './Credits';
 import { useAuth } from '../../context/useAuth';
+import { useNotificationNavigate } from '../../context/NotificationNavigateContext';
+import { apiGetPrdSubmission } from '../../lib/api';
+import { useToast } from '../../toast';
 
 function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   // Set by Tasks' "View Submission" action to hand off which student+task
   // the Submissions tab should jump straight to; cleared once Submissions
   // consumes it so a later manual visit to the tab doesn't re-trigger it.
-  const [submissionFocus, setSubmissionFocus] = useState<{ studentId: string; taskId: string } | null>(null);
+  const [submissionFocus, setSubmissionFocus] = useState<{ studentId: string; taskId?: string } | null>(null);
   let authUser = null;
   try {
     const auth = useAuth();
@@ -24,6 +27,43 @@ function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
     // AuthProvider not present
   }
   const mentorId = authUser?.id || 'm1'; // demo mentor
+  const { showError } = useToast();
+
+  useNotificationNavigate((n) => {
+    switch (n.type) {
+      case 'task':
+        setActiveTab('tasks');
+        break;
+      case 'submission':
+        // The notification only carries the submission's own id — resolve
+        // it to the studentId/taskId Submissions' focus props actually need
+        // (same shape Tasks' own "View Submission" handoff above already uses).
+        if (n.referenceId) {
+          apiGetPrdSubmission(n.referenceId)
+            .then((sub) => {
+              if (sub.studentId) {
+                setSubmissionFocus({ studentId: sub.studentId, taskId: sub.taskId });
+              }
+              setActiveTab('submissions');
+            })
+            .catch(() => {
+              showError('Could not open that submission — it may have been removed.');
+              setActiveTab('submissions');
+            });
+        } else {
+          setActiveTab('submissions');
+        }
+        break;
+      case 'evaluation':
+        setActiveTab('evaluation');
+        break;
+      case 'allocation':
+        setActiveTab('ojts');
+        break;
+      default:
+        break;
+    }
+  });
 
   const renderTab = () => {
     switch (activeTab) {

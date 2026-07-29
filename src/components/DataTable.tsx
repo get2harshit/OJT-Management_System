@@ -110,8 +110,20 @@ export default function DataTable<T extends Record<string, unknown>>({
       if (!wrap) return;
       const wrapTop = wrap.getBoundingClientRect().top;
       const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 56;
-      const paddingBottom = window.innerWidth >= 1024 ? 36 : 24;
+      // Trimmed from 36/24 — the extra reserved margin was making the table
+      // noticeably shorter than the space actually available below it.
+      const paddingBottom = window.innerWidth >= 1024 ? 16 : 12;
       const available = window.innerHeight - wrapTop - footerHeight - paddingBottom;
+      // `available` (leftover space below the table) is the real, honest
+      // constraint — it already accounts for however tall the browser
+      // chrome/OS taskbar happens to be on this machine (this is where a
+      // fixed "floor at 70% of window.innerHeight" previously went wrong:
+      // on a shorter viewport — e.g. Windows, where browser chrome eats more
+      // of window.innerHeight than on this Mac dev machine — `available` can
+      // legitimately be less than 70vh, and forcing the bigger 70vh number
+      // anyway pushed the table past the real available space, causing a
+      // page scroll — the same class of bug already fixed once on
+      // ProjectPicker, for a different, sibling-footer reason).
       setMaxBodyHeight(Math.max(180, Math.floor(available)));
     };
 
