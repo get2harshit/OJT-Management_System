@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, Loader2, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
-import { apiListTasks, apiGetTask, apiDeleteTask, apiUpdateTask, apiApproveTask, apiRequestResubmit, apiGetAssigneeProgress } from '../../lib/api/tasks';
-import type { ApiTask, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
+import { apiListTasks, apiGetTask, apiDeleteTask, apiUpdateTask, apiGetAssigneeProgress } from '../../lib/api/tasks';
+import type { ApiTask, ApiAssignmentStatus } from '../../lib/api/tasks';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
@@ -26,7 +26,14 @@ interface Assignee {
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
-export default function AdminTasks() {
+interface Props {
+  // Jumps to the Submissions tab with this student+task+cohort pre-selected,
+  // so an assignee row can be reviewed from the real submission detail
+  // instead of the old blind Approve/Resubmit buttons here.
+  onViewSubmission?: (studentId: string, taskId: string, cohortId: string) => void;
+}
+
+export default function AdminTasks({ onViewSubmission }: Props = {}) {
   const { user } = useAuth();
   const myId = user?.id;
   const [tasks, setTasks] = useState<ApiTask[]>([]);
@@ -470,10 +477,10 @@ export default function AdminTasks() {
         actions={(row) => (
           <ActionsMenu
             items={[
-              // Document-category tasks are reviewed from the Submissions
-              // page instead — this is only for general/link_submission
-              // tasks, which have no submission record to review there.
-              ...(row.category !== 'document_submission' && (row.assignmentsSummary?.total ?? 0) > 0
+              // Every category (document/general/link) now submits real
+              // content through the Submissions tab — this panel just opens
+              // the assignee list and routes each one there to review.
+              ...((row.assignmentsSummary?.total ?? 0) > 0
                 ? [{ label: 'Review Assignments', icon: ClipboardCheck, onClick: () => openReviewModal(row.id) }]
                 : []),
               { label: 'Edit Task', icon: Edit2, onClick: () => handleEditClick(row) },
@@ -730,13 +737,7 @@ export default function AdminTasks() {
         ) : reviewTask ? (
           <AdminAssigneeReviewPanel
             task={reviewTask}
-            onChanged={async () => {
-              await fetchTasksOnly();
-              if (reviewTaskId) {
-                const res = await apiGetTask(reviewTaskId);
-                setReviewTask(res.data);
-              }
-            }}
+            onViewSubmission={onViewSubmission}
           />
         ) : null}
       </Modal>
@@ -744,43 +745,21 @@ export default function AdminTasks() {
   );
 }
 
-// Admin/batch_manager can always approve or request a resubmit, regardless
-// of who created the task (backend's assigned_by_id-or-admin check) — only
-// used for general/link_submission tasks; document tasks are reviewed from
-// the Submissions page instead.
+// Every category (document/general/link) now submits real content through
+// the Submissions tab, so this panel never approves/resubmits blind — it
+// only routes to the actual submission. And when a MENTOR assigned the task
+// (not admin/batch_manager), admin only gets that read-only redirect —
+// Submissions' own review action enforces the real access rule (see
+// SubmissionService.reviewSubmission's admin view-only gate).
 function AdminAssigneeReviewPanel({
   task,
-  onChanged,
+  onViewSubmission,
 }: {
   task: ApiTask;
-  onChanged: () => Promise<void>;
+  onViewSubmission?: (studentId: string, taskId: string, cohortId: string) => void;
 }) {
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [resubmitDraft, setResubmitDraft] = useState<Record<string, string>>({});
   const assignments = task.assignments || [];
-
-  const handleApprove = async (assignment: ApiAssignment) => {
-    setSavingId(assignment.id);
-    try {
-      await apiApproveTask(task.id, assignment.id);
-      await onChanged();
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  const handleResubmit = async (assignment: ApiAssignment) => {
-    const comment = resubmitDraft[assignment.id]?.trim();
-    if (!comment) return;
-    setSavingId(assignment.id);
-    try {
-      await apiRequestResubmit(task.id, assignment.id, comment);
-      setResubmitDraft(prev => ({ ...prev, [assignment.id]: '' }));
-      await onChanged();
-    } finally {
-      setSavingId(null);
-    }
-  };
+  const assignedByMentor = task.assigner?.role === 'mentor';
 
   const statusDot: Record<ApiAssignmentStatus, string> = {
     pending: 'bg-zinc-400',
@@ -802,9 +781,18 @@ function AdminAssigneeReviewPanel({
         {task.description && <p className="text-gray-400 text-sm mt-1">{task.description}</p>}
       </div>
 
+      <p className="text-xs text-gray-400 bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-2">
+        Open a submitted row's submission below to approve or resubmit it.
+      </p>
+
+      {assignedByMentor && (
+        <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+          Assigned by a mentor — admin has view-only access; only the assigning mentor or the assignee's own mentor can approve or request changes.
+        </p>
+      )}
+
       <div className="space-y-3">
         {assignments.map(assignment => {
-          const saving = savingId === assignment.id;
           return (
             <div key={assignment.id} className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 space-y-2.5">
               <div className="flex items-center justify-between gap-3">
@@ -815,31 +803,16 @@ function AdminAssigneeReviewPanel({
                 </span>
               </div>
 
-              {assignment.status === 'review' && (
-                <div className="space-y-2">
-                  <textarea
-                    value={resubmitDraft[assignment.id] || ''}
-                    onChange={e => setResubmitDraft(prev => ({ ...prev, [assignment.id]: e.target.value }))}
-                    placeholder="Resubmit comment (required to send back for resubmission)"
-                    rows={2}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-gold transition-colors resize-none"
-                  />
-                  <div className="flex items-center gap-2">
-                    <Button onClick={() => handleApprove(assignment)} disabled={saving} size="sm" className="flex-1">
-                      {saving ? <Loader2 size={13} className="animate-spin" /> : null}
-                      Approve
-                    </Button>
-                    <Button
-                      onClick={() => handleResubmit(assignment)}
-                      disabled={saving || !resubmitDraft[assignment.id]?.trim()}
-                      variant="secondary"
-                      size="sm"
-                      className="flex-1"
-                    >
-                      Resubmit
-                    </Button>
-                  </div>
-                </div>
+              {assignment.status !== 'pending' ? (
+                <button
+                  onClick={() => onViewSubmission?.(assignment.assignee_id, task.id, task.cohort_id)}
+                  className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-gold hover:text-gold/80 bg-gold/10 hover:bg-gold/15 border border-gold/25 rounded-lg py-2 transition-colors"
+                >
+                  <Eye size={13} />
+                  View Submission
+                </button>
+              ) : (
+                <p className="text-[11px] text-gray-500">Not submitted yet.</p>
               )}
 
               {assignment.status === 'resubmit' && (

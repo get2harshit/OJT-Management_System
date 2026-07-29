@@ -43,7 +43,25 @@ interface RosterStudent {
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
-export default function AdminSubmissions() {
+interface Props {
+  // Set by the Tasks tab's "View Submission" action to jump straight to a
+  // specific student's submission for a given task — resets the roster
+  // filters and switches cohort if needed (a task belongs to exactly one
+  // cohort, which may not be the currently-selected one). onFocusHandled
+  // clears it once consumed so a later manual visit to this tab doesn't
+  // re-trigger it.
+  focusStudentId?: string | null;
+  focusTaskId?: string | null;
+  focusCohortId?: string | null;
+  onFocusHandled?: () => void;
+}
+
+export default function AdminSubmissions({
+  focusStudentId,
+  focusTaskId,
+  focusCohortId,
+  onFocusHandled,
+}: Props = {}) {
   const { showSuccess, showError } = useToast();
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
@@ -155,14 +173,54 @@ export default function AdminSubmissions() {
     setSubmissionsLoading(true);
     try {
       const subs = await apiGetSubmissionsByStudent(studentId);
-      setStudentSubmissions(subs.map((s) => ({ ...s, studentId, mentorId: s.primaryMentorId })));
+      const rows = subs.map((s) => ({ ...s, studentId, mentorId: s.primaryMentorId }));
+      setStudentSubmissions(rows);
+      return rows;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load submissions');
       setStudentSubmissions([]);
+      return [];
     } finally {
       setSubmissionsLoading(false);
     }
   }, []);
+
+  // Resets every roster filter and switches cohort if needed, so the target
+  // student is never hidden by a stale batch/track/mentor/search filter, the
+  // wrong page, or a different cohort selection — then loads their
+  // submissions directly (this doesn't depend on the roster having loaded;
+  // the roster is only needed for the header's name/roll/track display,
+  // which degrades gracefully below if it hasn't caught up yet).
+  useEffect(() => {
+    if (!focusStudentId) return;
+
+    setPage(1);
+    setRosterSearch('');
+    setBatchFilter('ALL');
+    setTrackFilter('ALL');
+    setMentorFilter('ALL');
+    if (focusCohortId && focusCohortId !== cohortFilter) {
+      setCohortFilter(focusCohortId);
+    }
+
+    setSelectedStudentId(focusStudentId);
+    setSelectedSubId(null);
+    setTaskFilter('ALL');
+    setStudentSubmissions([]);
+
+    loadStudentSubmissions(focusStudentId).then((rows) => {
+      if (focusTaskId) {
+        const matches = rows.filter((r) => r.taskId === focusTaskId);
+        const latest = matches.sort((a, b) => b.versionNumber - a.versionNumber)[0];
+        if (latest) {
+          setTaskFilter(latest.taskId ?? `type:${latest.documentType}`);
+          setSelectedSubId(latest.id);
+        }
+      }
+      onFocusHandled?.();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusStudentId, focusTaskId, focusCohortId]);
 
   const rosterItems = useMemo(
     () =>
@@ -340,7 +398,7 @@ export default function AdminSubmissions() {
           />
         }
       >
-        {!selectedStudent ? (
+        {!selectedStudentId ? (
           <div className="h-full flex items-center justify-center text-gray-500 text-sm text-center px-6">
             {isPublished ? 'Select a student to view their submissions.' : "This cohort's allocation hasn't been published yet — students only appear here once their project and mentor are live."}
           </div>
@@ -352,7 +410,7 @@ export default function AdminSubmissions() {
                 className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-700 transition-all text-sm font-semibold border border-zinc-700"
               >
                 <ArrowLeft size={16} />
-                Back to {selectedStudent.fullName || 'student'}'s submissions
+                Back to {selectedStudent?.fullName || 'student'}'s submissions
               </button>
             </div>
             <SubmissionDetail
@@ -369,25 +427,33 @@ export default function AdminSubmissions() {
               downloadError={downloadError}
               onDownload={handleDownload}
               headerExtra={
-                <p className="text-xs text-gray-500 mt-1">
-                  {selectedStudent.fullName} ({selectedStudent.rollNumber}) · {selectedStudent.track}
-                </p>
+                selectedStudent ? (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {selectedStudent.fullName} ({selectedStudent.rollNumber}) · {selectedStudent.track}
+                  </p>
+                ) : undefined
               }
               reviewControls={
-                <ReviewActions
-                  disabled={reviewing || activeSub.status === 'approved'}
-                  onApprove={() => handleReview('approved')}
-                  onRequestChanges={(feedback) => handleReview('changes_requested', feedback)}
-                />
+                activeSub.taskAssignedByRole === 'mentor' ? (
+                  <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                    This task was assigned by a mentor — admin has view-only access here; only the assigning mentor or the student's own mentor can approve or request changes.
+                  </p>
+                ) : (
+                  <ReviewActions
+                    disabled={reviewing || activeSub.status === 'approved'}
+                    onApprove={() => handleReview('approved')}
+                    onRequestChanges={(feedback) => handleReview('changes_requested', feedback)}
+                  />
+                )
               }
             />
           </div>
         ) : (
           <div className="p-6 space-y-4">
             <div>
-              <h2 className="text-lg font-bold text-white">{selectedStudent.fullName}</h2>
+              <h2 className="text-lg font-bold text-white">{selectedStudent?.fullName || 'Student'}</h2>
               <p className="text-xs text-gray-500">
-                {selectedStudent.rollNumber} · {selectedStudent.track} · {selectedStudent.batch}
+                {selectedStudent ? `${selectedStudent.rollNumber} · ${selectedStudent.track} · ${selectedStudent.batch}` : ' '}
               </p>
             </div>
 

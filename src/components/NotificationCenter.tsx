@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Bell, CheckCheck, Trash2, Info, AlertTriangle, CheckCircle2, Megaphone, Flame, Users, Check, X } from 'lucide-react';
-import { getAnnouncements } from '../lib/announcements';
-import { apiGetMyCohort, apiGetMyTeamStatus, apiRespondToTeamRequest } from '../lib/api';
+import { Bell, CheckCheck, RefreshCw, AlertTriangle, CheckCircle2, Megaphone, Flame, Users, Check, X, FolderCheck, FileCheck2, ClipboardList, Award } from 'lucide-react';
+import { apiRespondToTeamRequest } from '../lib/api';
+import { apiGetMyNotifications, apiMarkNotificationRead, apiMarkAllNotificationsRead } from '../lib/api/notifications';
+import type { NotificationType } from '../lib/api/notifications';
 import { useToast } from '../toast';
 
 export interface NotificationItem {
@@ -9,59 +10,13 @@ export interface NotificationItem {
   title: string;
   message: string;
   timestamp: string;
-  type: 'info' | 'success' | 'warning' | 'announcement' | 'team_invite';
+  type: NotificationType;
   read: boolean;
-  targetBatch?: string;
-  targetTrack?: string;
   priority?: 'normal' | 'important' | 'urgent';
   isInvite?: boolean;
-  senderName?: string;
-  trackName?: string;
   onAccept?: () => Promise<void>;
   onReject?: () => Promise<void>;
 }
-
-const NOTIF_READ_KEY = 'ojt_notification_read_ids';
-
-function getReadIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(NOTIF_READ_KEY);
-    return raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function saveReadIds(ids: Set<string>) {
-  localStorage.setItem(NOTIF_READ_KEY, JSON.stringify([...ids]));
-}
-
-const SYSTEM_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: 'sys-1',
-    title: 'CSV Import Completed',
-    message: '18 project templates imported successfully into the system catalog.',
-    timestamp: '10m ago',
-    type: 'success',
-    read: false,
-  },
-  {
-    id: 'sys-2',
-    title: 'Project Allocation Update',
-    message: 'Allocation run draft has been generated for Cohort 2024-B1.',
-    timestamp: '1h ago',
-    type: 'info',
-    read: false,
-  },
-  {
-    id: 'sys-3',
-    title: 'Review Required',
-    message: '2 teams require manual review before allocation can be published.',
-    timestamp: '2h ago',
-    type: 'warning',
-    read: false,
-  },
-];
 
 function timeAgo(isoDate: string): string {
   const diff = Date.now() - new Date(isoDate).getTime();
@@ -74,87 +29,74 @@ function timeAgo(isoDate: string): string {
   return `${days}d ago`;
 }
 
-export default function NotificationCenter({ panel }: { panel?: string }) {
+// The backend already scopes GET /notifications/my to the caller, including
+// team_invite rows (which only ever exist for a real student recipient) —
+// no panel/role prop needed to gate what's fetched anymore.
+export default function NotificationCenter() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { showError, showSuccess } = useToast();
 
+  // No polling — only ever runs on mount and on an explicit refresh click.
+  // Team invites are real ojt_notifications rows now (type: team_invite,
+  // referenceId = the team_request id) — Accept/Reject wire straight to
+  // apiRespondToTeamRequest using that id, no separate team-status fetch.
   const buildNotifications = useCallback(async () => {
-    const readIds = getReadIds();
-
-    const annNotifs: NotificationItem[] = getAnnouncements().map(a => ({
-      id: a.id,
-      title: a.title,
-      message: a.content,
-      timestamp: timeAgo(a.createdAt),
-      type: 'announcement' as const,
-      read: readIds.has(a.id),
-      targetBatch: a.targetBatch,
-      targetTrack: a.targetTrack,
-      priority: a.priority,
-    }));
-
-    const sysNotifs = SYSTEM_NOTIFICATIONS.map(n => ({
-      ...n,
-      read: readIds.has(n.id),
-    }));
-
-    let inviteNotifs: NotificationItem[] = [];
-    if (panel === 'student') {
-      try {
-        const cohort = await apiGetMyCohort();
-        const status = await apiGetMyTeamStatus(cohort.cohortId);
-        if (status?.pendingReceivedRequests && status.pendingReceivedRequests.length > 0) {
-          inviteNotifs = status.pendingReceivedRequests.map(req => ({
-            id: req.id,
-            title: 'Team Invite',
-            message: `${req.senderName} invited you to team up for ${req.track}.`,
-            timestamp: 'Just now',
-            type: 'team_invite',
-            read: false,
-            isInvite: true,
-            senderName: req.senderName || 'A teammate',
-            trackName: req.track,
-            onAccept: async () => {
-              try {
-                await apiRespondToTeamRequest(req.id, 'accept');
-                showSuccess('Team formed!');
-                window.dispatchEvent(new Event('ojt_team_status_changed'));
-              } catch (err) {
-                showError(err instanceof Error ? err.message : 'Failed to respond to request');
-              }
-            },
-            onReject: async () => {
-              try {
-                await apiRespondToTeamRequest(req.id, 'reject');
-                showSuccess('Request rejected.');
-                window.dispatchEvent(new Event('ojt_team_status_changed'));
-              } catch (err) {
-                showError(err instanceof Error ? err.message : 'Failed to respond to request');
-              }
-            }
-          }));
-        }
-      } catch (err) {
-        // ignore errors
-      }
+    setRefreshing(true);
+    try {
+      const list = await apiGetMyNotifications();
+      setNotifications(
+        list.map((n): NotificationItem => {
+          const isInvite = n.type === 'team_invite' && !!n.referenceId;
+          return {
+            id: n.id,
+            title: n.title,
+            message: n.message,
+            timestamp: timeAgo(n.createdAt),
+            type: n.type,
+            read: n.isRead,
+            priority: n.priority,
+            isInvite,
+            onAccept: isInvite
+              ? async () => {
+                  try {
+                    await apiRespondToTeamRequest(n.referenceId!, 'accept');
+                    showSuccess('Team formed!');
+                    await buildNotifications();
+                  } catch (err) {
+                    showError(err instanceof Error ? err.message : 'Failed to respond to request');
+                  }
+                }
+              : undefined,
+            onReject: isInvite
+              ? async () => {
+                  try {
+                    await apiRespondToTeamRequest(n.referenceId!, 'reject');
+                    showSuccess('Request rejected.');
+                    await buildNotifications();
+                  } catch (err) {
+                    showError(err instanceof Error ? err.message : 'Failed to respond to request');
+                  }
+                }
+              : undefined,
+          };
+        })
+      );
+    } catch {
+      // Leave whatever was already showing — a failed refresh shouldn't
+      // wipe the last-known list.
+    } finally {
+      setRefreshing(false);
     }
-
-    setNotifications([...inviteNotifs, ...annNotifs, ...sysNotifs]);
-  }, [panel, showError, showSuccess]);
+  }, [showError, showSuccess]);
 
   useEffect(() => {
     buildNotifications();
-    window.addEventListener('ojt_announcement_created', buildNotifications);
-    window.addEventListener('ojt_team_status_changed', buildNotifications);
-    return () => {
-      window.removeEventListener('ojt_announcement_created', buildNotifications);
-      window.removeEventListener('ojt_team_status_changed', buildNotifications);
-    };
   }, [buildNotifications]);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -168,38 +110,39 @@ export default function NotificationCenter({ panel }: { panel?: string }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  const markAllAsRead = () => {
-    const readIds = getReadIds();
-    notifications.forEach(n => readIds.add(n.id));
-    saveReadIds(readIds);
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  const markAllAsRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    try {
+      await apiMarkAllNotificationsRead();
+    } catch {
+      // Non-critical — local state already reflects "read"; a later refresh
+      // will re-sync from the server if this silently failed.
+    }
   };
 
-  const markAsRead = (id: string) => {
-    const readIds = getReadIds();
-    readIds.add(id);
-    saveReadIds(readIds);
-    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
-  };
-
-  const clearAll = () => {
-    const readIds = getReadIds();
-    notifications.forEach(n => readIds.add(n.id));
-    saveReadIds(readIds);
-    setNotifications([]);
+  const markAsRead = async (n: NotificationItem) => {
+    if (n.read || n.isInvite) return;
+    setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+    try {
+      await apiMarkNotificationRead(n.id);
+    } catch {
+      // Same as above — local state is already updated optimistically.
+    }
   };
 
   const iconFor = (n: NotificationItem) => {
-    if (n.type === 'team_invite') return <Users size={16} className="text-gold" />;
     if (n.type === 'announcement') {
       if (n.priority === 'urgent') return <Flame size={16} className="text-red-400 animate-bounce" />;
       if (n.priority === 'important') return <AlertTriangle size={16} className="text-amber-400" />;
       return <Megaphone size={16} className="text-gold" />;
     }
     switch (n.type) {
-      case 'success': return <CheckCircle2 size={16} className="text-green-400" />;
-      case 'warning': return <AlertTriangle size={16} className="text-amber-400" />;
-      default: return <Info size={16} className="text-blue-400" />;
+      case 'team_invite': return <Users size={16} className="text-gold" />;
+      case 'allocation': return <FolderCheck size={16} className="text-blue-400" />;
+      case 'submission': return <FileCheck2 size={16} className="text-green-400" />;
+      case 'task': return <ClipboardList size={16} className="text-purple-400" />;
+      case 'evaluation': return <Award size={16} className="text-gold" />;
+      default: return <CheckCircle2 size={16} className="text-blue-400" />;
     }
   };
 
@@ -230,6 +173,14 @@ export default function NotificationCenter({ panel }: { panel?: string }) {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={buildNotifications}
+                disabled={refreshing}
+                className="text-xs text-gray-400 hover:text-gold flex items-center gap-1 transition-colors disabled:opacity-50"
+                title="Refresh"
+              >
+                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+              </button>
               {unreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}
@@ -238,15 +189,6 @@ export default function NotificationCenter({ panel }: { panel?: string }) {
                 >
                   <CheckCheck size={14} />
                   <span>Read all</span>
-                </button>
-              )}
-              {notifications.length > 0 && (
-                <button
-                  onClick={clearAll}
-                  className="text-xs text-gray-400 hover:text-red-400 flex items-center gap-1 transition-colors"
-                  title="Clear all"
-                >
-                  <Trash2 size={14} />
                 </button>
               )}
             </div>
@@ -261,7 +203,7 @@ export default function NotificationCenter({ panel }: { panel?: string }) {
               notifications.map(n => (
                 <div
                   key={n.id}
-                  onClick={() => markAsRead(n.id)}
+                  onClick={() => markAsRead(n)}
                   className={`p-3.5 flex items-start gap-3 cursor-pointer transition-colors ${
                     !n.read ? 'bg-zinc-800/60 hover:bg-zinc-800' : 'hover:bg-zinc-800/30'
                   }`}
@@ -289,24 +231,8 @@ export default function NotificationCenter({ panel }: { panel?: string }) {
                       <span className="text-[10px] text-gray-500 shrink-0">{n.timestamp}</span>
                     </div>
 
-                    {/* Target metadata pill */}
-                    {(n.targetBatch || n.targetTrack) && (
-                      <div className="flex items-center gap-1.5 mt-1 flex-wrap text-[10px]">
-                        {n.targetBatch && (
-                          <span className="px-1.5 py-0.5 rounded bg-zinc-750 text-gray-300 border border-zinc-700 font-mono">
-                            Batch: {n.targetBatch}
-                          </span>
-                        )}
-                        {n.targetTrack && (
-                          <span className="px-1.5 py-0.5 rounded bg-zinc-750 text-gold/90 border border-gold/20">
-                            Track: {n.targetTrack}
-                          </span>
-                        )}
-                      </div>
-                    )}
-
                     <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">{n.message}</p>
-                    
+
                     {n.isInvite && (
                       <div className="flex items-center gap-2 mt-2">
                         <button

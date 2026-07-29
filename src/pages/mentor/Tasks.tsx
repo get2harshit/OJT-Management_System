@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, Calendar, Loader2 } from 'lucide-react';
+import { Plus, Calendar, Loader2, Eye } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Drawer from '../../components/Drawer';
 import Select from '../../components/Select';
@@ -10,8 +10,6 @@ import {
   apiCreateTask,
   apiSubmitTask,
   apiResubmitTask,
-  apiApproveTask,
-  apiRequestResubmit,
 } from '../../lib/api/tasks';
 import type { ApiTask, ApiTaskCategory, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
 import { apiListMyTeams } from '../../lib/api/teams';
@@ -59,9 +57,13 @@ const STATUS_DOT: Record<ApiAssignmentStatus, string> = {
 
 interface Props {
   mentorId: string;
+  // Jumps to the Submissions tab with this student+task pre-selected, so a
+  // document-task assignee row can be reviewed (Approve/Resubmit) from the
+  // real submission detail instead of dead-ending in this drawer.
+  onViewSubmission?: (studentId: string, taskId: string) => void;
 }
 
-export default function MentorTasks({ mentorId }: Props) {
+export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   const { showSuccess, showError } = useToast();
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [myTeams, setMyTeams] = useState<Team[]>([]);
@@ -553,14 +555,7 @@ export default function MentorTasks({ mentorId }: Props) {
             task={reviewTask}
             mentorId={mentorId}
             myStudentIds={myStudentIds}
-            onChanged={async () => {
-              await fetchTasksOnly();
-              // Keep the drawer's task data fresh after an approve/resubmit action.
-              if (reviewTaskId) {
-                const res = await apiGetTask(reviewTaskId);
-                setReviewTask(res.data);
-              }
-            }}
+            onViewSubmission={onViewSubmission}
           />
         ) : null}
       </Drawer>
@@ -659,55 +654,31 @@ function StatusBadge({ status }: { status: ApiAssignmentStatus }) {
   );
 }
 
-// Mentor-as-assigner review: approve or request a resubmit on each of their
-// own students'/teams' assignments for this task. Only applies to
-// non-document tasks — a document_submission task is reviewed from the
-// Submissions tab instead (ReviewActions there drives the same underlying
-// assignment transition, see SubmissionService.syncAssignmentStatus).
+// Mentor-as-assigner review: every category (document/general/link) is now
+// submitted with real content through the Submissions tab (student's popup
+// picks the input by task.category, see submissionKindForCategory in
+// student/Submissions.tsx), and ReviewActions there drives the same
+// underlying assignment transition (SubmissionService.syncAssignmentStatus).
+// So this panel never approves/resubmits blind — it only routes to the
+// actual submission to review.
 function AssigneeReviewPanel({
   task,
-  onChanged,
   mentorId,
   myStudentIds,
+  onViewSubmission,
 }: {
   task: ApiTask;
-  onChanged: () => Promise<void>;
   mentorId: string;
   // Mirrors the backend's approve/resubmit rule: the task's own assigner,
   // or the assignee's own mentor, can act on a row — checked per-assignment
   // (not per-task) since a batch-assigned task can mix students across
   // different mentors.
   myStudentIds: Set<string>;
+  onViewSubmission?: (studentId: string, taskId: string) => void;
 }) {
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [resubmitDraft, setResubmitDraft] = useState<Record<string, string>>({});
-  const isDocumentTask = task.category === 'document_submission';
   const assignments = task.assignments || [];
   const isTaskAssigner = task.assigned_by_id === mentorId;
   const canReviewAssignment = (assignment: ApiAssignment) => isTaskAssigner || myStudentIds.has(assignment.assignee_id);
-
-  const handleApprove = async (assignment: ApiAssignment) => {
-    setSavingId(assignment.id);
-    try {
-      await apiApproveTask(task.id, assignment.id);
-      await onChanged();
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  const handleResubmit = async (assignment: ApiAssignment) => {
-    const comment = resubmitDraft[assignment.id]?.trim();
-    if (!comment) return;
-    setSavingId(assignment.id);
-    try {
-      await apiRequestResubmit(task.id, assignment.id, comment);
-      setResubmitDraft(prev => ({ ...prev, [assignment.id]: '' }));
-      await onChanged();
-    } finally {
-      setSavingId(null);
-    }
-  };
 
   return (
     <div className="space-y-5">
@@ -716,11 +687,9 @@ function AssigneeReviewPanel({
         {task.description && <p className="text-gray-400 text-sm mt-1">{task.description}</p>}
       </div>
 
-      {isDocumentTask && (
-        <p className="text-xs text-gray-400 bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-2">
-          This is a document task — review submissions from the Submissions tab instead.
-        </p>
-      )}
+      <p className="text-xs text-gray-400 bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-2">
+        Open a submitted row's submission below to approve or resubmit it.
+      </p>
 
       {!isTaskAssigner && (
         <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
@@ -730,7 +699,6 @@ function AssigneeReviewPanel({
 
       <div className="space-y-3">
         {assignments.map(assignment => {
-          const saving = savingId === assignment.id;
           const canReview = canReviewAssignment(assignment);
           return (
             <div key={assignment.id} className="bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-3 space-y-2.5">
@@ -743,31 +711,18 @@ function AssigneeReviewPanel({
                 <p className="text-[11px] text-gray-500">Not one of your students — you can view this but can't review it.</p>
               )}
 
-              {canReview && !isDocumentTask && assignment.status === 'review' && (
-                <div className="space-y-2">
-                  <textarea
-                    value={resubmitDraft[assignment.id] || ''}
-                    onChange={e => setResubmitDraft(prev => ({ ...prev, [assignment.id]: e.target.value }))}
-                    placeholder="Resubmit comment (required to send back for resubmission)"
-                    rows={2}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-gold transition-colors resize-none"
-                  />
-                  <div className="flex items-center gap-2">
-                    <Button onClick={() => handleApprove(assignment)} disabled={saving} size="sm" className="flex-1">
-                      {saving ? <Loader2 size={13} className="animate-spin" /> : null}
-                      Approve
-                    </Button>
-                    <Button
-                      onClick={() => handleResubmit(assignment)}
-                      disabled={saving || !resubmitDraft[assignment.id]?.trim()}
-                      variant="secondary"
-                      size="sm"
-                      className="flex-1"
-                    >
-                      Resubmit
-                    </Button>
-                  </div>
-                </div>
+              {canReview && assignment.status !== 'pending' && (
+                <button
+                  onClick={() => onViewSubmission?.(assignment.assignee_id, task.id)}
+                  className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-gold hover:text-gold/80 bg-gold/10 hover:bg-gold/15 border border-gold/25 rounded-lg py-2 transition-colors"
+                >
+                  <Eye size={13} />
+                  View Submission
+                </button>
+              )}
+
+              {assignment.status === 'pending' && (
+                <p className="text-[11px] text-gray-500">Not submitted yet.</p>
               )}
 
               {assignment.status === 'resubmit' && (

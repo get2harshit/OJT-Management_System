@@ -12,8 +12,8 @@ import { getDurationString, formatDateDisplay } from '../../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import { TRACKS } from '../../../lib/constants';
-import { mapBackendTrackToFrontend } from '../../../lib/api/trackMapping';
-import { createAnnouncement } from '../../../lib/announcements';
+import { mapBackendTrackToFrontend, mapFrontendTrackToBackend } from '../../../lib/api/trackMapping';
+import { apiCreateAnnouncement } from '../../../lib/api/notifications';
 
 type PanelView = '' | 'students' | 'projects' | 'mentors';
 
@@ -549,6 +549,7 @@ export default function ViewCohortPage() {
   const [annTargetBatch, setAnnTargetBatch] = useState('All Batches');
   const [annTargetTrack, setAnnTargetTrack] = useState('All Tracks');
   const [annPriority, setAnnPriority] = useState<'normal' | 'important' | 'urgent'>('normal');
+  const [annSaving, setAnnSaving] = useState(false);
 
   // The browsable list for whichever category is active — server-paginated
   // and server-searched, independent of the full cohort/projects fetch
@@ -1148,29 +1149,39 @@ export default function ViewCohortPage() {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  if (!annTitle.trim() || !annContent.trim()) return;
-                  createAnnouncement({
-                    title: annTitle.trim(),
-                    content: annContent.trim(),
-                    cohortId: cohortId,
-                    cohortName: cohort ? getCohortLabel(cohort) : undefined,
-                    targetBatch: annTargetBatch,
-                    targetTrack: annTargetTrack,
-                    priority: annPriority,
-                  });
-                  setAnnTitle('');
-                  setAnnContent('');
-                  setAnnTargetBatch('All Batches');
-                  setAnnTargetTrack('All Tracks');
-                  setAnnPriority('normal');
-                  setShowAnnModal(false);
-                  showSuccess('Announcement published to notifications!');
+                onClick={async () => {
+                  if (!annTitle.trim() || !annContent.trim() || !cohortId) return;
+                  setAnnSaving(true);
+                  try {
+                    const { recipientCount } = await apiCreateAnnouncement({
+                      cohortId,
+                      title: annTitle.trim(),
+                      message: annContent.trim(),
+                      targetBatch: annTargetBatch !== 'All Batches' ? annTargetBatch : undefined,
+                      targetTrack: annTargetTrack !== 'All Tracks' ? mapFrontendTrackToBackend(annTargetTrack) : undefined,
+                      priority: annPriority,
+                    });
+                    setAnnTitle('');
+                    setAnnContent('');
+                    setAnnTargetBatch('All Batches');
+                    setAnnTargetTrack('All Tracks');
+                    setAnnPriority('normal');
+                    setShowAnnModal(false);
+                    showSuccess(
+                      recipientCount > 0
+                        ? `Announcement published to ${recipientCount} student${recipientCount !== 1 ? 's' : ''}.`
+                        : 'Announcement published, but no students matched this target — nothing was sent.'
+                    );
+                  } catch (err) {
+                    showError(err instanceof Error ? err.message : 'Failed to publish announcement');
+                  } finally {
+                    setAnnSaving(false);
+                  }
                 }}
-                disabled={!annTitle.trim() || !annContent.trim()}
+                disabled={!annTitle.trim() || !annContent.trim() || annSaving}
                 className="px-5 py-2 text-sm font-semibold text-black bg-gold hover:bg-gold-hover rounded-lg shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:cursor-not-allowed"
               >
-                Publish Announcement
+                {annSaving ? 'Publishing...' : 'Publish Announcement'}
               </button>
             </div>
           </div>

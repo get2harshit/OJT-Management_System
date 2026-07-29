@@ -90,6 +90,10 @@ export interface ApiTask {
   category: ApiTaskCategory;
   assign_mode?: ApiTaskAssignMode | null;
   assigned_by_id: string;
+  // Every task belongs to exactly one cohort (backend requirement) — used
+  // to jump the Submissions tab to the right cohort when "View Submission"
+  // redirects there from a different cohort than the one currently selected.
+  cohort_id: string;
   created_at: string;
   updated_at: string;
   assigner?: {

@@ -13,6 +13,13 @@ import { useToast } from '../../toast';
 
 interface Props {
   mentorId: string;
+  // Set by the Tasks tab's "View Submission" action to jump straight to a
+  // specific student's submission for a given task, instead of the mentor
+  // having to find it manually. onFocusHandled clears it once consumed so a
+  // later manual visit to this tab (via the sidebar) doesn't re-trigger it.
+  focusStudentId?: string | null;
+  focusTaskId?: string | null;
+  onFocusHandled?: () => void;
 }
 
 type Row = PrdSubmission & { studentId: string };
@@ -25,7 +32,12 @@ interface Mentee {
   pendingReviewCount: number;
 }
 
-export default function MentorSubmissions({ mentorId }: Partial<Props> & { mentorId: string }) {
+export default function MentorSubmissions({
+  mentorId,
+  focusStudentId,
+  focusTaskId,
+  onFocusHandled,
+}: Partial<Props> & { mentorId: string }) {
   const { showSuccess, showError } = useToast();
 
   const [mentees, setMentees] = useState<Mentee[]>([]);
@@ -88,14 +100,43 @@ export default function MentorSubmissions({ mentorId }: Partial<Props> & { mento
     setSubmissionsLoading(true);
     try {
       const subs = await apiGetSubmissionsByStudent(studentId);
-      setStudentSubmissions(subs.map((s) => ({ ...s, studentId })));
+      const rows = subs.map((s) => ({ ...s, studentId }));
+      setStudentSubmissions(rows);
+      return rows;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load submissions');
       setStudentSubmissions([]);
+      return [];
     } finally {
       setSubmissionsLoading(false);
     }
   };
+
+  // Waits for the roster to finish loading (so selectedStudent resolves to a
+  // real mentee) before jumping to the requested student+task, then picks
+  // the latest version of that task's submission to open directly.
+  useEffect(() => {
+    if (!focusStudentId || loading) return;
+    if (!mentees.some((m) => m.studentId === focusStudentId)) return;
+
+    setSelectedStudentId(focusStudentId);
+    setSelectedSubId(null);
+    setTaskFilter('ALL');
+    setStudentSubmissions([]);
+
+    loadStudentSubmissions(focusStudentId).then((rows) => {
+      if (focusTaskId) {
+        const matches = rows.filter((r) => r.taskId === focusTaskId);
+        const latest = matches.sort((a, b) => b.versionNumber - a.versionNumber)[0];
+        if (latest) {
+          setTaskFilter(latest.taskId ?? `type:${latest.documentType}`);
+          setSelectedSubId(latest.id);
+        }
+      }
+      onFocusHandled?.();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusStudentId, focusTaskId, loading, mentees]);
 
   const rosterItems = useMemo(
     () =>

@@ -101,7 +101,7 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 ml-auto">
-            <NotificationCenter panel={panel} />
+            <NotificationCenter />
             <button
               onClick={toggleTheme}
               title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}

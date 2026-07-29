@@ -1,273 +1,244 @@
-import { useState, useMemo } from 'react';
-import { Award, CheckSquare, Square, Video, ExternalLink } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Award, Loader2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
-import type { Profile, Student, Attendance } from '../../lib/types';
-import { useStudentProfiles } from '../../hooks/useStudentProfiles';
+import Button from '../../components/Button';
+import { apiGetMyEvaluationQueue, apiGetEvaluationDetail, apiScoreEvaluation } from '../../lib/api/evaluations';
+import type { EvaluatorQueueItem, EvaluationDetail } from '../../lib/types';
+import { useAuth } from '../../context/useAuth';
+import { useToast } from '../../toast';
 
-import { useData } from '../../context/DataContext';
-import { useAttendance } from '../../hooks/useAttendance';
+const PAGE_SIZE = 20;
 
-interface Props {
-  profiles: Profile[];
-  students: Student[];
-  attendance: Attendance[];
-  updateStudent: (userId: string, patch: Partial<Student>) => void;
-}
+// A mentor (internal or, via the same panel, external) scores whatever
+// evaluations they're a panelist on — the backend assigns panelists
+// automatically when admin activates a cohort's evaluation, so this page is
+// purely a queue: nothing to set up here, just score what's assigned.
+export default function MentorEvaluationTracker() {
+  const { user } = useAuth();
+  const myId = user?.id;
+  const { showSuccess, showError } = useToast();
 
-export default function MentorEvaluationTracker({
-  profiles: propProfiles,
-  students: propStudents,
-  attendance: propAttendance,
-  updateStudent: propUpdateStudent,
-}: Partial<Props> = {}) {
-  const { profiles: hookProfiles, students: hookStudents, updateStudent: hookUpdateStudent } = useData();
-  const { attendance: hookAttendance } = useAttendance();
+  const [queue, setQueue] = useState<EvaluatorQueueItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [total, setTotal] = useState(0);
 
-  const profiles = propProfiles ?? hookProfiles;
-  const students = propStudents ?? hookStudents;
-  const attendance = propAttendance ?? hookAttendance;
-  const updateStudent = propUpdateStudent ?? hookUpdateStudent;
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    viva1: '', viva2: '', viva3: '', ojt_marks: '',
-    internal_marks: '', presentation_marks: '',
-    project_video_url: '', deployment_url: ''
-  });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<EvaluationDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [scoreDraft, setScoreDraft] = useState<Record<string, string>>({});
+  const [feedbackDraft, setFeedbackDraft] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const studentProfiles = useStudentProfiles(profiles);
+  const loadQueue = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiGetMyEvaluationQueue({ page, limit });
+      setQueue(res.data);
+      setTotal(res.pagination.total);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load your evaluation queue');
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit]);
 
-  const totalUniqueDates = useMemo(() => {
-    return new Set(attendance.map((a) => a.date)).size;
-  }, [attendance]);
+  useEffect(() => {
+    loadQueue();
+  }, [loadQueue]);
 
-  const targetDenominator = Math.max(totalUniqueDates, 5);
-
-  const data = useMemo(() => {
-    return students.map((s) => {
-      const prof = studentProfiles.find((p) => p.id === s.user_id);
-      const studentPresents = attendance.filter((a) => a.student_id === s.user_id).length;
-      const attPct = Math.round((studentPresents / targetDenominator) * 100);
-
-      // Total average calculation
-      const v1 = s.viva1 ?? 0;
-      const v2 = s.viva2 ?? 0;
-      const v3 = s.viva3 ?? 0;
-      const ojt = s.ojt_marks ?? 0;
-      const internal = s.internal_marks ?? 0;
-      const pres = s.presentation_marks ?? 0;
-
-      const scoresCount = [s.viva1, s.viva2, s.viva3, s.ojt_marks, s.internal_marks, s.presentation_marks]
-        .filter(x => x !== null && x !== undefined).length || 1;
-
-      const total = Math.round((v1 + v2 + v3 + ojt + internal + pres) / scoresCount);
-
-      return {
-        user_id: s.user_id,
-        name: prof?.name ?? '-',
-        roll_number: s.roll_number,
-        viva1: s.viva1 !== null ? `${s.viva1}/100` : 'Not Set',
-        viva2: s.viva2 !== null ? `${s.viva2}/100` : 'Not Set',
-        viva3: s.viva3 !== null ? `${s.viva3}/100` : 'Not Set',
-        internal_marks: s.internal_marks !== null ? `${s.internal_marks}/100` : 'Not Set',
-        presentation_marks: s.presentation_marks !== null ? `${s.presentation_marks}/100` : 'Not Set',
-        attendanceRate: `${attPct}%`,
-        ojt_marks: s.ojt_marks !== null ? `${s.ojt_marks}/100` : 'Not Set',
-        logbook_checked: !!s.logbook_checked,
-        project_video_url: s.project_video_url,
-        deployment_url: s.deployment_url,
-        totalScore: `${total}/100`,
-      };
-    });
-  }, [students, studentProfiles, attendance, targetDenominator]);
-
-  const handleEdit = (row: (typeof data)[number]) => {
-    const s = students.find((stud) => stud.user_id === row.user_id);
-    if (!s) return;
-    setEditingUserId(row.user_id);
-    setForm({
-      viva1: s.viva1 !== null ? String(s.viva1) : '',
-      viva2: s.viva2 !== null ? String(s.viva2) : '',
-      viva3: s.viva3 !== null ? String(s.viva3) : '',
-      ojt_marks: s.ojt_marks !== null ? String(s.ojt_marks) : '',
-      internal_marks: s.internal_marks !== null ? String(s.internal_marks) : '',
-      presentation_marks: s.presentation_marks !== null ? String(s.presentation_marks) : '',
-      project_video_url: s.project_video_url || '',
-      deployment_url: s.deployment_url || ''
-    });
-    setModalOpen(true);
+  const openEvaluation = async (id: string) => {
+    setSelectedId(id);
+    setDetail(null);
+    setDetailLoading(true);
+    try {
+      const res = await apiGetEvaluationDetail(id);
+      setDetail(res);
+      const mine = res.panelists.find((p) => p.evaluatorId === myId);
+      const draft: Record<string, string> = {};
+      for (const c of res.criteria) {
+        const existing = mine?.scoreBreakdown?.[c.name];
+        draft[c.name] = existing !== undefined && existing !== null ? String(existing) : '';
+      }
+      setScoreDraft(draft);
+      setFeedbackDraft(mine?.feedback || '');
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load evaluation');
+      setSelectedId(null);
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
-  const handleSave = () => {
-    if (!editingUserId) return;
-    updateStudent(editingUserId, {
-      viva1: form.viva1 !== '' ? Number(form.viva1) : null,
-      viva2: form.viva2 !== '' ? Number(form.viva2) : null,
-      viva3: form.viva3 !== '' ? Number(form.viva3) : null,
-      ojt_marks: form.ojt_marks !== '' ? Number(form.ojt_marks) : null,
-      internal_marks: form.internal_marks !== '' ? Number(form.internal_marks) : null,
-      presentation_marks: form.presentation_marks !== '' ? Number(form.presentation_marks) : null,
-      project_video_url: form.project_video_url || null,
-      deployment_url: form.deployment_url || null,
-    });
-    setEditingUserId(null);
-    setModalOpen(false);
+  const closeModal = () => {
+    setSelectedId(null);
+    setDetail(null);
+    setScoreDraft({});
+    setFeedbackDraft('');
   };
+
+  const canSubmit =
+    !!detail &&
+    detail.criteria.every((c) => {
+      const raw = scoreDraft[c.name];
+      if (raw === undefined || raw.trim() === '') return false;
+      const n = Number(raw);
+      return !Number.isNaN(n) && n >= 0 && n <= c.maxMarks;
+    });
+
+  const handleSubmitScore = async () => {
+    if (!detail || !canSubmit) return;
+    setSaving(true);
+    try {
+      const scoreBreakdown: Record<string, number> = {};
+      for (const c of detail.criteria) {
+        scoreBreakdown[c.name] = Number(scoreDraft[c.name]);
+      }
+      await apiScoreEvaluation(detail.id, scoreBreakdown, feedbackDraft.trim() || undefined);
+      showSuccess('Score submitted.');
+      closeModal();
+      await loadQueue();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to submit score');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const tableData = queue.map((q) => ({
+    id: q.id,
+    studentName: q.studentName || '—',
+    evaluation: q.sequenceNo ? `${q.evaluationTypeName} ${q.sequenceNo}` : q.evaluationTypeName,
+    myRole: q.myRole === 'external' ? 'External' : 'Internal',
+    myScore: q.myTotalMarks !== null ? `${q.myTotalMarks}/${q.maxMarksSnapshot}` : 'Not scored',
+    myScoreSet: q.myTotalMarks !== null,
+    finalScore: q.finalMarksObtained !== null ? `${q.finalMarksObtained}/${q.maxMarksSnapshot}` : '—',
+  }));
+
+  const myScore = detail?.panelists.find((p) => p.evaluatorId === myId);
+  const otherPanelists = detail?.panelists.filter((p) => p.evaluatorId !== myId) || [];
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Award className="text-gold" size={26} />
-            Evaluation Tracker
-          </h1>
-          <p className="text-gray-400 text-sm mt-1">Manage student marks for Viva, Internal, Presentation, verify Logbooks and review student links.</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <Award className="text-gold" size={26} />
+          Evaluation Tracker
+        </h1>
+        <p className="text-gray-400 text-sm mt-1">Score the evaluations you've been assigned as a panelist.</p>
       </div>
 
       <DataTable
         columns={[
-          { key: 'roll_number', header: 'Roll Number' },
-          { key: 'name', header: 'Student Name' },
-          { key: 'viva1', header: 'Viva 1' },
-          { key: 'viva2', header: 'Viva 2' },
-          { key: 'viva3', header: 'Viva 3' },
-          { key: 'internal_marks', header: 'Internal' },
-          { key: 'presentation_marks', header: 'Presentation' },
-          { key: 'ojt_marks', header: 'OJT Marks' },
-          { key: 'logbook_checked', header: 'Log Book', render: (row) => (
-            <button
-              onClick={() => updateStudent(row.user_id, { logbook_checked: !row.logbook_checked })}
-              className="text-gray-400 hover:text-gold transition-colors flex items-center justify-center w-full"
-            >
-              {row.logbook_checked ? (
-                <CheckSquare size={18} className="text-gold" />
-              ) : (
-                <Square size={18} />
-              )}
-            </button>
-          )},
-          { key: 'project_video_url', header: 'Video', render: (row) => (
-            row.project_video_url ? (
-              <a href={row.project_video_url} target="_blank" rel="noreferrer" className="text-gold hover:text-gold-hover flex items-center gap-0.5 text-xs font-semibold">
-                <Video size={14} />
-                Video
-              </a>
-            ) : <span className="text-gray-600 text-xs">-</span>
-          )},
-          { key: 'deployment_url', header: 'Deploy', render: (row) => (
-            row.deployment_url ? (
-              <a href={row.deployment_url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 flex items-center gap-0.5 text-xs font-semibold">
-                <ExternalLink size={14} />
-                Deploy
-              </a>
-            ) : <span className="text-gray-600 text-xs">-</span>
-          )},
-          { key: 'attendanceRate', header: 'Attendance' },
+          { key: 'studentName', header: 'Student' },
+          { key: 'evaluation', header: 'Evaluation' },
+          { key: 'myRole', header: 'My Role' },
           {
-            key: 'totalScore',
-            header: 'Overall',
+            key: 'myScore',
+            header: 'My Score',
             render: (row) => (
-              <span className="font-bold text-gold bg-gold/10 px-2 py-0.5 rounded border border-gold/25">
-                {row.totalScore}
+              <span
+                className={`text-xs font-semibold px-2 py-0.5 rounded border ${
+                  row.myScoreSet
+                    ? 'text-gold bg-gold/10 border-gold/25'
+                    : 'text-gray-500 bg-zinc-800 border-zinc-700'
+                }`}
+              >
+                {row.myScore}
               </span>
             ),
           },
+          { key: 'finalScore', header: 'Final' },
         ]}
-        data={data}
-        searchPlaceholder="Search evaluation sheet..."
-        actions={(row) => (
-          <button
-            onClick={() => handleEdit(row)}
-            className="p-1 px-2.5 bg-gold/15 hover:bg-gold/20 text-gold text-xs font-semibold rounded border border-gold/20 transition-colors"
-          >
-            Grade
-          </button>
-        )}
+        data={tableData}
+        searchPlaceholder="Search by student name..."
+        onRowClick={(row) => openEvaluation(row.id as string)}
+        serverPagination={{
+          page,
+          limit,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
+          onPageChange: setPage,
+          limitOptions: [20, 40, 80, 100],
+          onLimitChange: (l) => {
+            setPage(1);
+            setLimit(l);
+          },
+        }}
       />
+      {!loading && queue.length === 0 && (
+        <p className="text-gray-500 text-sm text-center py-8">No evaluations assigned to you yet.</p>
+      )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Update Grades & Project Deliverables">
-        <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Viva 1 (0-100)</label>
-              <input
-                type="number" min="0" max="100" value={form.viva1}
-                onChange={(e) => setForm({ ...form, viva1: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Viva 2 (0-100)</label>
-              <input
-                type="number" min="0" max="100" value={form.viva2}
-                onChange={(e) => setForm({ ...form, viva2: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Viva 3 (0-100)</label>
-              <input
-                type="number" min="0" max="100" value={form.viva3}
-                onChange={(e) => setForm({ ...form, viva3: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Internal Marks (0-100)</label>
-              <input
-                type="number" min="0" max="100" value={form.internal_marks}
-                onChange={(e) => setForm({ ...form, internal_marks: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Presentation Marks (0-100)</label>
-              <input
-                type="number" min="0" max="100" value={form.presentation_marks}
-                onChange={(e) => setForm({ ...form, presentation_marks: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">OJT Project Marks (0-100)</label>
-              <input
-                type="number" min="0" max="100" value={form.ojt_marks}
-                onChange={(e) => setForm({ ...form, ojt_marks: e.target.value })}
-                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-              />
-            </div>
+      <Modal open={!!selectedId} onClose={closeModal} title="Score Evaluation" size="lg">
+        {detailLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 size={28} className="animate-spin text-gray-500" />
           </div>
+        ) : detail ? (
+          <div className="space-y-5">
+            <div>
+              <h4 className="text-white font-semibold">
+                {detail.studentName} — {detail.sequenceNo ? `${detail.evaluationTypeName} ${detail.sequenceNo}` : detail.evaluationTypeName}
+              </h4>
+              {detail.finalMarksObtained !== null && (
+                <p className="text-xs text-gold mt-1">
+                  Final (best of panel): {detail.finalMarksObtained}/{detail.maxMarksSnapshot}
+                </p>
+              )}
+            </div>
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Project Video Link</label>
-            <input
-              type="url" value={form.project_video_url}
-              onChange={(e) => setForm({ ...form, project_video_url: e.target.value })}
-              placeholder="e.g., https://youtube.com/watch?v=..."
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold font-mono text-xs"
-            />
+            <div className="space-y-3">
+              {detail.criteria.map((c) => (
+                <div key={c.id}>
+                  <label className="block text-sm text-gray-400 mb-1">
+                    {c.name} (0–{c.maxMarks})
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={c.maxMarks}
+                    value={scoreDraft[c.name] ?? ''}
+                    onChange={(e) => setScoreDraft((prev) => ({ ...prev, [c.name]: e.target.value }))}
+                    className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Feedback (optional)</label>
+              <textarea
+                value={feedbackDraft}
+                onChange={(e) => setFeedbackDraft(e.target.value)}
+                rows={3}
+                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+              />
+            </div>
+
+            {otherPanelists.length > 0 && (
+              <div className="border-t border-zinc-800 pt-3 space-y-2">
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Other panelist{otherPanelists.length !== 1 ? 's' : ''}</p>
+                {otherPanelists.map((p) => (
+                  <div key={p.evaluatorId} className="flex items-center justify-between text-sm bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+                    <span className="text-gray-300">{p.evaluatorName || 'Unknown'} ({p.role === 'external' ? 'External' : 'Internal'})</span>
+                    <span className={p.totalMarks !== null ? 'text-gold font-semibold' : 'text-gray-500'}>
+                      {p.totalMarks !== null ? `${p.totalMarks}/${detail.maxMarksSnapshot}` : 'Not scored yet'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Button onClick={handleSubmitScore} disabled={!canSubmit || saving} fullWidth>
+              {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+              {myScore?.totalMarks !== null && myScore !== undefined ? 'Update Score' : 'Submit Score'}
+            </Button>
           </div>
-
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Deployment Link</label>
-            <input
-              type="url" value={form.deployment_url}
-              onChange={(e) => setForm({ ...form, deployment_url: e.target.value })}
-              placeholder="e.g., https://project-prod.vercel.app"
-              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold font-mono text-xs"
-            />
-          </div>
-
-          <button
-            onClick={handleSave}
-            className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors"
-          >
-            Save Grades and Deliverables
-          </button>
-        </div>
+        ) : null}
       </Modal>
     </div>
   );

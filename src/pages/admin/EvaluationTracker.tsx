@@ -1,16 +1,87 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Award, Plus, ArrowLeft } from 'lucide-react';
+import { Award, Plus, ArrowLeft, Loader2 } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Select from '../../components/Select';
 import DataTable from '../../components/DataTable';
+import Modal from '../../components/Modal';
 import { AddEvaluationModal } from './OJTs/AddEvaluationModal';
-import type { Cohort, CohortDetails, ApiStudent, StudentEvaluationSummary } from '../../lib/types';
+import type { Cohort, CohortDetails, ApiStudent, StudentEvaluationSummary, EvaluationDetail } from '../../lib/types';
 import { apiListCohorts, apiGetCohort, apiListStudentsPage } from '../../lib/api';
-import { apiGetEvaluationsForStudent } from '../../lib/api/evaluations';
+import { apiGetEvaluationsForStudent, apiGetEvaluationDetail } from '../../lib/api/evaluations';
 import { getCohortLabel, getSemesterSessionLabel } from '../../lib/cohortLabel';
 import { formatDateDisplay } from '../../lib/utils';
 import { TRACKS } from '../../lib/constants';
 import { useToast } from '../../toast';
+
+// Read-only rubric breakdown for one evaluation — admin is never a panelist
+// (see EvaluationService's bulk-assign — only the primary mentor + paired
+// external mentor ever get a panelist row), so this only ever displays,
+// never scores.
+function EvaluationDetailModal({ evaluationId, onClose }: { evaluationId: string; onClose: () => void }) {
+  const { showError } = useToast();
+  const [detail, setDetail] = useState<EvaluationDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    apiGetEvaluationDetail(evaluationId)
+      .then((res) => { if (!cancelled) setDetail(res); })
+      .catch((err: unknown) => { if (!cancelled) showError(err instanceof Error ? err.message : 'Failed to load evaluation'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [evaluationId, showError]);
+
+  return (
+    <Modal open onClose={onClose} title="Evaluation Breakdown">
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 size={28} className="animate-spin text-gray-500" />
+        </div>
+      ) : detail ? (
+        <div className="space-y-4">
+          <div>
+            <h4 className="text-white font-semibold">
+              {detail.studentName} — {detail.sequenceNo ? `${detail.evaluationTypeName} ${detail.sequenceNo}` : detail.evaluationTypeName}
+            </h4>
+            <p className="text-xs text-gold mt-1">
+              {detail.finalMarksObtained !== null ? `Final (best of panel): ${detail.finalMarksObtained}/${detail.maxMarksSnapshot}` : 'Not evaluated yet'}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Criteria (max marks)</p>
+            {detail.criteria.map((c) => (
+              <div key={c.id} className="flex items-center justify-between text-sm bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
+                <span className="text-gray-300">{c.name}</span>
+                <span className="text-gray-500">/ {c.maxMarks}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Panelists</p>
+            {detail.panelists.length === 0 ? (
+              <p className="text-gray-500 text-sm">No panelists assigned.</p>
+            ) : (
+              detail.panelists.map((p) => (
+                <div key={p.evaluatorId} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2.5 space-y-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-200">{p.evaluatorName || 'Unknown'} ({p.role === 'external' ? 'External' : 'Internal'})</span>
+                    <span className={p.totalMarks !== null ? 'text-gold font-semibold' : 'text-gray-500'}>
+                      {p.totalMarks !== null ? `${p.totalMarks}/${detail.maxMarksSnapshot}` : 'Not scored yet'}
+                    </span>
+                  </div>
+                  {p.feedback && <p className="text-xs text-gray-500">{p.feedback}</p>}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+    </Modal>
+  );
+}
 
 // A student's evaluation status for one cohort — fetched on demand once a
 // student is selected on the left, rendered on the right.
@@ -26,6 +97,7 @@ function StudentEvaluationDetail({
   const { showError } = useToast();
   const [evaluations, setEvaluations] = useState<StudentEvaluationSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [detailEvaluationId, setDetailEvaluationId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,9 +140,10 @@ function StudentEvaluationDetail({
       ) : (
         <div className="space-y-2">
           {evaluations.map((e) => (
-            <div
+            <button
               key={e.id}
-              className="flex items-center justify-between gap-3 px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-lg"
+              onClick={() => setDetailEvaluationId(e.id)}
+              className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-lg transition-colors text-left"
             >
               <div className="min-w-0">
                 <p className="text-white text-sm font-semibold truncate">
@@ -89,9 +162,13 @@ function StudentEvaluationDetail({
               >
                 {e.finalMarksObtained !== null ? `${e.finalMarksObtained}/${e.maxMarksSnapshot}` : 'Not evaluated'}
               </span>
-            </div>
+            </button>
           ))}
         </div>
+      )}
+
+      {detailEvaluationId && (
+        <EvaluationDetailModal evaluationId={detailEvaluationId} onClose={() => setDetailEvaluationId(null)} />
       )}
     </div>
   );
