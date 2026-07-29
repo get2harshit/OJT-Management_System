@@ -19,6 +19,7 @@ import { getCohortLabel } from '../../lib/cohortLabel';
 import { TRACKS } from '../../lib/constants';
 import { statusDotClass } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 type Row = PrdSubmission & { studentId: string; mentorId?: string };
 
@@ -101,20 +102,27 @@ export default function AdminSubmissions({
   // (not a separate effect reacting to `cohorts`) — otherwise loadRoster
   // below fires once with cohortFilter still '' and then again a render
   // later once the default is picked, doubling every call for no reason.
-  useEffect(() => {
-    apiListCohorts()
+  const loadCohorts = useCallback(() => {
+    return apiListCohorts()
       .then((list) => {
         setCohorts(list);
-        const active = list.find(c => c.isActive) || list[0];
-        if (active) setCohortFilter(active.id);
+        setCohortFilter((prev) => prev || (list.find(c => c.isActive) || list[0])?.id || '');
       })
       .catch(() => setCohorts([]))
       .finally(() => setCohortsLoaded(true));
   }, []);
 
   useEffect(() => {
-    apiListMentors().then(setGlobalMentors).catch(() => setGlobalMentors([]));
+    loadCohorts();
+  }, [loadCohorts]);
+
+  const loadGlobalMentors = useCallback(() => {
+    return apiListMentors().then(setGlobalMentors).catch(() => setGlobalMentors([]));
   }, []);
+
+  useEffect(() => {
+    loadGlobalMentors();
+  }, [loadGlobalMentors]);
 
   const selectedCohort = cohorts.find((c) => c.id === cohortFilter);
   const isPublished = !!selectedCohort?.allocationPublishedAt;
@@ -184,6 +192,13 @@ export default function AdminSubmissions({
       setSubmissionsLoading(false);
     }
   }, []);
+
+  usePageRefresh(useCallback(() => Promise.all([
+    loadCohorts(),
+    loadGlobalMentors(),
+    cohortsLoaded && cohortFilter ? loadRoster() : Promise.resolve(),
+    selectedStudentId ? loadStudentSubmissions(selectedStudentId) : Promise.resolve(),
+  ]), [loadCohorts, loadGlobalMentors, loadRoster, cohortsLoaded, cohortFilter, selectedStudentId, loadStudentSubmissions]));
 
   // Resets every roster filter and switches cohort if needed, so the target
   // student is never hidden by a stale batch/track/mentor/search filter, the

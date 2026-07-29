@@ -23,6 +23,7 @@ import {
   apiGetProject,
 } from '../../lib/api';
 import { useToast } from '../../toast';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 
 
@@ -134,6 +135,14 @@ export default function ProjectPicker() {
     loadAvailableMentors(cohortId);
   }, [cohortId, status?.team, loadAvailableProjects, loadAvailableMentors]);
 
+  usePageRefresh(useCallback(async () => {
+    if (!cohortId) return;
+    await refreshStatus(cohortId);
+    if (status?.team) {
+      await Promise.all([loadAvailableProjects(cohortId), loadAvailableMentors(cohortId)]);
+    }
+  }, [cohortId, status?.team, refreshStatus, loadAvailableProjects, loadAvailableMentors]));
+
 
 
   if (loading) {
@@ -154,8 +163,8 @@ export default function ProjectPicker() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+    <div className="h-full min-h-0 flex flex-col space-y-6">
+      <div className="shrink-0 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <Briefcase size={24} className="text-gold" />
@@ -171,44 +180,46 @@ export default function ProjectPicker() {
         )}
       </div>
 
-      {status?.team ? (
-        status.projectPreferences ? (
-          <SummaryScreen
-            cohortId={cohortId}
-            team={status.team}
-            preferences={status.projectPreferences}
-            availableMentors={availableMentors}
-            onResubmitted={() => refreshStatus(cohortId)}
-          />
+      <div className="flex-1 min-h-0 flex flex-col">
+        {status?.team ? (
+          status.projectPreferences ? (
+            <SummaryScreen
+              cohortId={cohortId}
+              team={status.team}
+              preferences={status.projectPreferences}
+              availableMentors={availableMentors}
+              onResubmitted={() => refreshStatus(cohortId)}
+            />
+          ) : (
+            <ProjectSelectionScreen
+              cohortId={cohortId}
+              availableProjects={availableProjects}
+              projectsLoading={projectsLoading}
+              availableMentors={availableMentors}
+              mentorsLoading={mentorsLoading}
+              onSubmitted={() => refreshStatus(cohortId)}
+            />
+          )
         ) : (
-          <ProjectSelectionScreen
-            cohortId={cohortId}
-            availableProjects={availableProjects}
-            projectsLoading={projectsLoading}
-            availableMentors={availableMentors}
-            mentorsLoading={mentorsLoading}
-            onSubmitted={() => refreshStatus(cohortId)}
-          />
-        )
-      ) : (
-        <div className="space-y-6">
-          <TrackAndTeammateScreen
-            cohortId={cohortId}
-            canInviteTeammate={status?.canInviteTeammate ?? true}
-            pendingSentRequests={status?.pendingSentRequests ?? []}
-            onTeamFormed={() => refreshStatus(cohortId)}
-            onRevoke={async (requestId) => {
-              try {
-                await apiRevokeTeamRequest(requestId);
-                showSuccess('Invite revoked.');
-                await refreshStatus(cohortId);
-              } catch (err) {
-                showError(err instanceof Error ? err.message : 'Failed to revoke invite');
-              }
-            }}
-          />
-        </div>
-      )}
+          <div className="space-y-6">
+            <TrackAndTeammateScreen
+              cohortId={cohortId}
+              canInviteTeammate={status?.canInviteTeammate ?? true}
+              pendingSentRequests={status?.pendingSentRequests ?? []}
+              onTeamFormed={() => refreshStatus(cohortId)}
+              onRevoke={async (requestId) => {
+                try {
+                  await apiRevokeTeamRequest(requestId);
+                  showSuccess('Invite revoked.');
+                  await refreshStatus(cohortId);
+                } catch (err) {
+                  showError(err instanceof Error ? err.message : 'Failed to revoke invite');
+                }
+              }}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -691,7 +702,7 @@ function ProjectSelectionScreen({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="h-full min-h-0 flex flex-col space-y-6">
       {mode === null ? (
         <div className="space-y-4">
           <h2 className="text-white font-semibold">How do you want to pick your projects?</h2>
@@ -719,24 +730,28 @@ function ProjectSelectionScreen({
           </div>
         </div>
       ) : (
-        <div className="space-y-4">
-          <button
-            onClick={() => { setMode(null); setStep(1); }}
-            disabled={!!selfProject}
-            className="text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            ← Change selection type
-          </button>
+        <div className="flex-1 min-h-0 flex flex-col space-y-3">
+          <div className="shrink-0 flex items-center gap-4 flex-wrap">
+            <button
+              onClick={() => { setMode(null); setStep(1); }}
+              disabled={!!selfProject}
+              className="text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            >
+              ← Change selection type
+            </button>
 
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
-            <span className={step === 1 ? 'text-gold' : 'text-gray-600'}>1. Preference 1</span>
-            <span className="text-gray-700">—</span>
-            <span className={step === 2 ? 'text-gold' : 'text-gray-600'}>2. Preference 2</span>
+            <span className="text-gray-700 shrink-0">|</span>
+
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider shrink-0">
+              <span className={step === 1 ? 'text-gold' : 'text-gray-600'}>1. Preference 1</span>
+              <span className="text-gray-700">—</span>
+              <span className={step === 2 ? 'text-gold' : 'text-gray-600'}>2. Preference 2</span>
+            </div>
           </div>
 
           {step === 1 ? (
             mode === 'own-existing' ? (
-              <div className="space-y-2">
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-2">
                 <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 1 project</p>
                 <SelfProjectProposer
                   cohortId={cohortId}
@@ -747,33 +762,29 @@ function ProjectSelectionScreen({
                 />
               </div>
             ) : (
-              <div className="space-y-2">
-                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 1 project</p>
-                <ProjectCatalogBrowser
-                  cohortId={cohortId}
-                  selectedId={existingProjectId1}
-                  onSelect={setExistingProjectId1}
-                  excludeId={existingProjectId2}
-                  selectedMentor={availableMentors.find(m => m.id === mentor1Id) ?? null}
-                  onChooseMentor={() => setMentorModalFor(1)}
-                />
-              </div>
-            )
-          ) : (
-            <div className="space-y-2">
-              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 2 project</p>
               <ProjectCatalogBrowser
                 cohortId={cohortId}
-                selectedId={mode === 'own-existing' ? existingProjectId : existingProjectId2}
-                onSelect={mode === 'own-existing' ? setExistingProjectId : setExistingProjectId2}
-                excludeId={mode === 'own-existing' ? undefined : existingProjectId1}
-                selectedMentor={availableMentors.find(m => m.id === mentor2Id) ?? null}
-                onChooseMentor={() => setMentorModalFor(2)}
+                selectedId={existingProjectId1}
+                onSelect={setExistingProjectId1}
+                excludeId={existingProjectId2}
+                selectedMentor={availableMentors.find(m => m.id === mentor1Id) ?? null}
+                onChooseMentor={() => setMentorModalFor(1)}
+                label="Preference 1"
               />
-            </div>
+            )
+          ) : (
+            <ProjectCatalogBrowser
+              cohortId={cohortId}
+              selectedId={mode === 'own-existing' ? existingProjectId : existingProjectId2}
+              onSelect={mode === 'own-existing' ? setExistingProjectId : setExistingProjectId2}
+              excludeId={mode === 'own-existing' ? undefined : existingProjectId1}
+              selectedMentor={availableMentors.find(m => m.id === mentor2Id) ?? null}
+              onChooseMentor={() => setMentorModalFor(2)}
+              label="Preference 2"
+            />
           )}
 
-          <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 pt-3 pb-1 bg-gradient-to-t from-black via-black/95 to-transparent">
+          <div className="shrink-0 sticky bottom-0 z-10 flex items-center justify-between gap-3 pt-3 pb-1 bg-gradient-to-t from-black via-black/95 to-transparent">
             {step === 2 ? (
               <button
                 onClick={() => setStep(1)}
@@ -940,6 +951,7 @@ function ProjectCatalogBrowser({
   excludeId,
   selectedMentor,
   onChooseMentor,
+  label,
 }: {
   cohortId: string;
   selectedId: string | null;
@@ -947,6 +959,10 @@ function ProjectCatalogBrowser({
   excludeId?: string | null;
   selectedMentor?: TeamAvailableMentor | null;
   onChooseMentor?: () => void;
+  // Folds the caller's own "Preference N project" label into this
+  // component's own heading row instead of a separate stacked line above
+  // it — one less full-width row eating into the grid's vertical space.
+  label?: string;
 }) {
   const { showError } = useToast();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -1027,23 +1043,6 @@ function ProjectCatalogBrowser({
     setLimit(value);
   };
 
-  const gridWrapRef = useRef<HTMLDivElement>(null);
-  const footerRef = useRef<HTMLDivElement>(null);
-  const [maxGridHeight, setMaxGridHeight] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    const computeMaxHeight = () => {
-      const wrap = gridWrapRef.current;
-      if (!wrap) return;
-      const wrapTop = wrap.getBoundingClientRect().top;
-      const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 60;
-      const available = window.innerHeight - wrapTop - footerHeight - 16;
-      setMaxGridHeight(Math.max(200, available));
-    };
-    computeMaxHeight();
-    window.addEventListener('resize', computeMaxHeight);
-    return () => window.removeEventListener('resize', computeMaxHeight);
-  }, []);
-
   if (viewingProjectId) {
     return (
       <ProjectDetailView
@@ -1105,39 +1104,41 @@ function ProjectCatalogBrowser({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="text-white font-semibold flex items-center gap-3">
+    <div className="flex-1 min-h-0 flex flex-col space-y-3">
+      <div className="shrink-0 flex items-center gap-4 flex-wrap">
+        <h2 className="text-white font-semibold flex items-center gap-3 shrink-0">
           <Briefcase size={18} className="text-gold" />
-          Recommended Projects
+          {label ? `${label} — Recommended Projects` : 'Recommended Projects'}
         </h2>
-        {browsingAfterSelect && (
-          <button type="button" onClick={() => setBrowsingAfterSelect(false)} className="text-sm text-gray-400 hover:text-white transition-colors">
-            ← Back to selected project
-          </button>
-        )}
-      </div>
 
-      <div className="relative max-w-sm">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-        <input
-          type="text"
-          value={searchInput}
-          onChange={e => handleSearchInputChange(e.target.value)}
-          placeholder="Search projects..."
-          className="w-full bg-zinc-850 border border-zinc-750 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-        />
+        {browsingAfterSelect && (
+          <>
+            <span className="text-gray-700 shrink-0">|</span>
+            <button type="button" onClick={() => setBrowsingAfterSelect(false)} className="text-sm text-gray-400 hover:text-white transition-colors shrink-0">
+              ← Back to selected project
+            </button>
+          </>
+        )}
+
+        <div className="relative w-56 ml-auto sm:ml-0">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            value={searchInput}
+            onChange={e => handleSearchInputChange(e.target.value)}
+            placeholder="Search projects..."
+            className="w-full bg-zinc-850 border border-zinc-750 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+          />
+        </div>
       </div>
 
       {loading ? (
-        <div className="min-h-[30vh] flex items-center justify-center">
+        <div className="flex-1 min-h-0 flex items-center justify-center">
           <SpinnerSquare size={40} />
         </div>
       ) : (
         <div
-          ref={gridWrapRef}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 content-start overflow-y-auto"
-          style={maxGridHeight ? { height: maxGridHeight } : undefined}
+          className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 content-start overflow-y-auto"
         >
           {projects.map(p => (
             <button
@@ -1168,7 +1169,7 @@ function ProjectCatalogBrowser({
       )}
 
       {!loading && pagination.totalPages > 1 && (
-        <div ref={footerRef} className="flex items-center justify-between flex-wrap gap-3 pt-1">
+        <div className="shrink-0 flex items-center justify-between flex-wrap gap-3 pt-1">
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-500">
               Showing {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
@@ -1239,32 +1240,6 @@ function ProjectDetailView({
   onBack: () => void;
   onSelect: () => void;
 }) {
-  // Sizes the field content to the space actually available below it, same
-  // mechanism as the browse grid/teammate grid — the page itself never
-  // scrolls, only this content box does, and the back/select buttons stay
-  // put instead of scrolling out of reach.
-  const contentWrapRef = useRef<HTMLDivElement>(null);
-  const footerRef = useRef<HTMLDivElement>(null);
-  const [maxContentHeight, setMaxContentHeight] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    const computeMaxHeight = () => {
-      const wrap = contentWrapRef.current;
-      if (!wrap) return;
-      const wrapTop = wrap.getBoundingClientRect().top;
-      const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 60;
-      const available = window.innerHeight - wrapTop - footerHeight - 16;
-      setMaxContentHeight(Math.max(200, available));
-    };
-    computeMaxHeight();
-    window.addEventListener('resize', computeMaxHeight);
-    return () => window.removeEventListener('resize', computeMaxHeight);
-    // Re-run once loading flips to false and the real content div actually
-    // mounts — on first mount (still loading) contentWrapRef.current is
-    // null, so a mount-only effect would silently measure nothing and the
-    // page would fall back to normal document flow (sticky footer then
-    // overlaps content instead of pinning to this card's own bottom).
-  }, [loading, detail]);
-
   if (loading || !detail) {
     return (
       <div className="space-y-4">
@@ -1294,67 +1269,64 @@ function ProjectDetailView({
     ) : null;
 
   return (
-    <div className="space-y-4">
-      <button type="button" onClick={onBack} className="text-sm text-gray-400 hover:text-white transition-colors">
+    <div className="h-full min-h-0 flex flex-col space-y-4">
+      <button type="button" onClick={onBack} className="shrink-0 text-sm text-gray-400 hover:text-white transition-colors">
         ← Back to projects
       </button>
 
-      <div
-        ref={contentWrapRef}
-        className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 sm:p-8 space-y-6 overflow-y-auto"
-        style={maxContentHeight ? { height: maxContentHeight } : undefined}
-      >
-        <h2 className="text-white font-bold text-xl">{detail.title}</h2>
-
-        <div className="space-y-3">
-          <p className="text-xs text-gold uppercase font-bold tracking-wider">Overview</p>
-          {textField('Problem statement', detail.problemStatement)}
-          {textField('Project description (short)', detail.projectDescription)}
-          {textField('Description (detailed)', detail.description)}
-          {textField('End users defined', detail.endUsersDefined)}
+      <div className="flex-1 min-h-0 bg-zinc-850 border border-zinc-750 rounded-xl flex flex-col overflow-hidden">
+        <div className="shrink-0 flex items-start justify-between gap-4 px-6 sm:px-8 pt-6 sm:pt-8 pb-4 border-b border-zinc-750">
+          <h2 className="text-white font-bold text-xl">{detail.title}</h2>
+          <button
+            type="button"
+            onClick={onSelect}
+            className="shrink-0 flex items-center justify-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg shadow-md hover:bg-gold-hover transition-all duration-200"
+          >
+            <CheckCircle2 size={16} />
+            Select this project
+          </button>
         </div>
 
-        <div className="space-y-3">
-          <p className="text-xs text-gold uppercase font-bold tracking-wider">Scope</p>
-          {listField('Tech stack', detail.techStack)}
-          {listField('Framework', detail.framework)}
-          {listField('Suggested libraries', detail.suggestedLibrariesTools)}
-          {listField('Core learning goals', detail.coreLearningGoals)}
-        </div>
-
-        <div className="space-y-3">
-          <p className="text-xs text-gold uppercase font-bold tracking-wider">Features & evaluation</p>
-          {listField('Must-have features', detail.mustHaveFeatures)}
-          {listField('Good-to-have features', detail.goodToHaveFeatures)}
-          {listField('Expected output', detail.expectedOutput)}
-          {listField('Evaluation metrics', detail.evaluationMetrics)}
-          {listField('Stretch goal', detail.stretchGoal)}
-        </div>
-
-        <div className="space-y-3">
-          <p className="text-xs text-gold uppercase font-bold tracking-wider">Milestones</p>
-          {listField('First month', detail.firstMonthMilestones)}
-          {listField('Second month', detail.secondMonthMilestones)}
-          {listField('Third month', detail.thirdMonthMilestones)}
-        </div>
-
-        {detail.referenceDocs && (
+        <div className="flex-1 min-h-0 p-6 sm:p-8 space-y-6 overflow-y-auto">
           <div className="space-y-3">
-            <p className="text-xs text-gold uppercase font-bold tracking-wider">Reference docs</p>
-            <p className="text-gray-300 text-sm whitespace-pre-wrap">{detail.referenceDocs}</p>
+            <p className="text-xs text-gold uppercase font-bold tracking-wider">Overview</p>
+            {textField('Problem statement', detail.problemStatement)}
+            {textField('Project description (short)', detail.projectDescription)}
+            {textField('Description (detailed)', detail.description)}
+            {textField('End users defined', detail.endUsersDefined)}
           </div>
-        )}
-      </div>
 
-      <div ref={footerRef} className="sticky bottom-0 z-10 pt-3 pb-1 flex justify-end bg-gradient-to-t from-black via-black/95 to-transparent">
-        <button
-          type="button"
-          onClick={onSelect}
-          className="w-full sm:w-auto flex items-center justify-center gap-1.5 text-sm px-6 py-3 bg-gold text-black font-semibold rounded-lg shadow-xl shadow-black/40 hover:bg-gold-hover transition-all duration-200"
-        >
-          <CheckCircle2 size={16} />
-          Select this project
-        </button>
+          <div className="space-y-3">
+            <p className="text-xs text-gold uppercase font-bold tracking-wider">Scope</p>
+            {listField('Tech stack', detail.techStack)}
+            {listField('Framework', detail.framework)}
+            {listField('Suggested libraries', detail.suggestedLibrariesTools)}
+            {listField('Core learning goals', detail.coreLearningGoals)}
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-xs text-gold uppercase font-bold tracking-wider">Features & evaluation</p>
+            {listField('Must-have features', detail.mustHaveFeatures)}
+            {listField('Good-to-have features', detail.goodToHaveFeatures)}
+            {listField('Expected output', detail.expectedOutput)}
+            {listField('Evaluation metrics', detail.evaluationMetrics)}
+            {listField('Stretch goal', detail.stretchGoal)}
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-xs text-gold uppercase font-bold tracking-wider">Milestones</p>
+            {listField('First month', detail.firstMonthMilestones)}
+            {listField('Second month', detail.secondMonthMilestones)}
+            {listField('Third month', detail.thirdMonthMilestones)}
+          </div>
+
+          {detail.referenceDocs && (
+            <div className="space-y-3">
+              <p className="text-xs text-gold uppercase font-bold tracking-wider">Reference docs</p>
+              <p className="text-gray-300 text-sm whitespace-pre-wrap">{detail.referenceDocs}</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

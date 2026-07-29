@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Bell, CheckCheck, RefreshCw, AlertTriangle, CheckCircle2, Megaphone, Flame, Users, Check, X, FolderCheck, FileCheck2, ClipboardList, Award } from 'lucide-react';
+import { Bell, CheckCheck, AlertTriangle, CheckCircle2, Megaphone, Flame, Users, Check, X, FolderCheck, FileCheck2, ClipboardList, Award } from 'lucide-react';
 import { apiRespondToTeamRequest } from '../lib/api';
 import { apiGetMyNotifications, apiMarkNotificationRead, apiMarkAllNotificationsRead } from '../lib/api/notifications';
 import type { NotificationType } from '../lib/api/notifications';
 import { useToast } from '../toast';
+import { usePageRefresh } from '../context/RefreshContext';
+import { useNotificationNavigateContext } from '../context/NotificationNavigateContext';
 
 export interface NotificationItem {
   id: string;
@@ -13,6 +15,10 @@ export interface NotificationItem {
   type: NotificationType;
   read: boolean;
   priority?: 'normal' | 'important' | 'urgent';
+  // Polymorphic pointer back to the source entity — see AppNotification's own
+  // doc comment for what it means per type (task id, submission id,
+  // evaluation id, cohort id, or a team_request id for an invite).
+  referenceId: string | null;
   isInvite?: boolean;
   onAccept?: () => Promise<void>;
   onReject?: () => Promise<void>;
@@ -35,16 +41,16 @@ function timeAgo(isoDate: string): string {
 export default function NotificationCenter() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { showError, showSuccess } = useToast();
+  const { navigateFromNotification } = useNotificationNavigateContext();
 
-  // No polling — only ever runs on mount and on an explicit refresh click.
-  // Team invites are real ojt_notifications rows now (type: team_invite,
-  // referenceId = the team_request id) — Accept/Reject wire straight to
-  // apiRespondToTeamRequest using that id, no separate team-status fetch.
+  // No polling — runs on mount and whenever the header's global refresh
+  // button fires (see usePageRefresh below). Team invites are real
+  // ojt_notifications rows now (type: team_invite, referenceId = the team
+  // request id) — Accept/Reject wire straight to apiRespondToTeamRequest
+  // using that id, no separate team-status fetch.
   const buildNotifications = useCallback(async () => {
-    setRefreshing(true);
     try {
       const list = await apiGetMyNotifications();
       setNotifications(
@@ -58,6 +64,7 @@ export default function NotificationCenter() {
             type: n.type,
             read: n.isRead,
             priority: n.priority,
+            referenceId: n.referenceId,
             isInvite,
             onAccept: isInvite
               ? async () => {
@@ -87,14 +94,14 @@ export default function NotificationCenter() {
     } catch {
       // Leave whatever was already showing — a failed refresh shouldn't
       // wipe the last-known list.
-    } finally {
-      setRefreshing(false);
     }
   }, [showError, showSuccess]);
 
   useEffect(() => {
     buildNotifications();
   }, [buildNotifications]);
+
+  usePageRefresh(buildNotifications);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -127,6 +134,17 @@ export default function NotificationCenter() {
       await apiMarkNotificationRead(n.id);
     } catch {
       // Same as above — local state is already updated optimistically.
+    }
+  };
+
+  // A team-invite row's whole point is its own Accept/Reject buttons (see
+  // isInvite below) — clicking the row itself just marks it read, it doesn't
+  // also navigate anywhere.
+  const handleRowClick = (n: NotificationItem) => {
+    markAsRead(n);
+    if (!n.isInvite) {
+      setIsOpen(false);
+      navigateFromNotification(n);
     }
   };
 
@@ -173,14 +191,6 @@ export default function NotificationCenter() {
               )}
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={buildNotifications}
-                disabled={refreshing}
-                className="text-xs text-gray-400 hover:text-gold flex items-center gap-1 transition-colors disabled:opacity-50"
-                title="Refresh"
-              >
-                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-              </button>
               {unreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}
@@ -203,7 +213,7 @@ export default function NotificationCenter() {
               notifications.map(n => (
                 <div
                   key={n.id}
-                  onClick={() => markAsRead(n)}
+                  onClick={() => handleRowClick(n)}
                   className={`p-3.5 flex items-start gap-3 cursor-pointer transition-colors ${
                     !n.read ? 'bg-zinc-800/60 hover:bg-zinc-800' : 'hover:bg-zinc-800/30'
                   }`}

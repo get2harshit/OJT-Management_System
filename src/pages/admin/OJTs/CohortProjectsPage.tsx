@@ -11,6 +11,7 @@ import { apiGetCohort, apiGetProjectsForCohortPage, apiDeleteProject } from '../
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
+import { usePageRefresh } from '../../../context/RefreshContext';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
@@ -46,16 +47,25 @@ export default function CohortProjectsPage() {
     }
   }, [cohortId, showError]);
 
-  useEffect(() => {
-    if (!cohortId) return;
-    apiGetCohort(cohortId)
+  const loadCohortLabel = useCallback(() => {
+    if (!cohortId) return Promise.resolve();
+    return apiGetCohort(cohortId)
       .then(c => setCohortLabel(getCohortLabel(c)))
       .catch(() => navigate(-1));
   }, [cohortId, navigate]);
 
   useEffect(() => {
+    loadCohortLabel();
+  }, [loadCohortLabel]);
+
+  useEffect(() => {
     fetchPage(page, search).catch(() => {});
   }, [page, search, fetchPage]);
+
+  usePageRefresh(useCallback(
+    () => Promise.all([loadCohortLabel(), fetchPage(page, search)]),
+    [loadCohortLabel, fetchPage, page, search]
+  ));
 
   // Debounce search input so every keystroke doesn't fire a request.
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);

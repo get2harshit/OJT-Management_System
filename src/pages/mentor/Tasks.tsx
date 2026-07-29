@@ -17,6 +17,7 @@ import { apiListMyCohorts } from '../../lib/api/cohorts';
 import type { Team, Cohort } from '../../lib/types';
 import { TRACKS } from '../../lib/constants';
 import { useToast } from '../../toast';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 const CATEGORY_OPTIONS: { value: ApiTaskCategory; label: string }[] = [
   { value: 'document_submission', label: 'Document Submission' },
@@ -105,8 +106,8 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
     }
   };
 
-  useEffect(() => {
-    Promise.all([apiListTasks(), apiListMyTeams(), apiListMyCohorts()])
+  const loadAll = () => {
+    return Promise.all([apiListTasks(), apiListMyTeams(), apiListMyCohorts()])
       .then(([tasksRes, teamsRes, cohortsRes]) => {
         setTasks(tasksRes.data || []);
         setMyTeams(teamsRes);
@@ -119,7 +120,13 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
         setPublishedCohortIds(new Set(cohortsRes.filter(c => !!c.allocationPublishedAt).map(c => c.id)));
       })
       .catch(console.error);
+  };
+
+  useEffect(() => {
+    loadAll();
   }, []);
+
+  usePageRefresh(loadAll);
 
   // A task must belong to exactly one cohort (backend requirement), and the
   // system only ever allows one active cohort at a time — so the mentor's

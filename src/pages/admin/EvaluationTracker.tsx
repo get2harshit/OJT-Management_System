@@ -12,6 +12,7 @@ import { getCohortLabel, getSemesterSessionLabel } from '../../lib/cohortLabel';
 import { formatDateDisplay } from '../../lib/utils';
 import { TRACKS } from '../../lib/constants';
 import { useToast } from '../../toast';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 // Read-only rubric breakdown for one evaluation — admin is never a panelist
 // (see EvaluationService's bulk-assign — only the primary mentor + paired
@@ -199,17 +200,19 @@ export default function AdminEvaluationTracker() {
   const [listLoading, setListLoading] = useState(false);
   const [listPagination, setListPagination] = useState({ totalPages: 1, total: 0 });
 
-  useEffect(() => {
-    (async () => {
-      try {
-        setCohorts(await apiListCohorts());
-      } catch (err: unknown) {
-        showError(err instanceof Error ? err.message : 'Failed to load cohorts');
-      } finally {
-        setLoadingCohorts(false);
-      }
-    })();
+  const loadCohorts = useCallback(async () => {
+    try {
+      setCohorts(await apiListCohorts());
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to load cohorts');
+    } finally {
+      setLoadingCohorts(false);
+    }
   }, [showError]);
+
+  useEffect(() => {
+    loadCohorts();
+  }, [loadCohorts]);
 
   const selectCohort = useCallback(async (cohortId: string) => {
     setLoadingCohortDetail(true);
@@ -239,33 +242,32 @@ export default function AdminEvaluationTracker() {
     setListPage(1);
   }, [batchFilter, trackFilter, debouncedSearch, selectedCohort?.id]);
 
-  useEffect(() => {
+  const loadStudentsList = useCallback(async () => {
     if (!selectedCohort) return;
-    let cancelled = false;
     setListLoading(true);
-    (async () => {
-      try {
-        const res = await apiListStudentsPage({
-          page: listPage,
-          limit: listLimit,
-          cohortId: selectedCohort.id,
-          batch: batchFilter || undefined,
-          track: trackFilter || undefined,
-          search: debouncedSearch || undefined,
-        });
-        if (cancelled) return;
-        setStudentsList(res.data);
-        setListPagination({ totalPages: res.pagination.totalPages, total: res.pagination.total });
-      } catch (err: unknown) {
-        if (!cancelled) showError(err instanceof Error ? err.message : 'Failed to load students');
-      } finally {
-        if (!cancelled) setListLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const res = await apiListStudentsPage({
+        page: listPage,
+        limit: listLimit,
+        cohortId: selectedCohort.id,
+        batch: batchFilter || undefined,
+        track: trackFilter || undefined,
+        search: debouncedSearch || undefined,
+      });
+      setStudentsList(res.data);
+      setListPagination({ totalPages: res.pagination.totalPages, total: res.pagination.total });
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to load students');
+    } finally {
+      setListLoading(false);
+    }
   }, [selectedCohort, listPage, listLimit, batchFilter, trackFilter, debouncedSearch, showError]);
+
+  useEffect(() => {
+    loadStudentsList();
+  }, [loadStudentsList]);
+
+  usePageRefresh(useCallback(() => Promise.all([loadCohorts(), loadStudentsList()]), [loadCohorts, loadStudentsList]));
 
   // Evaluations only make sense once teams are actually locked in and the
   // cohort is a live, running one — `allocationPublishedAt` (a sticky

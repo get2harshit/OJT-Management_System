@@ -9,6 +9,7 @@ import { apiListCohorts } from '../../lib/api';
 import { getDurationString, formatDateDisplay } from '../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 export default function AdminAllocations() {
   const navigate = useNavigate();
@@ -31,6 +32,8 @@ export default function AdminAllocations() {
   useEffect(() => {
     fetchCohorts();
   }, [fetchCohorts]);
+
+  usePageRefresh(fetchCohorts);
 
   const cohortData = cohorts.map(c => ({
     ...c,

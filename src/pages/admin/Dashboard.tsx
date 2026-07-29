@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, UserCog, Briefcase, Download } from 'lucide-react';
 import { exportToCSV } from '../../lib/csvExport';
 import StatCard from '../../components/StatCard';
@@ -11,6 +11,7 @@ import {
 } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { TRACKS } from '../../lib/constants';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 import { useTasks } from '../../hooks/useTasks';
 import { useSubmissions } from '../../hooks/useSubmissions';
@@ -49,20 +50,30 @@ export default function AdminDashboard({
   // never wired to a real backend endpoint), not derived from any roster.
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
 
-  useEffect(() => {
-    apiListCohorts()
+  const loadCohorts = useCallback(() => {
+    return apiListCohorts()
       .then(setCohorts)
       .catch((err) => console.error('Dashboard failed to load cohorts', err))
       .finally(() => setLoadingReal(false));
   }, []);
 
+  useEffect(() => {
+    loadCohorts();
+  }, [loadCohorts]);
+
   // Stat-card counts — server-filtered by the current cohort/batch/track
   // selection, so no full roster needs to be downloaded just to show a number.
-  useEffect(() => {
-    apiGetDashboardMetrics({ cohortId: semFilter || undefined, batch: batchFilter || undefined, track: trackFilter || undefined })
+  const loadMetrics = useCallback(() => {
+    return apiGetDashboardMetrics({ cohortId: semFilter || undefined, batch: batchFilter || undefined, track: trackFilter || undefined })
       .then(setMetrics)
       .catch((err) => console.error('Dashboard failed to load metrics', err));
   }, [semFilter, batchFilter, trackFilter]);
+
+  useEffect(() => {
+    loadMetrics();
+  }, [loadMetrics]);
+
+  usePageRefresh(useCallback(() => Promise.all([loadCohorts(), loadMetrics()]), [loadCohorts, loadMetrics]));
 
   const semesterOptions = useMemo(() => {
     return cohorts.map(c => ({ value: c.id, label: getCohortLabel(c) }));

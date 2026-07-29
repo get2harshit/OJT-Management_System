@@ -15,6 +15,7 @@ import { apiListCohorts } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import type { Cohort } from '../../lib/types';
 import { useAuth } from '../../context/useAuth';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 interface Assignee {
   id: string;
@@ -81,9 +82,13 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
 
-  useEffect(() => {
-    apiListCohorts().then(setCohorts).catch(() => setCohorts([]));
+  const loadCohorts = useCallback(() => {
+    return apiListCohorts().then(setCohorts).catch(() => setCohorts([]));
   }, []);
+
+  useEffect(() => {
+    loadCohorts();
+  }, [loadCohorts]);
 
   // Defaults to the active cohort once cohorts load (same fallback
   // CreateTaskPage.tsx uses), but — unlike before — the admin can now
@@ -117,6 +122,11 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
     if (!activeCohort) return;
     fetchTasksOnly();
   }, [fetchTasksOnly, activeCohort]);
+
+  usePageRefresh(useCallback(
+    () => Promise.all([loadCohorts(), activeCohort ? fetchTasksOnly() : Promise.resolve()]),
+    [loadCohorts, activeCohort, fetchTasksOnly]
+  ));
 
   const handleLimitChange = (value: number) => {
     setPage(1);

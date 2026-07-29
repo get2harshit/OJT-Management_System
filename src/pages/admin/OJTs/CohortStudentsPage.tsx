@@ -6,6 +6,7 @@ import type { ApiStudent } from '../../../lib/types';
 import { apiListStudents, apiGetCohort, apiAddStudentsToCohort } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
+import { usePageRefresh } from '../../../context/RefreshContext';
 
 export default function CohortStudentsPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
@@ -45,6 +46,8 @@ export default function CohortStudentsPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  usePageRefresh(fetchData);
 
   const handleToggle = (userId: string) => {
     setMappedStudentIds(prev =>

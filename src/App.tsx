@@ -10,6 +10,8 @@ import SpinnerSquare from './components/SpinnerSquare';
 import ErrorBoundary from './components/ErrorBoundary';
 
 import { ThemeProvider } from './context/ThemeContext';
+import { RefreshProvider } from './context/RefreshContext';
+import { NotificationNavigateProvider } from './context/NotificationNavigateContext';
 
 // Each panel is its own lazily-loaded chunk so a user only downloads the
 // bundle for their role (and Login stays small for first paint).
@@ -32,6 +34,8 @@ export default function App() {
       <ToastProvider>
         <ConfirmProvider>
           <DataProvider>
+            <RefreshProvider>
+            <NotificationNavigateProvider>
             <ErrorBoundary>
               <Suspense fallback={<PanelLoader />}>
                 <Routes>
@@ -68,6 +72,8 @@ export default function App() {
                 </Routes>
               </Suspense>
             </ErrorBoundary>
+            </NotificationNavigateProvider>
+            </RefreshProvider>
           </DataProvider>
         </ConfirmProvider>
       </ToastProvider>

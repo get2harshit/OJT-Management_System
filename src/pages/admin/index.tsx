@@ -18,6 +18,9 @@ import CohortProjectsPage from './OJTs/CohortProjectsPage';
 import CohortMentorsPage from './OJTs/CohortMentorsPage';
 import CohortTeamsPage from './OJTs/CohortTeamsPage';
 import CohortAllocationsPage from './OJTs/CohortAllocationsPage';
+import { useNotificationNavigate } from '../../context/NotificationNavigateContext';
+import { apiGetPrdSubmission } from '../../lib/api';
+import { useToast } from '../../toast';
 
 function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -28,6 +31,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
   // visit to the tab doesn't re-trigger it.
   const [submissionFocus, setSubmissionFocus] = useState<{ studentId: string; taskId: string; cohortId: string } | null>(null);
   const navigate = useNavigate();
+  const { showError } = useToast();
 
   // Sidebar tab clicks only flip local state; while a cohort sub-page route
   // (view/edit/select student/project/mentor) is open, that nested route
@@ -37,6 +41,42 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
     setActiveTab(tab);
     navigate('/admin/dashboard');
   };
+
+  useNotificationNavigate((n) => {
+    switch (n.type) {
+      case 'task':
+        handleTabChange('tasks');
+        break;
+      case 'submission':
+        // The notification only carries the submission's own id — resolve
+        // it to the studentId/taskId/cohortId Submissions' focus props
+        // actually need (same shape Tasks' own "View Submission" handoff uses).
+        if (n.referenceId) {
+          apiGetPrdSubmission(n.referenceId)
+            .then((sub) => {
+              if (sub.studentId && sub.taskId && sub.cohortId) {
+                setSubmissionFocus({ studentId: sub.studentId, taskId: sub.taskId, cohortId: sub.cohortId });
+              }
+              handleTabChange('submissions');
+            })
+            .catch(() => {
+              showError('Could not open that submission — it may have been removed.');
+              handleTabChange('submissions');
+            });
+        } else {
+          handleTabChange('submissions');
+        }
+        break;
+      case 'evaluation':
+        handleTabChange('evaluation');
+        break;
+      case 'allocation':
+        handleTabChange('allocations');
+        break;
+      default:
+        break;
+    }
+  });
 
   const renderTab = () => {
     switch (activeTab) {

@@ -7,6 +7,7 @@ import { apiListMyCohorts, apiGetMentorCapacity } from '../../lib/api';
 import { useAuth } from '../../context/useAuth';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 export default function MentorCapacity() {
   const { user } = useAuth();
@@ -18,15 +19,19 @@ export default function MentorCapacity() {
   const [summary, setSummary] = useState<MentorCapacitySummary | null>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    apiListMyCohorts()
+  const loadCohorts = useCallback(() => {
+    return apiListMyCohorts()
       .then((data) => {
         const list = Array.isArray(data) ? data : [];
         setCohorts(list);
-        if (list.length > 0) setCohortId(list[0].id);
+        setCohortId((prev) => prev || (list.length > 0 ? list[0].id : ''));
       })
       .catch(() => setCohorts([]));
   }, []);
+
+  useEffect(() => {
+    loadCohorts();
+  }, [loadCohorts]);
 
   const loadSummary = useCallback(async (cid: string) => {
     if (!mentorId || !cid) return;
@@ -45,6 +50,11 @@ export default function MentorCapacity() {
   useEffect(() => {
     if (cohortId) loadSummary(cohortId);
   }, [cohortId, loadSummary]);
+
+  usePageRefresh(useCallback(
+    () => Promise.all([loadCohorts(), cohortId ? loadSummary(cohortId) : Promise.resolve()]),
+    [loadCohorts, loadSummary, cohortId]
+  ));
 
   return (
     <div className="space-y-6">

@@ -8,6 +8,7 @@ import ActionsMenu from '../../components/ActionsMenu';
 import type { ApiStudent } from '../../lib/types';
 import { apiListStudentsPage, apiListStudentBatches, apiUpdateStudentBatch, apiSetIndividualOverride } from '../../lib/api';
 import { useToast } from '../../toast';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 const BATCH_FORMAT = /^[0-9]{4} [A-Z]$/;
 const PAGE_SIZE = 20;
@@ -46,9 +47,13 @@ export default function AdminStudents() {
     }
   }, [page, limit, selectedBatch, search]);
 
-  useEffect(() => {
-    apiListStudentBatches().then(setBatches).catch(() => setBatches([]));
+  const loadBatches = useCallback(() => {
+    return apiListStudentBatches().then(setBatches).catch(() => setBatches([]));
   }, []);
+
+  useEffect(() => {
+    loadBatches();
+  }, [loadBatches]);
 
   useEffect(() => {
     setTableLoading(true);
@@ -57,6 +62,8 @@ export default function AdminStudents() {
       setLoading(false);
     });
   }, [fetchStudents]);
+
+  usePageRefresh(useCallback(() => Promise.all([loadBatches(), fetchStudents()]), [loadBatches, fetchStudents]));
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleSearchChange = (value: string) => {

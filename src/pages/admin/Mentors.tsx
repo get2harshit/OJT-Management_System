@@ -11,6 +11,7 @@ import { apiListMentorsPage, apiUpdateMentor, apiListCohorts, apiGetMentorCapaci
 import { mapBackendTrackToFrontend, mapFrontendTrackToBackend } from '../../lib/api/trackMapping';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
+import { usePageRefresh } from '../../context/RefreshContext';
 
 interface MentorRow extends ApiMentor {
   assignedTracks: string[];
@@ -61,6 +62,8 @@ export default function AdminMentors() {
       setLoading(false);
     });
   }, [fetchMentors]);
+
+  usePageRefresh(fetchMentors);
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleSearchChange = (value: string) => {
