@@ -176,8 +176,8 @@ export default function DataTable<T extends Record<string, unknown>>({
   };
 
   return (
-    <div className="bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden">
-      <div className="p-4 border-b border-zinc-750 flex items-center gap-3">
+    <div className="flex-1 min-h-0 flex flex-col bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden shadow-sm">
+      <div className="p-4 border-b border-zinc-750 flex items-center gap-3 shrink-0">
         {leftHeaderContent && (
           <div className="flex items-center gap-3 mr-auto">
             {leftHeaderContent}
@@ -214,8 +214,7 @@ export default function DataTable<T extends Record<string, unknown>>({
       {/* Desktop/tablet: the usual scrollable table. */}
       <div
         ref={tableWrapRef}
-        className="hidden md:block overflow-x-auto"
-        style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: 'auto' } : undefined}
+        className="hidden md:block flex-1 min-h-0 overflow-auto w-full"
       >
         <table className="w-full text-sm">
           <thead>
@@ -277,10 +276,7 @@ export default function DataTable<T extends Record<string, unknown>>({
 
       {/* Mobile: one stacked card per row instead of a horizontally-scrolling
           table — nothing gets clipped, and there's nothing to swipe sideways. */}
-      <div 
-        className="md:hidden divide-y divide-zinc-750/50"
-        style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: 'auto' } : undefined}
-      >
+      <div className="md:hidden flex-1 min-h-0 overflow-auto divide-y divide-zinc-750/50 w-full">
         {paginated.map((row, idx) => (
           <div
             key={typeof row.id === 'string' || typeof row.id === 'number' ? row.id : idx}
@@ -327,7 +323,7 @@ export default function DataTable<T extends Record<string, unknown>>({
       </div>
 
       {(serverPagination ? serverPagination.totalPages > 1 : filtered.length > pageSize) && (
-        <div ref={footerRef} className="p-4 border-t border-zinc-750 flex items-center justify-between flex-wrap gap-3">
+        <div ref={footerRef} className="p-4 border-t border-zinc-750 flex items-center justify-between flex-wrap gap-3 shrink-0 mt-auto">
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-500">
               {serverPagination

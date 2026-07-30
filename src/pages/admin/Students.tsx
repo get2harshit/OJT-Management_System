@@ -142,7 +142,7 @@ export default function AdminStudents() {
   }));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 flex-1 min-h-0 flex flex-col">
       <div>
         <h1 className="text-2xl font-bold text-white">Students</h1>
         <p className="text-gray-400 text-sm mt-1">All enrolled students</p>
@@ -153,13 +153,13 @@ export default function AdminStudents() {
           <SpinnerSquare size={48} />
         </div>
       ) : (
-        <div className="relative">
+        <div className="relative flex-1 min-h-0 flex flex-col">
           {tableLoading && (
             <div className="absolute inset-0 z-20 flex items-center justify-center">
               <SpinnerSquare size={56} />
             </div>
           )}
-          <div className={tableLoading ? 'opacity-20 transition-opacity' : 'transition-opacity'}>
+          <div className={`flex-1 min-h-0 flex flex-col ${tableLoading ? 'opacity-20 transition-opacity' : 'transition-opacity'}`}>
             <DataTable
               columns={[
                 { key: 'roll_number', header: 'Roll Number' },
