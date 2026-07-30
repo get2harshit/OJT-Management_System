@@ -46,6 +46,25 @@ export interface ApiAssignment {
   };
   statusHistory?: ApiTaskStatusHistory[];
   comments?: ApiTaskComment[];
+  structured_response?: ApiStructuredResponse | null;
+}
+
+export interface ApiChecklistItem {
+  id: string;
+  label: string;
+}
+
+export interface ApiQnaQuestion {
+  id: string;
+  question: string;
+}
+
+// The assignee's own saved answers for the parent task's checklist_items/
+// qna_questions — keyed by item/question id. Absent/empty until the
+// assignee has saved at least a draft.
+export interface ApiStructuredResponse {
+  checklist?: Record<string, boolean>;
+  qna?: Record<string, string>;
 }
 
 // The caller's own assignment row on a task, if they have one — resolved
@@ -56,6 +75,7 @@ export interface ApiOwnAssignment {
   status: ApiAssignmentStatus;
   resubmit_count: number;
   max_resubmit_count: number;
+  structured_response?: ApiStructuredResponse | null;
 }
 
 export interface ApiAssignmentPreview {
@@ -107,6 +127,12 @@ export interface ApiTask {
   assignments?: ApiAssignment[];
   myAssignment?: ApiOwnAssignment | null;
   assignmentsSummary?: ApiAssignmentsSummary;
+  // Admin-only structured content for mentor-targeted tasks — null/absent
+  // when this task has no checklist/Q&A. Excluded from the bulk list
+  // (apiListTasks) the same way assignments is; only present via
+  // GET /tasks/:id (apiGetTask).
+  checklist_items?: ApiChecklistItem[] | null;
+  qna_questions?: ApiQnaQuestion[] | null;
 }
 
 export type ApiTaskType = 'prd' | 'db_schema' | 'hld' | 'lld' | 'api_contract' | 'others';
@@ -134,6 +160,10 @@ export interface CreateTaskPayload {
   assignees?: string[];
   // Required by the backend — every task belongs to exactly one cohort.
   cohort_id: string;
+  // Admin-only, mentor-target-only (backend enforces both) — omit entirely
+  // for a plain task with neither structure.
+  checklist_items?: { label: string }[];
+  qna_questions?: { question: string }[];
 }
 
 // Backend's PUT /tasks/:id only persists these fields (see updateTaskSchema in
@@ -295,6 +325,22 @@ export async function apiResubmitTask(taskId: string, assignmentId: string, docu
   });
   invalidateTaskCaches(taskId);
   return res;
+}
+
+// Draft-saves the assignee's checklist/Q&A answers — callable repeatedly
+// before submit (autosave), not a one-shot action. Deliberately doesn't
+// invalidate the task caches on every call — completeness is only checked
+// server-side at submit time, and autosave-triggered cache thrash on every
+// keystroke/checkbox click would be wasteful.
+export async function apiSaveStructuredResponse(
+  taskId: string,
+  assignmentId: string,
+  response: ApiStructuredResponse
+): Promise<ApiWorkflowResponse> {
+  return apiFetch<ApiWorkflowResponse>(`/api/v1/tasks/${taskId}/assignments/${assignmentId}/structured-response`, {
+    method: 'PATCH',
+    body: JSON.stringify({ response }),
+  });
 }
 
 export async function apiApproveTask(taskId: string, assignmentId: string, comment?: string): Promise<ApiWorkflowResponse> {
