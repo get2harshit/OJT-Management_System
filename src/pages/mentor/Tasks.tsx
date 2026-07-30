@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Calendar, Loader2, Eye } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Drawer from '../../components/Drawer';
@@ -10,6 +10,9 @@ import {
   apiCreateTask,
   apiSubmitTask,
   apiResubmitTask,
+  apiSaveStructuredResponse,
+  apiApproveTask,
+  apiRequestResubmit,
 } from '../../lib/api/tasks';
 import type { ApiTask, ApiTaskCategory, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
 import { apiListMyTeams } from '../../lib/api/teams';
@@ -563,6 +566,10 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
             mentorId={mentorId}
             myStudentIds={myStudentIds}
             onViewSubmission={onViewSubmission}
+            onChanged={async () => {
+              await openReviewModal(reviewTask.id);
+              await fetchTasksOnly();
+            }}
           />
         ) : null}
       </Drawer>
@@ -576,14 +583,83 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
 // (uploading there auto-transitions the assignment to 'review'), since
 // there's no student allocation to attach a mentor's own submission to.
 function TaskStatusPanel({
-  task,
+  task: listTask,
   onChanged,
 }: {
   task: ApiTask;
   onChanged: () => Promise<void>;
 }) {
+  const { showError } = useToast();
   const [saving, setSaving] = useState(false);
+  // The list row (listTask) never carries checklist_items/qna_questions —
+  // excluded from the bulk list response by design (see TaskRepository's
+  // findAllTasks select). Fetch the single-task detail once this drawer
+  // opens to get them, same "full detail on demand" pattern already used
+  // for review panels elsewhere on this page.
+  const [detail, setDetail] = useState<ApiTask | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(true);
+  // Local check/answer state, seeded from the assignment's saved
+  // structured_response once detail loads — draft-saved on every change via
+  // apiSaveStructuredResponse, independent of the final Submit action.
+  const [checklistAnswers, setChecklistAnswers] = useState<Record<string, boolean>>({});
+  const [qnaAnswers, setQnaAnswers] = useState<Record<string, string>>({});
+  const saveDraftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingDetail(true);
+    apiGetTask(listTask.id)
+      .then((res) => {
+        if (cancelled) return;
+        setDetail(res.data);
+        const response = res.data.myAssignment?.structured_response;
+        setChecklistAnswers(response?.checklist ?? {});
+        setQnaAnswers(response?.qna ?? {});
+      })
+      .catch(() => showError('Failed to load task details'))
+      .finally(() => { if (!cancelled) setLoadingDetail(false); });
+    return () => { cancelled = true; };
+  }, [listTask.id, showError]);
+
+  const task = detail ?? listTask;
   const assignment = task.myAssignment;
+
+  const checklistItems = task.checklist_items ?? [];
+  const qnaQuestions = task.qna_questions ?? [];
+  const hasStructuredContent = checklistItems.length > 0 || qnaQuestions.length > 0;
+
+  // Fires on every checkbox toggle / answer edit — debounced so typing in a
+  // Q&A answer doesn't fire a request per keystroke, but still lands well
+  // before a mentor would plausibly hit Submit next.
+  const scheduleDraftSave = (nextChecklist: Record<string, boolean>, nextQna: Record<string, string>) => {
+    if (!assignment) return;
+    if (saveDraftTimer.current) clearTimeout(saveDraftTimer.current);
+    saveDraftTimer.current = setTimeout(() => {
+      apiSaveStructuredResponse(task.id, assignment.id, { checklist: nextChecklist, qna: nextQna }).catch(() => {
+        showError('Failed to save your progress — try again');
+      });
+    }, 600);
+  };
+
+  const toggleChecklistItem = (itemId: string) => {
+    const next = { ...checklistAnswers, [itemId]: !checklistAnswers[itemId] };
+    setChecklistAnswers(next);
+    scheduleDraftSave(next, qnaAnswers);
+  };
+
+  const updateQnaAnswer = (questionId: string, value: string) => {
+    const next = { ...qnaAnswers, [questionId]: value };
+    setQnaAnswers(next);
+    scheduleDraftSave(checklistAnswers, next);
+  };
+
+  if (loadingDetail) {
+    return (
+      <div className="flex items-center justify-center py-10">
+        <Loader2 size={20} className="animate-spin text-gray-500" />
+      </div>
+    );
+  }
 
   if (!assignment) {
     return <p className="text-gray-500 text-sm">You're not assigned to this task.</p>;
@@ -591,16 +667,28 @@ function TaskStatusPanel({
 
   const isDocumentTask = task.category === 'document_submission';
   const canSubmit = assignment.status === 'pending' || assignment.status === 'resubmit';
+  const allChecklistDone = checklistItems.every(item => checklistAnswers[item.id] === true);
+  const allQnaAnswered = qnaQuestions.every(q => !!qnaAnswers[q.id]?.trim());
+  const structuredComplete = allChecklistDone && allQnaAnswered;
 
   const handleSubmit = async () => {
     setSaving(true);
     try {
+      // Flush the latest answers before submit — the debounced draft-save
+      // above may not have fired yet if the mentor checked the last box and
+      // immediately hit Submit.
+      if (hasStructuredContent) {
+        if (saveDraftTimer.current) clearTimeout(saveDraftTimer.current);
+        await apiSaveStructuredResponse(task.id, assignment.id, { checklist: checklistAnswers, qna: qnaAnswers });
+      }
       if (assignment.status === 'resubmit') {
         await apiResubmitTask(task.id, assignment.id);
       } else {
         await apiSubmitTask(task.id, assignment.id);
       }
       await onChanged();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to submit');
     } finally {
       setSaving(false);
     }
@@ -618,6 +706,48 @@ function TaskStatusPanel({
           </p>
         )}
       </div>
+
+      {checklistItems.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-400 uppercase font-semibold tracking-wider">Checklist</p>
+          <div className="space-y-1.5">
+            {checklistItems.map(item => (
+              <label
+                key={item.id}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                  checklistAnswers[item.id] ? 'bg-gold/5 border-gold/30' : 'bg-zinc-900 border-zinc-750'
+                } ${assignment.status === 'approved' ? 'opacity-60 pointer-events-none' : ''}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!checklistAnswers[item.id]}
+                  onChange={() => toggleChecklistItem(item.id)}
+                  className="accent-gold w-4 h-4 shrink-0"
+                />
+                <span className="text-sm text-gray-200">{item.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {qnaQuestions.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs text-gray-400 uppercase font-semibold tracking-wider">Questions</p>
+          {qnaQuestions.map(q => (
+            <div key={q.id}>
+              <label className="block text-sm text-gray-300 mb-1">{q.question}</label>
+              <textarea
+                value={qnaAnswers[q.id] ?? ''}
+                onChange={e => updateQnaAnswer(q.id, e.target.value)}
+                disabled={assignment.status === 'approved'}
+                rows={2}
+                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gold transition-colors resize-none disabled:opacity-60"
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-3 space-y-2">
         <div className="flex items-center justify-between gap-3">
@@ -638,10 +768,26 @@ function TaskStatusPanel({
             <p className="text-xs text-green-400">Approved — locked.</p>
           )
         ) : canSubmit ? (
-          <Button onClick={handleSubmit} disabled={saving} size="sm" fullWidth>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-            {assignment.status === 'resubmit' ? 'Resubmit' : 'Submit'}
-          </Button>
+          <>
+            {hasStructuredContent && !structuredComplete && (
+              <p className="text-[11px] text-amber-400">
+                {!allChecklistDone && !allQnaAnswered
+                  ? 'Check every item and answer every question to submit.'
+                  : !allChecklistDone
+                  ? 'Check every item to submit.'
+                  : 'Answer every question to submit.'}
+              </p>
+            )}
+            <Button
+              onClick={handleSubmit}
+              disabled={saving || (hasStructuredContent && !structuredComplete)}
+              size="sm"
+              fullWidth
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+              {assignment.status === 'resubmit' ? 'Resubmit' : 'Submit'}
+            </Button>
+          </>
         ) : assignment.status === 'review' ? (
           <p className="text-xs text-gray-500">Waiting for review.</p>
         ) : (
@@ -673,6 +819,7 @@ function AssigneeReviewPanel({
   mentorId,
   myStudentIds,
   onViewSubmission,
+  onChanged,
 }: {
   task: ApiTask;
   mentorId: string;
@@ -682,10 +829,16 @@ function AssigneeReviewPanel({
   // different mentors.
   myStudentIds: Set<string>;
   onViewSubmission?: (studentId: string, taskId: string) => void;
+  onChanged?: () => Promise<void>;
 }) {
   const assignments = task.assignments || [];
   const isTaskAssigner = task.assigned_by_id === mentorId;
   const canReviewAssignment = (assignment: ApiAssignment) => isTaskAssigner || myStudentIds.has(assignment.assignee_id);
+  // Checklist/Q&A tasks have no document/submission at all — this panel
+  // reviews them itself (checked-items + answers, then Approve/Resubmit)
+  // instead of the usual "open the Submissions tab" handoff, which has
+  // nothing to show for a task shaped like this.
+  const hasStructuredContent = (task.checklist_items?.length ?? 0) > 0 || (task.qna_questions?.length ?? 0) > 0;
 
   return (
     <div className="space-y-5">
@@ -694,9 +847,11 @@ function AssigneeReviewPanel({
         {task.description && <p className="text-gray-400 text-sm mt-1">{task.description}</p>}
       </div>
 
-      <p className="text-xs text-gray-400 bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-2">
-        Open a submitted row's submission below to approve or resubmit it.
-      </p>
+      {!hasStructuredContent && (
+        <p className="text-xs text-gray-400 bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-2">
+          Open a submitted row's submission below to approve or resubmit it.
+        </p>
+      )}
 
       {!isTaskAssigner && (
         <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
@@ -707,7 +862,15 @@ function AssigneeReviewPanel({
       <div className="space-y-3">
         {assignments.map(assignment => {
           const canReview = canReviewAssignment(assignment);
-          return (
+          return hasStructuredContent ? (
+            <StructuredAssignmentReviewRow
+              key={assignment.id}
+              task={task}
+              assignment={assignment}
+              canReview={canReview}
+              onChanged={onChanged}
+            />
+          ) : (
             <div key={assignment.id} className="bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-3 space-y-2.5">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm text-gray-200 truncate">{assignment.assignee?.full_name || assignment.assignee_id}</span>
@@ -741,6 +904,128 @@ function AssigneeReviewPanel({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// One assignee's row for a checklist/Q&A task — read-only view of their
+// saved answers (collapsed until the reviewer expands it), plus Approve/
+// Resubmit once it's actually in 'review'. Mirrors the shape of the
+// mentor's own TaskStatusPanel checklist/Q&A rendering, but never editable.
+function StructuredAssignmentReviewRow({
+  task,
+  assignment,
+  canReview,
+  onChanged,
+}: {
+  task: ApiTask;
+  assignment: ApiAssignment;
+  canReview: boolean;
+  onChanged?: () => Promise<void>;
+}) {
+  const { showError } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [comment, setComment] = useState('');
+  const [saving, setSaving] = useState<'approve' | 'resubmit' | null>(null);
+
+  const checklistItems = task.checklist_items ?? [];
+  const qnaQuestions = task.qna_questions ?? [];
+  const checklistAnswers = assignment.structured_response?.checklist ?? {};
+  const qnaAnswers = assignment.structured_response?.qna ?? {};
+
+  const handleApprove = async () => {
+    setSaving('approve');
+    try {
+      await apiApproveTask(task.id, assignment.id, comment.trim() || undefined);
+      await onChanged?.();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to approve');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleResubmit = async () => {
+    if (!comment.trim()) {
+      showError('A comment is required when requesting a resubmit');
+      return;
+    }
+    setSaving('resubmit');
+    try {
+      await apiRequestResubmit(task.id, assignment.id, comment.trim());
+      await onChanged?.();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to request resubmit');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-3 space-y-2.5">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between gap-3 text-left"
+      >
+        <span className="text-sm text-gray-200 truncate">{assignment.assignee?.full_name || assignment.assignee_id}</span>
+        <StatusBadge status={assignment.status} />
+      </button>
+
+      {assignment.status === 'pending' && (
+        <p className="text-[11px] text-gray-500">Not submitted yet.</p>
+      )}
+
+      {expanded && assignment.status !== 'pending' && (
+        <div className="space-y-3 pt-1">
+          {checklistItems.map(item => (
+            <label key={item.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-750">
+              <input type="checkbox" checked={!!checklistAnswers[item.id]} disabled className="accent-gold w-4 h-4 shrink-0 opacity-80" />
+              <span className="text-sm text-gray-300">{item.label}</span>
+            </label>
+          ))}
+          {qnaQuestions.map(q => (
+            <div key={q.id}>
+              <p className="text-xs text-gray-500 mb-1">{q.question}</p>
+              <p className="text-sm text-gray-200 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 whitespace-pre-wrap">
+                {qnaAnswers[q.id] || <span className="text-gray-600">No answer</span>}
+              </p>
+            </div>
+          ))}
+
+          {canReview && assignment.status === 'review' && (
+            <div className="space-y-2 pt-1">
+              <textarea
+                value={comment}
+                onChange={e => setComment(e.target.value)}
+                placeholder="Optional comment (required for resubmit)"
+                rows={2}
+                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gold transition-colors resize-none placeholder-gray-500"
+              />
+              <div className="flex gap-2">
+                <Button onClick={handleApprove} disabled={saving !== null} size="sm" fullWidth>
+                  {saving === 'approve' ? <Loader2 size={14} className="animate-spin" /> : null}
+                  Approve
+                </Button>
+                <Button onClick={handleResubmit} disabled={saving !== null} variant="secondary" size="sm" fullWidth>
+                  {saving === 'resubmit' ? <Loader2 size={14} className="animate-spin" /> : null}
+                  Resubmit
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {!canReview && assignment.status === 'review' && (
+            <p className="text-[11px] text-gray-500">Not one of your students — you can view this but can't review it.</p>
+          )}
+
+          {assignment.status === 'resubmit' && (
+            <p className="text-[11px] text-gray-500">
+              {assignment.resubmit_count} of {assignment.max_resubmit_count} resubmits used
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

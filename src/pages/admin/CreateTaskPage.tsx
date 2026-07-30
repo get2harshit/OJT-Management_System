@@ -6,12 +6,15 @@ import {
   Target,
   Users,
   UserCheck,
-  CheckCircle2,
   Sparkles,
   Layers,
   Clock,
   Send,
-  FileText
+  FileText,
+  ListChecks,
+  MessageSquareText,
+  Plus,
+  X
 } from 'lucide-react';
 import Select from '../../components/Select';
 import Button from '../../components/Button';
@@ -32,6 +35,12 @@ const TASK_CATEGORY_OPTIONS: { value: ApiTaskCategory; label: string }[] = [
   { value: 'document_submission', label: 'Document Submission' },
   { value: 'general', label: 'General (no submission)' },
   { value: 'link_submission', label: 'Link Submission' },
+];
+
+const MENTOR_CONTENT_MODE_OPTIONS: { value: 'checklist' | 'questions' | 'both'; label: string }[] = [
+  { value: 'checklist', label: 'Checklist' },
+  { value: 'questions', label: 'Questions' },
+  { value: 'both', label: 'Both' },
 ];
 
 export default function CreateTaskPage() {
@@ -61,6 +70,15 @@ export default function CreateTaskPage() {
     week_number: '1',
     category: 'document_submission' as ApiTaskCategory,
   });
+  // Replaces the student-target Category picker entirely when targetRole is
+  // 'mentor' — a mentor task is always one of exactly these 3 shapes, never
+  // a document/link submission. Drives which of the two builders below show.
+  const [mentorContentMode, setMentorContentMode] = useState<'checklist' | 'questions' | 'both'>('checklist');
+  // Admin-defined structure for a mentor-targeted task only — a plain
+  // string per row while editing (blank rows filtered out on submit), not
+  // yet the {label}/{question} shape the API expects.
+  const [checklistItems, setChecklistItems] = useState<string[]>([]);
+  const [qnaQuestions, setQnaQuestions] = useState<string[]>([]);
 
   const loadMentorsAndCohorts = useCallback(() => {
     return Promise.all([apiListMentors(), apiListCohorts()])
@@ -140,13 +158,34 @@ export default function CreateTaskPage() {
       return;
     }
 
+    // Blank rows are just in-progress editing state, never sent — a row is
+    // only "real" once it has actual text in it.
+    const trimmedChecklist = checklistItems.map(s => s.trim()).filter(Boolean);
+    const trimmedQna = qnaQuestions.map(s => s.trim()).filter(Boolean);
+
+    if (form.targetRole === 'mentor') {
+      const needsChecklist = mentorContentMode === 'checklist' || mentorContentMode === 'both';
+      const needsQna = mentorContentMode === 'questions' || mentorContentMode === 'both';
+      if (needsChecklist && trimmedChecklist.length === 0) {
+        showError('Add at least one checklist item');
+        return;
+      }
+      if (needsQna && trimmedQna.length === 0) {
+        showError('Add at least one question');
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       await apiCreateTask({
         title: form.title,
         description: form.description || undefined,
         target_role: form.targetRole,
-        category: form.category,
+        // A mentor task is always exactly one of checklist/questions/both —
+        // never a document/link submission, so category is fixed to
+        // 'general' rather than exposed as a picker (see mentorContentMode).
+        category: form.targetRole === 'mentor' ? 'general' : form.category,
         assign_mode: form.targetRole === 'student' ? form.assignMode : 'individual',
         // Team-submission mode assigns whole teams matching the track/batch
         // filters — no individual hand-picking, so assignees is never sent.
@@ -156,6 +195,12 @@ export default function CreateTaskPage() {
         week: `Week ${form.week_number}`,
         track: selectedTrack,
         cohort_id: activeCohort.id,
+        checklist_items: form.targetRole === 'mentor' && (mentorContentMode === 'checklist' || mentorContentMode === 'both')
+          ? trimmedChecklist.map(label => ({ label }))
+          : undefined,
+        qna_questions: form.targetRole === 'mentor' && (mentorContentMode === 'questions' || mentorContentMode === 'both')
+          ? trimmedQna.map(question => ({ question }))
+          : undefined,
       });
       showSuccess('Task created successfully');
       navigate('/admin/dashboard?tab=tasks');
@@ -168,9 +213,9 @@ export default function CreateTaskPage() {
   };
 
   return (
-    <div className="w-full space-y-6 pb-20">
-      {/* Top Page Bar */}
-      <div className="flex items-center justify-between flex-wrap gap-4 border-b border-zinc-750/60 pb-5">
+    <div className="w-full h-full min-h-0 flex flex-col">
+      {/* Top Page Bar — fixed, doesn't scroll with the form content below */}
+      <div className="shrink-0 flex items-center justify-between flex-wrap gap-4 border-b border-zinc-750/60 pb-5 mb-6">
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate('/admin/dashboard?tab=tasks')}
@@ -188,29 +233,11 @@ export default function CreateTaskPage() {
             <p className="text-gray-400 text-sm mt-1">Configure and assign a new task to students or mentors across cohorts</p>
           </div>
         </div>
-
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            onClick={() => navigate('/admin/dashboard?tab=tasks')}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-white"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-6 py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors flex items-center gap-2 shadow-lg shadow-gold/10"
-          >
-            <Send size={16} />
-            {saving ? 'Creating...' : 'Create Goal & Task'}
-          </Button>
-        </div>
       </div>
 
-      {/* Main 2-Column Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+      {/* Main 2-Column Workspace — the only scrollable region on this page */}
+      <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 lg:grid-cols-3 gap-6 pb-6">
+
         {/* Left 2 Columns: Role & Assignees + Task Details */}
         <div className="lg:col-span-2 space-y-6">
           
@@ -228,7 +255,11 @@ export default function CreateTaskPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <button
                 type="button"
-                onClick={() => setForm({ ...form, targetRole: 'student', assigned_to: [] })}
+                onClick={() => {
+                  setForm({ ...form, targetRole: 'student', assigned_to: [] });
+                  setChecklistItems([]);
+                  setQnaQuestions([]);
+                }}
                 className={`p-4 rounded-xl border flex items-center gap-4 text-left transition-all duration-200 ${
                   form.targetRole === 'student'
                     ? 'bg-blue-500/10 border-blue-500 text-white shadow-lg shadow-blue-500/5'
@@ -262,6 +293,105 @@ export default function CreateTaskPage() {
                 </div>
               </button>
             </div>
+
+            {/* Task Structure — replaces the student-target Category picker
+                entirely for a mentor task: it's always exactly one of these
+                3 shapes (never a document/link submission), so this is the
+                single choice that decides both what gets built below and
+                what category the backend receives. */}
+            {form.targetRole === 'mentor' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wider">Task Type</label>
+                  <Select
+                    value={mentorContentMode}
+                    onChange={v => setMentorContentMode(v as 'checklist' | 'questions' | 'both')}
+                    options={MENTOR_CONTENT_MODE_OPTIONS}
+                    className="w-full"
+                  />
+                </div>
+
+                {(mentorContentMode === 'checklist' || mentorContentMode === 'both') && (
+                  <div>
+                    <label className="flex items-center gap-2 text-xs text-gray-400 mb-2 font-medium uppercase tracking-wider">
+                      <ListChecks size={14} className="text-purple-400" />
+                      Checklist Items *
+                    </label>
+                    <div className="space-y-2">
+                      {checklistItems.map((value, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={value}
+                            onChange={e => {
+                              const next = [...checklistItems];
+                              next[index] = e.target.value;
+                              setChecklistItems(next);
+                            }}
+                            placeholder={`Checklist item ${index + 1}`}
+                            className="flex-1 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gold transition-colors placeholder-gray-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setChecklistItems(checklistItems.filter((_, i) => i !== index))}
+                            className="p-2 text-gray-500 hover:text-red-400 transition-colors shrink-0"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setChecklistItems([...checklistItems, ''])}
+                        className="flex items-center gap-1.5 text-xs text-gold hover:text-gold-hover font-medium transition-colors"
+                      >
+                        <Plus size={14} /> Add checklist item
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {(mentorContentMode === 'questions' || mentorContentMode === 'both') && (
+                  <div>
+                    <label className="flex items-center gap-2 text-xs text-gray-400 mb-2 font-medium uppercase tracking-wider">
+                      <MessageSquareText size={14} className="text-purple-400" />
+                      Questions *
+                    </label>
+                    <div className="space-y-2">
+                      {qnaQuestions.map((value, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={value}
+                            onChange={e => {
+                              const next = [...qnaQuestions];
+                              next[index] = e.target.value;
+                              setQnaQuestions(next);
+                            }}
+                            placeholder={`Question ${index + 1}`}
+                            className="flex-1 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gold transition-colors placeholder-gray-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setQnaQuestions(qnaQuestions.filter((_, i) => i !== index))}
+                            className="p-2 text-gray-500 hover:text-red-400 transition-colors shrink-0"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setQnaQuestions([...qnaQuestions, ''])}
+                        className="flex items-center gap-1.5 text-xs text-gold hover:text-gold-hover font-medium transition-colors"
+                      >
+                        <Plus size={14} /> Add question
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Submission Mode Toggle — team mode assigns whole teams
                 matching the track/batch filters below (one member's
@@ -406,23 +536,28 @@ export default function CreateTaskPage() {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                <Target size={15} className="text-gold" />
-                Category *
-              </label>
-              <Select
-                value={form.category}
-                onChange={v => setForm({ ...form, category: v as ApiTaskCategory })}
-                options={TASK_CATEGORY_OPTIONS}
-                className="w-full"
-              />
-              <p className="text-[11px] text-gray-500 mt-1.5">
-                {form.category === 'document_submission'
-                  ? 'Student submits a file via the Submissions tab.'
-                  : 'No file/link expected — reviewed directly from the Tasks tab.'}
-              </p>
-            </div>
+            {/* Category only applies to a student task — a mentor task's
+                shape is fully decided by the Task Type toggle in Card 1
+                (Checklist/Questions/Both), not this picker. */}
+            {form.targetRole === 'student' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                  <Target size={15} className="text-gold" />
+                  Category *
+                </label>
+                <Select
+                  value={form.category}
+                  onChange={v => setForm({ ...form, category: v as ApiTaskCategory })}
+                  options={TASK_CATEGORY_OPTIONS}
+                  className="w-full"
+                />
+                <p className="text-[11px] text-gray-500 mt-1.5">
+                  {form.category === 'document_submission'
+                    ? 'Student submits a file via the Submissions tab.'
+                    : 'No file/link expected — reviewed directly from the Tasks tab.'}
+                </p>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Detailed Instructions & Notes</label>
@@ -539,30 +674,27 @@ export default function CreateTaskPage() {
             </div>
           </div>
 
-          {/* Card 5: Big Action Button */}
-          <div className="space-y-3">
-            <Button
-              onClick={handleSave}
-              disabled={saving}
-              fullWidth
-              size="lg"
-              className="py-3.5 text-sm font-bold bg-gold text-black hover:bg-gold-hover transition-colors shadow-lg shadow-gold/10 flex items-center justify-center gap-2"
-            >
-              <CheckCircle2 size={18} />
-              {saving ? 'Creating Goal...' : 'Create Goal & Task'}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => navigate('/admin/dashboard?tab=tasks')}
-              fullWidth
-              className="py-2.5 text-xs text-gray-400 hover:text-white"
-            >
-              Cancel & Return to Tasks
-            </Button>
-          </div>
-
         </div>
 
+      </div>
+
+      {/* Bottom action bar — fixed, doesn't scroll with the form content above */}
+      <div className="shrink-0 flex items-center justify-end gap-3 border-t border-zinc-750/60 pt-4">
+        <Button
+          variant="ghost"
+          onClick={() => navigate('/admin/dashboard?tab=tasks')}
+          className="px-4 py-2 text-sm text-gray-400 hover:text-white"
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-6 py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors flex items-center gap-2 shadow-lg shadow-gold/10"
+        >
+          <Send size={16} />
+          {saving ? 'Creating...' : 'Create Goal & Task'}
+        </Button>
       </div>
     </div>
   );

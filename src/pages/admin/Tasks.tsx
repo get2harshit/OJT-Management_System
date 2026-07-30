@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, Loader2, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
-import { apiListTasks, apiGetTask, apiDeleteTask, apiUpdateTask, apiGetAssigneeProgress } from '../../lib/api/tasks';
-import type { ApiTask, ApiAssignmentStatus } from '../../lib/api/tasks';
+import { apiListTasks, apiGetTask, apiDeleteTask, apiUpdateTask, apiGetAssigneeProgress, apiApproveTask, apiRequestResubmit } from '../../lib/api/tasks';
+import type { ApiTask, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
@@ -748,6 +748,10 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
           <AdminAssigneeReviewPanel
             task={reviewTask}
             onViewSubmission={onViewSubmission}
+            onChanged={async () => {
+              await openReviewModal(reviewTask.id);
+              await fetchTasksOnly();
+            }}
           />
         ) : null}
       </Modal>
@@ -755,21 +759,26 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
   );
 }
 
-// Every category (document/general/link) now submits real content through
-// the Submissions tab, so this panel never approves/resubmits blind — it
-// only routes to the actual submission. And when a MENTOR assigned the task
-// (not admin/batch_manager), admin only gets that read-only redirect —
-// Submissions' own review action enforces the real access rule (see
-// SubmissionService.reviewSubmission's admin view-only gate).
+// Every document/general/link category task submits real content through
+// the Submissions tab, so this panel never approves/resubmits blind for
+// those — it only routes to the actual submission. A mentor-targeted
+// checklist/Q&A task has no document/submission at all though, so those are
+// reviewed right here instead (checked-items + answers, then Approve/
+// Resubmit) — admin is the one who assigned it in that case (checklist/Q&A
+// tasks are admin-only to create), so admin always has full review rights
+// on them, unlike the mentor-assigned-task view-only case below.
 function AdminAssigneeReviewPanel({
   task,
   onViewSubmission,
+  onChanged,
 }: {
   task: ApiTask;
   onViewSubmission?: (studentId: string, taskId: string, cohortId: string) => void;
+  onChanged?: () => Promise<void>;
 }) {
   const assignments = task.assignments || [];
   const assignedByMentor = task.assigner?.role === 'mentor';
+  const hasStructuredContent = (task.checklist_items?.length ?? 0) > 0 || (task.qna_questions?.length ?? 0) > 0;
 
   const statusDot: Record<ApiAssignmentStatus, string> = {
     pending: 'bg-zinc-400',
@@ -791,9 +800,11 @@ function AdminAssigneeReviewPanel({
         {task.description && <p className="text-gray-400 text-sm mt-1">{task.description}</p>}
       </div>
 
-      <p className="text-xs text-gray-400 bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-2">
-        Open a submitted row's submission below to approve or resubmit it.
-      </p>
+      {!hasStructuredContent && (
+        <p className="text-xs text-gray-400 bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-2">
+          Open a submitted row's submission below to approve or resubmit it.
+        </p>
+      )}
 
       {assignedByMentor && (
         <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
@@ -802,8 +813,15 @@ function AdminAssigneeReviewPanel({
       )}
 
       <div className="space-y-3">
-        {assignments.map(assignment => {
-          return (
+        {assignments.map(assignment => (
+          hasStructuredContent ? (
+            <AdminStructuredAssignmentReviewRow
+              key={assignment.id}
+              task={task}
+              assignment={assignment}
+              onChanged={onChanged}
+            />
+          ) : (
             <div key={assignment.id} className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 space-y-2.5">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm text-gray-200 truncate">{assignment.assignee?.full_name || assignment.assignee_id}</span>
@@ -831,9 +849,140 @@ function AdminAssigneeReviewPanel({
                 </p>
               )}
             </div>
-          );
-        })}
+          )
+        ))}
       </div>
+    </div>
+  );
+}
+
+// Admin's own version of the mentor page's equivalent row — checklist/Q&A
+// tasks are admin-only to create, so admin is always the assigner here and
+// always has full review rights (never the mentor-assigned view-only case).
+function AdminStructuredAssignmentReviewRow({
+  task,
+  assignment,
+  onChanged,
+}: {
+  task: ApiTask;
+  assignment: ApiAssignment;
+  onChanged?: () => Promise<void>;
+}) {
+  const { showError } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [comment, setComment] = useState('');
+  const [saving, setSaving] = useState<'approve' | 'resubmit' | null>(null);
+
+  const checklistItems = task.checklist_items ?? [];
+  const qnaQuestions = task.qna_questions ?? [];
+  const checklistAnswers = assignment.structured_response?.checklist ?? {};
+  const qnaAnswers = assignment.structured_response?.qna ?? {};
+
+  const statusDot: Record<ApiAssignmentStatus, string> = {
+    pending: 'bg-zinc-400',
+    review: 'bg-blue-400',
+    resubmit: 'bg-orange-400',
+    approved: 'bg-green-400',
+  };
+  const statusLabel: Record<ApiAssignmentStatus, string> = {
+    pending: 'Pending',
+    review: 'In Review',
+    resubmit: 'Resubmit',
+    approved: 'Approved',
+  };
+
+  const handleApprove = async () => {
+    setSaving('approve');
+    try {
+      await apiApproveTask(task.id, assignment.id, comment.trim() || undefined);
+      await onChanged?.();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to approve');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleResubmit = async () => {
+    if (!comment.trim()) {
+      showError('A comment is required when requesting a resubmit');
+      return;
+    }
+    setSaving('resubmit');
+    try {
+      await apiRequestResubmit(task.id, assignment.id, comment.trim());
+      await onChanged?.();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to request resubmit');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 space-y-2.5">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between gap-3 text-left"
+      >
+        <span className="text-sm text-gray-200 truncate">{assignment.assignee?.full_name || assignment.assignee_id}</span>
+        <span className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap flex items-center gap-1.5 w-fit">
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[assignment.status]}`} />
+          {statusLabel[assignment.status]}
+        </span>
+      </button>
+
+      {assignment.status === 'pending' && (
+        <p className="text-[11px] text-gray-500">Not submitted yet.</p>
+      )}
+
+      {expanded && assignment.status !== 'pending' && (
+        <div className="space-y-3 pt-1">
+          {checklistItems.map(item => (
+            <label key={item.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-zinc-850 border border-zinc-750">
+              <input type="checkbox" checked={!!checklistAnswers[item.id]} disabled className="accent-gold w-4 h-4 shrink-0 opacity-80" />
+              <span className="text-sm text-gray-300">{item.label}</span>
+            </label>
+          ))}
+          {qnaQuestions.map(q => (
+            <div key={q.id}>
+              <p className="text-xs text-gray-500 mb-1">{q.question}</p>
+              <p className="text-sm text-gray-200 bg-zinc-850 border border-zinc-750 rounded-lg px-3 py-2 whitespace-pre-wrap">
+                {qnaAnswers[q.id] || <span className="text-gray-600">No answer</span>}
+              </p>
+            </div>
+          ))}
+
+          {assignment.status === 'review' && (
+            <div className="space-y-2 pt-1">
+              <textarea
+                value={comment}
+                onChange={e => setComment(e.target.value)}
+                placeholder="Optional comment (required for resubmit)"
+                rows={2}
+                className="w-full bg-zinc-850 border border-zinc-750 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gold transition-colors resize-none placeholder-gray-500"
+              />
+              <div className="flex gap-2">
+                <Button onClick={handleApprove} disabled={saving !== null} size="sm" fullWidth>
+                  {saving === 'approve' ? <Loader2 size={14} className="animate-spin" /> : null}
+                  Approve
+                </Button>
+                <Button onClick={handleResubmit} disabled={saving !== null} variant="secondary" size="sm" fullWidth>
+                  {saving === 'resubmit' ? <Loader2 size={14} className="animate-spin" /> : null}
+                  Resubmit
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {assignment.status === 'resubmit' && (
+            <p className="text-[11px] text-gray-500">
+              {assignment.resubmit_count} of {assignment.max_resubmit_count} resubmits used
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
