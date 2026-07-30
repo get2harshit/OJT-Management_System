@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import Select from '../../components/Select';
 import Button from '../../components/Button';
-import { TRACKS } from '../../lib/constants';
+import { useTracks } from '../../hooks/useTracks';
 import { apiCreateTask } from '../../lib/api/tasks';
 import type { ApiTaskCategory } from '../../lib/api/tasks';
 import { apiListMentors } from '../../lib/api/mentors';
@@ -46,6 +46,7 @@ const MENTOR_CONTENT_MODE_OPTIONS: { value: 'checklist' | 'questions' | 'both'; 
 export default function CreateTaskPage() {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
+  const { options: trackOptions } = useTracks();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
   const [students, setStudents] = useState<ApiStudent[]>([]);
@@ -462,7 +463,7 @@ export default function CreateTaskPage() {
                     }}
                     className="w-full text-xs"
                     placeholder="Select track..."
-                    options={TRACKS.map(t => ({ value: t, label: t }))}
+                    options={trackOptions}
                   />
                 </div>
               </div>

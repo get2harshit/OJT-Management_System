@@ -10,12 +10,12 @@ import {
   apiListCohorts,
 } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
-import { TRACKS } from '../../lib/constants';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 import { useTasks } from '../../hooks/useTasks';
 import { useSubmissions } from '../../hooks/useSubmissions';
 import { useAttendance } from '../../hooks/useAttendance';
+import { useTracks } from '../../hooks/useTracks';
 
 interface Props {
   tasks: Task[];
@@ -33,6 +33,7 @@ export default function AdminDashboard({
   const { tasks: hookTasks } = useTasks();
   const { submissions: hookSubmissions } = useSubmissions();
   const { attendance: hookAttendance } = useAttendance();
+  const { options: trackOptions } = useTracks();
 
   const tasks = propTasks ?? hookTasks;
   const submissions = propSubmissions ?? hookSubmissions;
@@ -161,7 +162,7 @@ export default function AdminDashboard({
           value={trackFilter}
           onChange={setTrackFilter}
           placeholder="All Tracks"
-          options={TRACKS.map(t => ({ value: t, label: t }))}
+          options={trackOptions}
         />
       </div>
 

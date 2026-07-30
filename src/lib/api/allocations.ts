@@ -1,6 +1,5 @@
 import type { TeamAllocationDetail, StudentAllocation, MentorLoadSummaryRow, AllocationPreviewEntry, CohortPendingProposal } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
-import { mapFrontendTrackToBackend } from './trackMapping';
 
 const ALLOCATION_TTL = 15_000;
 
@@ -54,7 +53,7 @@ export async function apiGetTeamsForCohortDetailed(
   params: GetTeamsForCohortParams = {}
 ): Promise<TeamsForCohortPage> {
   const query = new URLSearchParams();
-  if (params.track) query.set('track', mapFrontendTrackToBackend(params.track));
+  if (params.track) query.set('track', params.track);
   if (params.batch) query.set('batch', params.batch);
   if (params.search) query.set('search', params.search);
   if (params.status) query.set('status', params.status);

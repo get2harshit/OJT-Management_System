@@ -1,5 +1,4 @@
 import { apiFetch, cachedFetch, invalidateCached } from './client';
-import { mapFrontendTrackToBackend } from './trackMapping';
 
 const TASKS_TTL = 15_000;
 
@@ -205,7 +204,7 @@ export interface ApiTaskListFilter {
 export async function apiCreateTask(payload: CreateTaskPayload): Promise<{ success: boolean; message: string; data: ApiTask }> {
   const body: Record<string, unknown> = { ...payload } as Record<string, unknown>;
   if (payload.track) {
-    body.track = mapFrontendTrackToBackend(payload.track);
+    body.track = payload.track;
   }
   const res = await apiFetch<{ success: boolean; message: string; data: ApiTask }>('/api/v1/tasks', {
     method: 'POST',
@@ -274,7 +273,7 @@ export async function apiGetTask(id: string): Promise<{ success: boolean; data: 
 export async function apiUpdateTask(id: string, payload: UpdateTaskPayload): Promise<{ success: boolean; message: string; data: ApiTask }> {
   const body: Record<string, unknown> = { ...payload } as Record<string, unknown>;
   if (payload.track) {
-    body.track = mapFrontendTrackToBackend(payload.track);
+    body.track = payload.track;
   }
   const res = await apiFetch<{ success: boolean; message: string; data: ApiTask }>(`/api/v1/tasks/${id}`, {
     method: 'PUT',

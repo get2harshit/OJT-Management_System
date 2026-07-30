@@ -7,7 +7,7 @@ import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import type { TeamAllocationDetail, MentorLoadSummaryRow, CohortAllocationRunStatus, Project, StudentWithoutTeam, AllocationPreviewEntry, CohortPendingProposal } from '../../../lib/types';
-import { TRACKS } from '../../../lib/constants';
+import { useTracks } from '../../../hooks/useTracks';
 import {
   apiGetTeamsForCohortDetailed,
   apiPreviewAllocation,
@@ -66,6 +66,8 @@ export default function CohortAllocationsPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const { showSuccess, showError } = useToast();
   const confirm = useConfirm();
+  const { tracks, options: trackOptions } = useTracks();
+  const trackNameBySlug = new Map(tracks.map(t => [t.slug, t.name]));
 
   const [cohortLabel, setCohortLabel] = useState('');
   const [teams, setTeams] = useState<TeamAllocationDetail[]>([]);
@@ -922,7 +924,7 @@ export default function CohortAllocationsPage() {
                 value={trackFilter}
                 onChange={handleTrackFilterChange}
                 placeholder="All Tracks"
-                options={TRACKS.map((t) => ({ value: t, label: t }))}
+                options={trackOptions}
               />
               <Select
                 variant="filter"
@@ -1200,7 +1202,7 @@ export default function CohortAllocationsPage() {
                         <div className="flex items-center justify-between gap-2">
                           <div>
                             <p className="text-white font-semibold text-sm">{mentor.mentorName || '—'}</p>
-                            <p className="text-gray-500 text-xs">{(mentor.tracks ?? []).join(', ') || 'No tracks assigned'}</p>
+                            <p className="text-gray-500 text-xs">{(mentor.tracks ?? []).map(s => trackNameBySlug.get(s) ?? s).join(', ') || 'No tracks assigned'}</p>
                           </div>
                           <span className={`text-xs font-bold shrink-0 ${overCapacity ? 'text-red-400' : 'text-gray-400'}`}>
                             {mentor.allocatedCount}/{mentor.threshold}
@@ -1435,7 +1437,7 @@ export default function CohortAllocationsPage() {
                           <div className="flex items-center justify-between gap-2">
                             <div>
                               <p className="text-white font-semibold text-sm">{mentor.mentorName || '—'}</p>
-                              <p className="text-gray-500 text-xs">{(mentor.tracks ?? []).join(', ') || 'No tracks assigned'}</p>
+                              <p className="text-gray-500 text-xs">{(mentor.tracks ?? []).map(s => trackNameBySlug.get(s) ?? s).join(', ') || 'No tracks assigned'}</p>
                             </div>
                             <span className={`text-xs font-bold shrink-0 ${overCapacity ? 'text-red-400' : 'text-gray-400'}`}>
                               {mentor.allocatedCount}/{mentor.threshold}
@@ -1471,7 +1473,7 @@ export default function CohortAllocationsPage() {
               value={createTeamTrack}
               onChange={handleCreateTeamTrackChange}
               placeholder="Select a track"
-              options={TRACKS.map((t) => ({ value: t, label: t }))}
+              options={trackOptions}
             />
           </div>
 
@@ -1587,7 +1589,7 @@ export default function CohortAllocationsPage() {
                       <div className="flex items-center justify-between gap-2">
                         <div>
                           <p className="text-white font-semibold text-sm">{mentor.mentorName || '—'}</p>
-                          <p className="text-gray-500 text-xs">{(mentor.tracks ?? []).join(', ') || 'No tracks assigned'}</p>
+                          <p className="text-gray-500 text-xs">{(mentor.tracks ?? []).map(s => trackNameBySlug.get(s) ?? s).join(', ') || 'No tracks assigned'}</p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className={`text-xs font-bold ${overCapacity ? 'text-red-400' : 'text-gray-400'}`}>

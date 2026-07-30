@@ -1,6 +1,5 @@
 import type { Project, ProjectLevel } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
-import { mapFrontendTrackToBackend, mapBackendTrackToFrontend } from './trackMapping';
 
 const PROJECTS_TTL = 15_000;
 
@@ -64,15 +63,13 @@ interface RawFullProject extends RawProject {
 function toFrontendProject(p: RawProject | RawFullProject): Project {
   return {
     ...p,
-    track: mapBackendTrackToFrontend(p.track),
     related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
   } as Project;
 }
 
 function buildListUrl({ track, page, limit, search }: ListProjectsParams): string {
   const params = new URLSearchParams();
-  const apiTrack = track ? mapFrontendTrackToBackend(track) : undefined;
-  if (apiTrack) params.set('track', apiTrack);
+  if (track) params.set('track', track);
   if (page) params.set('page', String(page));
   if (limit) params.set('limit', String(limit));
   if (search) params.set('search', search);
@@ -124,6 +121,8 @@ export interface ProjectCreateInput {
   title: string;
   description?: string;
   track: string;
+  /** Free-text classification from the CSV import, separate from track config. */
+  trackClassification?: string;
   techStack?: string[];
   problemStatement?: string;
   endUsersDefined?: string;
@@ -153,19 +152,18 @@ export interface ProjectCreateInput {
 // domain/projectFields.ts's adminProjectRowSchema on the backend. project_id
 // is supplied by the CSV as-is (e.g. "PST0001") — the backend never
 // generates one for this path, only for student self-proposals.
-export interface ProjectCsvRowInput extends Required<Omit<ProjectCreateInput, 'level'>> {
+// trackClassification stays optional (like level) — it's a free-text
+// CSV-only field, never required.
+export interface ProjectCsvRowInput extends Required<Omit<ProjectCreateInput, 'level' | 'trackClassification'>> {
   projectId: string;
   level?: ProjectLevel;
+  trackClassification?: string;
 }
 
 export async function apiCreateProject(body: ProjectCreateInput): Promise<Project> {
-  const payload = {
-    ...body,
-    track: mapFrontendTrackToBackend(body.track),
-  };
   const p = await apiFetch<RawFullProject>('/api/v1/projects', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   invalidateCached('projects:list');
   return toFrontendProject(p);
@@ -191,10 +189,7 @@ export interface ProjectBulkImportResult {
 // separate manual "select projects to map" step.
 export async function apiCreateProjectsBulk(items: ProjectCsvRowInput[], cohortId?: string): Promise<ProjectBulkImportResult> {
   const payload = {
-    projects: items.map(item => ({
-      ...item,
-      track: mapFrontendTrackToBackend(item.track),
-    })),
+    projects: items,
     ...(cohortId ? { cohortId } : {}),
   };
   const res = await apiFetch<{

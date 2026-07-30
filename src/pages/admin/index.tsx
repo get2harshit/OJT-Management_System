@@ -18,6 +18,7 @@ import CohortProjectsPage from './OJTs/CohortProjectsPage';
 import CohortMentorsPage from './OJTs/CohortMentorsPage';
 import CohortTeamsPage from './OJTs/CohortTeamsPage';
 import CohortAllocationsPage from './OJTs/CohortAllocationsPage';
+import CohortTrackConfigPage from './OJTs/CohortTrackConfigPage';
 import { useNotificationNavigate } from '../../context/NotificationNavigateContext';
 import { apiGetPrdSubmission } from '../../lib/api';
 import { useToast } from '../../toast';
@@ -136,6 +137,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route path="ojts/:cohortId/mentors" element={<CohortMentorsPage />} />
         <Route path="ojts/:cohortId/teams" element={<CohortTeamsPage />} />
         <Route path="ojts/:cohortId/allocations" element={<CohortAllocationsPage />} />
+        <Route path="ojts/:cohortId/track-config" element={<CohortTrackConfigPage />} />
         <Route path="tasks/create" element={<CreateTaskPage />} />
         <Route path="*" element={renderTab()} />
       </Routes>

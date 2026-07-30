@@ -6,12 +6,12 @@ import SpinnerSquare from '../../components/SpinnerSquare';
 import Select from '../../components/Select';
 import ActionsMenu from '../../components/ActionsMenu';
 import type { ApiMentor, Cohort, MentorCapacitySummary } from '../../lib/types';
-import { TRACKS, TRACK_DOT_COLORS, MENTOR_TYPE_DOT_COLORS } from '../../lib/constants';
+import { getTrackColor, MENTOR_TYPE_DOT_COLORS } from '../../lib/constants';
 import { apiListMentorsPage, apiUpdateMentor, apiListCohorts, apiGetMentorCapacity, apiSetMentorCapacityOverride } from '../../lib/api';
-import { mapBackendTrackToFrontend, mapFrontendTrackToBackend } from '../../lib/api/trackMapping';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
+import { useTracks } from '../../hooks/useTracks';
 
 interface MentorRow extends ApiMentor {
   assignedTracks: string[];
@@ -22,6 +22,8 @@ const SEARCH_DEBOUNCE_MS = 400;
 
 export default function AdminMentors() {
   const { showSuccess, showError } = useToast();
+  const { tracks } = useTracks();
+  const trackNameBySlug = new Map(tracks.map(t => [t.slug, t.name]));
   const [mentors, setMentors] = useState<MentorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [tableLoading, setTableLoading] = useState(false);
@@ -47,7 +49,7 @@ export default function AdminMentors() {
       const res = await apiListMentorsPage({ page, limit, search: search || undefined });
       setMentors(res.data.map(m => ({
         ...m,
-        assignedTracks: (m.tracks ?? []).map(mapBackendTrackToFrontend),
+        assignedTracks: m.tracks ?? [],
       })));
       setPagination(res.pagination);
     } catch {
@@ -89,7 +91,7 @@ export default function AdminMentors() {
     setSaving(true);
     try {
       await apiUpdateMentor(editingMentor.id, {
-        track: selectedTracks.map(mapFrontendTrackToBackend),
+        track: selectedTracks,
       });
       setMentors(prev =>
         prev.map(m => m.id === editingMentor.id ? { ...m, assignedTracks: selectedTracks } : m)
@@ -220,12 +222,12 @@ export default function AdminMentors() {
               render: (row) => (
                 <div className="flex flex-wrap gap-x-3 gap-y-1 max-w-xs">
                   {row.assignedTracks && row.assignedTracks.length > 0
-                    ? row.assignedTracks.map((t) => {
-                      const style = TRACK_DOT_COLORS[t] ?? { dot: 'bg-gray-400', text: 'text-gray-300' };
+                    ? row.assignedTracks.map((slug) => {
+                      const style = getTrackColor(slug);
                       return (
-                        <span key={t} className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
+                        <span key={slug} className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                          {t}
+                          {trackNameBySlug.get(slug) ?? slug}
                         </span>
                       );
                     })
@@ -279,17 +281,17 @@ export default function AdminMentors() {
               Specialized Tracks <span className="text-gray-600">(Select one or more)</span>
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-zinc-800/50 p-3 rounded-lg border border-zinc-700">
-              {TRACKS.map(t => {
-                const checked = selectedTracks.includes(t);
+              {tracks.map(t => {
+                const checked = selectedTracks.includes(t.slug);
                 return (
-                  <label key={t} className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-white">
+                  <label key={t.slug} className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-white">
                     <input
                       type="checkbox"
                       checked={checked}
-                      onChange={() => toggleTrack(t)}
+                      onChange={() => toggleTrack(t.slug)}
                       className="rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold"
                     />
-                    {t}
+                    {t.name}
                   </label>
                 );
               })}

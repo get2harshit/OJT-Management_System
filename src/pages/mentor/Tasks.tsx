@@ -18,9 +18,9 @@ import type { ApiTask, ApiTaskCategory, ApiAssignment, ApiAssignmentStatus } fro
 import { apiListMyTeams } from '../../lib/api/teams';
 import { apiListMyCohorts } from '../../lib/api/cohorts';
 import type { Team, Cohort } from '../../lib/types';
-import { TRACKS } from '../../lib/constants';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
+import { useTracks } from '../../hooks/useTracks';
 
 const CATEGORY_OPTIONS: { value: ApiTaskCategory; label: string }[] = [
   { value: 'document_submission', label: 'Document Submission' },
@@ -69,6 +69,7 @@ interface Props {
 
 export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   const { showSuccess, showError } = useToast();
+  const { options: trackOptions } = useTracks();
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [myTeams, setMyTeams] = useState<Team[]>([]);
   const [myCohorts, setMyCohorts] = useState<Cohort[]>([]);
@@ -477,7 +478,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
                 value={form.track}
                 onChange={v => setForm({ ...form, track: v as string, teamIds: [], assignees: [] })}
                 placeholder="Select track..."
-                options={TRACKS.map(t => ({ value: t, label: t }))}
+                options={trackOptions}
                 className="w-full"
               />
             </div>

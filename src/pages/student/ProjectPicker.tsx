@@ -1,10 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
+import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Modal from '../../components/Modal';
-import { TRACKS } from '../../lib/constants';
 import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project, PreferenceReviewStatus, PreferenceResubmissionMode } from '../../lib/types';
-import type { ProjectSummary, ProjectDetail } from '../../lib/api';
+import type { ProjectSummary, ProjectDetail, ApiAvailableTrack } from '../../lib/api';
 import {
   apiGetMyCohort,
   apiGetMyTeamStatus,
@@ -21,9 +20,11 @@ import {
   apiSubmitProjectPreferences,
   apiResubmitPreference1,
   apiGetProject,
+  apiGetAvailableTracks,
 } from '../../lib/api';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
+import { useTracks } from '../../hooks/useTracks';
 
 
 
@@ -248,6 +249,8 @@ function TrackAndTeammateScreen({
   // after a reload) instead of re-showing the track picker and losing that
   // context — every pending invite for a student is always the same track.
   const [track, setTrack] = useState<string | null>(pendingSentRequests[0]?.track ?? null);
+  const [availableTracks, setAvailableTracks] = useState<ApiAvailableTrack[]>([]);
+  const [tracksLoading, setTracksLoading] = useState(true);
   const [teammates, setTeammates] = useState<AvailableTeammate[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchInput, setSearchInput] = useState('');
@@ -260,12 +263,31 @@ function TrackAndTeammateScreen({
 
   const SEND_QUOTA = 3;
   const quotaFull = pendingSentRequests.length >= SEND_QUOTA;
+  const trackName = availableTracks.find(t => t.trackSlug === track)?.trackName ?? track ?? '';
+
+  useEffect(() => {
+    let cancelled = false;
+    setTracksLoading(true);
+    apiGetAvailableTracks(cohortId)
+      .then((data) => {
+        if (!cancelled) setAvailableTracks(data);
+      })
+      .catch((err) => {
+        if (!cancelled) showError(err instanceof Error ? err.message : 'Failed to load available tracks');
+      })
+      .finally(() => {
+        if (!cancelled) setTracksLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cohortId, showError]);
 
   const fetchTeammates = useCallback(async () => {
     if (!canInviteTeammate || !track) return;
     setLoading(true);
     try {
-      const res = await apiGetAvailableTeammates(cohortId, { page, limit, search: search || undefined });
+      const res = await apiGetAvailableTeammates(cohortId, { page, limit, search: search || undefined, track: track ?? undefined });
       setTeammates(res.data);
       setPagination(res.pagination);
     } catch (err) {
@@ -351,20 +373,34 @@ function TrackAndTeammateScreen({
     return (
       <div className="space-y-4">
         <h2 className="text-white font-semibold">Choose your track</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {TRACKS.map(t => (
-            <button
-              key={t}
-              onClick={() => handlePickTrack(t)}
-              className="flex flex-col items-start gap-3 bg-zinc-850 border border-zinc-750 rounded-xl p-5 text-left hover:border-gold/40 hover:-translate-y-0.5 transition-all duration-200"
-            >
-              <div className="p-2 rounded-lg bg-zinc-750">
-                <Layers size={20} className="text-gold" />
-              </div>
-              <p className="text-white font-semibold">{t}</p>
-            </button>
-          ))}
-        </div>
+        {tracksLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <SpinnerSquare size={40} />
+          </div>
+        ) : availableTracks.length === 0 ? (
+          <p className="text-gray-500 text-sm">No tracks are available for you in this OJT yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {availableTracks.map(t => (
+              <button
+                key={t.trackSlug}
+                onClick={() => handlePickTrack(t.trackSlug)}
+                className="relative flex flex-col items-start gap-3 bg-zinc-850 border border-zinc-750 rounded-xl p-5 text-left hover:border-gold/40 hover:-translate-y-0.5 transition-all duration-200"
+              >
+                {t.opportunityEarned && (
+                  <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gold bg-gold/10 border border-gold/30 rounded-full px-2 py-0.5">
+                    <Star size={10} className="fill-gold" />
+                    Opportunity Earned
+                  </span>
+                )}
+                <div className="p-2 rounded-lg bg-zinc-750">
+                  <Layers size={20} className="text-gold" />
+                </div>
+                <p className="text-white font-semibold">{t.trackName}</p>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -376,7 +412,7 @@ function TrackAndTeammateScreen({
           <button onClick={() => setTrack(null)} className="text-sm text-gray-400 hover:text-white transition-colors">
             Change track
           </button>
-          <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{track}</span>
+          <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{trackName}</span>
         </div>
 
         <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-8 text-center space-y-4">
@@ -409,7 +445,7 @@ function TrackAndTeammateScreen({
           >
             Change track
           </button>
-          <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{track}</span>
+          <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{trackName}</span>
         </div>
       </div>
 
@@ -560,6 +596,8 @@ function IncomingRequestScreen({
   onDecide: (action: 'accept' | 'reject') => void;
 }) {
   const { label, expired } = useCountdown(request.expiresAt);
+  const { tracks } = useTracks();
+  const trackName = tracks.find(t => t.slug === request.track)?.name ?? request.track;
   const [deciding, setDeciding] = useState(false);
 
   const handleDecide = async (action: 'accept' | 'reject') => {
@@ -577,7 +615,7 @@ function IncomingRequestScreen({
       <h2 className="text-white font-bold text-lg">Team Invite</h2>
       <p className="text-gray-400 text-sm">
         <span className="text-white font-medium">{request.senderName}</span> invited you to team up for{' '}
-        <span className="text-gold">{request.track}</span>.
+        <span className="text-gold">{trackName}</span>.
       </p>
       <p className="text-xs text-gray-500">
         {expired ? 'This invite has expired.' : `Expires in ${label}`}
@@ -1712,6 +1750,8 @@ function SummaryScreen({
 }) {
   const mentor1 = availableMentors.find(m => m.id === preferences.preference1MentorId) ?? null;
   const mentor2 = availableMentors.find(m => m.id === preferences.preference2MentorId) ?? null;
+  const { tracks } = useTracks();
+  const teamTrackName = tracks.find(t => t.slug === team.track)?.name ?? team.track;
   // Rejected rows from before this mode split existed have no resubmission
   // mode recorded — default to 'own_only' (the old flow's own primary path).
   const resubmissionMode: PreferenceResubmissionMode = preferences.preference1ResubmissionMode ?? 'own_only';
@@ -1834,7 +1874,7 @@ function SummaryScreen({
         <div className="flex flex-wrap gap-6">
           <div>
             <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Track</p>
-            <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{team.track}</span>
+            <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{teamTrackName}</span>
           </div>
 
           {team.name && (

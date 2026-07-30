@@ -1,6 +1,5 @@
 import type { ApiMentor, MentorCapacitySummary } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
-import { mapFrontendTrackToBackend } from './trackMapping';
 
 export async function apiListMentors(type?: 'internal' | 'external'): Promise<ApiMentor[]> {
   const url = type ? `/api/v1/mentors?type=${type}` : '/api/v1/mentors';
@@ -22,7 +21,7 @@ interface GetMentorsPageParams {
   page: number;
   limit: number;
   search?: string;
-  /** Frontend track label, e.g. "Gen AI" — mapped to the backend enum here. */
+  /** Track slug, e.g. "gen_ai". */
   track?: string;
   /** Scope to mentors actually mapped to a specific cohort. */
   cohortId?: string;
@@ -35,13 +34,13 @@ export async function apiListMentorsPage(params: GetMentorsPageParams): Promise<
   query.set('page', String(params.page));
   query.set('limit', String(params.limit));
   if (params.search) query.set('search', params.search);
-  if (params.track) query.set('track', mapFrontendTrackToBackend(params.track));
+  if (params.track) query.set('track', params.track);
   if (params.cohortId) query.set('cohortId', params.cohortId);
   return apiFetch<MentorsPage>(`/api/v1/mentors?${query.toString()}`);
 }
 
 // Admin or self — updates mutable mentor fields (organization, isExternal, track).
-// `track` values must already be backend enum strings (e.g. 'product_development').
+// `track` values must be track slugs (e.g. 'gen_ai').
 export async function apiUpdateMentor(
   mentorId: string,
   patch: { organization?: string; isExternal?: boolean; track?: string[] }
