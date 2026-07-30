@@ -487,6 +487,7 @@ export interface DashboardMetrics {
   batchManagersCount: number;
   projectsCount: number;
   totalCreditsAvailable: number;
+  tasksCount: number;
 }
 
 // ── Evaluation module ────────────────────────────────────────────────────────
