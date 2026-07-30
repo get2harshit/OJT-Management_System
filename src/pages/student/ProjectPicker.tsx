@@ -263,7 +263,13 @@ function TrackAndTeammateScreen({
 
   const SEND_QUOTA = 3;
   const quotaFull = pendingSentRequests.length >= SEND_QUOTA;
-  const trackName = availableTracks.find(t => t.trackSlug === track)?.trackName ?? track ?? '';
+  const selectedTrack = availableTracks.find(t => t.trackSlug === track);
+  const trackName = selectedTrack?.trackName ?? track ?? '';
+  // The track itself can force individual mode for this OJT — independent of
+  // (and on top of) the batch/admin-override rule below. Whichever source
+  // says "individual" wins, so this is checked in addition to
+  // canInviteTeammate, not instead of it.
+  const trackForcesIndividual = selectedTrack?.projectMode === 'individual';
 
   useEffect(() => {
     let cancelled = false;
@@ -397,6 +403,9 @@ function TrackAndTeammateScreen({
                   <Layers size={20} className="text-gold" />
                 </div>
                 <p className="text-white font-semibold">{t.trackName}</p>
+                <span className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide">
+                  {t.projectMode === 'individual' ? 'Individual project' : 'Team project'}
+                </span>
               </button>
             ))}
           </div>
@@ -405,11 +414,15 @@ function TrackAndTeammateScreen({
     );
   }
 
-  if (!canInviteTeammate) {
+  if (!canInviteTeammate || trackForcesIndividual) {
     return (
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <button onClick={() => setTrack(null)} className="text-sm text-gray-400 hover:text-white transition-colors">
+          <button
+            onClick={() => setTrack(null)}
+            disabled={creatingIndividual}
+            className="text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-40"
+          >
             Change track
           </button>
           <span className="text-xs px-2.5 py-1 rounded-full bg-gold/10 text-gold font-medium">{trackName}</span>
@@ -419,7 +432,9 @@ function TrackAndTeammateScreen({
           <Sparkles size={32} className="mx-auto text-gold" />
           <h2 className="text-white font-bold text-lg">You're on an individual project</h2>
           <p className="text-gray-400 text-sm">
-            Students in your batch complete this OJT individually and can't invite a teammate.
+            {trackForcesIndividual
+              ? `${trackName} is an individual-only track for this OJT — you'll work on it solo.`
+              : "Students in your batch complete this OJT individually and can't invite a teammate."}
           </p>
           <button
             onClick={handleCreateIndividualTeam}

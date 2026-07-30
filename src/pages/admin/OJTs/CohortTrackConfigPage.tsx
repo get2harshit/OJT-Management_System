@@ -1,12 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Settings2, Plus, Trash2, Users, X, ListPlus } from 'lucide-react';
+import { Settings2, Plus, Pencil, Trash2, Users, X } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import Modal from '../../../components/Modal';
-import ManageTracksModal from './ManageTracksModal';
-import type { ApiCohortTrackConfig, TrackEligibilityType, ApiEligibleStudent } from '../../../lib/api/tracks';
+import type { ApiCohortTrackConfig, TrackEligibilityType, TrackProjectMode, ApiEligibleStudent } from '../../../lib/api/tracks';
 import {
   apiGetCohort,
   apiGetCohortTrackConfig,
@@ -15,6 +14,7 @@ import {
   apiAddEligibleStudents,
   apiRemoveEligibleStudent,
   apiListStudentsPage,
+  apiCreateTrack,
 } from '../../../lib/api';
 import type { ApiStudent } from '../../../lib/types';
 import { useTracks } from '../../../hooks/useTracks';
@@ -29,6 +29,17 @@ const ELIGIBILITY_OPTIONS: { value: TrackEligibilityType; label: string }[] = [
   { value: 'unique', label: 'Specific students only' },
 ];
 
+const ELIGIBILITY_LABELS: Record<TrackEligibilityType, string> = {
+  year: 'Admission year',
+  batch: 'Batch section',
+  unique: 'Specific students',
+};
+
+const PROJECT_MODE_OPTIONS: { value: TrackProjectMode; label: string }[] = [
+  { value: 'individual', label: 'Individual — every student works solo on this track' },
+  { value: 'team', label: 'Team — students must pair up to work on this track' },
+];
+
 const SEARCH_DEBOUNCE_MS = 400;
 
 export default function CohortTrackConfigPage() {
@@ -41,18 +52,27 @@ export default function CohortTrackConfigPage() {
   const [allowedBatches, setAllowedBatches] = useState<string[]>([]);
   const [configs, setConfigs] = useState<ApiCohortTrackConfig[]>([]);
   const [loading, setLoading] = useState(true);
-  const [manageTracksOpen, setManageTracksOpen] = useState(false);
 
   // Add/edit-track-config modal
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [editingTrackSlug, setEditingTrackSlug] = useState<string | null>(null);
-  const [formTrackSlug, setFormTrackSlug] = useState('');
+  // Only shown when adding (not editing) a track — pick one or more existing
+  // not-yet-configured tracks via checkboxes (all get the same eligibility/
+  // mode config below), or create a brand new one right here instead of
+  // needing a separate "manage tracks" screen.
+  const [trackSource, setTrackSource] = useState<'existing' | 'new'>('existing');
+  const [newTrackName, setNewTrackName] = useState('');
+  // Multiple tracks when adding (checkbox multi-select); always exactly one
+  // entry when editing (that row's own track, fixed).
+  const [formTrackSlugs, setFormTrackSlugs] = useState<string[]>([]);
   const [formEligibilityType, setFormEligibilityType] = useState<TrackEligibilityType>('year');
-  // Comma-separated years, e.g. "2024,2025" — a track can be opened to more
-  // than one admission year at once.
-  const [formYear, setFormYear] = useState('');
+  // Multiple admission years can be picked at once (multi-select), same as batches.
+  const [formYears, setFormYears] = useState<string[]>([]);
   // Multiple batch sections can be picked at once (multi-select).
   const [formBatches, setFormBatches] = useState<string[]>([]);
+  // No default — admin must explicitly pick individual/team every time a
+  // track is configured for this OJT, same as eligibility type.
+  const [formProjectMode, setFormProjectMode] = useState<TrackProjectMode>('team');
   const [savingConfig, setSavingConfig] = useState(false);
 
   // Manage-students modal (only for 'unique' tracks)
@@ -92,41 +112,62 @@ export default function CohortTrackConfigPage() {
   usePageRefresh(fetchData);
 
   // Tracks in the master list not yet configured for this cohort — the "add"
-  // dropdown only offers these when creating a new row (editing an existing
-  // one keeps its own track fixed).
+  // picker only offers these (editing an existing row keeps its own track
+  // fixed).
   const configuredSlugs = new Set(configs.map(c => c.trackSlug));
   const unconfiguredTracks = allTracks.filter(t => !configuredSlugs.has(t.slug));
 
+  // Admission years, derived from this cohort's own batch sections (e.g.
+  // "2025 A" -> "2025") rather than any fixed/hardcoded range — so the
+  // dropdown only ever offers years that actually exist for this OJT.
+  const yearOptions = useMemo(() => {
+    const years = new Set<string>();
+    for (const b of allowedBatches) {
+      const match = b.match(/^(\d{4})/);
+      if (match) years.add(match[1]);
+    }
+    return Array.from(years).sort().map(y => ({ value: y, label: y }));
+  }, [allowedBatches]);
+
   const openAddModal = () => {
     setEditingTrackSlug(null);
-    setFormTrackSlug(unconfiguredTracks[0]?.slug ?? '');
+    setTrackSource('existing');
+    setNewTrackName('');
+    setFormTrackSlugs([]);
     setFormEligibilityType('year');
-    setFormYear('');
+    setFormYears([]);
     setFormBatches([]);
+    setFormProjectMode('team');
     setConfigModalOpen(true);
   };
 
   const openEditModal = (config: ApiCohortTrackConfig) => {
     setEditingTrackSlug(config.trackSlug);
-    setFormTrackSlug(config.trackSlug);
+    setFormTrackSlugs([config.trackSlug]);
     setFormEligibilityType(config.eligibilityType);
-    setFormYear(config.eligibilityType === 'year' ? (config.eligibilityValue ?? '') : '');
+    setFormYears(
+      config.eligibilityType === 'year'
+        ? (config.eligibilityValue ?? '').split(',').map(v => v.trim()).filter(Boolean)
+        : []
+    );
     setFormBatches(
       config.eligibilityType === 'batch'
         ? (config.eligibilityValue ?? '').split(',').map(v => v.trim()).filter(Boolean)
         : []
     );
+    setFormProjectMode(config.projectMode);
     setConfigModalOpen(true);
   };
 
+  const toggleFormTrackSlug = (slug: string) => {
+    setFormTrackSlugs(prev => (prev.includes(slug) ? prev.filter(s => s !== slug) : [...prev, slug]));
+  };
+
   const handleSaveConfig = async () => {
-    if (!cohortId || !formTrackSlug) return;
-    const yearEntries = formYear.split(',').map(v => v.trim()).filter(Boolean);
-    if (formEligibilityType === 'year') {
-      if (yearEntries.length === 0 || yearEntries.some(y => !/^\d{4}$/.test(y))) {
-        showError('Enter one or more 4-digit admission years, comma-separated (e.g. "2025" or "2024,2025")');
-        return;
-      }
+    if (!cohortId) return;
+    if (formEligibilityType === 'year' && formYears.length === 0) {
+      showError('Pick at least one admission year');
+      return;
     }
     if (formEligibilityType === 'batch' && formBatches.length === 0) {
       showError('Pick at least one batch section');
@@ -134,14 +175,42 @@ export default function CohortTrackConfigPage() {
     }
     setSavingConfig(true);
     try {
-      await apiSetCohortTrackConfig(
-        cohortId,
-        formTrackSlug,
-        formEligibilityType,
-        formEligibilityType === 'year' ? yearEntries.join(',') : formEligibilityType === 'batch' ? formBatches.join(',') : undefined
+      // Adding (not editing) with a brand-new track name: create the track
+      // in the master list first, then configure it for this OJT in the same
+      // flow — no separate "manage tracks" screen needed. Existing-track
+      // mode can have more than one slug checked — all of them get this same
+      // eligibility/mode config, one apiSetCohortTrackConfig call each.
+      let trackSlugs = formTrackSlugs;
+      if (!editingTrackSlug && trackSource === 'new') {
+        const name = newTrackName.trim();
+        if (name.length < 2) {
+          showError('Track name must be at least 2 characters');
+          setSavingConfig(false);
+          return;
+        }
+        const created = await apiCreateTrack(name);
+        trackSlugs = [created.slug];
+      }
+      if (trackSlugs.length === 0) {
+        showError('Pick at least one track');
+        setSavingConfig(false);
+        return;
+      }
+
+      const eligibilityValue =
+        formEligibilityType === 'year' ? formYears.join(',') : formEligibilityType === 'batch' ? formBatches.join(',') : undefined;
+      await Promise.all(
+        trackSlugs.map(slug => apiSetCohortTrackConfig(cohortId, slug, formEligibilityType, eligibilityValue, formProjectMode))
       );
-      showSuccess(editingTrackSlug ? 'Track configuration updated' : 'Track added to this OJT');
+      showSuccess(
+        editingTrackSlug
+          ? 'Track configuration updated'
+          : trackSlugs.length > 1
+            ? `${trackSlugs.length} tracks added to this OJT`
+            : 'Track added to this OJT'
+      );
       setConfigModalOpen(false);
+      await refetchTracks();
       await fetchData();
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to save track configuration');
@@ -278,14 +347,7 @@ export default function CohortTrackConfigPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setManageTracksOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 border border-zinc-700 text-gray-300 font-semibold rounded-lg hover:text-white hover:border-gold/40 transition-colors text-sm"
-            >
-              <ListPlus size={16} />
-              Manage Tracks
-            </button>
+          <div className="flex justify-end">
             <button
               onClick={openAddModal}
               disabled={unconfiguredTracks.length === 0}
@@ -302,46 +364,62 @@ export default function CohortTrackConfigPage() {
               <p className="text-gray-400 text-sm">No tracks configured yet. Students won't see any track options until you add at least one.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {configs.map(config => (
-                <div key={config.trackSlug} className="bg-zinc-850 border border-zinc-750 rounded-xl p-5 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-white font-semibold">{config.trackName}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {config.eligibilityType === 'year' && `Admission year(s): ${(config.eligibilityValue ?? '').split(',').join(', ')}`}
-                        {config.eligibilityType === 'batch' && `Batch section(s): ${(config.eligibilityValue ?? '').split(',').join(', ')}`}
-                        {config.eligibilityType === 'unique' && `${config.eligibleStudents.length} named student(s)`}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => openEditModal(config)}
-                        className="text-xs px-2.5 py-1 rounded-lg text-gray-300 hover:text-white hover:bg-zinc-750 transition-colors"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleRemoveConfig(config)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                        title="Remove from this OJT"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {config.eligibilityType === 'unique' && (
-                    <button
-                      onClick={() => openStudentsModal(config.trackSlug)}
-                      className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-gray-300 hover:text-white hover:border-gold/40 transition-colors"
-                    >
-                      <Users size={13} />
-                      Manage students
-                    </button>
-                  )}
-                </div>
-              ))}
+            <div className="bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-750 text-left text-gray-400 text-xs uppercase tracking-wider">
+                      <th className="px-4 py-3">Track</th>
+                      <th className="px-4 py-3">Who can pick this track</th>
+                      <th className="px-4 py-3">Track can go</th>
+                      <th className="px-4 py-3">Project mode</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {configs.map(config => (
+                      <tr key={config.trackSlug} className="border-b border-zinc-800 last:border-0">
+                        <td className="px-4 py-3 text-white font-medium">{config.trackName}</td>
+                        <td className="px-4 py-3 text-gray-400">{ELIGIBILITY_LABELS[config.eligibilityType]}</td>
+                        <td className="px-4 py-3 text-gray-300">
+                          {config.eligibilityType === 'year' && (config.eligibilityValue ?? '').split(',').join(', ')}
+                          {config.eligibilityType === 'batch' && (config.eligibilityValue ?? '').split(',').join(', ')}
+                          {config.eligibilityType === 'unique' && (
+                            <button
+                              onClick={() => openStudentsModal(config.trackSlug)}
+                              className="flex items-center gap-1.5 text-gold hover:underline"
+                            >
+                              <Users size={13} />
+                              {config.eligibleStudents.length} named student(s)
+                            </button>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-gray-300">
+                          {config.projectMode === 'individual' ? 'Individual only' : 'Team required'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => openEditModal(config)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
+                              title="Edit"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleRemoveConfig(config)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                              title="Remove from this OJT"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -354,21 +432,79 @@ export default function CohortTrackConfigPage() {
         title={editingTrackSlug ? 'Edit Track Eligibility' : 'Add Track to this OJT'}
       >
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Track</label>
-            {editingTrackSlug ? (
+          {editingTrackSlug ? (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Track</label>
               <p className="text-white font-medium px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm">
-                {allTracks.find(t => t.slug === formTrackSlug)?.name ?? formTrackSlug}
+                {allTracks.find(t => t.slug === editingTrackSlug)?.name ?? editingTrackSlug}
               </p>
-            ) : (
-              <Select
-                value={formTrackSlug}
-                onChange={v => setFormTrackSlug(v as string)}
-                options={unconfiguredTracks.map(t => ({ value: t.slug, label: t.name }))}
-                className="w-full"
-              />
-            )}
-          </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Track</label>
+              <div className="flex gap-2 mb-2">
+                <label className="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer">
+                  <input
+                    type="radio"
+                    checked={trackSource === 'existing'}
+                    onChange={() => setTrackSource('existing')}
+                    className="accent-gold"
+                  />
+                  Existing track
+                </label>
+                <label className="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer ml-4">
+                  <input
+                    type="radio"
+                    checked={trackSource === 'new'}
+                    onChange={() => setTrackSource('new')}
+                    className="accent-gold"
+                  />
+                  New track
+                </label>
+              </div>
+
+              {trackSource === 'existing' ? (
+                unconfiguredTracks.length === 0 ? (
+                  <p className="text-xs text-gray-500">Every existing track is already configured for this OJT — create a new one instead.</p>
+                ) : (
+                  <div className="border border-zinc-700 rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allSlugs = unconfiguredTracks.map(t => t.slug);
+                        const allSelected = allSlugs.every(s => formTrackSlugs.includes(s));
+                        setFormTrackSlugs(allSelected ? [] : allSlugs);
+                      }}
+                      className="w-full flex items-center px-3 py-2 text-sm text-blue-400 font-semibold hover:bg-zinc-800/60 transition-colors border-b border-zinc-750"
+                    >
+                      {unconfiguredTracks.every(t => formTrackSlugs.includes(t.slug)) ? 'Deselect All' : 'Select All'}
+                    </button>
+                    <div className="max-h-40 overflow-y-auto divide-y divide-zinc-800">
+                      {unconfiguredTracks.map(t => (
+                        <label key={t.slug} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-zinc-800/60 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={formTrackSlugs.includes(t.slug)}
+                            onChange={() => toggleFormTrackSlug(t.slug)}
+                            className="rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold"
+                          />
+                          <span className="flex-1">{t.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )
+              ) : (
+                <input
+                  type="text"
+                  value={newTrackName}
+                  onChange={e => setNewTrackName(e.target.value)}
+                  placeholder="e.g. Blockchain Development"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
+                />
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-sm text-gray-400 mb-1">Who can pick this track</label>
@@ -383,15 +519,20 @@ export default function CohortTrackConfigPage() {
           {formEligibilityType === 'year' && (
             <div>
               <label className="block text-sm text-gray-400 mb-1">Admission year(s)</label>
-              <input
-                type="text"
-                value={formYear}
-                onChange={e => setFormYear(e.target.value)}
-                placeholder="e.g. 2025 or 2024,2025"
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
-              />
+              {yearOptions.length > 0 ? (
+                <Select
+                  value={formYears}
+                  onChange={v => setFormYears(v as string[])}
+                  options={yearOptions}
+                  placeholder="Select one or more years"
+                  isMulti
+                  className="w-full"
+                />
+              ) : (
+                <p className="text-xs text-gray-500">This OJT has no batch sections set up yet, so no admission years are available.</p>
+              )}
               <p className="text-xs text-gray-500 mt-1">
-                Every batch section from these admission year(s) can pick it — 2025 A, 2025 B, etc. Comma-separate to allow more than one year.
+                Every batch section from these admission year(s) can pick it — 2025 A, 2025 B, etc.
               </p>
             </div>
           )}
@@ -423,16 +564,36 @@ export default function CohortTrackConfigPage() {
 
           {formEligibilityType === 'unique' && (
             <p className="text-xs text-gray-500">
-              Save this first, then use "Manage students" on the card to add specific students by registration number or search — they can span any batch.
+              Save this first, then click the student count in the table to add specific students by registration number or search — they can span any batch.
             </p>
           )}
 
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Project mode for this track</label>
+            <Select
+              value={formProjectMode}
+              onChange={v => setFormProjectMode(v as TrackProjectMode)}
+              options={PROJECT_MODE_OPTIONS}
+              className="w-full"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              This forces the mode for every student on this track, except those already mandated individual by their batch or an admin override — they always stay individual.
+            </p>
+          </div>
+
           <button
             onClick={handleSaveConfig}
-            disabled={savingConfig || !formTrackSlug}
+            disabled={
+              savingConfig ||
+              (editingTrackSlug
+                ? formTrackSlugs.length === 0
+                : trackSource === 'existing'
+                  ? formTrackSlugs.length === 0
+                  : newTrackName.trim().length < 2)
+            }
             className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
           >
-            {savingConfig ? 'Saving...' : editingTrackSlug ? 'Update' : 'Add Track'}
+            {savingConfig ? 'Saving...' : editingTrackSlug ? 'Update' : formTrackSlugs.length > 1 ? `Add ${formTrackSlugs.length} Tracks` : 'Add Track'}
           </button>
         </div>
       </Modal>
@@ -530,13 +691,6 @@ export default function CohortTrackConfigPage() {
           )}
         </div>
       </Modal>
-
-      <ManageTracksModal
-        open={manageTracksOpen}
-        onClose={() => setManageTracksOpen(false)}
-        tracks={allTracks}
-        onChanged={refetchTracks}
-      />
     </div>
   );
 }
