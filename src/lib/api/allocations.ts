@@ -148,3 +148,63 @@ export async function apiPublishAllocation(cohortId: string): Promise<void> {
   await apiFetch<void>(`/api/v1/teams/cohort/${cohortId}/publish-allocation`, { method: 'POST' });
   invalidateCached('allocation');
 }
+
+// ── Allocation Blueprint (admin, per-OJT lifecycle overview) ────────────────
+
+export type AllocationBlueprintStage =
+  | 'no_team'
+  | 'team_no_preferences'
+  | 'preferences_pending_allocation'
+  | 'allocated_not_published'
+  | 'allocated_published';
+
+export type AllocationBlueprintCounts = Record<AllocationBlueprintStage, number>;
+
+export interface AllocationBlueprintStudent {
+  id: string;
+  fullName: string | null;
+  rollNumber: string | null;
+  batch: string | null;
+  teamName: string | null;
+  stage: AllocationBlueprintStage;
+  // Only populated once the student's team has submitted preferences —
+  // null before that.
+  pref1Project: string | null;
+  pref2Project: string | null;
+  allocatedProject: string | null;
+  pref1Mentor: string | null;
+  pref2Mentor: string | null;
+  allocatedMentor: string | null;
+  // The student's team's track — null until a team exists.
+  track: string | null;
+}
+
+export interface AllocationBlueprintStudentsPage {
+  data: AllocationBlueprintStudent[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+// Admin — summary counts across all 5 lifecycle stages (no team formed yet,
+// through allocated & published) for this OJT.
+export async function apiGetAllocationBlueprint(cohortId: string): Promise<AllocationBlueprintCounts> {
+  const res = await apiFetch<{ data: AllocationBlueprintCounts }>(`/api/v1/cohorts/${cohortId}/allocation-blueprint`);
+  return res.data;
+}
+
+// Admin — paginated student list for this OJT. stage/search/batch are each
+// optional filters: stage narrows to one lifecycle stage (drill-down from a
+// summary count), search matches name/roll number, batch matches exactly.
+export async function apiGetAllocationBlueprintStudents(
+  cohortId: string,
+  params: { stage?: AllocationBlueprintStage; page: number; limit: number; search?: string; batch?: string }
+): Promise<AllocationBlueprintStudentsPage> {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page));
+  query.set('limit', String(params.limit));
+  if (params.stage) query.set('stage', params.stage);
+  if (params.search) query.set('search', params.search);
+  if (params.batch) query.set('batch', params.batch);
+  return apiFetch<AllocationBlueprintStudentsPage>(
+    `/api/v1/cohorts/${cohortId}/allocation-blueprint/students?${query.toString()}`
+  );
+}
