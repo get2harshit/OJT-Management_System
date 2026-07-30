@@ -45,6 +45,7 @@ export async function apiDeactivateTrack(id: string): Promise<void> {
 // ── Per-OJT track configuration ──────────────────────────────────────────────
 
 export type TrackEligibilityType = 'year' | 'batch' | 'unique';
+export type TrackProjectMode = 'individual' | 'team';
 
 export interface ApiEligibleStudent {
   studentId: string;
@@ -60,6 +61,7 @@ export interface ApiCohortTrackConfig {
   trackName: string;
   eligibilityType: TrackEligibilityType;
   eligibilityValue: string | null;
+  projectMode: TrackProjectMode;
   eligibleStudents: ApiEligibleStudent[];
 }
 
@@ -74,13 +76,14 @@ export async function apiSetCohortTrackConfig(
   cohortId: string,
   trackSlug: string,
   eligibilityType: TrackEligibilityType,
-  eligibilityValue?: string | null
+  eligibilityValue: string | null | undefined,
+  projectMode: TrackProjectMode
 ): Promise<ApiCohortTrackConfig> {
   const { data } = await apiFetch<{ data: ApiCohortTrackConfig }>(
     `/api/v1/cohorts/${cohortId}/track-config`,
     {
       method: 'PUT',
-      body: JSON.stringify({ trackSlug, eligibilityType, eligibilityValue: eligibilityValue ?? null }),
+      body: JSON.stringify({ trackSlug, eligibilityType, eligibilityValue: eligibilityValue ?? null, projectMode }),
     }
   );
   return data;
@@ -119,6 +122,7 @@ export interface ApiAvailableTrack {
   trackSlug: string;
   trackName: string;
   eligibilityType: TrackEligibilityType;
+  projectMode: TrackProjectMode;
   /** True for a restricted (unique) track the student was specifically named for. */
   opportunityEarned: boolean;
 }

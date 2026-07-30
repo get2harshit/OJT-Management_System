@@ -4,7 +4,7 @@ import { exportToCSV } from '../../lib/csvExport';
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
-import type { Task, Submission, Attendance, DashboardMetrics, Cohort } from '../../lib/types';
+import type { Submission, Attendance, DashboardMetrics, Cohort } from '../../lib/types';
 import {
   apiGetDashboardMetrics,
   apiListCohorts,
@@ -12,30 +12,25 @@ import {
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { usePageRefresh } from '../../context/RefreshContext';
 
-import { useTasks } from '../../hooks/useTasks';
 import { useSubmissions } from '../../hooks/useSubmissions';
 import { useAttendance } from '../../hooks/useAttendance';
 import { useTracks } from '../../hooks/useTracks';
 
 interface Props {
-  tasks: Task[];
   submissions: Submission[];
   attendance: Attendance[];
   onNavigateToTab: (tab: string) => void;
 }
 
 export default function AdminDashboard({
-  tasks: propTasks,
   submissions: propSubmissions,
   attendance: propAttendance,
   onNavigateToTab,
 }: Partial<Props> & Pick<Props, 'onNavigateToTab'>) {
-  const { tasks: hookTasks } = useTasks();
   const { submissions: hookSubmissions } = useSubmissions();
   const { attendance: hookAttendance } = useAttendance();
   const { options: trackOptions } = useTracks();
 
-  const tasks = propTasks ?? hookTasks;
   const submissions = propSubmissions ?? hookSubmissions;
   const attendance = propAttendance ?? hookAttendance;
   const [semFilter, setSemFilter] = useState('');
@@ -89,7 +84,6 @@ export default function AdminDashboard({
     return Array.from(new Set(all)).sort().map(b => ({ value: b, label: b }));
   }, [semFilter, cohorts]);
 
-  const taskCount = tasks.length;
   // submissions/attendance are mock/localStorage data with no real student
   // linkage worth scoping (see the state-declaration comment above) — shown
   // as-is rather than filtered by a roster fetched just for this.
@@ -103,6 +97,7 @@ export default function AdminDashboard({
   const showMentorsCount = metrics ? metrics.mentorsCount : '—';
   const showBatchManagersCount = metrics ? metrics.batchManagersCount : '—';
   const showProjectsCount = metrics ? metrics.projectsCount : '—';
+  const showTasksCount = metrics ? metrics.tasksCount : '—';
 
   if (loadingReal) {
     return (
@@ -166,8 +161,8 @@ export default function AdminDashboard({
         />
       </div>
 
-      {/* Stat Cards — Students/Mentors/Batch Managers/Projects/Credits are real
-          backend counts; Tasks/Pending Submissions/Attendance stay mock since
+      {/* Stat Cards — Students/Mentors/Batch Managers/Projects/Credits/Tasks are
+          real backend counts; Pending Submissions/Attendance stay mock since
           the metrics endpoint has no data for them. Each card jumps to its
           matching sidebar tab, except Batch Managers which has no page yet. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -176,7 +171,7 @@ export default function AdminDashboard({
         <StatCard title="Batch Managers" value={showBatchManagersCount} icon={UserCog} />
         <StatCard title="Projects" value={showProjectsCount} icon={Briefcase} onClick={() => onNavigateToTab('ojts')} />
         <StatCard title="Cloud Credits" value={metrics ? `$${metrics.totalCreditsAvailable}` : '—'} icon={Cloud} onClick={() => onNavigateToTab('credits')} />
-        <StatCard title="Tasks" value={taskCount} icon={CheckSquare} onClick={() => onNavigateToTab('tasks')} />
+        <StatCard title="Tasks" value={showTasksCount} icon={CheckSquare} onClick={() => onNavigateToTab('tasks')} />
         <StatCard title="Pending Submissions" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToTab('submissions')} />
         <StatCard title="Attendance Records" value={attendanceCount} icon={CalendarCheck} onClick={() => onNavigateToTab('attendance')} />
       </div>

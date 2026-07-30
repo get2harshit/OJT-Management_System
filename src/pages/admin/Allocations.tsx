@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shuffle, Calendar, RefreshCw } from 'lucide-react';
+import { Shuffle, Calendar, RefreshCw, LayoutGrid } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Button from '../../components/Button';
@@ -43,6 +43,7 @@ export default function AdminAllocations() {
   }));
 
   const goToAllocations = (cohortId: string) => navigate(`/admin/dashboard/ojts/${cohortId}/allocations`);
+  const goToBlueprint = (cohortId: string) => navigate(`/admin/dashboard/ojts/${cohortId}/blueprint`);
 
   return (
     <div className="space-y-6">
@@ -111,13 +112,22 @@ export default function AdminAllocations() {
           searchPlaceholder="Search cohorts..."
           onRowClick={(row) => goToAllocations(row.id)}
           actions={(row) => (
-            <button
-              onClick={() => goToAllocations(row.id)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
-            >
-              <Shuffle size={14} />
-              Allocate Projects
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); goToBlueprint(row.id); }}
+                title="Allocation blueprint"
+                className="flex items-center gap-1.5 text-xs p-1.5 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+              >
+                <LayoutGrid size={14} />
+              </button>
+              <button
+                onClick={() => goToAllocations(row.id)}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+              >
+                <Shuffle size={14} />
+                Allocate Projects
+              </button>
+            </div>
           )}
         />
       )}
