@@ -34,6 +34,8 @@ export interface Project {
   description?: string;
   problemStatement?: string;
   track: string;
+  /** Free-text classification from the CSV import, separate from track config. */
+  trackClassification?: string | null;
   techStack?: string[];
   endUsersDefined?: string;
   batch?: string[];

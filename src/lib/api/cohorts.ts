@@ -1,6 +1,5 @@
 import type { Cohort, CohortDetails, CreateCohortBody, UpdateCohortBody, Project } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
-import { mapBackendTrackToFrontend, mapFrontendTrackToBackend } from './trackMapping';
 
 // Cohort sub-pages (students/mentors/projects/teams/allocations tabs) are
 // routed as siblings that each fetch the same cohort on mount — this TTL
@@ -74,7 +73,6 @@ export async function apiGetProjectsForCohort(cohortId: string): Promise<Project
     const res = await apiFetch<RawCohortProject[]>(`/api/v1/cohorts/${cohortId}/projects`);
     return res.map(p => ({
       ...p,
-      track: mapBackendTrackToFrontend(p.track),
       related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
     }));
   });
@@ -89,7 +87,7 @@ interface GetCohortProjectsPageParams {
   page: number;
   limit: number;
   search?: string;
-  /** Frontend track label, e.g. "Gen AI" — mapped to the backend enum here. */
+  /** Track slug, e.g. "gen_ai". */
   track?: string;
 }
 
@@ -100,14 +98,13 @@ export async function apiGetProjectsForCohortPage(cohortId: string, params: GetC
   query.set('page', String(params.page));
   query.set('limit', String(params.limit));
   if (params.search) query.set('search', params.search);
-  if (params.track) query.set('track', mapFrontendTrackToBackend(params.track));
+  if (params.track) query.set('track', params.track);
   const res = await apiFetch<{ success: boolean; data: RawCohortProject[]; pagination: CohortProjectsPage['pagination'] }>(
     `/api/v1/cohorts/${cohortId}/projects?${query.toString()}`
   );
   return {
     data: res.data.map(p => ({
       ...p,
-      track: mapBackendTrackToFrontend(p.track),
       related_field: Array.isArray(p.techStack) ? p.techStack.join(', ') : (p.related_field || ''),
     })),
     pagination: res.pagination,

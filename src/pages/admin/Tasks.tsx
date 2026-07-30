@@ -8,8 +8,8 @@ import Button from '../../components/Button';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import ActionsMenu from '../../components/ActionsMenu';
-import { TRACKS, TRACK_DOT_COLORS } from '../../lib/constants';
-import { mapBackendTrackToFrontend } from '../../lib/api/trackMapping';
+import { getTrackColor } from '../../lib/constants';
+import { useTracks } from '../../hooks/useTracks';
 import { useToast } from '../../toast';
 import { apiListCohorts } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
@@ -37,6 +37,8 @@ interface Props {
 export default function AdminTasks({ onViewSubmission }: Props = {}) {
   const { user } = useAuth();
   const myId = user?.id;
+  const { tracks, options: trackOptions } = useTracks();
+  const trackNameBySlug = useMemo(() => new Map(tracks.map(t => [t.slug, t.name])), [tracks]);
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [page, setPage] = useState(1);
@@ -345,14 +347,14 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
               if (!row.track) {
                 return <span className="text-xs text-gray-500">All</span>;
               }
-              // The row carries the raw backend enum (product_development) —
-              // map it to the readable label + the same track colour used
+              // The row carries the track slug (e.g. product_development) —
+              // resolve it to the readable name + the same track colour used
               // everywhere else, instead of showing the snake_case string.
-              const label = mapBackendTrackToFrontend(row.track);
-              const color = TRACK_DOT_COLORS[label];
+              const label = trackNameBySlug.get(row.track) ?? row.track;
+              const color = getTrackColor(row.track);
               return (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-200 whitespace-nowrap">
-                  <span className={`w-1.5 h-1.5 rounded-full ${color?.dot ?? 'bg-gray-400'}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full ${color.dot}`} />
                   {label}
                 </span>
               );
@@ -534,7 +536,7 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
                 value={editForm.track}
                 onChange={v => setEditForm(prev => ({ ...prev, track: v as string }))}
                 placeholder="All Tracks"
-                options={TRACKS.map(t => ({ value: t, label: t }))}
+                options={trackOptions}
               />
             </div>
           </div>

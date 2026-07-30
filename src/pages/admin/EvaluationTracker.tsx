@@ -10,9 +10,9 @@ import { apiListCohorts, apiGetCohort, apiListStudentsPage } from '../../lib/api
 import { apiGetEvaluationsForStudent, apiGetEvaluationDetail } from '../../lib/api/evaluations';
 import { getCohortLabel, getSemesterSessionLabel } from '../../lib/cohortLabel';
 import { formatDateDisplay } from '../../lib/utils';
-import { TRACKS } from '../../lib/constants';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
+import { useTracks } from '../../hooks/useTracks';
 
 // Read-only rubric breakdown for one evaluation — admin is never a panelist
 // (see EvaluationService's bulk-assign — only the primary mentor + paired
@@ -182,6 +182,7 @@ function StudentEvaluationDetail({
 // same cohort (ViewCohortPage itself stays scoped to students/projects/mentors).
 export default function AdminEvaluationTracker() {
   const { showError } = useToast();
+  const { options: trackOptions } = useTracks();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loadingCohorts, setLoadingCohorts] = useState(true);
   const [selectedCohort, setSelectedCohort] = useState<CohortDetails | null>(null);
@@ -361,7 +362,7 @@ export default function AdminEvaluationTracker() {
                     value={trackFilter}
                     onChange={setTrackFilter}
                     placeholder="All Tracks"
-                    options={TRACKS.map((t) => ({ value: t, label: t }))}
+                    options={trackOptions}
                   />
                 </div>
                 <button

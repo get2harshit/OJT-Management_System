@@ -6,7 +6,7 @@ export interface Profile {
   name: string;
   role: UserRole;
   created_at: string;
-  track?: string; // Associated track e.g., 'Product Development', 'Application Development', 'Data Scientist', 'Open Source', 'Gen AI'
+  track?: string; // Associated track slug — tracks are admin-managed, see useTracks/apiListTracks
   tracks?: string[]; // Associated tracks
   capacity?: number; // Mentor allocation capacity (max students)
   is_available?: boolean; // Mentor availability status

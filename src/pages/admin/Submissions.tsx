@@ -16,10 +16,10 @@ import {
   apiReviewPrdSubmission,
 } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
-import { TRACKS } from '../../lib/constants';
 import { statusDotClass } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
+import { useTracks } from '../../hooks/useTracks';
 
 type Row = PrdSubmission & { studentId: string; mentorId?: string };
 
@@ -64,6 +64,7 @@ export default function AdminSubmissions({
   onFocusHandled,
 }: Props = {}) {
   const { showSuccess, showError } = useToast();
+  const { options: trackOptions } = useTracks();
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [cohortFilter, setCohortFilter] = useState('');
@@ -375,7 +376,7 @@ export default function AdminSubmissions({
             value={trackFilter}
             onChange={(v) => handleTrackFilterChange(v as string)}
             variant="filter"
-            options={[{ value: 'ALL', label: 'All Tracks' }, ...TRACKS.map((t) => ({ value: t, label: t }))]}
+            options={[{ value: 'ALL', label: 'All Tracks' }, ...trackOptions]}
           />
           <Select
             value={mentorFilter}

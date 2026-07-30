@@ -1,11 +1,10 @@
 import type { DashboardMetrics } from '../types';
 import { apiFetch, cachedFetch } from './client';
-import { mapFrontendTrackToBackend } from './trackMapping';
 
 interface DashboardMetricsFilters {
   cohortId?: string;
   batch?: string;
-  /** Frontend track label, e.g. "Gen AI" — mapped to the backend enum here. */
+  /** Track slug, e.g. "gen_ai". */
   track?: string;
 }
 
@@ -22,7 +21,7 @@ export async function apiGetDashboardMetrics(filters: DashboardMetricsFilters = 
   const query = new URLSearchParams();
   if (filters.cohortId) query.set('cohortId', filters.cohortId);
   if (filters.batch) query.set('batch', filters.batch);
-  if (filters.track) query.set('track', mapFrontendTrackToBackend(filters.track));
+  if (filters.track) query.set('track', filters.track);
   const qs = query.toString();
   const cacheKey = `dashboard:metrics:${qs || 'all'}`;
   return cachedFetch(cacheKey, 15_000, () =>

@@ -5,30 +5,28 @@ import { parseCSV, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../../lib/cs
 import { apiCreateProjectsBulk } from '../../../lib/api';
 import type { ProjectCsvRowInput, ProjectBulkImportResult } from '../../../lib/api';
 import type { ProjectLevel } from '../../../lib/types';
+import type { ApiTrack } from '../../../lib/api/tracks';
+import { useTracks } from '../../../hooks/useTracks';
 import { useToast } from '../../../toast';
 
-interface ProjectCsvImportModalProps {
-  open: boolean;
-  onClose: () => void;
-  onImportSuccess: () => void;
-  // When given, every added/updated project from this import is linked to
-  // this cohort — the upload itself is the cohort-scoping step.
-  cohortId?: string;
-}
+// Fuzzy-matches a free-text CSV track value (e.g. "App Dev", "Product
+// Development") against the real, admin-managed track list — by slug or by
+// name, case-insensitive, substring-tolerant. Returns null when nothing
+// matches (including an empty cell) so the row is sent through unmapped —
+// the backend's validation then correctly reports it as invalid/missing
+// instead of silently defaulting to some track (see memory: this used to
+// silently default to product_development, which is exactly the bug this
+// null-on-no-match behavior avoids).
+function normalizeTrack(raw: string, tracks: ApiTrack[]): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
 
-// Fuzzy-matches free-text track values (e.g. "App Dev", "Product Development")
-// to one of the canonical TRACKS labels the backend enum understands. Returns
-// null when nothing matches so the row is sent through unmapped — the
-// backend's enum validation then correctly reports it as invalid instead of
-// mapFrontendTrackToBackend silently defaulting it to Product Development.
-function normalizeTrack(raw: string): string | null {
-  const lower = raw.toLowerCase();
-  if (lower.includes('app')) return 'Application Development';
-  if (lower.includes('data')) return 'Data Scientist';
-  if (lower.includes('open')) return 'Open Source';
-  if (lower.includes('gen')) return 'Gen AI';
-  if (lower.includes('product')) return 'Product Development';
-  return null;
+  const exact = tracks.find(t => t.slug.toLowerCase() === lower || t.name.toLowerCase() === lower);
+  if (exact) return exact.slug;
+
+  const partial = tracks.find(t => t.name.toLowerCase().includes(lower) || lower.includes(t.name.toLowerCase()));
+  return partial ? partial.slug : null;
 }
 
 // The sheet's Level column is a 1-5 difficulty scale (1 = beginner,
@@ -70,6 +68,9 @@ const COLUMN_PATTERNS = {
   projectId: ['ojtid', 'project_id', 'project id'],
   batch: ['batch'],
   track: ['track'],
+  // Free-text classification, separate from track eligibility config —
+  // optional, so it's not in REQUIRED_COLUMNS.
+  trackClassification: ['track_classification', 'track classification'],
   courseCovered: ['course_covered', 'course covered'],
   problemStatement: ['problem_statement', 'problem statement'],
   projectDescription: ['project description', 'project_description'],
@@ -129,7 +130,7 @@ function findColumn(headers: string[], patterns: readonly string[]): number {
 // the single source of truth for those rules; a row this function produces
 // may still come back invalid or duplicate, and that's expected — it's
 // reported per-row in the import result instead of blocking the whole file.
-function parseRows(parsed: string[][]): { rowNumber: number; project: Record<string, unknown> }[] {
+function parseRows(parsed: string[][], tracks: ApiTrack[]): { rowNumber: number; project: Record<string, unknown> }[] {
   const headers = parsed[0].map(h => h.toLowerCase().trim());
   const titleIdx = headers.findIndex(h => h.includes('title') && !h.includes('track'));
   const descriptionIdx = headers.findIndex(h => h.includes('description') && !h.includes('project'));
@@ -142,13 +143,17 @@ function parseRows(parsed: string[][]): { rowNumber: number; project: Record<str
   return parsed.slice(1).map((cols, i) => {
     const rowNumber = i + 2; // +1 for 0-index, +1 for the header row
     const trackRaw = cell(cols, col.track);
-    const normalizedTrack = trackRaw ? normalizeTrack(trackRaw) : null;
+    // An empty or unmatched cell is sent through as-is (never defaulted) so
+    // the backend's required/enum validation rejects it explicitly — see
+    // normalizeTrack's comment.
+    const normalizedTrack = normalizeTrack(trackRaw, tracks);
     const levelRaw = cell(cols, col.level);
 
     const project: Record<string, unknown> = {
       projectId: cell(cols, col.projectId),
       batch: splitList(cell(cols, col.batch)),
       track: normalizedTrack ?? trackRaw,
+      trackClassification: cell(cols, col.trackClassification) || undefined,
       courseCovered: splitList(cell(cols, col.courseCovered)),
       title: cell(cols, titleIdx),
       problemStatement: cell(cols, col.problemStatement),
@@ -189,6 +194,7 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
   const [cardOpen, setCardOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const { showSuccess, showError } = useToast();
+  const { tracks } = useTracks();
 
   const handleClose = () => {
     setCsvText('');
@@ -213,7 +219,7 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
       return;
     }
 
-    const rows = parseRows(parsed);
+    const rows = parseRows(parsed, tracks);
     setImporting(true);
     setResult(null);
     setErrorMessage(null);

@@ -1,12 +1,11 @@
 import type { ApiStudent } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
-import { mapFrontendTrackToBackend } from './trackMapping';
 
 export interface ListStudentsFilters {
   /** Resolves that cohort's allowedBatches and returns only students in those batches. */
   cohortId?: string;
   batch?: string[];
-  /** Frontend track label, e.g. "Gen AI" — mapped to the backend enum here. */
+  /** Track slug, e.g. "gen_ai". */
   track?: string;
   /** Only students whose own team allocation has actually been published to
    * them — same rule used everywhere else a student's allocation visibility
@@ -18,7 +17,7 @@ export async function apiListStudents(filters: ListStudentsFilters = {}): Promis
   const query = new URLSearchParams();
   if (filters.cohortId) query.set('cohortId', filters.cohortId);
   if (filters.batch && filters.batch.length > 0) query.set('batch', filters.batch.join(','));
-  if (filters.track) query.set('track', mapFrontendTrackToBackend(filters.track));
+  if (filters.track) query.set('track', filters.track);
   if (filters.publishedOnly) query.set('publishedOnly', 'true');
   const queryString = query.toString();
   const url = queryString ? `/api/v1/students?${queryString}` : '/api/v1/students';
@@ -40,9 +39,9 @@ interface GetStudentsPageParams {
   search?: string;
   /** Scope to a specific cohort's mapped students instead of the whole roster. */
   cohortId?: string;
-  /** Frontend track label, e.g. "Gen AI" — mapped to the backend enum here.
-   * A student's track comes from their team, not their own profile, so
-   * students without a team yet are excluded when this filter is set. */
+  /** Track slug, e.g. "gen_ai". A student's track comes from their team, not
+   * their own profile, so students without a team yet are excluded when this
+   * filter is set. */
   track?: string;
 }
 
@@ -56,7 +55,7 @@ export async function apiListStudentsPage(params: GetStudentsPageParams): Promis
   if (params.batch) query.set('batch', params.batch);
   if (params.search) query.set('search', params.search);
   if (params.cohortId) query.set('cohortId', params.cohortId);
-  if (params.track) query.set('track', mapFrontendTrackToBackend(params.track));
+  if (params.track) query.set('track', params.track);
   return apiFetch<StudentsPage>(`/api/v1/students?${query.toString()}`);
 }
 

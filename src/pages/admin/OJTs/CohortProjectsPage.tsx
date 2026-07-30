@@ -6,12 +6,13 @@ import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import ProjectCsvImportModal from './ProjectCsvImportModal';
 import type { Project } from '../../../lib/types';
-import { TRACK_DOT_COLORS } from '../../../lib/constants';
+import { getTrackColor } from '../../../lib/constants';
 import { apiGetCohort, apiGetProjectsForCohortPage, apiDeleteProject } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
+import { useTracks } from '../../../hooks/useTracks';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
@@ -26,6 +27,8 @@ export default function CohortProjectsPage() {
   const navigate = useNavigate();
   const confirm = useConfirm();
   const { showError } = useToast();
+  const { tracks } = useTracks();
+  const trackNameBySlug = new Map(tracks.map(t => [t.slug, t.name]));
 
   const [cohortLabel, setCohortLabel] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
@@ -113,11 +116,11 @@ export default function CohortProjectsPage() {
           columns={[
             { key: 'title', header: 'Project Title' },
             { key: 'track', header: 'Related Track', render: (row) => {
-              const style = TRACK_DOT_COLORS[row.track] ?? { dot: 'bg-gray-400', text: 'text-gray-300' };
+              const style = getTrackColor(row.track);
               return (
                 <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                  {row.track}
+                  {trackNameBySlug.get(row.track) ?? row.track}
                 </span>
               );
             }},
@@ -171,7 +174,9 @@ export default function CohortProjectsPage() {
 // detail view — this is deliberately exhaustive (not a curated subset) since
 // admins use this to sanity-check exactly what a CSV row actually saved.
 function ProjectDetail({ project }: { project: Project }) {
-  const style = TRACK_DOT_COLORS[project.track] ?? { dot: 'bg-gray-400', text: 'text-gray-300' };
+  const { tracks } = useTracks();
+  const trackName = tracks.find(t => t.slug === project.track)?.name ?? project.track;
+  const style = getTrackColor(project.track);
   const techStack = project.techStack?.length ? project.techStack : (project.related_field ? project.related_field.split(',').map(s => s.trim()).filter(Boolean) : []);
 
   return (
@@ -179,7 +184,7 @@ function ProjectDetail({ project }: { project: Project }) {
       <div className="flex flex-wrap items-center gap-2">
         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-          {project.track}
+          {trackName}
         </span>
         {project.projectId && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold font-mono">{project.projectId}</span>

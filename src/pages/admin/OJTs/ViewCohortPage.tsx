@@ -11,10 +11,9 @@ import { apiGetTeamsForCohortDetailed } from '../../../lib/api/allocations';
 import { getDurationString, formatDateDisplay } from '../../../lib/utils';
 import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
-import { TRACKS } from '../../../lib/constants';
-import { mapBackendTrackToFrontend, mapFrontendTrackToBackend } from '../../../lib/api/trackMapping';
 import { apiCreateAnnouncement } from '../../../lib/api/notifications';
 import { usePageRefresh } from '../../../context/RefreshContext';
+import { useTracks } from '../../../hooks/useTracks';
 
 type PanelView = '' | 'students' | 'projects' | 'mentors';
 
@@ -43,11 +42,10 @@ interface ResolvedAssignment {
   branches: AssignmentBranch[];
 }
 
-// `projectsById` (from apiGetProjectsForCohort) already stores track as a
-// frontend label — team.track is the one raw backend enum value left to
-// map, used only as a fallback when a project itself isn't found.
+// track is a slug end-to-end now — team.track is the fallback when a
+// project itself isn't found in projectsById.
 function resolveTeamAssignment(team: TeamAllocationDetail, projectsById: Map<string, Project>): ResolvedAssignment {
-  const trackFor = (projectId: string) => projectsById.get(projectId)?.track ?? mapBackendTrackToFrontend(team.track);
+  const trackFor = (projectId: string) => projectsById.get(projectId)?.track ?? team.track;
 
   if (team.allocatedProjectId) {
     const project = projectsById.get(team.allocatedProjectId);
@@ -57,7 +55,7 @@ function resolveTeamAssignment(team: TeamAllocationDetail, projectsById: Map<str
       branches: [{
         label: 'Allocated',
         projectTitle: project?.title ?? fromPref.projectTitle,
-        projectTrack: project?.track ?? mapBackendTrackToFrontend(team.track),
+        projectTrack: project?.track ?? team.track,
         mentorName: team.allocatedMentorName,
       }],
     };
@@ -400,6 +398,8 @@ function MentorRoster({
   projectsById: Map<string, Project>;
   onBack: () => void;
 }) {
+  const { tracks } = useTracks();
+  const trackNameBySlug = new Map(tracks.map(t => [t.slug, t.name]));
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
@@ -421,7 +421,7 @@ function MentorRoster({
     projectIdToTeams.set(t.allocatedProjectId, arr);
   });
 
-  const mentorTracks = (mentor.tracks || []).map(mapBackendTrackToFrontend).join(', ');
+  const mentorTracks = (mentor.tracks || []).map(slug => trackNameBySlug.get(slug) ?? slug).join(', ');
 
   let detail: React.ReactNode = (
     <div className="h-full flex items-center justify-center px-6 py-12">
@@ -454,7 +454,7 @@ function MentorRoster({
     const project: Project | undefined = projectsById.get(selectedProjectId) ?? (projectFromTeam ? {
       id: selectedProjectId,
       title: projectRows.get(selectedProjectId) || 'Untitled project',
-      track: mapBackendTrackToFrontend(projectFromTeam.track),
+      track: projectFromTeam.track,
       created_at: '',
     } : undefined);
     if (project) {
@@ -532,6 +532,7 @@ export default function ViewCohortPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
+  const { options: trackOptions } = useTracks();
   const [cohort, setCohort] = useState<CohortDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedBatchFilter, setSelectedBatchFilter] = useState('');
@@ -548,7 +549,7 @@ export default function ViewCohortPage() {
   const [annTitle, setAnnTitle] = useState('');
   const [annContent, setAnnContent] = useState('');
   const [annTargetBatch, setAnnTargetBatch] = useState('All Batches');
-  const [annTargetTrack, setAnnTargetTrack] = useState('All Tracks');
+  const [annTargetTrack, setAnnTargetTrack] = useState('');
   const [annPriority, setAnnPriority] = useState<'normal' | 'important' | 'urgent'>('normal');
   const [annSaving, setAnnSaving] = useState(false);
 
@@ -988,7 +989,7 @@ export default function ViewCohortPage() {
                       value={panelTrack}
                       onChange={setPanelTrack}
                       placeholder="All Tracks"
-                      options={TRACKS.map(t => ({ value: t, label: t }))}
+                      options={trackOptions}
                     />
                   }
                   serverPagination={{
@@ -1030,7 +1031,7 @@ export default function ViewCohortPage() {
                       value={panelTrack}
                       onChange={setPanelTrack}
                       placeholder="All Tracks"
-                      options={TRACKS.map(t => ({ value: t, label: t }))}
+                      options={trackOptions}
                     />
                   }
                   serverPagination={{
@@ -1097,9 +1098,9 @@ export default function ViewCohortPage() {
                     onChange={e => setAnnTargetTrack(e.target.value)}
                     className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
                   >
-                    <option value="All Tracks">All Tracks</option>
-                    {TRACKS.map(t => (
-                      <option key={t} value={t}>{t}</option>
+                    <option value="">All Tracks</option>
+                    {trackOptions.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
                     ))}
                   </select>
                 </div>
@@ -1158,13 +1159,13 @@ export default function ViewCohortPage() {
                       title: annTitle.trim(),
                       message: annContent.trim(),
                       targetBatch: annTargetBatch !== 'All Batches' ? annTargetBatch : undefined,
-                      targetTrack: annTargetTrack !== 'All Tracks' ? mapFrontendTrackToBackend(annTargetTrack) : undefined,
+                      targetTrack: annTargetTrack || undefined,
                       priority: annPriority,
                     });
                     setAnnTitle('');
                     setAnnContent('');
                     setAnnTargetBatch('All Batches');
-                    setAnnTargetTrack('All Tracks');
+                    setAnnTargetTrack('');
                     setAnnPriority('normal');
                     setShowAnnModal(false);
                     showSuccess(

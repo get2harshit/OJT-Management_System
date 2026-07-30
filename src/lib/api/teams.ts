@@ -18,7 +18,6 @@ import type {
   StudentWithoutTeam,
 } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
-import { mapFrontendTrackToBackend, mapBackendTrackToFrontend } from './trackMapping';
 
 const TEAMS_TTL = 15_000;
 
@@ -202,7 +201,7 @@ function mapTeam(t: RawTeam): Team {
   return {
     id: t.id,
     name: t.name ?? null,
-    track: mapBackendTrackToFrontend(t.track),
+    track: t.track,
     isIndividual: t.isIndividual,
     members: (t.members || []).map((m) => ({
       studentId: m.studentId,
@@ -225,7 +224,7 @@ function mapSentRequest(r: RawSentRequest): PendingSentRequest {
     id: r.id,
     receiverId: r.receiverId,
     receiverName: r.receiverName ?? null,
-    track: mapBackendTrackToFrontend(r.track),
+    track: r.track,
     expiresAt: r.expiresAt,
   };
 }
@@ -235,7 +234,7 @@ function mapReceivedRequest(r: RawReceivedRequest): PendingReceivedRequest {
     id: r.id,
     senderId: r.senderId,
     senderName: r.senderName ?? null,
-    track: mapBackendTrackToFrontend(r.track),
+    track: r.track,
     expiresAt: r.expiresAt,
   };
 }
@@ -263,7 +262,7 @@ function mapPendingProposal(p: RawPendingProposal): PendingProposal {
   return {
     preferenceId: p.preferenceId,
     teamId: p.teamId,
-    track: mapBackendTrackToFrontend(p.track),
+    track: p.track,
     submittedAt: p.submittedAt,
     members: p.members,
     project: p.project,
@@ -285,7 +284,7 @@ function mapProject(p: RawProject): TeamProject {
     id: p.id,
     title: p.title,
     description: p.description ?? undefined,
-    track: mapBackendTrackToFrontend(p.track),
+    track: p.track,
     techStack: p.tech_stack ?? p.techStack ?? [],
     problemStatement: p.problem_statement ?? p.problemStatement ?? undefined,
     endUsersDefined: p.end_users_defined ?? p.endUsersDefined ?? undefined,
@@ -349,13 +348,14 @@ export async function apiGetMyTeamStatus(cohortId: string): Promise<MyTeamStatus
 
 export async function apiGetAvailableTeammates(
   cohortId: string,
-  params: { page: number; limit: number; search?: string }
+  params: { page: number; limit: number; search?: string; track?: string }
 ): Promise<AvailableTeammatesPage> {
   const query = new URLSearchParams();
   query.set('cohortId', cohortId);
   query.set('page', String(params.page));
   query.set('limit', String(params.limit));
   if (params.search) query.set('search', params.search);
+  if (params.track) query.set('track', params.track);
   const res = await apiFetch<{ success: boolean; data: RawAvailableTeammate[]; pagination: AvailableTeammatesPage['pagination'] }>(
     `/api/v1/teams/available-teammates?${query.toString()}`
   );
@@ -373,7 +373,7 @@ export async function apiGetAvailableTeammates(
 export async function apiSendTeamRequest(receiverId: string, cohortId: string, track: string): Promise<void> {
   await apiFetch<void>('/api/v1/teams/request', {
     method: 'POST',
-    body: JSON.stringify({ receiverId, cohortId, track: mapFrontendTrackToBackend(track) }),
+    body: JSON.stringify({ receiverId, cohortId, track }),
   });
   invalidateTeamCaches();
 }
@@ -422,7 +422,7 @@ export async function apiRevokeTeamRequest(requestId: string): Promise<void> {
 export async function apiCreateIndividualTeam(cohortId: string, track: string): Promise<Team> {
   const res = await apiFetch<RawTeam>('/api/v1/teams/individual', {
     method: 'POST',
-    body: JSON.stringify({ cohortId, track: mapFrontendTrackToBackend(track) }),
+    body: JSON.stringify({ cohortId, track }),
   });
   invalidateTeamCaches();
   return mapTeam(res);
@@ -646,11 +646,11 @@ export async function apiListMyTeamsDetailed(withPendingReviewCounts = false): P
       teamId: t.teamId,
       name: t.name,
       cohortId: t.cohortId,
-      track: mapBackendTrackToFrontend(t.track),
+      track: t.track,
       isIndividual: t.isIndividual,
       members: t.members,
       project: t.project
-        ? { ...t.project, track: mapBackendTrackToFrontend(t.project.track) }
+        ? { ...t.project, track: t.project.track }
         : null,
     }));
   });
@@ -689,7 +689,7 @@ export async function apiCreateManualTeam(
 ): Promise<void> {
   await apiFetch<void>(`/api/v1/teams/cohort/${cohortId}/manual-team`, {
     method: 'POST',
-    body: JSON.stringify({ studentIds, track: mapFrontendTrackToBackend(track), projectId, mentorId }),
+    body: JSON.stringify({ studentIds, track, projectId, mentorId }),
   });
   invalidateTeamCaches();
 }
