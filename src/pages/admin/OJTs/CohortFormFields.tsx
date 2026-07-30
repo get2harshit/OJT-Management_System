@@ -15,6 +15,16 @@ interface CohortFormFieldsProps {
 // batches have no fixed relationship to the cohort's start date, so this
 // list is fetched once by the parent rather than derived here.
 export default function CohortFormFields({ form, onChange, eligibleBatchOptions }: CohortFormFieldsProps) {
+  const allSelected = eligibleBatchOptions.length > 0 && eligibleBatchOptions.every(b => form.allowedBatches.includes(b));
+
+  const handleToggleSelectAll = () => {
+    if (allSelected) {
+      onChange({ ...form, allowedBatches: [] });
+    } else {
+      onChange({ ...form, allowedBatches: [...eligibleBatchOptions] });
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -51,7 +61,18 @@ export default function CohortFormFields({ form, onChange, eligibleBatchOptions 
         />
       </div>
       <div>
-        <label className="block text-sm text-gray-400 mb-1">Allowed Batches</label>
+        <div className="flex justify-between items-center mb-1.5">
+          <label className="block text-sm text-gray-400">Allowed Batches</label>
+          {eligibleBatchOptions.length > 0 && (
+            <button
+              type="button"
+              onClick={handleToggleSelectAll}
+              className="text-xs text-gold hover:underline font-semibold transition-colors flex items-center gap-1"
+            >
+              {allSelected ? 'Clear All' : 'Select All'}
+            </button>
+          )}
+        </div>
         <div className="flex flex-wrap gap-3 bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 min-h-[42px] items-center">
           {eligibleBatchOptions.length === 0 ? (
             <span className="text-sm text-gray-500">No student batches found</span>
@@ -59,7 +80,7 @@ export default function CohortFormFields({ form, onChange, eligibleBatchOptions 
             eligibleBatchOptions.map(batch => {
               const checked = form.allowedBatches.includes(batch);
               return (
-                <label key={batch} className="flex items-center gap-1.5 text-sm text-white cursor-pointer">
+                <label key={batch} className="flex items-center gap-1.5 text-sm text-white cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={checked}

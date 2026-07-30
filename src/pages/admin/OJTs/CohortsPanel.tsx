@@ -61,6 +61,12 @@ export default function CohortsPanel() {
     [fetchCohorts, loadEligibleBatches]
   ));
 
+  const handleOpenCreateModal = () => {
+    setEditingCohortId(null);
+    setCohortForm(EMPTY_COHORT_FORM);
+    setCohortModalOpen(true);
+  };
+
   const closeCohortModal = () => {
     setCohortModalOpen(false);
     setEditingCohortId(null);
@@ -174,7 +180,7 @@ export default function CohortsPanel() {
             Refresh
           </Button>
           <Button
-            onClick={() => setCohortModalOpen(true)}
+            onClick={handleOpenCreateModal}
             leftIcon={<Plus size={16} />}
             className="hover:scale-105"
           >
