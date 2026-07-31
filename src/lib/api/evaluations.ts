@@ -358,3 +358,104 @@ export async function apiScoreEvaluation(
   invalidateEvaluationCaches();
   return res.data;
 }
+
+// ── Evaluation Blueprint (one config's full student roster) ──────────────────
+
+export type EvaluationBlueprintStatus = 'not_assigned' | 'pending' | 'evaluated';
+
+// One student's row for a single evaluation. The score maps (internalScores/
+// externalScores) are keyed by criterion NAME — the same names as
+// meta.criteria — so the page can build one column per (criterion × evaluator)
+// dynamically.
+export interface EvaluationBlueprintStudent {
+  studentId: string;
+  fullName: string | null;
+  rollNumber: string | null;
+  batch: string | null;
+  track: string | null;
+  status: EvaluationBlueprintStatus;
+  finalMarks: number | null;
+  internalMentorName: string | null;
+  externalMentorName: string | null;
+  internalTotal: number | null;
+  externalTotal: number | null;
+  internalScores: Record<string, number> | null;
+  externalScores: Record<string, number> | null;
+}
+
+export interface EvaluationBlueprintMeta {
+  cohortId: string;
+  evaluationName: string;
+  mode: EvaluationMode;
+  maxMarks: number;
+  criteria: { name: string; maxMarks: number }[];
+}
+
+export interface EvaluationBlueprintPageResult {
+  data: EvaluationBlueprintStudent[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  meta: EvaluationBlueprintMeta;
+}
+
+export async function apiGetEvaluationBlueprint(
+  configId: string,
+  params: { page?: number; limit?: number; search?: string; batch?: string; status?: EvaluationBlueprintStatus } = {},
+): Promise<EvaluationBlueprintPageResult> {
+  const q = new URLSearchParams();
+  if (params.page) q.set('page', String(params.page));
+  if (params.limit) q.set('limit', String(params.limit));
+  if (params.search) q.set('search', params.search);
+  if (params.batch) q.set('batch', params.batch);
+  if (params.status) q.set('status', params.status);
+  const qs = q.toString();
+  const res = await apiFetch<{ success: boolean } & EvaluationBlueprintPageResult>(
+    `/api/v1/evaluations/cohort-configs/${configId}/students${qs ? `?${qs}` : ''}`,
+  );
+  return { data: res.data, pagination: res.pagination, meta: res.meta };
+}
+
+// ── Cohort-wide Evaluation Summary (all evaluations at once) ─────────────────
+
+export interface CohortEvaluationSummaryMarks {
+  total: number | null;    // final = MAX(internal, external)
+  internal: number | null; // internal mentor's total
+  external: number | null; // external mentor's total
+}
+
+export interface CohortEvaluationSummaryStudent {
+  studentId: string;
+  fullName: string | null;
+  rollNumber: string | null;
+  batch: string | null;
+  track: string | null;
+  // marks[configId] -> that evaluation's total/internal/external for this
+  // student; absent for evaluations the student hasn't been evaluated on.
+  marks: Record<string, CohortEvaluationSummaryMarks>;
+}
+
+export interface CohortEvaluationSummaryEvaluation {
+  configId: string;
+  name: string;
+  maxMarks: number;
+}
+
+export interface CohortEvaluationSummaryResult {
+  data: CohortEvaluationSummaryStudent[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  meta: { cohortId: string; evaluations: CohortEvaluationSummaryEvaluation[] };
+}
+
+export async function apiGetCohortEvaluationSummary(
+  cohortId: string,
+  params: { page?: number; limit?: number; search?: string; batch?: string } = {},
+): Promise<CohortEvaluationSummaryResult> {
+  const q = new URLSearchParams({ cohort_id: cohortId });
+  if (params.page) q.set('page', String(params.page));
+  if (params.limit) q.set('limit', String(params.limit));
+  if (params.search) q.set('search', params.search);
+  if (params.batch) q.set('batch', params.batch);
+  const res = await apiFetch<{ success: boolean } & CohortEvaluationSummaryResult>(
+    `/api/v1/evaluations/summary?${q.toString()}`,
+  );
+  return { data: res.data, pagination: res.pagination, meta: res.meta };
+}

@@ -20,6 +20,8 @@ import CohortTeamsPage from './OJTs/CohortTeamsPage';
 import CohortAllocationsPage from './OJTs/CohortAllocationsPage';
 import CohortTrackConfigPage from './OJTs/CohortTrackConfigPage';
 import AllocationBlueprintPage from './OJTs/AllocationBlueprintPage';
+import EvaluationBlueprintPage from './OJTs/EvaluationBlueprintPage';
+import CohortEvaluationSummaryPage from './OJTs/CohortEvaluationSummaryPage';
 import { useNotificationNavigate } from '../../context/NotificationNavigateContext';
 import { apiGetPrdSubmission } from '../../lib/api';
 import { useToast } from '../../toast';
@@ -140,6 +142,8 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route path="ojts/:cohortId/allocations" element={<CohortAllocationsPage />} />
         <Route path="ojts/:cohortId/track-config" element={<CohortTrackConfigPage />} />
         <Route path="ojts/:cohortId/blueprint" element={<AllocationBlueprintPage />} />
+        <Route path="ojts/:cohortId/evaluation/:configId" element={<EvaluationBlueprintPage />} />
+        <Route path="ojts/:cohortId/evaluation-summary" element={<CohortEvaluationSummaryPage />} />
         <Route path="tasks/create" element={<CreateTaskPage />} />
         <Route path="*" element={renderTab()} />
       </Routes>
