@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { FileText, AlertTriangle, CheckCircle2, X } from 'lucide-react';
+import { FileText, AlertTriangle, CheckCircle2, X, Upload, FileSpreadsheet, Trash2 } from 'lucide-react';
 import Modal from '../../../components/Modal';
 import { parseCSV, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../../lib/csv';
 import { apiCreateProjectsBulk } from '../../../lib/api';
@@ -205,6 +205,10 @@ interface ProjectCsvImportModalProps {
 
 export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, cohortId, forcedTrackSlug }: ProjectCsvImportModalProps) {
   const [csvText, setCsvText] = useState('');
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [selectedFileSize, setSelectedFileSize] = useState<string | null>(null);
+  const [parsedRowCount, setParsedRowCount] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ProjectBulkImportResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -215,8 +219,44 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
 
   const handleClose = () => {
     setCsvText('');
+    setSelectedFileName(null);
+    setSelectedFileSize(null);
+    setParsedRowCount(null);
     setResult(null);
+    if (fileRef.current) fileRef.current.value = '';
     onClose();
+  };
+
+  const handleRemoveFile = () => {
+    setCsvText('');
+    setSelectedFileName(null);
+    setSelectedFileSize(null);
+    setParsedRowCount(null);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const handleFileSelect = (file: File | undefined) => {
+    if (!file) return;
+    if (isExcelBinaryFile(file.name)) {
+      showError(EXCEL_FILE_WARNING);
+      return;
+    }
+    setSelectedFileName(file.name);
+    setSelectedFileSize((file.size / 1024).toFixed(1) + ' KB');
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const text = ev.target?.result as string;
+      setCsvText(text);
+      if (text) {
+        if (isExcelBinaryFile(text)) {
+          showError(EXCEL_FILE_WARNING);
+          return;
+        }
+        const parsed = parseCSV(text);
+        setParsedRowCount(Math.max(0, parsed.length - 1));
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleUpload = async () => {
@@ -259,6 +299,10 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
         handleClose();
       } else {
         setCsvText('');
+        setSelectedFileName(null);
+        setSelectedFileSize(null);
+        setParsedRowCount(null);
+        if (fileRef.current) fileRef.current.value = '';
         setCardOpen(true);
       }
     } catch (err: unknown) {
@@ -294,20 +338,71 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
               accept=".csv,.txt"
               onChange={e => {
                 const file = e.target.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = ev => setCsvText(ev.target?.result as string);
-                reader.readAsText(file);
+                handleFileSelect(file);
               }}
               className="hidden"
             />
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-gold border border-zinc-700 rounded-lg text-sm font-semibold transition-colors"
-            >
-              Choose File
-            </button>
+
+            {selectedFileName ? (
+              <div className="bg-zinc-850 border border-green-500/30 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 bg-green-500/10 rounded-lg shrink-0">
+                    <FileSpreadsheet className="text-green-400" size={24} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-white truncate">{selectedFileName}</p>
+                      <span className="text-xs px-2 py-0.5 rounded bg-zinc-750 text-gray-400 font-mono shrink-0">
+                        {selectedFileSize}
+                      </span>
+                    </div>
+                    {parsedRowCount !== null && (
+                      <p className="text-xs text-green-400 font-medium flex items-center gap-1 mt-0.5">
+                        <CheckCircle2 size={13} />
+                        {parsedRowCount} project template{parsedRowCount === 1 ? '' : 's'} ready to import
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveFile}
+                  title="Remove selected file"
+                  className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-2 shrink-0"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            ) : (
+              <div
+                onClick={() => fileRef.current?.click()}
+                onDragOver={e => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={e => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                }}
+                onDrop={e => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  const file = e.dataTransfer.files?.[0];
+                  handleFileSelect(file);
+                }}
+                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200 ${
+                  isDragging
+                    ? 'border-gold bg-gold/10'
+                    : 'border-zinc-700 hover:border-gold/50 bg-zinc-850/50 hover:bg-zinc-850'
+                }`}
+              >
+                <Upload size={28} className="mx-auto text-gold/80 mb-2" />
+                <p className="text-sm font-semibold text-white">
+                  Click to select CSV file <span className="text-gray-400 font-normal">or drag & drop</span>
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Supports .csv or .txt files</p>
+              </div>
+            )}
           </div>
 
           <button
