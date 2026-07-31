@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { FileText, AlertTriangle, CheckCircle2, X, Upload, FileSpreadsheet, Trash2 } from 'lucide-react';
+import { useRef, useState, useMemo } from 'react';
+import { FileText, AlertTriangle, CheckCircle2, X, Upload, FileSpreadsheet, Trash2, ArrowRight, RefreshCw, Loader2 } from 'lucide-react';
 import Modal from '../../../components/Modal';
 import { parseCSV, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../../lib/csv';
 import { apiCreateProjectsBulk } from '../../../lib/api';
@@ -198,8 +198,6 @@ interface ProjectCsvImportModalProps {
   onClose: () => void;
   onImportSuccess: () => void;
   cohortId?: string;
-  // When set, this import is scoped to a single track: every row's track is
-  // forced to this slug and the CSV no longer needs a Track column at all.
   forcedTrackSlug?: string;
 }
 
@@ -207,12 +205,10 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
   const [csvText, setCsvText] = useState('');
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [selectedFileSize, setSelectedFileSize] = useState<string | null>(null);
-  const [parsedRowCount, setParsedRowCount] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ProjectBulkImportResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [cardOpen, setCardOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const { showSuccess, showError } = useToast();
   const { tracks } = useTracks();
@@ -221,8 +217,8 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
     setCsvText('');
     setSelectedFileName(null);
     setSelectedFileSize(null);
-    setParsedRowCount(null);
     setResult(null);
+    setErrorMessage(null);
     if (fileRef.current) fileRef.current.value = '';
     onClose();
   };
@@ -231,7 +227,8 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
     setCsvText('');
     setSelectedFileName(null);
     setSelectedFileSize(null);
-    setParsedRowCount(null);
+    setResult(null);
+    setErrorMessage(null);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -241,50 +238,67 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
       showError(EXCEL_FILE_WARNING);
       return;
     }
+    setResult(null);
+    setErrorMessage(null);
     setSelectedFileName(file.name);
     setSelectedFileSize((file.size / 1024).toFixed(1) + ' KB');
     const reader = new FileReader();
     reader.onload = ev => {
       const text = ev.target?.result as string;
       setCsvText(text);
-      if (text) {
-        if (isExcelBinaryFile(text)) {
-          showError(EXCEL_FILE_WARNING);
-          return;
-        }
-        const parsed = parseCSV(text);
-        setParsedRowCount(Math.max(0, parsed.length - 1));
+      if (text && isExcelBinaryFile(text)) {
+        showError(EXCEL_FILE_WARNING);
       }
     };
     reader.readAsText(file);
   };
 
-  const handleUpload = async () => {
-    if (!csvText) return;
-    if (isExcelBinaryFile(csvText)) {
-      showError(EXCEL_FILE_WARNING);
-      return;
+  // Live CSV parsing & header validation
+  const parsed = useMemo(() => {
+    if (!csvText) return null;
+    try {
+      return parseCSV(csvText);
+    } catch {
+      return null;
     }
+  }, [csvText]);
 
-    const parsed = parseCSV(csvText);
-    if (parsed.length <= 1) return;
-
+  const validation = useMemo(() => {
+    if (!parsed || parsed.length === 0) return null;
     const headers = parsed[0].map(h => h.toLowerCase().trim());
-    // A track-scoped import forces the track, so the CSV's Track column is no
-    // longer required — drop it from the required set in that case.
     const requiredColumns = forcedTrackSlug
       ? REQUIRED_COLUMNS.filter(c => c.label !== 'Track')
       : REQUIRED_COLUMNS;
     const missingColumns = requiredColumns.filter(({ patterns }) => !headers.some(h => patterns.some(p => h.includes(p))));
-    if (missingColumns.length > 0) {
-      showError(`CSV is missing required column(s): ${missingColumns.map(c => c.label).join(', ')}`);
-      return;
+    const dataRowsCount = Math.max(0, parsed.length - 1);
+
+    let sampleRows: Array<{ title: string; projectId: string; track: string }> = [];
+    if (dataRowsCount > 0) {
+      const rows = parseRows(parsed.slice(0, 4), tracks, forcedTrackSlug);
+      sampleRows = rows.slice(0, 3).map(r => ({
+        title: String(r.project.title || 'Untitled'),
+        projectId: String(r.project.projectId || '-'),
+        track: String(r.project.track || '-'),
+      }));
     }
+
+    return {
+      headers,
+      missingColumns,
+      dataRowsCount,
+      sampleRows,
+      isValid: missingColumns.length === 0 && dataRowsCount > 0,
+    };
+  }, [parsed, forcedTrackSlug, tracks]);
+
+  const handleUpload = async () => {
+    if (!csvText || !parsed || !validation?.isValid) return;
 
     const rows = parseRows(parsed, tracks, forcedTrackSlug);
     setImporting(true);
     setResult(null);
     setErrorMessage(null);
+
     try {
       const importResult = await apiCreateProjectsBulk(rows.map(r => r.project) as unknown as ProjectCsvRowInput[], cohortId);
       setResult(importResult);
@@ -292,216 +306,305 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
         showSuccess(`${importResult.added.length} project template(s) imported, ${importResult.updated.length} updated.`);
         onImportSuccess();
       }
-      // Only auto-close on a fully clean import — if anything was skipped,
-      // leave the modal open (and pop the result card) so the admin can see
-      // exactly what needs fixing before trying again.
-      if (importResult.duplicates.length === 0 && importResult.invalid.length === 0) {
-        handleClose();
-      } else {
-        setCsvText('');
-        setSelectedFileName(null);
-        setSelectedFileSize(null);
-        setParsedRowCount(null);
-        if (fileRef.current) fileRef.current.value = '';
-        setCardOpen(true);
-      }
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to import project templates');
-      setCardOpen(true);
     } finally {
       setImporting(false);
     }
   };
 
   return (
-    <>
-      <Modal open={open} onClose={handleClose} title="Import Project templates via CSV">
-        <div className="space-y-4">
-          {forcedTrackSlug && (
-            <p className="text-sm text-gold bg-gold/10 border border-gold/20 rounded-lg px-3 py-2">
+    <Modal open={open} onClose={handleClose} title="Import Project templates via CSV">
+      <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+        {forcedTrackSlug && (
+          <div className="text-sm text-gold bg-gold/10 border border-gold/25 rounded-xl p-3 flex items-start gap-2.5 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-gold shrink-0 mt-1.5" />
+            <p>
               All imported projects will be assigned to the{' '}
-              <span className="font-semibold">{tracks.find(t => t.slug === forcedTrackSlug)?.name ?? forcedTrackSlug}</span>{' '}
+              <span className="font-semibold text-white">{tracks.find(t => t.slug === forcedTrackSlug)?.name ?? forcedTrackSlug}</span>{' '}
               track — the CSV's own track column (if any) is ignored.
             </p>
-          )}
-          <p className="text-sm text-gray-400">
-            Mandatory fields:{' '}
-            <span className="text-white">
-              {forcedTrackSlug ? REQUIRED_COLUMNS.filter(c => c.label !== 'Track').map(c => c.label).join(', ') : MANDATORY_FIELDS_HINT}
-            </span>
-          </p>
+          </div>
+        )}
 
-          <div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,.txt"
-              onChange={e => {
-                const file = e.target.files?.[0];
-                handleFileSelect(file);
-              }}
-              className="hidden"
-            />
-
-            {selectedFileName ? (
-              <div className="bg-zinc-850 border border-green-500/30 rounded-xl p-4 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="p-2.5 bg-green-500/10 rounded-lg shrink-0">
-                    <FileSpreadsheet className="text-green-400" size={24} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-white truncate">{selectedFileName}</p>
-                      <span className="text-xs px-2 py-0.5 rounded bg-zinc-750 text-gray-400 font-mono shrink-0">
-                        {selectedFileSize}
-                      </span>
-                    </div>
-                    {parsedRowCount !== null && (
-                      <p className="text-xs text-green-400 font-medium flex items-center gap-1 mt-0.5">
-                        <CheckCircle2 size={13} />
-                        {parsedRowCount} project template{parsedRowCount === 1 ? '' : 's'} ready to import
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRemoveFile}
-                  title="Remove selected file"
-                  className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors ml-2 shrink-0"
-                >
-                  <Trash2 size={18} />
-                </button>
+        {/* ── SHOW IMPORT RESULT DIRECTLY INSIDE MODAL WHEN AVAILABLE ── */}
+        {(result || errorMessage) ? (
+          <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-4 bg-zinc-850 border border-zinc-750 rounded-xl space-y-4 shadow-md">
+              <div className="flex items-center justify-between border-b border-zinc-750 pb-3">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <FileText className="text-gold" size={20} />
+                  Import Execution Results
+                </h3>
+                <span className="text-xs text-gray-400 font-mono">
+                  {selectedFileName}
+                </span>
               </div>
-            ) : (
-              <div
-                onClick={() => fileRef.current?.click()}
-                onDragOver={e => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={e => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                }}
-                onDrop={e => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  const file = e.dataTransfer.files?.[0];
+
+              {errorMessage ? (
+                <div className="p-3.5 bg-red-500/10 border border-red-500/25 text-red-400 rounded-xl text-sm font-medium flex items-center gap-2">
+                  <AlertTriangle size={18} className="shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+              ) : result && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="p-2.5 bg-green-500/10 border border-green-500/20 rounded-xl text-center">
+                      <span className="text-xs font-semibold text-gray-400 block uppercase tracking-wider">Added</span>
+                      <span className="text-lg font-bold text-green-400 mt-0.5 block">{result.added.length}</span>
+                    </div>
+                    <div className="p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-center">
+                      <span className="text-xs font-semibold text-gray-400 block uppercase tracking-wider">Updated</span>
+                      <span className="text-lg font-bold text-blue-400 mt-0.5 block">{result.updated.length}</span>
+                    </div>
+                    <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-center">
+                      <span className="text-xs font-semibold text-gray-400 block uppercase tracking-wider">Skipped</span>
+                      <span className="text-lg font-bold text-amber-400 mt-0.5 block">{result.duplicates.length}</span>
+                    </div>
+                    <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-center">
+                      <span className="text-xs font-semibold text-gray-400 block uppercase tracking-wider">Invalid</span>
+                      <span className="text-lg font-bold text-red-400 mt-0.5 block">{result.invalid.length}</span>
+                    </div>
+                  </div>
+
+                  {/* Duplicate Rows Table */}
+                  {result.duplicates.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <AlertTriangle size={14} />
+                        Skipped Duplicates ({result.duplicates.length}):
+                      </p>
+                      <div className="rounded-xl border border-amber-500/20 overflow-hidden max-h-40 overflow-y-auto bg-zinc-900">
+                        <table className="w-full text-left text-xs text-white border-collapse">
+                          <thead className="bg-amber-500/10 text-amber-400 uppercase text-[10px] tracking-wider">
+                            <tr>
+                              <th className="px-3 py-2 border-b border-amber-500/20 font-semibold">Identifier</th>
+                              <th className="px-3 py-2 border-b border-amber-500/20 font-semibold">Reason</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-amber-500/10">
+                            {result.duplicates.map((d, i) => (
+                              <tr key={i} className="hover:bg-amber-500/5">
+                                <td className="px-3 py-2 font-mono text-amber-200">{d.identifier}</td>
+                                <td className="px-3 py-2 text-gray-300">{d.reason}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Invalid Rows Table */}
+                  {result.invalid.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <AlertTriangle size={14} />
+                        Invalid Rows ({result.invalid.length}):
+                      </p>
+                      <div className="rounded-xl border border-red-500/20 overflow-hidden max-h-40 overflow-y-auto bg-zinc-900">
+                        <table className="w-full text-left text-xs text-white border-collapse">
+                          <thead className="bg-red-500/10 text-red-400 uppercase text-[10px] tracking-wider">
+                            <tr>
+                              <th className="px-3 py-2 border-b border-red-500/20 font-semibold">Row / Identifier</th>
+                              <th className="px-3 py-2 border-b border-red-500/20 font-semibold">Error Details</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-red-500/10">
+                            {result.invalid.map((d, i) => (
+                              <tr key={i} className="hover:bg-red-500/5">
+                                <td className="px-3 py-2 font-mono text-red-200">{d.identifier}</td>
+                                <td className="px-3 py-2 text-gray-300">{d.reason}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={handleRemoveFile}
+                className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-xl border border-zinc-700 transition-colors flex items-center justify-center gap-2 text-sm"
+              >
+                <RefreshCw size={16} />
+                Upload Another File
+              </button>
+              <button
+                onClick={handleClose}
+                className="flex-1 py-2.5 bg-gold text-black font-semibold rounded-xl hover:bg-gold-hover transition-colors text-sm shadow-md"
+              >
+                Done / Close
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ── NORMAL FILE UPLOAD & PREVIEW UI ── */
+          <>
+            <div className="p-3.5 bg-zinc-850 border border-zinc-750 rounded-xl space-y-1">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Required Header Fields</p>
+              <p className="text-xs text-gray-300 leading-relaxed font-mono">
+                {forcedTrackSlug ? REQUIRED_COLUMNS.filter(c => c.label !== 'Track').map(c => c.label).join(', ') : MANDATORY_FIELDS_HINT}
+              </p>
+            </div>
+
+            <div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,.txt"
+                onChange={e => {
+                  const file = e.target.files?.[0];
                   handleFileSelect(file);
                 }}
-                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200 ${
-                  isDragging
-                    ? 'border-gold bg-gold/10'
-                    : 'border-zinc-700 hover:border-gold/50 bg-zinc-850/50 hover:bg-zinc-850'
-                }`}
-              >
-                <Upload size={28} className="mx-auto text-gold/80 mb-2" />
-                <p className="text-sm font-semibold text-white">
-                  Click to select CSV file <span className="text-gray-400 font-normal">or drag & drop</span>
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Supports .csv or .txt files</p>
-              </div>
-            )}
-          </div>
+                className="hidden"
+              />
 
-          <button
-            onClick={handleUpload}
-            disabled={!csvText || importing}
-            className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            <FileText size={18} />
-            {importing ? 'Importing...' : 'Import Project Catalog'}
-          </button>
-        </div>
-      </Modal>
+              {selectedFileName ? (
+                <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-4 space-y-3 shadow-md animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="p-2.5 bg-gold/10 rounded-xl shrink-0 border border-gold/25">
+                        <FileSpreadsheet className="text-gold" size={24} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-white truncate">{selectedFileName}</p>
+                          <span className="text-xs px-2 py-0.5 rounded-md bg-zinc-800 text-gray-400 font-mono border border-zinc-700 shrink-0">
+                            {selectedFileSize}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveFile}
+                      title="Remove selected file"
+                      className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors ml-2 shrink-0 border border-transparent hover:border-red-500/20"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
 
-      {/* Result/error card — pinned to the right of the screen and only
-          dismissed by the admin, not on a timer, since a list of skipped
-          rows is easy to miss in an auto-fading toast. */}
-      {cardOpen && (errorMessage || result) && (
-        <div className="fixed top-20 right-5 z-[60] w-full max-w-sm bg-zinc-900 border border-zinc-750 rounded-xl shadow-2xl shadow-black/50 animate-in slide-in-from-right-4 fade-in duration-200">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-            <div className="flex items-center gap-2 text-sm font-semibold text-white">
-              <AlertTriangle size={16} className="text-amber-400" />
-              CSV Import Result
-            </div>
-            <button onClick={() => setCardOpen(false)} className="text-gray-400 hover:text-white transition-colors">
-              <X size={16} />
-            </button>
-          </div>
-          <div className="px-4 py-3 space-y-2 max-h-[60vh] overflow-y-auto">
-            {errorMessage ? (
-              <p className="text-sm text-red-400">{errorMessage}</p>
-            ) : result && (
-              <>
-                <div className="flex items-center gap-2 text-sm text-green-400">
-                  <CheckCircle2 size={16} />
-                  {result.added.length} project(s) added
+                  {/* Live Validation & Mini Row Preview */}
+                  {validation && (
+                    <div className="pt-3 border-t border-zinc-750 space-y-3">
+                      {validation.missingColumns.length > 0 ? (
+                        <div className="p-3.5 bg-red-500/10 border border-red-500/25 rounded-xl text-xs text-red-400 space-y-1.5">
+                          <p className="font-bold flex items-center gap-1.5 text-sm">
+                            <AlertTriangle size={16} />
+                            Missing required CSV column(s):
+                          </p>
+                          <p className="text-red-300 font-mono pl-5">{validation.missingColumns.map(c => c.label).join(', ')}</p>
+                        </div>
+                      ) : validation.dataRowsCount === 0 ? (
+                        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-400 flex items-center gap-2">
+                          <AlertTriangle size={16} />
+                          No data rows detected below the header row in this CSV.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between bg-green-500/10 border border-green-500/20 rounded-xl px-3.5 py-2">
+                            <p className="text-xs text-green-400 font-bold flex items-center gap-1.5">
+                              <CheckCircle2 size={15} />
+                              Validation passed!
+                            </p>
+                            <span className="text-xs text-green-300 font-semibold font-mono">
+                              {validation.dataRowsCount} project template{validation.dataRowsCount === 1 ? '' : 's'} ready
+                            </span>
+                          </div>
+
+                          {/* Mini Sample Preview Table */}
+                          {validation.sampleRows.length > 0 && (
+                            <div className="rounded-xl border border-zinc-750 overflow-hidden bg-zinc-900 shadow-inner">
+                              <div className="px-3.5 py-2 bg-zinc-800/80 text-[11px] font-bold text-gray-400 uppercase tracking-wider border-b border-zinc-750 flex items-center justify-between">
+                                <span>File Preview (First {validation.sampleRows.length} rows):</span>
+                                <span className="text-gold font-mono">CSV Ready</span>
+                              </div>
+                              <table className="w-full text-left text-xs text-gray-300">
+                                <thead>
+                                  <tr className="border-b border-zinc-800 text-gray-400 uppercase text-[10px]">
+                                    <th className="px-3.5 py-2 font-semibold">ID</th>
+                                    <th className="px-3.5 py-2 font-semibold">Title</th>
+                                    <th className="px-3.5 py-2 font-semibold">Track</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-800/60">
+                                  {validation.sampleRows.map((r, i) => (
+                                    <tr key={i} className="hover:bg-zinc-850/50">
+                                      <td className="px-3.5 py-2 font-mono text-gold font-medium">{r.projectId}</td>
+                                      <td className="px-3.5 py-2 truncate max-w-[170px] text-white font-medium">{r.title}</td>
+                                      <td className="px-3.5 py-2 text-gray-400">{r.track}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {result.updated.length > 0 && (
-                  <div className="flex items-center gap-2 text-sm text-blue-400">
-                    <CheckCircle2 size={16} />
-                    {result.updated.length} existing project(s) updated
+              ) : (
+                <div
+                  onClick={() => fileRef.current?.click()}
+                  onDragOver={e => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={e => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                  }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    const file = e.dataTransfer.files?.[0];
+                    handleFileSelect(file);
+                  }}
+                  className={`border-2 border-dashed rounded-2xl p-7 text-center cursor-pointer transition-all duration-200 group ${
+                    isDragging
+                      ? 'border-gold bg-gold/10 scale-[1.01]'
+                      : 'border-zinc-750 hover:border-gold/50 bg-zinc-850/40 hover:bg-zinc-850'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-zinc-800 border border-zinc-700 flex items-center justify-center mx-auto mb-3 text-gold group-hover:scale-110 group-hover:border-gold/40 transition-transform">
+                    <Upload size={22} />
                   </div>
-                )}
-                {result.duplicates.length > 0 && (
-                  <div className="text-sm text-amber-400 mt-2">
-                    <div className="flex items-center gap-2 mb-2">
-                      <AlertTriangle size={16} />
-                      {result.duplicates.length} duplicate(s) skipped
-                    </div>
-                    <div className="rounded-md border border-amber-500/20 overflow-hidden">
-                      <table className="w-full text-left text-xs text-white border-collapse">
-                        <thead className="bg-amber-500/10 text-amber-400">
-                          <tr>
-                            <th className="px-3 py-2 border-b border-amber-500/20 font-medium whitespace-nowrap">ID</th>
-                            <th className="px-3 py-2 border-b border-amber-500/20 font-medium">Error Message</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-amber-500/10">
-                          {result.duplicates.map((d, i) => (
-                            <tr key={i} className="hover:bg-amber-500/5 transition-colors">
-                              <td className="px-3 py-2 font-mono whitespace-nowrap">{d.identifier}</td>
-                              <td className="px-3 py-2">{d.reason}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-                {result.invalid.length > 0 && (
-                  <div className="text-sm text-red-400 mt-2">
-                    <div className="flex items-center gap-2 mb-2">
-                      <AlertTriangle size={16} />
-                      {result.invalid.length} invalid row(s) skipped
-                    </div>
-                    <div className="rounded-md border border-red-500/20 overflow-hidden">
-                      <table className="w-full text-left text-xs text-white border-collapse">
-                        <thead className="bg-red-500/10 text-red-400">
-                          <tr>
-                            <th className="px-3 py-2 border-b border-red-500/20 font-medium whitespace-nowrap">ID</th>
-                            <th className="px-3 py-2 border-b border-red-500/20 font-medium">Error Message</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-red-500/10">
-                          {result.invalid.map((d, i) => (
-                            <tr key={i} className="hover:bg-red-500/5 transition-colors">
-                              <td className="px-3 py-2 font-mono whitespace-nowrap">{d.identifier}</td>
-                              <td className="px-3 py-2">{d.reason}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </>
+                  <p className="text-sm font-bold text-white">
+                    Click to select CSV file <span className="text-gray-400 font-normal">or drag & drop</span>
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Supports plain text .csv or .txt files</p>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={handleUpload}
+              disabled={!validation?.isValid || importing}
+              className="w-full py-3 bg-gold text-black font-bold rounded-xl hover:bg-gold-hover transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-40 disabled:hover:scale-100 hover:scale-[1.01] shadow-lg shadow-gold/10"
+            >
+              {importing ? (
+                <>
+                  <Loader2 size={18} className="animate-spin text-black" />
+                  <span>Importing Projects...</span>
+                </>
+              ) : (
+                <>
+                  <FileText size={18} />
+                  <span>Import Project Catalog</span>
+                  <ArrowRight size={16} />
+                </>
+              )}
+            </button>
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
