@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Settings2, Plus, Pencil, Trash2, Users, X } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
@@ -44,6 +44,7 @@ const SEARCH_DEBOUNCE_MS = 400;
 
 export default function CohortTrackConfigPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const confirm = useConfirm();
   const { tracks: allTracks, refetch: refetchTracks } = useTracks();
@@ -379,7 +380,15 @@ export default function CohortTrackConfigPage() {
                   <tbody>
                     {configs.map(config => (
                       <tr key={config.trackSlug} className="border-b border-zinc-800 last:border-0">
-                        <td className="px-4 py-3 text-white font-medium">{config.trackName}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/track-config/${config.trackSlug}/projects`)}
+                            className="text-white font-medium hover:text-gold hover:underline underline-offset-4 transition-colors text-left"
+                            title="Open this track's projects & CSV upload"
+                          >
+                            {config.trackName}
+                          </button>
+                        </td>
                         <td className="px-4 py-3 text-gray-400">{ELIGIBILITY_LABELS[config.eligibilityType]}</td>
                         <td className="px-4 py-3 text-gray-300">
                           {config.eligibilityType === 'year' && (config.eligibilityValue ?? '').split(',').join(', ')}

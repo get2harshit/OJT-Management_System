@@ -23,12 +23,16 @@ const SEARCH_DEBOUNCE_MS = 400;
 // apiCreateProjectsBulk/apiDeleteProject already invalidate the global
 // projects cache, so no parent-level refresh callback is needed here.
 export default function CohortProjectsPage() {
-  const { cohortId } = useParams<{ cohortId: string }>();
+  // trackSlug is only present on the track-scoped route
+  // (ojts/:cohortId/track-config/:trackSlug/projects) — when set, the list is
+  // filtered to that track and CSV import forces every project onto it.
+  const { cohortId, trackSlug } = useParams<{ cohortId: string; trackSlug?: string }>();
   const navigate = useNavigate();
   const confirm = useConfirm();
   const { showError } = useToast();
   const { tracks } = useTracks();
   const trackNameBySlug = new Map(tracks.map(t => [t.slug, t.name]));
+  const trackName = trackSlug ? (trackNameBySlug.get(trackSlug) ?? trackSlug) : null;
 
   const [cohortLabel, setCohortLabel] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
@@ -41,14 +45,14 @@ export default function CohortProjectsPage() {
   const fetchPage = useCallback(async (targetPage: number, searchTerm: string) => {
     if (!cohortId) return;
     try {
-      const res = await apiGetProjectsForCohortPage(cohortId, { page: targetPage, limit: PAGE_SIZE, search: searchTerm || undefined });
+      const res = await apiGetProjectsForCohortPage(cohortId, { page: targetPage, limit: PAGE_SIZE, search: searchTerm || undefined, track: trackSlug || undefined });
       setProjects(res.data);
       setPagination(res.pagination);
     } catch (err: unknown) {
       console.error(err);
       showError('Failed to load projects for this cohort.');
     }
-  }, [cohortId, showError]);
+  }, [cohortId, trackSlug, showError]);
 
   const loadCohortLabel = useCallback(() => {
     if (!cohortId) return Promise.resolve();
@@ -98,7 +102,10 @@ export default function CohortProjectsPage() {
 
   return (
     <div className="space-y-6 flex-1 min-h-0 flex flex-col">
-      <CohortPageHeader title="Projects" subtitle={cohortLabel} />
+      <CohortPageHeader
+        title={trackName ? `${trackName} Projects` : 'Projects'}
+        subtitle={trackName ? `${cohortLabel} · ${trackName} track only` : cohortLabel}
+      />
 
       <div className="space-y-4 flex-1 min-h-0 flex flex-col">
         <div className="flex flex-wrap justify-between items-center gap-3">
@@ -159,6 +166,7 @@ export default function CohortProjectsPage() {
         onClose={() => setProjectCsvModalOpen(false)}
         onImportSuccess={handleImportSuccess}
         cohortId={cohortId}
+        forcedTrackSlug={trackSlug}
       />
 
       {selectedProject && (
