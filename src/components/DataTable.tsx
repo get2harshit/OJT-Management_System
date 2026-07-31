@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useContext } from 'react';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Download, Inbox } from 'lucide-react';
 import { exportToCSV } from '../lib/csvExport';
+import { AuthContext } from '../context/AuthContext';
 
 interface Column<T> {
   key: keyof T | string;
@@ -63,6 +64,10 @@ export default function DataTable<T extends Record<string, unknown>>({
   exportFilename = 'export_data',
   hideExport = false,
 }: DataTableProps<T>) {
+  const auth = useContext(AuthContext);
+  const isAdmin = auth?.user?.role === 'admin';
+  const showExportButton = !hideExport && isAdmin;
+
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [localPageSize, setLocalPageSize] = useState(pageSizeOptions?.[0] ?? 12);
@@ -193,7 +198,7 @@ export default function DataTable<T extends Record<string, unknown>>({
             className="bg-transparent text-sm text-white placeholder-gray-500 outline-none flex-1 min-w-0"
           />
         </div>
-        {!hideExport && (
+        {showExportButton && (
           <button
             onClick={() => {
               const exportCols = columns.map(c => ({

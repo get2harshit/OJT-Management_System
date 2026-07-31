@@ -86,6 +86,7 @@ export default function StudentCredits({
           ]}
           data={creditsData}
           searchPlaceholder="Search vouchers..."
+          hideExport
         />
       </div>
 
@@ -115,6 +116,7 @@ export default function StudentCredits({
           ]}
           data={myRequests as (CreditRequest & Record<string, unknown>)[]}
           searchPlaceholder="Search requests..."
+          hideExport
         />
       </div>
 

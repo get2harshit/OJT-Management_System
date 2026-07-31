@@ -158,6 +158,7 @@ export default function MentorEvaluationTracker() {
         ]}
         data={tableData}
         searchPlaceholder="Search by student name..."
+        hideExport
         onRowClick={(row) => openEvaluation(row.id as string)}
         serverPagination={{
           page,

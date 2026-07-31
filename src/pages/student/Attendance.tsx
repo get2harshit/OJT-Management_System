@@ -54,6 +54,7 @@ export default function StudentAttendance({
         ]}
         data={data}
         searchPlaceholder="Search attendance..."
+        hideExport
       />
     </div>
   );

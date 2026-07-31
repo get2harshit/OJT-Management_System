@@ -143,6 +143,7 @@ export default function StudentTasks({
         ]}
         data={taskData}
         searchPlaceholder="Search tasks..."
+        hideExport
         onSearchChange={handleSearchChange}
         onRowClick={handleRowClick}
         leftHeaderContent={

@@ -390,6 +390,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
         data={tableData}
         searchPlaceholder="Search tasks..."
         onRowClick={handleRowClick}
+        hideExport
       />
 
       <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Create Task">

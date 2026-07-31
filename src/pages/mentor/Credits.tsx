@@ -80,6 +80,7 @@ export default function MentorCredits({
           ]}
           data={pendingRequests}
           searchPlaceholder="Search pending credit requests..."
+          hideExport
           actions={(row) => (
             <div className="flex items-center gap-2">
               <button
@@ -129,6 +130,7 @@ export default function MentorCredits({
           ]}
           data={historyRequests}
           searchPlaceholder="Search history..."
+          hideExport
         />
       </div>
     </div>
