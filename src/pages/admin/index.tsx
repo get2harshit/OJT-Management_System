@@ -137,6 +137,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route path="ojts/:cohortId/view" element={<ViewCohortPage />} />
         <Route path="ojts/:cohortId/students" element={<CohortStudentsPage />} />
         <Route path="ojts/:cohortId/projects" element={<CohortProjectsPage />} />
+        <Route path="ojts/:cohortId/track-config/:trackSlug/projects" element={<CohortProjectsPage />} />
         <Route path="ojts/:cohortId/mentors" element={<CohortMentorsPage />} />
         <Route path="ojts/:cohortId/teams" element={<CohortTeamsPage />} />
         <Route path="ojts/:cohortId/allocations" element={<CohortAllocationsPage />} />
