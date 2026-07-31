@@ -43,7 +43,7 @@ function useCountdown(expiresAt: string | undefined) {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
-  return { label: `${h}h ${m}m ${s}s`, expired: false };
+  return { label: h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`, expired: false };
 }
 
 export default function ProjectPicker() {
