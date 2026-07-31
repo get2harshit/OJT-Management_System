@@ -116,6 +116,55 @@ export async function apiRemoveEligibleStudent(cohortId: string, trackSlug: stri
   );
 }
 
+// ── Unique-track candidate picker (with academic performance) ────────────────
+
+export interface ApiCandidateStudent {
+  studentId: string;
+  fullName: string | null;
+  rollNumber: string | null;
+  registrationNumber: string | null;
+  batch: string | null;
+  email: string | null;
+  currentTier: string | null;
+  /** Imported academic performance %, or null if this student has no row. */
+  performancePercentage: number | null;
+  /** Already on this track's eligible list — shown as added, not re-selectable. */
+  alreadyEligible: boolean;
+}
+
+export interface CandidateStudentsPage {
+  data: ApiCandidateStudent[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export interface GetCandidateStudentsParams {
+  page: number;
+  limit: number;
+  search?: string;
+  batch?: string;
+  /** Only students with performance >= this (0-100); students without a score drop out. */
+  minPerformance?: number;
+}
+
+// Cohort students + their academic performance for a unique track's picker
+// page — server-filtered/paginated (best performer first).
+export async function apiGetTrackCandidateStudents(
+  cohortId: string,
+  trackSlug: string,
+  params: GetCandidateStudentsParams
+): Promise<CandidateStudentsPage> {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page));
+  query.set('limit', String(params.limit));
+  if (params.search) query.set('search', params.search);
+  if (params.batch) query.set('batch', params.batch);
+  if (params.minPerformance !== undefined) query.set('minPerformance', String(params.minPerformance));
+  const res = await apiFetch<{ data: ApiCandidateStudent[]; pagination: CandidateStudentsPage['pagination'] }>(
+    `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}/candidate-students?${query.toString()}`
+  );
+  return { data: res.data, pagination: res.pagination };
+}
+
 // ── Student-facing ────────────────────────────────────────────────────────────
 
 export interface ApiAvailableTrack {

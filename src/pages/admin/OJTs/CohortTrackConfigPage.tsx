@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Settings2, Plus, Pencil, Trash2, Users, X } from 'lucide-react';
+import { Settings2, Plus, Pencil, Trash2, Users, X, UserPlus } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
@@ -408,6 +408,15 @@ export default function CohortTrackConfigPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
+                            {config.eligibilityType === 'unique' && (
+                              <button
+                                onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/track-config/${config.trackSlug}/students`)}
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-gold hover:bg-zinc-750 transition-colors"
+                                title="Add students by performance"
+                              >
+                                <UserPlus size={14} />
+                              </button>
+                            )}
                             <button
                               onClick={() => openEditModal(config)}
                               className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
