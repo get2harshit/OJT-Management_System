@@ -5,7 +5,7 @@ import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import ProjectCsvImportModal from './ProjectCsvImportModal';
-import type { Project } from '../../../lib/types';
+import type { Project, ProjectPartner, RecommendedMentor } from '../../../lib/types';
 import { getTrackColor } from '../../../lib/constants';
 import { apiGetCohort, apiGetProjectsForCohortPage, apiDeleteProject } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
@@ -226,6 +226,19 @@ function ProjectDetail({ project }: { project: Project }) {
       </ProjectDetailSection>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <ProjectDetailSection label="Recommended Mentors">
+          <TagList items={project.recommendedMentors?.map(formatRecommendedMentor)} />
+        </ProjectDetailSection>
+        <ProjectDetailSection label="Credit Mapping">
+          <TagList items={project.creditMapping} />
+        </ProjectDetailSection>
+      </div>
+
+      <ProjectDetailSection label="Partners">
+        <PartnerList partners={project.partners} />
+      </ProjectDetailSection>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <ProjectDetailSection label="Tech Stack">
           <TagList items={techStack} />
         </ProjectDetailSection>
@@ -302,6 +315,29 @@ function ProjectDetailSection({ label, children }: { label: string; children: Re
     <div>
       <span className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">{label}</span>
       <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+// A recommended mentor is a real mentor row, so fullName is only ever null if
+// that mentor has since been removed — show the gap rather than hiding the entry.
+function formatRecommendedMentor(mentor: RecommendedMentor): string {
+  const name = mentor.fullName ?? 'Unknown mentor';
+  return mentor.organization ? `${name} · ${mentor.organization}` : name;
+}
+
+function PartnerList({ partners }: { partners?: ProjectPartner[] }) {
+  if (!partners || partners.length === 0) return <p className="text-sm text-gray-500">-</p>;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {partners.map(partner => (
+        <span key={partner.name} className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full bg-zinc-750 text-gray-300">
+          {partner.logoUrl && (
+            <img src={partner.logoUrl} alt="" loading="lazy" className="w-4 h-4 object-contain rounded-sm" />
+          )}
+          {partner.name}
+        </span>
+      ))}
     </div>
   );
 }

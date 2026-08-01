@@ -68,6 +68,25 @@ export interface Project {
   referenceDocs?: string;
   estimatedDuration?: number;   // weeks
   sourceStartupSchool?: string;
+  recommendedMentors?: RecommendedMentor[];
+  creditMapping?: string[];
+  partners?: ProjectPartner[];
+}
+
+
+// Hydrated by the backend from the mentor ids stored on the project — a
+// recommended mentor is always a real mentor in the system.
+export interface RecommendedMentor {
+  mentorId: string;
+  fullName: string | null;
+  organization: string | null;
+}
+
+// Partner name plus its logo. logoUrl is null when the stored name doesn't
+// match any known partner (a sheet typo) — the name still shows.
+export interface ProjectPartner {
+  name: string;
+  logoUrl: string | null;
 }
 
 export type SemesterSession = 'ODD' | 'EVEN';
@@ -269,7 +288,8 @@ export interface TeamProjectPreferences {
   id: string;
   teamId: string;
   preference1Id: string;
-  preference2Id: string;
+  // Null when the team's track allowed a single-preference submission.
+  preference2Id: string | null;
   preference1MentorId: string | null;
   preference2MentorId: string | null;
   allocatedProjectId: string | null;
@@ -385,6 +405,11 @@ export interface TeamAvailableMentor {
   isExternal: boolean;
 }
 
+// What a team on a track may submit. 'own' is the team's self-proposed
+// project, 'recommended' is one from the OJT's catalog. A track can offer
+// several; the team picks one at submission time.
+export type TrackSubmissionMode = '1_own' | '1_recommended' | '2_recommended' | '1_own_1_recommended';
+
 // "Where is this student in the team/project flow" — drives which screen
 // the Select Project page renders, and lets it resume after a reload.
 export interface MyTeamStatus {
@@ -397,6 +422,10 @@ export interface MyTeamStatus {
   pendingReceivedRequests: PendingReceivedRequest[];
   pendingReceivedRequest?: PendingReceivedRequest | null;
   projectPreferences: TeamProjectPreferences | null;
+  // The submission shapes this team's track offers — the picker renders
+  // exactly these options. Empty once preferences are already submitted, or
+  // before a team exists at all.
+  allowedSubmissionModes: TrackSubmissionMode[];
 }
 
 export interface AvailableTeammate {
@@ -438,6 +467,9 @@ export interface TeamProject {
   referenceDocs?: string;
   estimatedDuration?: number;   // weeks
   sourceStartupSchool?: string;
+  recommendedMentors?: RecommendedMentor[];
+  creditMapping?: string[];
+  partners?: ProjectPartner[];
   // True when this project's level matches the browsing team's best member
   // tier (A -> advanced, B -> intermediate, C -> beginner) — a nudge, not a
   // filter; every project still shows regardless of this flag.
@@ -473,6 +505,9 @@ export interface ProposeProjectInput {
   referenceDocs?: string;
   estimatedDuration?: number;   // weeks
   sourceStartupSchool?: string;
+  recommendedMentors?: RecommendedMentor[];
+  creditMapping?: string[];
+  partners?: ProjectPartner[];
 }
 
 export interface CohortDetails extends Cohort {

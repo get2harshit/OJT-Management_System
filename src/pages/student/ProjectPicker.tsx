@@ -1,8 +1,8 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Modal from '../../components/Modal';
-import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project, PreferenceReviewStatus, PreferenceResubmissionMode } from '../../lib/types';
+import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project, PreferenceReviewStatus, PreferenceResubmissionMode, TrackSubmissionMode } from '../../lib/types';
 import type { ProjectSummary, ProjectDetail, ApiAvailableTrack } from '../../lib/api';
 import {
   apiGetMyCohort,
@@ -173,10 +173,18 @@ export default function ProjectPicker() {
           </h1>
           <p className="text-gray-400 text-sm mt-1">Pick a track, team up, and lock in your projects.</p>
         </div>
-        {status?.team && !status.projectPreferences && (
+        {status?.team && !status.projectPreferences && status.allowedSubmissionModes.length > 0 && (
           <p className="text-xs text-gray-500 flex items-center gap-1.5 shrink-0 mt-1">
             <Layers size={13} className="text-gold shrink-0" />
-            Choose <span className="text-gold font-semibold">2 projects</span> — your 1st and 2nd preference
+            {/* How many projects a team submits depends on which options their
+                track offers — only say "2" when every option needs two. */}
+            {status.allowedSubmissionModes.every(m => MODE_SLOT_COUNT[m] === 1) ? (
+              <>Choose <span className="text-gold font-semibold">1 project</span> for your track</>
+            ) : status.allowedSubmissionModes.every(m => MODE_SLOT_COUNT[m] === 2) ? (
+              <>Choose <span className="text-gold font-semibold">2 projects</span> — your 1st and 2nd preference</>
+            ) : (
+              <>Pick how you want to submit, then choose your <span className="text-gold font-semibold">project(s)</span></>
+            )}
           </p>
         )}
       </div>
@@ -198,6 +206,7 @@ export default function ProjectPicker() {
               projectsLoading={projectsLoading}
               availableMentors={availableMentors}
               mentorsLoading={mentorsLoading}
+              allowedSubmissionModes={status.allowedSubmissionModes}
               onSubmitted={() => refreshStatus(cohortId)}
             />
           )
@@ -659,7 +668,51 @@ function IncomingRequestScreen({
 
 // ── Step 4 & 5: team picks how to fill its 2 project preferences ────────────
 
-type SelectionMode = 'own-existing' | 'two-existing';
+// The track decides which of these it offers (ojt_cohort_track_config
+// .allowed_submission_modes); the team picks one of the offered ones. Keyed by
+// the backend's own mode strings so there's nothing to translate at submit
+// time — the value the student picked is the value that gets sent.
+type SelectionMode = TrackSubmissionMode;
+
+// How many project slots each mode fills. A one-slot mode has no Preference 2
+// step at all — the team submits straight from the first screen.
+const MODE_SLOT_COUNT: Record<SelectionMode, 1 | 2> = {
+  '1_own': 1,
+  '1_recommended': 1,
+  '2_recommended': 2,
+  '1_own_1_recommended': 2,
+};
+
+// Whether slot 1 is the team's own proposed project or a catalog pick.
+const MODE_SLOT_1_IS_OWN: Record<SelectionMode, boolean> = {
+  '1_own': true,
+  '1_recommended': false,
+  '2_recommended': false,
+  '1_own_1_recommended': true,
+};
+
+const MODE_CARDS: Record<SelectionMode, { title: string; description: string; icon: typeof Sparkles }> = {
+  '1_own': {
+    title: 'Your Own Project',
+    description: 'Propose your own project idea. Your mentor reviews it before it goes to allocation.',
+    icon: Sparkles,
+  },
+  '1_recommended': {
+    title: 'One Recommended Project',
+    description: 'Pick a single project from the catalog.',
+    icon: Briefcase,
+  },
+  '2_recommended': {
+    title: 'Two Recommended Projects',
+    description: 'Pick two different projects from the catalog as your 1st and 2nd preference.',
+    icon: Briefcase,
+  },
+  '1_own_1_recommended': {
+    title: 'Own Project + Recommended Project',
+    description: 'Propose your own project as your 1st preference, and pick one from the catalog as your 2nd.',
+    icon: Sparkles,
+  },
+};
 
 function ProjectSelectionScreen({
   cohortId,
@@ -667,6 +720,7 @@ function ProjectSelectionScreen({
   projectsLoading,
   availableMentors,
   mentorsLoading,
+  allowedSubmissionModes,
   onSubmitted,
 }: {
   cohortId: string;
@@ -674,6 +728,8 @@ function ProjectSelectionScreen({
   projectsLoading: boolean;
   availableMentors: TeamAvailableMentor[];
   mentorsLoading: boolean;
+  /** What this team's track offers — only these options are shown. */
+  allowedSubmissionModes: TrackSubmissionMode[];
   onSubmitted: () => void;
 }) {
   const { showError, showSuccess } = useToast();
@@ -700,36 +756,64 @@ function ProjectSelectionScreen({
     setSelfProject(own ?? null);
   }, [availableProjects]);
 
-  // A team that already proposed its own project (e.g. before switching
-  // devices, or a page reload mid-flow) has effectively already picked this
-  // mode — skip straight past the mode picker instead of losing their work.
+  // Only offer what the track allows, in a stable order.
+  const offeredModes = useMemo(
+    () => (Object.keys(MODE_CARDS) as SelectionMode[]).filter(m => allowedSubmissionModes.includes(m)),
+    [allowedSubmissionModes]
+  );
+
+  // With a single option there is nothing to choose — drop the team straight
+  // into it rather than showing a one-card picker.
   useEffect(() => {
-    if (selfProject && mode === null) setMode('own-existing');
-  }, [selfProject, mode]);
+    if (mode === null && offeredModes.length === 1) setMode(offeredModes[0]);
+  }, [mode, offeredModes]);
+
+  // A team that already proposed its own project (e.g. before switching
+  // devices, or a page reload mid-flow) has effectively already picked an
+  // own-project mode — resume it instead of losing their work.
+  useEffect(() => {
+    if (!selfProject || mode !== null) return;
+    const ownMode = offeredModes.find(m => MODE_SLOT_1_IS_OWN[m]);
+    if (ownMode) setMode(ownMode);
+  }, [selfProject, mode, offeredModes]);
 
   // Once the current step's project is picked but its mentor isn't yet,
   // prompt for one right away — covers both "just picked it" and "reloaded
   // with it already picked." Doesn't fight a manual close: this only
   // re-fires when its dependencies actually change.
+  const slot1IsOwn = mode !== null && MODE_SLOT_1_IS_OWN[mode];
+  const slotCount = mode !== null ? MODE_SLOT_COUNT[mode] : 2;
+
   useEffect(() => {
+    if (mode === null) return;
     if (step === 1 && !mentor1Id) {
-      if (mode === 'own-existing' && selfProject) setMentorModalFor(1);
-      if (mode === 'two-existing' && existingProjectId1) setMentorModalFor(1);
+      if (slot1IsOwn && selfProject) setMentorModalFor(1);
+      if (!slot1IsOwn && existingProjectId1) setMentorModalFor(1);
     }
     if (step === 2 && !mentor2Id) {
-      if (mode === 'own-existing' && existingProjectId) setMentorModalFor(2);
-      if (mode === 'two-existing' && existingProjectId2) setMentorModalFor(2);
+      if (slot1IsOwn && existingProjectId) setMentorModalFor(2);
+      if (!slot1IsOwn && existingProjectId2) setMentorModalFor(2);
     }
-  }, [mode, step, selfProject, existingProjectId1, existingProjectId, existingProjectId2, mentor1Id, mentor2Id]);
+  }, [mode, step, slot1IsOwn, selfProject, existingProjectId1, existingProjectId, existingProjectId2, mentor1Id, mentor2Id]);
 
-  const preference1Id = mode === 'own-existing' ? (selfProject?.id ?? null) : existingProjectId1;
-  const preference2Id = mode === 'own-existing' ? existingProjectId : existingProjectId2;
+  const preference1Id = slot1IsOwn ? (selfProject?.id ?? null) : existingProjectId1;
+  // A one-slot mode has no second preference at all — not an unfilled one.
+  const preference2Id = slotCount === 1 ? null : slot1IsOwn ? existingProjectId : existingProjectId2;
+  const preference2MentorId = slotCount === 1 ? null : mentor2Id;
 
   const handleSubmit = async () => {
-    if (!preference1Id || !preference2Id || !mentor1Id || !mentor2Id) return;
+    if (!mode || !preference1Id || !mentor1Id) return;
+    if (slotCount === 2 && (!preference2Id || !preference2MentorId)) return;
     setSubmitting(true);
     try {
-      await apiSubmitProjectPreferences(cohortId, preference1Id, preference2Id, mentor1Id, mentor2Id);
+      await apiSubmitProjectPreferences({
+        cohortId,
+        preference1Id,
+        preference1MentorId: mentor1Id,
+        preference2Id,
+        preference2MentorId,
+        submissionMode: mode,
+      });
       showSuccess('Project selections submitted!');
       onSubmitted();
     } catch (err) {
@@ -758,52 +842,60 @@ function ProjectSelectionScreen({
     <div className="h-full min-h-0 flex flex-col space-y-6">
       {mode === null ? (
         <div className="space-y-4">
-          <h2 className="text-white font-semibold">How do you want to pick your projects?</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <button
-              onClick={() => setMode('own-existing')}
-              className="group flex flex-col items-start gap-3 bg-zinc-850 border border-zinc-750 rounded-xl p-5 text-left hover:border-gold/40 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-gold/5 transition-all duration-300"
-            >
-              <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
-                <Sparkles size={20} className="text-gold" />
+          {offeredModes.length === 0 ? (
+            <p className="text-sm text-amber-400/90 px-4 py-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              Project selection isn't open for your track yet. Please check back once your admin has configured it.
+            </p>
+          ) : (
+            <>
+              <h2 className="text-white font-semibold">How do you want to pick your projects?</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {offeredModes.map(offered => {
+                  const card = MODE_CARDS[offered];
+                  const Icon = card.icon;
+                  return (
+                    <button
+                      key={offered}
+                      onClick={() => setMode(offered)}
+                      className="group flex flex-col items-start gap-3 bg-zinc-850 border border-zinc-750 rounded-xl p-5 text-left hover:border-gold/40 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-gold/5 transition-all duration-300"
+                    >
+                      <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
+                        <Icon size={20} className="text-gold" />
+                      </div>
+                      <p className="text-white font-semibold">{card.title}</p>
+                      <p className="text-gray-400 text-sm">{card.description}</p>
+                    </button>
+                  );
+                })}
               </div>
-              <p className="text-white font-semibold">Own Project + Recommended Project</p>
-              <p className="text-gray-400 text-sm">Propose your own project as your 1st preference, and pick one from the catalog as your 2nd.</p>
-            </button>
-            <button
-              onClick={() => setMode('two-existing')}
-              className="group flex flex-col items-start gap-3 bg-zinc-850 border border-zinc-750 rounded-xl p-5 text-left hover:border-gold/40 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-gold/5 transition-all duration-300"
-            >
-              <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
-                <Briefcase size={20} className="text-gold" />
-              </div>
-              <p className="text-white font-semibold">Two Recommended Projects</p>
-              <p className="text-gray-400 text-sm">Pick two different projects from the catalog as your 1st and 2nd preference.</p>
-            </button>
-          </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="flex-1 min-h-0 flex flex-col space-y-3">
           <div className="shrink-0 flex items-center gap-4 flex-wrap">
             <button
               onClick={() => { setMode(null); setStep(1); }}
-              disabled={!!selfProject}
+              disabled={!!selfProject || offeredModes.length <= 1}
               className="text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             >
               ← Change selection type
             </button>
 
-            <span className="text-gray-700 shrink-0">|</span>
-
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider shrink-0">
-              <span className={step === 1 ? 'text-gold' : 'text-gray-600'}>1. Preference 1</span>
-              <span className="text-gray-700">—</span>
-              <span className={step === 2 ? 'text-gold' : 'text-gray-600'}>2. Preference 2</span>
-            </div>
+            {slotCount === 2 && (
+              <>
+                <span className="text-gray-700 shrink-0">|</span>
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider shrink-0">
+                  <span className={step === 1 ? 'text-gold' : 'text-gray-600'}>1. Preference 1</span>
+                  <span className="text-gray-700">—</span>
+                  <span className={step === 2 ? 'text-gold' : 'text-gray-600'}>2. Preference 2</span>
+                </div>
+              </>
+            )}
           </div>
 
           {step === 1 ? (
-            mode === 'own-existing' ? (
+            slot1IsOwn ? (
               <div className="flex-1 min-h-0 overflow-y-auto space-y-2">
                 <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference 1 project</p>
                 <SelfProjectProposer
@@ -822,15 +914,15 @@ function ProjectSelectionScreen({
                 excludeId={existingProjectId2}
                 selectedMentor={availableMentors.find(m => m.id === mentor1Id) ?? null}
                 onChooseMentor={() => setMentorModalFor(1)}
-                label="Preference 1"
+                label={slotCount === 1 ? 'Your project' : 'Preference 1'}
               />
             )
           ) : (
             <ProjectCatalogBrowser
               cohortId={cohortId}
-              selectedId={mode === 'own-existing' ? existingProjectId : existingProjectId2}
-              onSelect={mode === 'own-existing' ? setExistingProjectId : setExistingProjectId2}
-              excludeId={mode === 'own-existing' ? undefined : existingProjectId1}
+              selectedId={slot1IsOwn ? existingProjectId : existingProjectId2}
+              onSelect={slot1IsOwn ? setExistingProjectId : setExistingProjectId2}
+              excludeId={slot1IsOwn ? undefined : existingProjectId1}
               selectedMentor={availableMentors.find(m => m.id === mentor2Id) ?? null}
               onChooseMentor={() => setMentorModalFor(2)}
               label="Preference 2"
@@ -849,7 +941,7 @@ function ProjectSelectionScreen({
               <span />
             )}
 
-            {step === 1 ? (
+            {step === 1 && slotCount === 2 ? (
               <button
                 onClick={() => setStep(2)}
                 disabled={!preference1Id || !mentor1Id}
@@ -858,9 +950,16 @@ function ProjectSelectionScreen({
                 Next: Preference 2 →
               </button>
             ) : (
+              // One-slot modes submit straight from step 1; two-slot modes
+              // reach this on step 2.
               <button
                 onClick={handleSubmit}
-                disabled={!preference2Id || !mentor2Id || submitting}
+                disabled={
+                  submitting ||
+                  (slotCount === 1
+                    ? !preference1Id || !mentor1Id
+                    : !preference2Id || !preference2MentorId)
+                }
                 className="py-3 px-6 bg-gold text-black font-semibold rounded-lg shadow-xl shadow-black/40 hover:bg-gold-hover hover:shadow-lg hover:shadow-gold/10 transition-all duration-200 disabled:opacity-40 disabled:hover:shadow-none"
               >
                 {submitting ? 'Submitting...' : 'Confirm & Submit'}
@@ -1349,6 +1448,70 @@ function ProjectDetailView({
             {textField('End users defined', detail.endUsersDefined)}
           </div>
 
+          {(detail.recommendedMentors?.length || detail.creditMapping?.length || detail.partners?.length) && (
+            <div className="space-y-3">
+              <p className="text-xs text-gold uppercase font-bold tracking-wider">Mentors & partners</p>
+
+              {detail.recommendedMentors && detail.recommendedMentors.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1.5">Recommended mentors</p>
+                  <div className="flex flex-wrap gap-2">
+                    {detail.recommendedMentors.map(mentor => (
+                      <span
+                        key={mentor.mentorId}
+                        className="inline-flex items-center gap-1.5 text-sm text-gray-200 bg-zinc-800 border border-zinc-750 rounded-lg px-2.5 py-1"
+                      >
+                        <UserCheck size={13} className="text-gold shrink-0" />
+                        {mentor.fullName ?? '—'}
+                        {mentor.organization && <span className="text-gray-500 text-xs">· {mentor.organization}</span>}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {detail.creditMapping && detail.creditMapping.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1.5">Credit mapping</p>
+                  <div className="flex flex-wrap gap-2">
+                    {detail.creditMapping.map(credit => (
+                      <span
+                        key={credit}
+                        className="text-sm text-gray-200 bg-zinc-800 border border-zinc-750 rounded-lg px-2.5 py-1"
+                      >
+                        {credit}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {detail.partners && detail.partners.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1.5">Partners</p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {detail.partners.map(partner => (
+                      <span
+                        key={partner.name}
+                        title={partner.name}
+                        className="inline-flex items-center gap-2 bg-white/90 rounded-lg px-2.5 py-1.5"
+                      >
+                        {/* No logo when the stored name matches no known
+                            partner — the name still shows, so a sheet typo
+                            reads as a missing image rather than a lost partner. */}
+                        {partner.logoUrl ? (
+                          <img src={partner.logoUrl} alt={partner.name} className="h-5 max-w-[96px] object-contain" loading="lazy" />
+                        ) : (
+                          <span className="text-xs font-semibold text-zinc-800">{partner.name}</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="space-y-3">
             <p className="text-xs text-gold uppercase font-bold tracking-wider">Scope</p>
             {listField('Tech stack', detail.techStack)}
@@ -1749,7 +1912,8 @@ function SummaryScreen({
   team: { name: string | null; track: string; members: { studentId: string; fullName: string | null }[] };
   preferences: {
     preference1Id: string;
-    preference2Id: string;
+    // Null when the track allowed a single-preference submission.
+    preference2Id: string | null;
     preference1MentorId: string | null;
     preference2MentorId: string | null;
     allocationStatus: 'pending' | 'allocated' | 'needs_review';
@@ -1794,9 +1958,10 @@ function SummaryScreen({
     setLoading(true);
     (async () => {
       try {
+        // A single-preference submission has no second project to fetch.
         const [self, existing] = await Promise.all([
           apiGetProject(preferences.preference1Id),
-          apiGetProject(preferences.preference2Id),
+          preferences.preference2Id ? apiGetProject(preferences.preference2Id) : Promise.resolve(null),
         ]);
         setSelfProject(self);
         setExistingProject(existing);
@@ -1949,12 +2114,15 @@ function SummaryScreen({
                 </button>
               )}
             </div>
-            <div>
-              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">
-                {existingProject?.projectBy === 'STUDENT' ? 'Self Project' : 'Recommended Project'} (Preference 2)
-              </p>
-              <p className="text-white font-semibold">{existingProject?.title}</p>
-            </div>
+            {/* Absent entirely on a single-preference track — not an empty slot. */}
+            {preferences.preference2Id && (
+              <div>
+                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">
+                  {existingProject?.projectBy === 'STUDENT' ? 'Self Project' : 'Recommended Project'} (Preference 2)
+                </p>
+                <p className="text-white font-semibold">{existingProject?.title}</p>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -1977,17 +2145,19 @@ function SummaryScreen({
                 <p className="text-white font-semibold">—</p>
               )}
             </div>
-            <div>
-              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference 2 mentor</p>
-              {mentor2 ? (
-                <div className="flex items-center gap-2">
-                  <MentorAvatar name={mentor2.fullName} selected />
-                  <p className="text-white font-semibold">{mentor2.fullName}</p>
-                </div>
-              ) : (
-                <p className="text-white font-semibold">—</p>
-              )}
-            </div>
+            {preferences.preference2Id && (
+              <div>
+                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference 2 mentor</p>
+                {mentor2 ? (
+                  <div className="flex items-center gap-2">
+                    <MentorAvatar name={mentor2.fullName} selected />
+                    <p className="text-white font-semibold">{mentor2.fullName}</p>
+                  </div>
+                ) : (
+                  <p className="text-white font-semibold">—</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
