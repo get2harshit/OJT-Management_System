@@ -16,6 +16,9 @@ import type {
   SemesterSession,
   TeamWithProject,
   StudentWithoutTeam,
+  TrackSubmissionMode,
+  RecommendedMentor,
+  ProjectPartner,
 } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
 
@@ -78,7 +81,7 @@ interface RawPreferences {
   id: string;
   teamId: string;
   preference1Id: string;
-  preference2Id: string;
+  preference2Id?: string | null;
   preference1MentorId?: string | null;
   preference2MentorId?: string | null;
   allocatedProjectId?: string | null;
@@ -183,6 +186,7 @@ interface RawMyTeamStatus {
   pendingReceivedRequests?: RawReceivedRequest[] | null;
   pendingReceivedRequest?: RawReceivedRequest | null;
   projectPreferences: RawPreferences | null;
+  allowedSubmissionModes?: TrackSubmissionMode[] | null;
 }
 
 interface RawAvailableTeammate {
@@ -244,7 +248,7 @@ function mapPreferences(p: RawPreferences): TeamProjectPreferences {
     id: p.id,
     teamId: p.teamId,
     preference1Id: p.preference1Id,
-    preference2Id: p.preference2Id,
+    preference2Id: p.preference2Id ?? null,
     preference1MentorId: p.preference1MentorId ?? null,
     preference2MentorId: p.preference2MentorId ?? null,
     allocatedProjectId: p.allocatedProjectId ?? null,
@@ -342,6 +346,7 @@ export async function apiGetMyTeamStatus(cohortId: string): Promise<MyTeamStatus
       pendingReceivedRequests: mappedReceivedList,
       pendingReceivedRequest: mappedReceivedList.length > 0 ? mappedReceivedList[0] : null,
       projectPreferences: res.projectPreferences ? mapPreferences(res.projectPreferences) : null,
+      allowedSubmissionModes: res.allowedSubmissionModes ?? [],
     };
   });
 }
@@ -498,6 +503,11 @@ export interface ProjectDetail {
   mustHaveFeatures: string[];
   goodToHaveFeatures: string[];
   referenceDocs?: string;
+  // Hydrated server-side from the mentor ids stored on the project.
+  recommendedMentors?: RecommendedMentor[];
+  creditMapping?: string | null;
+  // Names plus logo URLs resolved from the server's partner list.
+  partners?: ProjectPartner[];
 }
 
 export async function apiGetProjectDetail(cohortId: string, projectId: string): Promise<ProjectDetail> {
@@ -520,16 +530,27 @@ export async function apiGetAvailableMentors(cohortId: string): Promise<TeamAvai
   });
 }
 
+export interface SubmitProjectPreferencesInput {
+  cohortId: string;
+  preference1Id: string;
+  preference1MentorId: string;
+  /** Omitted by the single-preference modes ('1_own' / '1_recommended'). */
+  preference2Id?: string | null;
+  preference2MentorId?: string | null;
+  /** Must be one of the modes the team's track offers. */
+  submissionMode: TrackSubmissionMode;
+}
+
 export async function apiSubmitProjectPreferences(
-  cohortId: string,
-  preference1Id: string,
-  preference2Id: string,
-  preference1MentorId: string,
-  preference2MentorId: string
+  input: SubmitProjectPreferencesInput
 ): Promise<TeamProjectPreferences> {
   const res = await apiFetch<RawPreferences>('/api/v1/teams/projects/preferences', {
     method: 'POST',
-    body: JSON.stringify({ cohortId, preference1Id, preference2Id, preference1MentorId, preference2MentorId }),
+    body: JSON.stringify({
+      ...input,
+      preference2Id: input.preference2Id ?? null,
+      preference2MentorId: input.preference2MentorId ?? null,
+    }),
   });
   invalidateTeamCaches();
   return mapPreferences(res);

@@ -5,7 +5,15 @@ import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import Modal from '../../../components/Modal';
-import type { ApiCohortTrackConfig, TrackEligibilityType, TrackProjectMode, ApiEligibleStudent } from '../../../lib/api/tracks';
+import type {
+  ApiCohortTrackConfig,
+  TrackEligibilityType,
+  TrackProjectMode,
+  TrackSubmissionMode,
+  ApiEligibleStudent,
+  ApiCandidateMentor,
+} from '../../../lib/api/tracks';
+import { SUBMISSION_MODE_LABELS, apiGetTrackCandidateMentors } from '../../../lib/api/tracks';
 import {
   apiGetCohort,
   apiGetCohortTrackConfig,
@@ -74,6 +82,13 @@ export default function CohortTrackConfigPage() {
   // No default — admin must explicitly pick individual/team every time a
   // track is configured for this OJT, same as eligibility type.
   const [formProjectMode, setFormProjectMode] = useState<TrackProjectMode>('team');
+  // Mentors staffing the track(s) being configured, and what teams on them may
+  // submit. Both are required by the backend — a track with no mentor leaves
+  // students facing an empty dropdown at preference time.
+  const [formMentorIds, setFormMentorIds] = useState<Set<string>>(new Set());
+  const [formSubmissionModes, setFormSubmissionModes] = useState<TrackSubmissionMode[]>(['2_recommended']);
+  const [candidateMentors, setCandidateMentors] = useState<ApiCandidateMentor[]>([]);
+  const [mentorsLoading, setMentorsLoading] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
 
   // Manage-students modal (only for 'unique' tracks)
@@ -139,6 +154,9 @@ export default function CohortTrackConfigPage() {
     setFormYears([]);
     setFormBatches([]);
     setFormProjectMode('team');
+    setFormMentorIds(new Set());
+    setFormSubmissionModes(['2_recommended']);
+    setCandidateMentors([]);
     setConfigModalOpen(true);
   };
 
@@ -157,12 +175,62 @@ export default function CohortTrackConfigPage() {
         : []
     );
     setFormProjectMode(config.projectMode);
+    setFormMentorIds(new Set(config.mentors.map(m => m.mentorId)));
+    setFormSubmissionModes(config.allowedSubmissionModes.length ? config.allowedSubmissionModes : ['2_recommended']);
+    setCandidateMentors([]);
     setConfigModalOpen(true);
   };
 
   const toggleFormTrackSlug = (slug: string) => {
     setFormTrackSlugs(prev => (prev.includes(slug) ? prev.filter(s => s !== slug) : [...prev, slug]));
   };
+
+  const toggleFormMentor = (mentorId: string) => {
+    setFormMentorIds(prev => {
+      const next = new Set(prev);
+      if (next.has(mentorId)) next.delete(mentorId);
+      else next.add(mentorId);
+      return next;
+    });
+  };
+
+  const toggleSubmissionMode = (mode: TrackSubmissionMode) => {
+    setFormSubmissionModes(prev => (prev.includes(mode) ? prev.filter(m => m !== mode) : [...prev, mode]));
+  };
+
+  // The mentor roster is the same list for every track — only the
+  // already-assigned/expertise flags differ — so when several tracks are being
+  // configured at once we load the flags for the first one and apply the same
+  // mentors to all of them.
+  const mentorFlagTrackSlug = editingTrackSlug ?? formTrackSlugs[0] ?? null;
+
+  useEffect(() => {
+    if (!configModalOpen || !cohortId || !mentorFlagTrackSlug) {
+      if (configModalOpen && !mentorFlagTrackSlug) setCandidateMentors([]);
+      return;
+    }
+    let cancelled = false;
+    setMentorsLoading(true);
+    apiGetTrackCandidateMentors(cohortId, mentorFlagTrackSlug)
+      .then(rows => {
+        if (cancelled) return;
+        setCandidateMentors(rows);
+        // On a fresh add, pre-tick the mentors whose declared expertise
+        // already covers this track — the admin can still change it.
+        if (!editingTrackSlug) {
+          setFormMentorIds(prev =>
+            prev.size > 0 ? prev : new Set(rows.filter(r => r.hasExpertise).map(r => r.mentorId))
+          );
+        }
+      })
+      .catch(err => showError(err instanceof Error ? err.message : 'Failed to load mentors'))
+      .finally(() => {
+        if (!cancelled) setMentorsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [configModalOpen, cohortId, mentorFlagTrackSlug, editingTrackSlug, showError]);
 
   const handleSaveConfig = async () => {
     if (!cohortId) return;
@@ -172,6 +240,14 @@ export default function CohortTrackConfigPage() {
     }
     if (formEligibilityType === 'batch' && formBatches.length === 0) {
       showError('Pick at least one batch section');
+      return;
+    }
+    if (formMentorIds.size === 0) {
+      showError('Assign at least one mentor — students on this track need someone to pick at project selection.');
+      return;
+    }
+    if (formSubmissionModes.length === 0) {
+      showError('Pick at least one project submission option');
       return;
     }
     setSavingConfig(true);
@@ -200,8 +276,18 @@ export default function CohortTrackConfigPage() {
 
       const eligibilityValue =
         formEligibilityType === 'year' ? formYears.join(',') : formEligibilityType === 'batch' ? formBatches.join(',') : undefined;
+      const mentorIds = Array.from(formMentorIds);
       await Promise.all(
-        trackSlugs.map(slug => apiSetCohortTrackConfig(cohortId, slug, formEligibilityType, eligibilityValue, formProjectMode))
+        trackSlugs.map(slug =>
+          apiSetCohortTrackConfig(cohortId, {
+            trackSlug: slug,
+            eligibilityType: formEligibilityType,
+            eligibilityValue,
+            projectMode: formProjectMode,
+            mentorIds,
+            allowedSubmissionModes: formSubmissionModes,
+          })
+        )
       );
       showSuccess(
         editingTrackSlug
@@ -596,6 +682,83 @@ export default function CohortTrackConfigPage() {
             />
             <p className="text-xs text-gray-500 mt-1">
               This forces the mode for every student on this track, except those already mandated individual by their batch or an admin override — they always stay individual.
+            </p>
+          </div>
+
+          {/* What a team on this track may submit */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">What students can submit</label>
+            <div className="space-y-1.5">
+              {(Object.keys(SUBMISSION_MODE_LABELS) as TrackSubmissionMode[]).map(mode => (
+                <label
+                  key={mode}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 cursor-pointer transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={formSubmissionModes.includes(mode)}
+                    onChange={() => toggleSubmissionMode(mode)}
+                    className="w-4 h-4 accent-gold shrink-0"
+                  />
+                  <span className="text-sm text-gray-200">{SUBMISSION_MODE_LABELS[mode]}</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Pick every option you want to offer — each team chooses one of them when submitting.
+            </p>
+          </div>
+
+          {/* Mentors staffing this track in this OJT */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">
+              Mentors for this track
+              {formMentorIds.size > 0 && <span className="text-gold ml-1">({formMentorIds.size} selected)</span>}
+            </label>
+
+            {!mentorFlagTrackSlug ? (
+              <p className="text-xs text-gray-500 px-3 py-2 rounded-lg bg-zinc-800/50">
+                Pick a track first to choose its mentors.
+              </p>
+            ) : mentorsLoading ? (
+              <p className="text-xs text-gray-500 px-3 py-2">Loading mentors...</p>
+            ) : candidateMentors.length === 0 ? (
+              <p className="text-xs text-amber-400/90 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                No mentors are part of this OJT yet. Add mentors to the OJT before configuring a track.
+              </p>
+            ) : (
+              <div className="max-h-52 overflow-y-auto rounded-lg border border-zinc-800 divide-y divide-zinc-800">
+                {candidateMentors.map(mentor => (
+                  <label
+                    key={mentor.mentorId}
+                    className="flex items-center gap-2.5 px-3 py-2 hover:bg-zinc-800/60 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formMentorIds.has(mentor.mentorId)}
+                      onChange={() => toggleFormMentor(mentor.mentorId)}
+                      className="w-4 h-4 accent-gold shrink-0"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm text-gray-200 truncate">{mentor.fullName ?? '—'}</span>
+                      <span className="block text-xs text-gray-500 truncate">
+                        {mentor.email ?? ''}
+                        {mentor.organization ? ` · ${mentor.organization}` : ''}
+                      </span>
+                    </span>
+                    {mentor.isExternal && (
+                      <span className="text-[10px] uppercase tracking-wide text-gray-500 shrink-0">External</span>
+                    )}
+                    {mentor.hasExpertise && (
+                      <span className="text-[10px] uppercase tracking-wide text-gold/70 shrink-0">Expertise</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-gray-500 mt-1">
+              Only these mentors appear when a team on this track picks its project.
+              {formTrackSlugs.length > 1 && ' The same mentors are assigned to all selected tracks.'}
             </p>
           </div>
 

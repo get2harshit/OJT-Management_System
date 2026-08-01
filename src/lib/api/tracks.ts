@@ -1,4 +1,5 @@
 import { apiFetch, cachedFetch, invalidateCached } from './client';
+import type { TrackSubmissionMode } from '../types';
 
 // Tracks are admin-managed rows now (not a fixed list) — identified across
 // the API by their slug (e.g. "open_source"), same string the old backend
@@ -55,6 +56,33 @@ export interface ApiEligibleStudent {
   batch: string | null;
 }
 
+// Defined alongside MyTeamStatus, which also carries it — re-exported so
+// track-config callers don't need to reach into the types module.
+export type { TrackSubmissionMode } from '../types';
+
+export const SUBMISSION_MODE_LABELS: Record<TrackSubmissionMode, string> = {
+  '1_own': 'Their own project',
+  '1_recommended': 'One recommended project',
+  '2_recommended': 'Two recommended projects',
+  '1_own_1_recommended': 'Their own project + one recommended',
+};
+
+// A mentor staffing this track in this OJT.
+export interface ApiTrackMentor {
+  mentorId: string;
+  fullName: string | null;
+  email: string | null;
+  organization: string | null;
+  isExternal: boolean;
+}
+
+// One row of the track-config mentor picker.
+export interface ApiCandidateMentor extends ApiTrackMentor {
+  alreadyAssigned: boolean;
+  /** Their declared expertise covers this track — used to pre-tick the picker. */
+  hasExpertise: boolean;
+}
+
 export interface ApiCohortTrackConfig {
   trackId: string;
   trackSlug: string;
@@ -62,6 +90,8 @@ export interface ApiCohortTrackConfig {
   eligibilityType: TrackEligibilityType;
   eligibilityValue: string | null;
   projectMode: TrackProjectMode;
+  allowedSubmissionModes: TrackSubmissionMode[];
+  mentors: ApiTrackMentor[];
   eligibleStudents: ApiEligibleStudent[];
 }
 
@@ -72,19 +102,41 @@ export async function apiGetCohortTrackConfig(cohortId: string): Promise<ApiCoho
   return data;
 }
 
+export interface SetCohortTrackConfigInput {
+  trackSlug: string;
+  eligibilityType: TrackEligibilityType;
+  eligibilityValue?: string | null;
+  projectMode: TrackProjectMode;
+  /** At least one — the backend refuses to save a track nobody mentors. */
+  mentorIds: string[];
+  /** At least one. */
+  allowedSubmissionModes: TrackSubmissionMode[];
+}
+
 export async function apiSetCohortTrackConfig(
   cohortId: string,
-  trackSlug: string,
-  eligibilityType: TrackEligibilityType,
-  eligibilityValue: string | null | undefined,
-  projectMode: TrackProjectMode
+  input: SetCohortTrackConfigInput
 ): Promise<ApiCohortTrackConfig> {
   const { data } = await apiFetch<{ data: ApiCohortTrackConfig }>(
     `/api/v1/cohorts/${cohortId}/track-config`,
     {
       method: 'PUT',
-      body: JSON.stringify({ trackSlug, eligibilityType, eligibilityValue: eligibilityValue ?? null, projectMode }),
+      body: JSON.stringify({ ...input, eligibilityValue: input.eligibilityValue ?? null }),
     }
+  );
+  return data;
+}
+
+// The OJT's mentors, flagged for this track's picker. Returned whole — the
+// roster is small and the multi-select needs all of it at once.
+export async function apiGetTrackCandidateMentors(
+  cohortId: string,
+  trackSlug: string,
+  search?: string
+): Promise<ApiCandidateMentor[]> {
+  const query = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : '';
+  const { data } = await apiFetch<{ data: ApiCandidateMentor[] }>(
+    `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}/candidate-mentors${query}`
   );
   return data;
 }

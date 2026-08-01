@@ -1,5 +1,6 @@
 import type { Project, ProjectLevel } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
+import type { RecommendedMentor, ProjectPartner } from '../types';
 
 const PROJECTS_TTL = 15_000;
 
@@ -55,6 +56,9 @@ interface RawFullProject extends RawProject {
   referenceDocs?: string;
   estimatedDuration?: number;
   sourceStartupSchool?: string;
+  recommendedMentors?: RecommendedMentor[];
+  creditMapping?: string | null;
+  partners?: ProjectPartner[];
 }
 
 // The trimmed list endpoint doesn't return created_at (only the single-project
@@ -146,6 +150,9 @@ export interface ProjectCreateInput {
   referenceDocs?: string;
   estimatedDuration?: number;
   sourceStartupSchool?: string;
+  recommendedMentors?: RecommendedMentor[];
+  creditMapping?: string | null;
+  partners?: ProjectPartner[];
 }
 
 // Every field required for the CSV/bulk-import row — matches

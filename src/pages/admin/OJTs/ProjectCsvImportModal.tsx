@@ -93,6 +93,12 @@ const COLUMN_PATTERNS = {
   referenceDocs: ['reference doc', 'reference_docs'],
   estimatedDuration: ['estimated duration', 'estimated_duration'],
   sourceStartupSchool: ['startup school', 'source / startup', 'source_startup'],
+  // Comma-separated mentor names — the backend resolves each one against a
+  // real mentor and rejects the row if any name is unknown.
+  recommendedMentor: ['recommended_mentor', 'recommended mentor', 'recommended mentors'],
+  creditMapping: ['credit_mapping', 'credit mapping', 'credits'],
+  // Comma-separated partner organisation names; logos come from the server.
+  partners: ['partners', 'partner organization', 'partner organisation'],
 } as const;
 
 // Every field the CSV row schema requires on the backend (adminProjectRowSchema)
@@ -118,6 +124,7 @@ const REQUIRED_COLUMNS: Array<{ label: string; patterns: readonly string[] }> = 
   { label: 'Reference Docs', patterns: COLUMN_PATTERNS.referenceDocs },
   { label: 'Estimated Duration', patterns: COLUMN_PATTERNS.estimatedDuration },
   { label: 'Source / Startup School', patterns: COLUMN_PATTERNS.sourceStartupSchool },
+  { label: 'Recommended Mentor', patterns: COLUMN_PATTERNS.recommendedMentor },
 ];
 
 function findColumn(headers: string[], patterns: readonly string[]): number {
@@ -185,6 +192,9 @@ function parseRows(parsed: string[][], tracks: ApiTrack[], forcedTrackSlug?: str
       referenceDocs: cell(cols, col.referenceDocs) || undefined,
       estimatedDuration: parseDurationWeeks(cell(cols, col.estimatedDuration)),
       sourceStartupSchool: cell(cols, col.sourceStartupSchool) || undefined,
+      recommendedMentor: splitList(cell(cols, col.recommendedMentor)),
+      creditMapping: cell(cols, col.creditMapping) || undefined,
+      partners: splitList(cell(cols, col.partners)),
     };
 
     return { rowNumber, project };
