@@ -230,7 +230,7 @@ function ProjectDetail({ project }: { project: Project }) {
           <TagList items={project.recommendedMentors?.map(formatRecommendedMentor)} />
         </ProjectDetailSection>
         <ProjectDetailSection label="Credit Mapping">
-          <p className="text-sm text-gray-300 whitespace-pre-wrap">{project.creditMapping || '-'}</p>
+          <TagList items={project.creditMapping} />
         </ProjectDetailSection>
       </div>
 

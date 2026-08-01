@@ -69,7 +69,7 @@ export interface Project {
   estimatedDuration?: number;   // weeks
   sourceStartupSchool?: string;
   recommendedMentors?: RecommendedMentor[];
-  creditMapping?: string | null;
+  creditMapping?: string[];
   partners?: ProjectPartner[];
 }
 
@@ -468,7 +468,7 @@ export interface TeamProject {
   estimatedDuration?: number;   // weeks
   sourceStartupSchool?: string;
   recommendedMentors?: RecommendedMentor[];
-  creditMapping?: string | null;
+  creditMapping?: string[];
   partners?: ProjectPartner[];
   // True when this project's level matches the browsing team's best member
   // tier (A -> advanced, B -> intermediate, C -> beginner) — a nudge, not a
@@ -506,7 +506,7 @@ export interface ProposeProjectInput {
   estimatedDuration?: number;   // weeks
   sourceStartupSchool?: string;
   recommendedMentors?: RecommendedMentor[];
-  creditMapping?: string | null;
+  creditMapping?: string[];
   partners?: ProjectPartner[];
 }
 

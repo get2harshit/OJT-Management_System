@@ -57,7 +57,7 @@ interface RawFullProject extends RawProject {
   estimatedDuration?: number;
   sourceStartupSchool?: string;
   recommendedMentors?: RecommendedMentor[];
-  creditMapping?: string | null;
+  creditMapping?: string[];
   partners?: ProjectPartner[];
 }
 
@@ -151,7 +151,7 @@ export interface ProjectCreateInput {
   estimatedDuration?: number;
   sourceStartupSchool?: string;
   recommendedMentors?: RecommendedMentor[];
-  creditMapping?: string | null;
+  creditMapping?: string[];
   partners?: ProjectPartner[];
 }
 

@@ -505,7 +505,7 @@ export interface ProjectDetail {
   referenceDocs?: string;
   // Hydrated server-side from the mentor ids stored on the project.
   recommendedMentors?: RecommendedMentor[];
-  creditMapping?: string | null;
+  creditMapping?: string[];
   // Names plus logo URLs resolved from the server's partner list.
   partners?: ProjectPartner[];
 }

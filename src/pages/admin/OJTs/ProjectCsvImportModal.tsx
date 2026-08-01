@@ -193,7 +193,7 @@ function parseRows(parsed: string[][], tracks: ApiTrack[], forcedTrackSlug?: str
       estimatedDuration: parseDurationWeeks(cell(cols, col.estimatedDuration)),
       sourceStartupSchool: cell(cols, col.sourceStartupSchool) || undefined,
       recommendedMentor: splitList(cell(cols, col.recommendedMentor)),
-      creditMapping: cell(cols, col.creditMapping) || undefined,
+      creditMapping: splitList(cell(cols, col.creditMapping)),
       partners: splitList(cell(cols, col.partners)),
     };
 
