@@ -25,8 +25,11 @@ function normalizeTrack(raw: string, tracks: ApiTrack[]): string | null {
   const exact = tracks.find(t => t.slug.toLowerCase() === lower || t.name.toLowerCase() === lower);
   if (exact) return exact.slug;
 
-  const partial = tracks.find(t => t.name.toLowerCase().includes(lower) || lower.includes(t.name.toLowerCase()));
-  return partial ? partial.slug : null;
+  // Only accept a partial match when exactly one track matches. A cell reading
+  // just "dev" matches both "App Dev" and "Product Development", and picking
+  // whichever came first would quietly file the project under the wrong track.
+  const partials = tracks.filter(t => t.name.toLowerCase().includes(lower) || lower.includes(t.name.toLowerCase()));
+  return partials.length === 1 ? partials[0].slug : null;
 }
 
 // The sheet's Level column is a 1-5 difficulty scale (1 = beginner,
@@ -151,6 +154,11 @@ function parseRows(parsed: string[][], tracks: ApiTrack[], forcedTrackSlug?: str
   const col = Object.fromEntries(
     Object.entries(COLUMN_PATTERNS).map(([key, patterns]) => [key, findColumn(headers, patterns)])
   ) as Record<keyof typeof COLUMN_PATTERNS, number>;
+
+  // "Track Classification" also contains "track", so a sheet listing it before
+  // the Track column would otherwise bind col.track to the wrong column and
+  // give every row that cell's free text as its track.
+  col.track = headers.findIndex(h => h.includes('track') && !h.includes('classification'));
 
   const cell = (cols: string[], i: number) => (i !== -1 ? (cols[i]?.trim() ?? '') : '');
 
