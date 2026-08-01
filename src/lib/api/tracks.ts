@@ -129,15 +129,18 @@ export async function apiSetCohortTrackConfig(
 
 // The OJT's mentors, flagged for this track's picker. Returned whole — the
 // roster is small and the multi-select needs all of it at once.
+// trackSlug is null while the admin is naming a track that doesn't exist yet —
+// the roster is identical, only hasExpertise/alreadyAssigned come back false.
 export async function apiGetTrackCandidateMentors(
   cohortId: string,
-  trackSlug: string,
+  trackSlug: string | null,
   search?: string
 ): Promise<ApiCandidateMentor[]> {
   const query = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : '';
-  const { data } = await apiFetch<{ data: ApiCandidateMentor[] }>(
-    `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}/candidate-mentors${query}`
-  );
+  const path = trackSlug
+    ? `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}/candidate-mentors`
+    : `/api/v1/cohorts/${cohortId}/track-config/candidate-mentors`;
+  const { data } = await apiFetch<{ data: ApiCandidateMentor[] }>(`${path}${query}`);
   return data;
 }
 

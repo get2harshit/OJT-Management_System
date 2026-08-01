@@ -204,9 +204,14 @@ export default function CohortTrackConfigPage() {
   // mentors to all of them.
   const mentorFlagTrackSlug = editingTrackSlug ?? formTrackSlugs[0] ?? null;
 
+  // A track being created has no slug yet, but its mentors still have to be
+  // picked here — saving requires at least one. So the roster loads either
+  // way; without a slug it just comes back with no expertise flags.
+  const canPickMentors = !!mentorFlagTrackSlug || (!editingTrackSlug && trackSource === 'new');
+
   useEffect(() => {
-    if (!configModalOpen || !cohortId || !mentorFlagTrackSlug) {
-      if (configModalOpen && !mentorFlagTrackSlug) setCandidateMentors([]);
+    if (!configModalOpen || !cohortId || !canPickMentors) {
+      if (configModalOpen && !canPickMentors) setCandidateMentors([]);
       return;
     }
     let cancelled = false;
@@ -230,7 +235,7 @@ export default function CohortTrackConfigPage() {
     return () => {
       cancelled = true;
     };
-  }, [configModalOpen, cohortId, mentorFlagTrackSlug, editingTrackSlug, showError]);
+  }, [configModalOpen, cohortId, mentorFlagTrackSlug, canPickMentors, editingTrackSlug, showError]);
 
   const handleSaveConfig = async () => {
     if (!cohortId) return;
@@ -716,7 +721,7 @@ export default function CohortTrackConfigPage() {
               {formMentorIds.size > 0 && <span className="text-gold ml-1">({formMentorIds.size} selected)</span>}
             </label>
 
-            {!mentorFlagTrackSlug ? (
+            {!canPickMentors ? (
               <p className="text-xs text-gray-500 px-3 py-2 rounded-lg bg-zinc-800/50">
                 Pick a track first to choose its mentors.
               </p>
