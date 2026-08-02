@@ -117,26 +117,41 @@ const COLUMN_PATTERNS = {
 // — if the header row is missing one of these columns entirely, every row
 // would fail validation for the same reason, so that's surfaced once up
 // front instead of as N identical per-row errors after the request.
+//
+// An admin sheet describes a project completely, so this is every column
+// except the three the backend marks optional: Recommended Mentor (a project
+// can be catalogued before anyone is lined up to mentor it), Credit Mapping
+// and Partners (not every project carries either). Keep this list in step with
+// ADMIN_OPTIONAL_FIELDS in domain/projectFields.ts.
 const REQUIRED_COLUMNS: Array<{ label: string; patterns: readonly string[] }> = [
   { label: 'Title', patterns: ['title'] },
   { label: 'Track', patterns: COLUMN_PATTERNS.track },
+  { label: 'Track Classification', patterns: COLUMN_PATTERNS.trackClassification },
   { label: 'Batch', patterns: COLUMN_PATTERNS.batch },
   { label: 'Project ID (OJTID)', patterns: COLUMN_PATTERNS.projectId },
   { label: 'Course Covered', patterns: COLUMN_PATTERNS.courseCovered },
   { label: 'Problem Statement', patterns: COLUMN_PATTERNS.problemStatement },
   { label: 'Description', patterns: ['description'] },
+  { label: 'Project Description', patterns: COLUMN_PATTERNS.projectDescription },
+  { label: 'End Users Defined', patterns: COLUMN_PATTERNS.endUsersDefined },
   { label: 'Tech Stack', patterns: COLUMN_PATTERNS.techStack },
+  { label: 'Framework', patterns: COLUMN_PATTERNS.framework },
+  { label: 'Suggested Libraries / Tools', patterns: COLUMN_PATTERNS.suggestedLibrariesTools },
   { label: 'Core Learning Goals', patterns: COLUMN_PATTERNS.coreLearningGoals },
+  { label: 'Stretch Goal', patterns: COLUMN_PATTERNS.stretchGoal },
   { label: 'Expected Output', patterns: COLUMN_PATTERNS.expectedOutput },
+  { label: 'First Month Milestones', patterns: COLUMN_PATTERNS.firstMonthMilestones },
+  { label: 'Second Month Milestones', patterns: COLUMN_PATTERNS.secondMonthMilestones },
+  { label: 'Third Month Milestones', patterns: COLUMN_PATTERNS.thirdMonthMilestones },
   { label: 'Industry', patterns: COLUMN_PATTERNS.industry },
   { label: 'Must Have Features', patterns: COLUMN_PATTERNS.mustHaveFeatures },
   { label: 'Good To Have Features', patterns: COLUMN_PATTERNS.goodToHaveFeatures },
   { label: 'Evaluation Metrics', patterns: COLUMN_PATTERNS.evaluationMetrics },
+  { label: 'Level', patterns: COLUMN_PATTERNS.level },
   { label: 'Theme', patterns: COLUMN_PATTERNS.theme },
   { label: 'Reference Docs', patterns: COLUMN_PATTERNS.referenceDocs },
   { label: 'Estimated Duration', patterns: COLUMN_PATTERNS.estimatedDuration },
   { label: 'Source / Startup School', patterns: COLUMN_PATTERNS.sourceStartupSchool },
-  { label: 'Recommended Mentor', patterns: COLUMN_PATTERNS.recommendedMentor },
 ];
 
 function findColumn(headers: string[], patterns: readonly string[]): number {
