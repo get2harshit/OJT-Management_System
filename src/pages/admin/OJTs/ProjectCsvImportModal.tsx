@@ -141,13 +141,12 @@ function findColumn(headers: string[], patterns: readonly string[]): number {
 // may still come back invalid or duplicate, and that's expected — it's
 // reported per-row in the import result instead of blocking the whole file.
 //
-// forcedTrackSlug (set when importing from a single track's page) overrides
-// every row's track with that slug, ignoring the CSV's own track column
-// entirely — so a "Product Development" upload only ever produces
-// product-development projects, regardless of what (if anything) each row's
-// track cell says. This also sidesteps the empty-track-defaulting bug for
-// this flow, since no row is ever left without an explicit track.
-function parseRows(parsed: string[][], tracks: ApiTrack[], forcedTrackSlug?: string): { rowNumber: number; project: Record<string, unknown> }[] {
+// Every row carries the track its own cell names, on both import paths. A
+// track-scoped import used to overwrite that with the page's track, which
+// meant a sheet uploaded on the wrong track's page was silently refiled
+// instead of refused; the backend now checks each row against the scope and
+// rejects the ones that disagree.
+function parseRows(parsed: string[][], tracks: ApiTrack[]): { rowNumber: number; project: Record<string, unknown> }[] {
   const headers = parsed[0].map(h => h.toLowerCase().trim());
   const titleIdx = headers.findIndex(h => h.includes('title') && !h.includes('track'));
   const descriptionIdx = headers.findIndex(h => h.includes('description') && !h.includes('project'));
@@ -174,7 +173,7 @@ function parseRows(parsed: string[][], tracks: ApiTrack[], forcedTrackSlug?: str
     const project: Record<string, unknown> = {
       projectId: cell(cols, col.projectId),
       batch: splitList(cell(cols, col.batch)),
-      track: forcedTrackSlug ?? normalizedTrack ?? trackRaw,
+      track: normalizedTrack ?? trackRaw,
       trackClassification: cell(cols, col.trackClassification) || undefined,
       courseCovered: splitList(cell(cols, col.courseCovered)),
       title: cell(cols, titleIdx),
@@ -248,23 +247,25 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
     if (parsed.length <= 1) return;
 
     const headers = parsed[0].map(h => h.toLowerCase().trim());
-    // A track-scoped import forces the track, so the CSV's Track column is no
-    // longer required — drop it from the required set in that case.
-    const requiredColumns = forcedTrackSlug
-      ? REQUIRED_COLUMNS.filter(c => c.label !== 'Track')
-      : REQUIRED_COLUMNS;
-    const missingColumns = requiredColumns.filter(({ patterns }) => !headers.some(h => patterns.some(p => h.includes(p))));
+    // Track is required on every path, including a track-scoped import: that
+    // import checks each row against the page's track rather than assuming it,
+    // and a sheet with no Track column has nothing to check.
+    const missingColumns = REQUIRED_COLUMNS.filter(({ patterns }) => !headers.some(h => patterns.some(p => h.includes(p))));
     if (missingColumns.length > 0) {
       showError(`CSV is missing required column(s): ${missingColumns.map(c => c.label).join(', ')}`);
       return;
     }
 
-    const rows = parseRows(parsed, tracks, forcedTrackSlug);
+    const rows = parseRows(parsed, tracks);
     setImporting(true);
     setResult(null);
     setErrorMessage(null);
     try {
-      const importResult = await apiCreateProjectsBulk(rows.map(r => r.project) as unknown as ProjectCsvRowInput[], cohortId);
+      const importResult = await apiCreateProjectsBulk(
+        rows.map(r => r.project) as unknown as ProjectCsvRowInput[],
+        cohortId,
+        forcedTrackSlug
+      );
       setResult(importResult);
       if (importResult.added.length > 0 || importResult.updated.length > 0) {
         showSuccess(`${importResult.added.length} project template(s) imported, ${importResult.updated.length} updated.`);
@@ -293,16 +294,13 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
         <div className="space-y-4">
           {forcedTrackSlug && (
             <p className="text-sm text-gold bg-gold/10 border border-gold/20 rounded-lg px-3 py-2">
-              All imported projects will be assigned to the{' '}
+              This import only accepts{' '}
               <span className="font-semibold">{tracks.find(t => t.slug === forcedTrackSlug)?.name ?? forcedTrackSlug}</span>{' '}
-              track — the CSV's own track column (if any) is ignored.
+              projects — every row's Track column must name that track, and rows on any other track are reported and skipped.
             </p>
           )}
           <p className="text-sm text-gray-400">
-            Mandatory fields:{' '}
-            <span className="text-white">
-              {forcedTrackSlug ? REQUIRED_COLUMNS.filter(c => c.label !== 'Track').map(c => c.label).join(', ') : MANDATORY_FIELDS_HINT}
-            </span>
+            Mandatory fields: <span className="text-white">{MANDATORY_FIELDS_HINT}</span>
           </p>
 
           <div>
