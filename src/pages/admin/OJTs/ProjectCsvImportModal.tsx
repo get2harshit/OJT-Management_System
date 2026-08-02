@@ -51,8 +51,17 @@ function normalizeLevel(raw: string): ProjectLevel | undefined {
   return undefined;
 }
 
+// Quote characters left on the edges of a value, stripped. Whoever fills the
+// sheet may write a list as react,next or as "react,next", and an export that
+// double-encodes leaves the quotes in the parsed value either way. Only the
+// leading and trailing ones go, so a value that legitimately contains a quote
+// (5" pipe) keeps it.
+function stripEdgeQuotes(value: string): string {
+  return value.trim().replace(/^"+/, '').replace(/"+$/, '').trim();
+}
+
 function splitList(raw: string): string[] {
-  return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
+  return raw ? raw.split(',').map(stripEdgeQuotes).filter(Boolean) : [];
 }
 
 // The sheet only ever puts a plain number in this cell (weeks) — the
@@ -289,6 +298,19 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
     const missingColumns = REQUIRED_COLUMNS.filter(({ patterns }) => !headers.some(h => patterns.some(p => h.includes(p))));
     const dataRowsCount = Math.max(0, parsed.length - 1);
 
+    // More cells than the header means a comma inside an unquoted cell split
+    // the row — a tech stack written as react,next rather than "react,next".
+    // Everything past the split sits in the wrong column, so the row would
+    // import as convincing nonsense rather than failing. Which cell split
+    // can't be recovered (the commas are indistinguishable from the real
+    // separators), so the row is named and the import stopped instead of
+    // guessed at. Short rows are left alone — trailing empty cells are
+    // routinely dropped on export and mean nothing is wrong.
+    const raggedRows = parsed
+      .slice(1)
+      .map((cols, i) => ({ rowNumber: i + 2, cells: cols.length }))
+      .filter(r => r.cells > headers.length);
+
     let sampleRows: Array<{ title: string; projectId: string; track: string }> = [];
     if (dataRowsCount > 0) {
       const rows = parseRows(parsed.slice(0, 4), tracks);
@@ -302,9 +324,10 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
     return {
       headers,
       missingColumns,
+      raggedRows,
       dataRowsCount,
       sampleRows,
-      isValid: missingColumns.length === 0 && dataRowsCount > 0,
+      isValid: missingColumns.length === 0 && raggedRows.length === 0 && dataRowsCount > 0,
     };
   }, [parsed, tracks]);
 
@@ -521,6 +544,23 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
                             Missing required CSV column(s):
                           </p>
                           <p className="text-red-300 font-mono pl-5">{validation.missingColumns.map(c => c.label).join(', ')}</p>
+                        </div>
+                      ) : validation.raggedRows.length > 0 ? (
+                        <div className="p-3.5 bg-red-500/10 border border-red-500/25 rounded-xl text-xs text-red-400 space-y-1.5">
+                          <p className="font-bold flex items-center gap-1.5 text-sm">
+                            <AlertTriangle size={16} />
+                            {validation.raggedRows.length === 1 ? 'Row' : 'Rows'} with too many columns:
+                          </p>
+                          <p className="text-red-300 font-mono pl-5">
+                            {validation.raggedRows.slice(0, 12).map(r => `Row ${r.rowNumber}`).join(', ')}
+                            {validation.raggedRows.length > 12 && ` +${validation.raggedRows.length - 12} more`}
+                          </p>
+                          <p className="text-red-300/80 pl-5 leading-relaxed">
+                            A cell containing a comma wasn&apos;t wrapped in quotes, so it split into
+                            extra columns and shifted the rest of the row. Write it as{' '}
+                            <span className="font-mono">&quot;react, next&quot;</span> rather than{' '}
+                            <span className="font-mono">react, next</span>.
+                          </p>
                         </div>
                       ) : validation.dataRowsCount === 0 ? (
                         <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-400 flex items-center gap-2">
