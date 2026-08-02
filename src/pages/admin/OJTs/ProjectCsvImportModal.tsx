@@ -127,15 +127,21 @@ const COLUMN_PATTERNS = {
 // can be catalogued before anyone is lined up to mentor it), Credit Mapping
 // and Partners (not every project carries either). Keep this list in step with
 // ADMIN_OPTIONAL_FIELDS in domain/projectFields.ts.
-const REQUIRED_COLUMNS: Array<{ label: string; patterns: readonly string[] }> = [
-  { label: 'Title', patterns: ['title'] },
-  { label: 'Track', patterns: COLUMN_PATTERNS.track },
+//
+// `exclude` mirrors the three columns parseRows resolves with an exclusion.
+// Without it the presence check disagrees with the resolver: a sheet whose only
+// description column is named "Project Description" satisfies a bare
+// `description` pattern, passes preflight, and then fails on every single row
+// because the resolver correctly refused to treat it as the description.
+const REQUIRED_COLUMNS: Array<{ label: string; patterns: readonly string[]; exclude?: string }> = [
+  { label: 'Title', patterns: ['title'], exclude: 'track' },
+  { label: 'Track', patterns: COLUMN_PATTERNS.track, exclude: 'classification' },
   { label: 'Track Classification', patterns: COLUMN_PATTERNS.trackClassification },
   { label: 'Batch', patterns: COLUMN_PATTERNS.batch },
   { label: 'Project ID (OJTID)', patterns: COLUMN_PATTERNS.projectId },
   { label: 'Course Covered', patterns: COLUMN_PATTERNS.courseCovered },
   { label: 'Problem Statement', patterns: COLUMN_PATTERNS.problemStatement },
-  { label: 'Description', patterns: ['description'] },
+  { label: 'Description', patterns: ['description'], exclude: 'project' },
   { label: 'Project Description', patterns: COLUMN_PATTERNS.projectDescription },
   { label: 'End Users Defined', patterns: COLUMN_PATTERNS.endUsersDefined },
   { label: 'Tech Stack', patterns: COLUMN_PATTERNS.techStack },
@@ -314,7 +320,10 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
     // Track is required on every path, including a track-scoped import: that
     // import checks each row against the page's track rather than assuming it,
     // and a sheet with no Track column has nothing to check.
-    const missingColumns = REQUIRED_COLUMNS.filter(({ patterns }) => !headers.some(h => patterns.some(p => h.includes(p))));
+    const missingColumns = REQUIRED_COLUMNS.filter(
+      ({ patterns, exclude }) =>
+        !headers.some(h => patterns.some(p => h.includes(p)) && (!exclude || !h.includes(exclude)))
+    );
     const dataRowsCount = Math.max(0, parsed.length - 1);
 
     // More cells than the header means a comma inside an unquoted cell split
