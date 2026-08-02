@@ -89,7 +89,11 @@ const COLUMN_PATTERNS = {
   endUsersDefined: ['end_users_defined', 'end users defined'],
   techStack: ['tech_stack', 'tech stack', 'techstack'],
   framework: ['framework'],
-  suggestedLibrariesTools: ['suggested librar'],
+  // Both spellings: every other column here accepts the underscored header as
+  // well as the spaced one, and this was the only one that didn't — so a sheet
+  // written consistently in snake_case lost this column silently, with no
+  // error, because the field is optional.
+  suggestedLibrariesTools: ['suggested librar', 'suggested_librar'],
   coreLearningGoals: ['core_learning', 'core learning'],
   stretchGoal: ['stretch'],
   evaluationMetrics: ['evaluation'],
