@@ -45,6 +45,14 @@ export async function apiDeactivateTrack(id: string): Promise<void> {
 
 // ── Per-OJT track configuration ──────────────────────────────────────────────
 
+// Which variant of a track a request is aimed at. Sent as a query param rather
+// than baked into the path so the existing /:trackSlug/... URLs keep working:
+// while a track has one variant the server resolves it, and only a track with
+// several actually needs to be told.
+function variantQuery(configId?: string): string {
+  return configId ? `?configId=${encodeURIComponent(configId)}` : '';
+}
+
 export type TrackEligibilityType = 'year' | 'batch' | 'unique';
 export type TrackProjectMode = 'individual' | 'team';
 
@@ -83,7 +91,14 @@ export interface ApiCandidateMentor extends ApiTrackMentor {
   hasExpertise: boolean;
 }
 
+// One configured *variant* of a track in this OJT. A track can appear in this
+// list more than once — "Product Development, 2024, individual" alongside
+// "Product Development, 2025, team" — so `configId`, not `trackSlug`, is what
+// identifies a row and what every follow-up write must send back.
 export interface ApiCohortTrackConfig {
+  configId: string;
+  /** Admin-facing name for the variant, e.g. "2024 — Individual". */
+  variantLabel: string | null;
   trackId: string;
   trackSlug: string;
   trackName: string;
@@ -104,11 +119,27 @@ export async function apiGetCohortTrackConfig(cohortId: string): Promise<ApiCoho
 
 export interface SetCohortTrackConfigInput {
   trackSlug: string;
+  /**
+   * Which variant to write. Send it to edit that one; omit it to add another
+   * variant to the same track. Omitting it on a track that already has several
+   * is rejected by the server rather than guessed at.
+   */
+  configId?: string;
+  variantLabel?: string | null;
   eligibilityType: TrackEligibilityType;
   eligibilityValue?: string | null;
-  projectMode: TrackProjectMode;
-  /** At least one — the backend refuses to save a track nobody mentors. */
-  mentorIds: string[];
+  /**
+   * Omit to let the server derive it from the eligibility — an individual-only
+   * admission year gets 'individual', everyone else 'team'. Sending a value
+   * always wins.
+   */
+  projectMode?: TrackProjectMode;
+  /**
+   * Omit to leave the track's mentors untouched — which is what the config
+   * form does, since staffing has its own screen (apiSetTrackMentors).
+   * Sending `[]` unassigns everyone, so it must never be sent as a default.
+   */
+  mentorIds?: string[];
   /** At least one. */
   allowedSubmissionModes: TrackSubmissionMode[];
 }
@@ -127,25 +158,82 @@ export async function apiSetCohortTrackConfig(
   return data;
 }
 
-// The OJT's mentors, flagged for this track's picker. Returned whole — the
-// roster is small and the multi-select needs all of it at once.
+export interface CandidateMentorParams {
+  search?: string;
+  /** Internal staff vs external mentors — the backend's is_external. */
+  type?: 'internal' | 'external';
+  page?: number;
+  limit?: number;
+}
+
+export interface CandidateMentorsPage {
+  data: ApiCandidateMentor[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+// The OJT's mentors, flagged for this track's picker. Filtering and paging are
+// the server's job — the roster runs into the hundreds once an OJT carries its
+// external mentors, and slicing that on the client would mean fetching all of
+// it to show twenty.
+//
 // trackSlug is null while the admin is naming a track that doesn't exist yet —
 // the roster is identical, only hasExpertise/alreadyAssigned come back false.
 export async function apiGetTrackCandidateMentors(
   cohortId: string,
   trackSlug: string | null,
-  search?: string
-): Promise<ApiCandidateMentor[]> {
-  const query = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : '';
+  params: CandidateMentorParams = {},
+  configId?: string
+): Promise<CandidateMentorsPage> {
+  const query = new URLSearchParams();
+  if (configId) query.set('configId', configId);
+  if (params.search?.trim()) query.set('search', params.search.trim());
+  if (params.type) query.set('type', params.type);
+  if (params.page) query.set('page', String(params.page));
+  if (params.limit) query.set('limit', String(params.limit));
+  const qs = query.toString();
   const path = trackSlug
     ? `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}/candidate-mentors`
     : `/api/v1/cohorts/${cohortId}/track-config/candidate-mentors`;
-  const { data } = await apiFetch<{ data: ApiCandidateMentor[] }>(`${path}${query}`);
+  return apiFetch<CandidateMentorsPage>(`${path}${qs ? `?${qs}` : ''}`);
+}
+
+/** The mentors currently staffing a track — seeds the picker's ticked state. */
+export async function apiGetTrackMentors(
+  cohortId: string,
+  trackSlug: string,
+  configId?: string
+): Promise<ApiTrackMentor[]> {
+  const { data } = await apiFetch<{ data: ApiTrackMentor[] }>(
+    `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}/mentors${variantQuery(configId)}`
+  );
   return data;
 }
 
-export async function apiRemoveCohortTrackConfig(cohortId: string, trackSlug: string): Promise<void> {
-  await apiFetch<void>(`/api/v1/cohorts/${cohortId}/track-config/${trackSlug}`, { method: 'DELETE' });
+// Replaces the track's mentor set outright, which is what lets the picker
+// remove someone as well as add. The caller must send the complete set, not
+// just the additions.
+export async function apiSetTrackMentors(
+  cohortId: string,
+  trackSlug: string,
+  mentorIds: string[],
+  configId?: string
+): Promise<ApiTrackMentor[]> {
+  const { data } = await apiFetch<{ data: ApiTrackMentor[] }>(
+    `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}/mentors${variantQuery(configId)}`,
+    { method: 'PUT', body: JSON.stringify({ mentorIds }) }
+  );
+  return data;
+}
+
+export async function apiRemoveCohortTrackConfig(
+  cohortId: string,
+  trackSlug: string,
+  configId?: string
+): Promise<void> {
+  await apiFetch<void>(
+    `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}${variantQuery(configId)}`,
+    { method: 'DELETE' }
+  );
 }
 
 export interface AddEligibleStudentsResult {
@@ -156,17 +244,23 @@ export interface AddEligibleStudentsResult {
 export async function apiAddEligibleStudents(
   cohortId: string,
   trackSlug: string,
-  input: { registrationNumbers?: string[]; studentIds?: string[] }
+  input: { registrationNumbers?: string[]; studentIds?: string[] },
+  configId?: string
 ): Promise<AddEligibleStudentsResult> {
   return apiFetch<AddEligibleStudentsResult>(
-    `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}/students`,
+    `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}/students${variantQuery(configId)}`,
     { method: 'POST', body: JSON.stringify(input) }
   );
 }
 
-export async function apiRemoveEligibleStudent(cohortId: string, trackSlug: string, studentId: string): Promise<void> {
+export async function apiRemoveEligibleStudent(
+  cohortId: string,
+  trackSlug: string,
+  studentId: string,
+  configId?: string
+): Promise<void> {
   await apiFetch<void>(
-    `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}/students/${studentId}`,
+    `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}/students/${studentId}${variantQuery(configId)}`,
     { method: 'DELETE' }
   );
 }
@@ -206,9 +300,11 @@ export interface GetCandidateStudentsParams {
 export async function apiGetTrackCandidateStudents(
   cohortId: string,
   trackSlug: string,
-  params: GetCandidateStudentsParams
+  params: GetCandidateStudentsParams,
+  configId?: string
 ): Promise<CandidateStudentsPage> {
   const query = new URLSearchParams();
+  if (configId) query.set('configId', configId);
   query.set('page', String(params.page));
   query.set('limit', String(params.limit));
   if (params.search) query.set('search', params.search);
