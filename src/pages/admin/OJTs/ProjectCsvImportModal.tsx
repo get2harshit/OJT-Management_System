@@ -78,11 +78,11 @@ function parseDurationWeeks(raw: string): number | undefined {
 // don't break the import.
 const COLUMN_PATTERNS = {
   projectId: ['ojtid', 'project_id', 'project id'],
+  // Admission years ("2024", "2025"). A cell that still names a section
+  // ("2025 A") is accepted — the backend reduces it to the year, since every
+  // section of a listed year sees the project.
   batch: ['batch'],
   track: ['track'],
-  // Free-text classification, separate from track eligibility config —
-  // optional, so it's not in REQUIRED_COLUMNS.
-  trackClassification: ['track_classification', 'track classification'],
   courseCovered: ['course_covered', 'course covered'],
   problemStatement: ['problem_statement', 'problem statement'],
   projectDescription: ['project description', 'project_description'],
@@ -112,6 +112,11 @@ const COLUMN_PATTERNS = {
   // Comma-separated mentor names — the backend resolves each one against a
   // real mentor and rejects the row if any name is unknown.
   recommendedMentor: ['recommended_mentor', 'recommended mentor', 'recommended mentors'],
+  // Which mentor the project came from — free text, never resolved against
+  // the roster. Distinct from recommendedMentor above, and the two headers
+  // can't collide: neither string contains the other ("recommended mentor"
+  // does not appear inside "recommended by mentor", or the reverse).
+  recommendedByMentor: ['recommended_by_mentor', 'recommended by mentor'],
   creditMapping: ['credit_mapping', 'credit mapping', 'credits'],
   // Comma-separated partner organisation names; logos come from the server.
   partners: ['partners', 'partner organization', 'partner organisation'],
@@ -123,20 +128,23 @@ const COLUMN_PATTERNS = {
 // front instead of as N identical per-row errors after the request.
 //
 // An admin sheet describes a project completely, so this is every column
-// except the three the backend marks optional: Recommended Mentor (a project
-// can be catalogued before anyone is lined up to mentor it), Credit Mapping
-// and Partners (not every project carries either). Keep this list in step with
-// ADMIN_OPTIONAL_FIELDS in domain/projectFields.ts.
+// except the four the backend marks optional: Recommended Mentor (a project
+// can be catalogued before anyone is lined up to mentor it), Recommended by
+// Mentor (plenty of projects aren't sourced from a mentor at all), Credit
+// Mapping and Partners (not every project carries either). Keep this list in
+// step with ADMIN_OPTIONAL_FIELDS in domain/projectFields.ts.
 //
-// `exclude` mirrors the three columns parseRows resolves with an exclusion.
-// Without it the presence check disagrees with the resolver: a sheet whose only
+// `exclude` mirrors the columns parseRows resolves with an exclusion. Without
+// it the presence check disagrees with the resolver: a sheet whose only
 // description column is named "Project Description" satisfies a bare
 // `description` pattern, passes preflight, and then fails on every single row
 // because the resolver correctly refused to treat it as the description.
+// Track keeps its exclusion even though Track Classification is no longer a
+// field we read — sheets still carry that column, and both sides have to
+// agree on which one is the real Track.
 const REQUIRED_COLUMNS: Array<{ label: string; patterns: readonly string[]; exclude?: string }> = [
   { label: 'Title', patterns: ['title'], exclude: 'track' },
   { label: 'Track', patterns: COLUMN_PATTERNS.track, exclude: 'classification' },
-  { label: 'Track Classification', patterns: COLUMN_PATTERNS.trackClassification },
   { label: 'Batch', patterns: COLUMN_PATTERNS.batch },
   { label: 'Project ID (OJTID)', patterns: COLUMN_PATTERNS.projectId },
   { label: 'Course Covered', patterns: COLUMN_PATTERNS.courseCovered },
@@ -190,7 +198,8 @@ function parseRows(parsed: string[][], tracks: ApiTrack[]): { rowNumber: number;
 
   // "Track Classification" also contains "track", so a sheet listing it before
   // the Track column would otherwise bind col.track to the wrong column and
-  // give every row that cell's free text as its track.
+  // give every row that cell's free text as its track. Still needed after that
+  // column stopped being imported — the sheets have not stopped carrying it.
   col.track = headers.findIndex(h => h.includes('track') && !h.includes('classification'));
 
   const cell = (cols: string[], i: number) => (i !== -1 ? (cols[i]?.trim() ?? '') : '');
@@ -208,7 +217,6 @@ function parseRows(parsed: string[][], tracks: ApiTrack[]): { rowNumber: number;
       projectId: cell(cols, col.projectId),
       batch: splitList(cell(cols, col.batch)),
       track: normalizedTrack ?? trackRaw,
-      trackClassification: cell(cols, col.trackClassification) || undefined,
       courseCovered: splitList(cell(cols, col.courseCovered)),
       title: cell(cols, titleIdx),
       problemStatement: cell(cols, col.problemStatement),
@@ -234,6 +242,7 @@ function parseRows(parsed: string[][], tracks: ApiTrack[]): { rowNumber: number;
       estimatedDuration: parseDurationWeeks(cell(cols, col.estimatedDuration)),
       sourceStartupSchool: cell(cols, col.sourceStartupSchool) || undefined,
       recommendedMentor: splitList(cell(cols, col.recommendedMentor)),
+      recommendedByMentor: cell(cols, col.recommendedByMentor) || undefined,
       creditMapping: splitList(cell(cols, col.creditMapping)),
       partners: splitList(cell(cols, col.partners)),
     };

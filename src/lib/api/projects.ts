@@ -57,6 +57,7 @@ interface RawFullProject extends RawProject {
   estimatedDuration?: number;
   sourceStartupSchool?: string;
   recommendedMentors?: RecommendedMentor[];
+  recommendedByMentor?: string | null;
   creditMapping?: string[];
   partners?: ProjectPartner[];
 }
@@ -125,11 +126,10 @@ export interface ProjectCreateInput {
   title: string;
   description?: string;
   track: string;
-  /** Free-text classification from the CSV import, separate from track config. */
-  trackClassification?: string;
   techStack?: string[];
   problemStatement?: string;
   endUsersDefined?: string;
+  /** Admission years, e.g. ['2024', '2025'] — every section of a listed year. */
   batch?: string[];
   courseCovered?: string[];
   projectDescription?: string;
@@ -151,6 +151,8 @@ export interface ProjectCreateInput {
   estimatedDuration?: number;
   sourceStartupSchool?: string;
   recommendedMentors?: RecommendedMentor[];
+  /** Which mentor the project originated from — free text, never resolved. */
+  recommendedByMentor?: string;
   creditMapping?: string[];
   partners?: ProjectPartner[];
 }
@@ -159,12 +161,14 @@ export interface ProjectCreateInput {
 // domain/projectFields.ts's adminProjectRowSchema on the backend. project_id
 // is supplied by the CSV as-is (e.g. "PST0001") — the backend never
 // generates one for this path, only for student self-proposals.
-// trackClassification stays optional (like level) — it's a free-text
-// CSV-only field, never required.
-export interface ProjectCsvRowInput extends Required<Omit<ProjectCreateInput, 'level' | 'trackClassification'>> {
+// level and recommendedByMentor stay optional: level because the sheet's 1-5
+// scale may be blank, recommendedByMentor because plenty of projects aren't
+// sourced from a mentor at all.
+export interface ProjectCsvRowInput
+  extends Required<Omit<ProjectCreateInput, 'level' | 'recommendedByMentor'>> {
   projectId: string;
   level?: ProjectLevel;
-  trackClassification?: string;
+  recommendedByMentor?: string;
 }
 
 export async function apiCreateProject(body: ProjectCreateInput): Promise<Project> {
