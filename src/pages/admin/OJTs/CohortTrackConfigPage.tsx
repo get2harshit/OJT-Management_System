@@ -76,6 +76,7 @@ export default function CohortTrackConfigPage() {
   // OJT, so the slug alone no longer says which row the form is writing to —
   // without this an edit of the 2025 configuration would overwrite the 2024 one.
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
+  const [formVariantLabel, setFormVariantLabel] = useState('');
   // Only shown when adding (not editing) a track — pick one or more existing
   // not-yet-configured tracks via checkboxes (all get the same eligibility/
   // mode config below), or create a brand new one right here instead of
@@ -179,6 +180,7 @@ export default function CohortTrackConfigPage() {
   const openAddModal = () => {
     setEditingTrackSlug(null);
     setEditingConfigId(null);
+    setFormVariantLabel('');
     setTrackSource('existing');
     setNewTrackName('');
     setFormTrackSlugs([]);
@@ -194,6 +196,7 @@ export default function CohortTrackConfigPage() {
   const openEditModal = (config: ApiCohortTrackConfig) => {
     setEditingTrackSlug(config.trackSlug);
     setEditingConfigId(config.configId);
+    setFormVariantLabel(config.variantLabel ?? '');
     setFormTrackSlugs([config.trackSlug]);
     setFormEligibilityType(config.eligibilityType);
     setFormYears(
@@ -276,6 +279,7 @@ export default function CohortTrackConfigPage() {
             // configuration to the track rather than overwriting the existing
             // one — which is what makes per-batch variants possible at all.
             configId: editingConfigId ?? undefined,
+            variantLabel: formVariantLabel.trim() || null,
             eligibilityType: formEligibilityType,
             eligibilityValue,
             projectMode: formProjectMode || undefined,
@@ -661,6 +665,27 @@ export default function CohortTrackConfigPage() {
               )}
             </div>
           )}
+
+          {/* Only meaningful once a track carries more than one configuration
+              — which is exactly when the rows need telling apart. Optional, and
+              the row falls back to showing the eligibility when it's blank. */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">
+              Label <span className="text-gray-600">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={formVariantLabel}
+              onChange={e => setFormVariantLabel(e.target.value)}
+              placeholder="e.g. 2024 — Individual"
+              maxLength={100}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Names this configuration where the same track is set up more than once. Left blank, its
+              eligibility is shown instead.
+            </p>
+          </div>
 
           <div>
             <label className="block text-sm text-gray-400 mb-1">Who can pick this track</label>
