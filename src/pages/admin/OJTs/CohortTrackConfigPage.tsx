@@ -162,8 +162,15 @@ export default function CohortTrackConfigPage() {
 
   // Where a per-variant sub-page lives. The path still keys on the slug; the
   // variant rides as a query param, which keeps every existing URL valid.
-  const variantPath = (config: ApiCohortTrackConfig, page: string) =>
-    `/admin/dashboard/ojts/${cohortId}/track-config/${config.trackSlug}/${page}?configId=${config.configId}`;
+  //
+  // The param is omitted rather than interpolated blindly: a missing configId
+  // would otherwise become the literal string "undefined" in the URL, travel to
+  // the server as an id, and fail there instead of here. Without it the server
+  // resolves a single-variant track on its own, which is the right fallback.
+  const variantPath = (config: ApiCohortTrackConfig, page: string) => {
+    const base = `/admin/dashboard/ojts/${cohortId}/track-config/${config.trackSlug}/${page}`;
+    return config.configId ? `${base}?configId=${config.configId}` : base;
+  };
 
   // Admission years, derived from this cohort's own batch sections (e.g.
   // "2025 A" -> "2025") rather than any fixed/hardcoded range — so the
@@ -318,6 +325,8 @@ export default function CohortTrackConfigPage() {
       );
       return;
     }
+    // Reached by saving first, so the id comes from the save's response — see
+    // variantPath for why it is never interpolated unchecked.
     const saved = await handleSaveConfig();
     // Several tracks can be configured in one go; the mentor screen handles
     // one at a time, so the rest are reachable from their rows.

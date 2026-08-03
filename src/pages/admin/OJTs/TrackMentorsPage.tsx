@@ -39,7 +39,11 @@ export default function TrackMentorsPage() {
   // in the path doesn't identify one. Absent for a track with a single
   // configuration, which the server resolves on its own.
   const [searchParams] = useSearchParams();
-  const configId = searchParams.get('configId') ?? undefined;
+  // Guarded against the literal strings a bad interpolation produces —
+  // ?configId=undefined must read as "not specified", not as an id.
+  const rawConfigId = searchParams.get('configId');
+  const configId =
+    rawConfigId && rawConfigId !== 'undefined' && rawConfigId !== 'null' ? rawConfigId : undefined;
   const { showSuccess, showError } = useToast();
   const { tracks } = useTracks();
   const trackName = trackSlug ? (tracks.find((t) => t.slug === trackSlug)?.name ?? trackSlug) : '';
