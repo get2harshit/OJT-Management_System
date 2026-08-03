@@ -1,11 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Users, Save, Sparkles } from 'lucide-react';
+import { Users, Save, Sparkles, ClipboardPaste } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
 import Select from '../../../components/Select';
 import type { ApiCandidateMentor } from '../../../lib/api/tracks';
-import { apiGetCohort, apiGetTrackCandidateMentors, apiGetTrackMentors, apiSetTrackMentors } from '../../../lib/api';
+import {
+  apiGetCohort,
+  apiGetTrackCandidateMentors,
+  apiGetTrackMentors,
+  apiSetTrackMentors,
+  apiResolveMentorNames,
+} from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useTracks } from '../../../hooks/useTracks';
 import { useToast } from '../../../toast';
@@ -63,6 +69,8 @@ export default function TrackMentorsPage() {
   // rewrite the roster with what it already was.
   const [initialSelected, setInitialSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [pastedNames, setPastedNames] = useState('');
+  const [resolving, setResolving] = useState(false);
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -165,6 +173,55 @@ export default function TrackMentorsPage() {
   const addedCount = Array.from(selected).filter((id) => !initialSelected.has(id)).length;
   const removedCount = Array.from(initialSelected).filter((id) => !selected.has(id)).length;
 
+  // Paste the catalog's recommended_mentor cell and tick whoever it names,
+  // rather than hunting each one across three pages of a 50-mentor roster.
+  //
+  // Adds to the selection instead of replacing it: an admin may have ticked
+  // people already, and pasting a second list must not undo the first. Nothing
+  // is written here — Save still sends the whole set, so a paste stays a
+  // reviewable change.
+  const handleResolveNames = async () => {
+    if (!cohortId || !pastedNames.trim()) return;
+    setResolving(true);
+    try {
+      const { matched, unmatched } = await apiResolveMentorNames(cohortId, pastedNames);
+
+      const added = matched.filter((m) => !selected.has(m.mentorId)).length;
+      setSelected((prev) => {
+        const next = new Set(prev);
+        matched.forEach((m) => next.add(m.mentorId));
+        return next;
+      });
+
+      if (matched.length > 0) {
+        // Distinguishes matched from newly added — pasting the same list twice
+        // otherwise reads as having done nothing.
+        showSuccess(
+          added === matched.length
+            ? `${added} mentor${added === 1 ? '' : 's'} selected`
+            : `${matched.length} matched, ${added} newly selected`
+        );
+        setPastedNames('');
+      }
+
+      // Said separately and never folded into the count above: selecting some
+      // of a pasted list and staying quiet about the rest looks exactly like
+      // having selected all of it.
+      const notFound = unmatched.filter((u) => u.reason === 'not_found').map((u) => u.name);
+      const ambiguous = unmatched.filter((u) => u.reason === 'ambiguous').map((u) => u.name);
+      if (notFound.length) {
+        showError(`Not on this OJT: ${notFound.join(', ')}`);
+      }
+      if (ambiguous.length) {
+        showError(`More than one mentor is named ${ambiguous.join(', ')} — pick from the list below.`);
+      }
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to match those names');
+    } finally {
+      setResolving(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!cohortId || !trackSlug || !isDirty) return;
     setSaving(true);
@@ -211,6 +268,34 @@ export default function TrackMentorsPage() {
           <Save size={16} />
           {saving ? 'Saving...' : 'Save changes'}
         </button>
+      </div>
+
+      <div className="bg-zinc-850 border border-zinc-750 rounded-xl px-4 py-3 space-y-2">
+        <label className="block text-sm text-gray-400">
+          Paste mentor names <span className="text-gray-600">— comma separated</span>
+        </label>
+        <div className="flex gap-2 flex-wrap">
+          <textarea
+            value={pastedNames}
+            onChange={(e) => setPastedNames(e.target.value)}
+            placeholder="Chennaveer Jogur, Soumen Mukherjee, Navneet Nautiyal"
+            rows={2}
+            className="flex-1 min-w-[260px] px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm resize-y focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
+          />
+          <button
+            onClick={handleResolveNames}
+            disabled={!pastedNames.trim() || resolving}
+            className="self-start flex items-center gap-2 px-4 py-2 bg-zinc-800 border border-zinc-700 text-gray-300 font-medium rounded-lg hover:border-gold hover:text-white transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <ClipboardPaste size={15} />
+            {resolving ? 'Matching...' : 'Select these'}
+          </button>
+        </div>
+        <p className="text-xs text-gray-500">
+          Ticks whoever is named, across every page — casing and extra spaces don't matter. Anything
+          that doesn't match is reported rather than skipped. Nothing is saved until you press Save
+          changes.
+        </p>
       </div>
 
       {selected.size === 0 && (

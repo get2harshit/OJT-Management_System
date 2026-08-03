@@ -428,3 +428,40 @@ export async function apiApplyCatalogProposal(
     { method: 'POST', body: JSON.stringify({ actions }) }
   );
 }
+
+// ── Resolving pasted mentor names ────────────────────────────────────────────
+
+export interface ResolvedMentorName {
+  mentorId: string;
+  fullName: string | null;
+  /** The name as it was written in the pasted text. */
+  inputName: string;
+}
+
+export interface UnresolvedMentorName {
+  name: string;
+  /** 'ambiguous' means two mentors share that name — picking one would be a guess. */
+  reason: 'not_found' | 'ambiguous';
+}
+
+export interface ResolveMentorNamesResult {
+  matched: ResolvedMentorName[];
+  unmatched: UnresolvedMentorName[];
+}
+
+// Turns a pasted list of names into mentor ids. Matched server-side: the
+// picker only holds one page of the OJT's mentors, so matching in the browser
+// would silently miss everyone on a page it hasn't loaded.
+//
+// Resolves only — it selects nothing. The screen adds the result to its
+// selection and the existing Save is still what writes the roster.
+export async function apiResolveMentorNames(
+  cohortId: string,
+  text: string
+): Promise<ResolveMentorNamesResult> {
+  const res = await apiFetch<{ matched: ResolvedMentorName[]; unmatched: UnresolvedMentorName[] }>(
+    `/api/v1/cohorts/${cohortId}/track-config/resolve-mentors`,
+    { method: 'POST', body: JSON.stringify({ text }) }
+  );
+  return { matched: res.matched, unmatched: res.unmatched };
+}
