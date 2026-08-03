@@ -17,6 +17,16 @@ const SIZE_CLASSES: Record<'lg' | 'xl', string> = {
 export default function Modal({ open, onClose, title, children, size = 'lg' }: ModalProps) {
   const ref = useRef<HTMLDivElement>(null);
 
+  // Moving focus into the dialog is an *opening* action, so it belongs in an
+  // effect that only depends on `open`. It used to sit alongside the Escape
+  // listener below, whose deps include `onClose` — and almost every caller
+  // passes an inline arrow, which is a new function on every render. So each
+  // keystroke re-ran the effect and pulled focus out of the field being typed
+  // into, and only the first character ever landed.
+  useEffect(() => {
+    if (open) ref.current?.focus();
+  }, [open]);
+
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
@@ -24,10 +34,7 @@ export default function Modal({ open, onClose, title, children, size = 'lg' }: M
         onClose();
       }
     }
-    if (open) {
-      window.addEventListener('keydown', handleKey);
-      ref.current?.focus();
-    }
+    if (open) window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [open, onClose]);
 

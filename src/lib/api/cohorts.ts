@@ -89,16 +89,21 @@ interface GetCohortProjectsPageParams {
   search?: string;
   /** Track slug, e.g. "gen_ai". */
   track?: string;
+  /** Catalog id, matched as a prefix — "PST_ADS" narrows to that block. */
+  projectId?: string;
 }
 
 // Same project list as apiGetProjectsForCohort, but server-paginated with
-// optional search/track filters, for the cohort detail page.
+// optional search/track/project-id filters, for the cohort detail page.
+// Every filter is applied by the server: the page only ever holds the rows it
+// is showing, so narrowing the list never means fetching the catalog first.
 export async function apiGetProjectsForCohortPage(cohortId: string, params: GetCohortProjectsPageParams): Promise<CohortProjectsPage> {
   const query = new URLSearchParams();
   query.set('page', String(params.page));
   query.set('limit', String(params.limit));
   if (params.search) query.set('search', params.search);
   if (params.track) query.set('track', params.track);
+  if (params.projectId) query.set('projectId', params.projectId);
   const res = await apiFetch<{ success: boolean; data: RawCohortProject[]; pagination: CohortProjectsPage['pagination'] }>(
     `/api/v1/cohorts/${cohortId}/projects?${query.toString()}`
   );

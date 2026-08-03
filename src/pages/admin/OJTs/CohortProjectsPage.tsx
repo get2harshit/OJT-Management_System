@@ -4,6 +4,7 @@ import { Upload, Trash2 } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
+import Select from '../../../components/Select';
 import ProjectCsvImportModal from './ProjectCsvImportModal';
 import type { Project, ProjectPartner, RecommendedMentor } from '../../../lib/types';
 import { getTrackColor } from '../../../lib/constants';
@@ -16,6 +17,11 @@ import { useTracks } from '../../../hooks/useTracks';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
+
+// A catalog this size is routinely reviewed in bulk — an admin checking what a
+// CSV actually imported wants the whole track on one screen, not nine pages of
+// it. The server caps `limit` at the largest value here.
+const PAGE_SIZE_OPTIONS = [20, 40, 80, 100, 500, 1000];
 
 // The projects already uploaded/linked to this cohort — CSV import is the
 // only way projects get here now (see ProjectCsvImportModal's cohortId
@@ -37,15 +43,39 @@ export default function CohortProjectsPage() {
   const [cohortLabel, setCohortLabel] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const [search, setSearch] = useState('');
+  // On the track-scoped route the track is fixed by the URL and this filter is
+  // hidden, so it stays empty there and trackSlug wins below.
+  const [trackFilter, setTrackFilter] = useState('');
+  // Two states for one field: what the box shows (updated on every keystroke,
+  // so typing stays responsive) and what the request uses (debounced). Without
+  // the first, "Clear filters" would reset the query but leave the old text
+  // sitting in the box.
+  const [projectIdInput, setProjectIdInput] = useState('');
+  const [projectIdFilter, setProjectIdFilter] = useState('');
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
   const [projectCsvModalOpen, setProjectCsvModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
-  const fetchPage = useCallback(async (targetPage: number, searchTerm: string) => {
+  const fetchPage = useCallback(async (
+    targetPage: number,
+    targetLimit: number,
+    searchTerm: string,
+    track: string,
+    projectId: string,
+  ) => {
     if (!cohortId) return;
     try {
-      const res = await apiGetProjectsForCohortPage(cohortId, { page: targetPage, limit: PAGE_SIZE, search: searchTerm || undefined, track: trackSlug || undefined });
+      const res = await apiGetProjectsForCohortPage(cohortId, {
+        page: targetPage,
+        limit: targetLimit,
+        search: searchTerm || undefined,
+        // The route's track is not a default the user can override — it scopes
+        // the whole page — so it takes precedence over the dropdown.
+        track: trackSlug || track || undefined,
+        projectId: projectId || undefined,
+      });
       setProjects(res.data);
       setPagination(res.pagination);
     } catch (err: unknown) {
@@ -66,15 +96,17 @@ export default function CohortProjectsPage() {
   }, [loadCohortLabel]);
 
   useEffect(() => {
-    fetchPage(page, search).catch(() => {});
-  }, [page, search, fetchPage]);
+    fetchPage(page, limit, search, trackFilter, projectIdFilter).catch(() => {});
+  }, [page, limit, search, trackFilter, projectIdFilter, fetchPage]);
 
   usePageRefresh(useCallback(
-    () => Promise.all([loadCohortLabel(), fetchPage(page, search)]),
-    [loadCohortLabel, fetchPage, page, search]
+    () => Promise.all([loadCohortLabel(), fetchPage(page, limit, search, trackFilter, projectIdFilter)]),
+    [loadCohortLabel, fetchPage, page, limit, search, trackFilter, projectIdFilter]
   ));
 
-  // Debounce search input so every keystroke doesn't fire a request.
+  // Debounce the free-text inputs so every keystroke doesn't fire a request.
+  // Both reset to page 1: staying on page 7 of a list that just shrank to two
+  // pages would show an empty table and read as "no results".
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleSearchChange = (value: string) => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -84,8 +116,39 @@ export default function CohortProjectsPage() {
     }, SEARCH_DEBOUNCE_MS);
   };
 
+  const projectIdDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const handleProjectIdChange = (value: string) => {
+    setProjectIdInput(value);
+    if (projectIdDebounceRef.current) clearTimeout(projectIdDebounceRef.current);
+    projectIdDebounceRef.current = setTimeout(() => {
+      setPage(1);
+      setProjectIdFilter(value.trim());
+    }, SEARCH_DEBOUNCE_MS);
+  };
+
+  const handleClearFilters = () => {
+    // The pending debounce would otherwise fire after this and put the old
+    // text straight back into the query.
+    if (projectIdDebounceRef.current) clearTimeout(projectIdDebounceRef.current);
+    setPage(1);
+    setTrackFilter('');
+    setProjectIdInput('');
+    setProjectIdFilter('');
+  };
+
+  const handleTrackChange = (value: string) => {
+    setPage(1);
+    setTrackFilter(value);
+  };
+
+  const handleLimitChange = (value: number) => {
+    setPage(1);
+    setLimit(value);
+  };
+
   const handleImportSuccess = () => {
-    fetchPage(1, search);
+    setPage(1);
+    fetchPage(1, limit, search, trackFilter, projectIdFilter);
   };
 
   const handleDeleteProject = async (id: string) => {
@@ -97,7 +160,7 @@ export default function CohortProjectsPage() {
     });
     if (!confirmDelete) return;
     await apiDeleteProject(id);
-    await fetchPage(page, search);
+    await fetchPage(page, limit, search, trackFilter, projectIdFilter);
   };
 
   return (
@@ -117,6 +180,47 @@ export default function CohortProjectsPage() {
             <Upload size={16} />
             Upload Projects CSV
           </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Hidden on the track-scoped route, where the URL already fixes the
+              track and a second control would only contradict it. */}
+          {!trackSlug && (
+            <div className="w-full sm:w-56">
+              <Select
+                value={trackFilter}
+                onChange={handleTrackChange}
+                variant="filter"
+                options={[
+                  { value: '', label: 'All tracks' },
+                  ...tracks.map(t => ({ value: t.slug, label: t.name })),
+                ]}
+                placeholder="All tracks"
+              />
+            </div>
+          )}
+
+          <input
+            type="text"
+            value={projectIdInput}
+            onChange={(e) => handleProjectIdChange(e.target.value)}
+            placeholder="Filter by Project ID…"
+            aria-label="Filter by Project ID"
+            className="w-full sm:w-56 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold placeholder-gray-600 font-mono"
+          />
+
+          {(trackFilter || projectIdInput) && (
+            <button
+              onClick={handleClearFilters}
+              className="text-xs text-gray-400 hover:text-gold transition-colors"
+            >
+              Clear filters
+            </button>
+          )}
+
+          <span className="text-xs text-gray-500 ml-auto">
+            {pagination.total} project{pagination.total === 1 ? '' : 's'}
+          </span>
         </div>
 
         <DataTable
@@ -146,6 +250,8 @@ export default function CohortProjectsPage() {
             total: pagination.total,
             totalPages: pagination.totalPages,
             onPageChange: setPage,
+            limitOptions: PAGE_SIZE_OPTIONS,
+            onLimitChange: handleLimitChange,
           }}
           onSearchChange={handleSearchChange}
           onRowClick={(row) => setSelectedProject(row)}

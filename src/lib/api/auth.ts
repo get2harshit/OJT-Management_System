@@ -23,6 +23,20 @@ export async function apiSignIn(
   });
 }
 
+// Second half of the Google redirect. Supabase hands the session to the
+// browser, never to our backend, so the browser has to pass it on — the
+// backend verifies it with Supabase before trusting anything on it, and only
+// then issues the same session cookies the password flow uses.
+export async function apiGoogleSignIn(
+  accessToken: string,
+  refreshToken: string,
+): Promise<AuthResult> {
+  return apiFetch<AuthResult>('/api/v1/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ accessToken, refreshToken }),
+  });
+}
+
 export async function apiSignOut(): Promise<void> {
   return apiFetch<void>('/api/v1/auth/signout', {
     method: 'POST',
