@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Settings2, Plus, Pencil, Trash2, Users, X, UserPlus, ArrowRight } from 'lucide-react';
+import { Settings2, Plus, Pencil, Trash2, Users, X, UserPlus, ArrowRight, FileSpreadsheet } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
@@ -458,6 +458,16 @@ export default function CohortTrackConfigPage() {
       ) : (
         <div className="space-y-4">
           <div className="flex justify-end">
+            {/* Configuring a track per batch by hand is a dozen trips through
+                the form for a catalog that already says most of it. */}
+            <button
+              onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/track-config-from-catalog`)}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 border border-zinc-700 text-gray-300 font-medium rounded-lg hover:border-gold hover:text-white transition-colors text-sm"
+              title="See what the imported project catalog says this OJT's configuration should be"
+            >
+              <FileSpreadsheet size={16} />
+              From catalog
+            </button>
             <button
               onClick={openAddModal}
               disabled={addableTracks.length === 0}

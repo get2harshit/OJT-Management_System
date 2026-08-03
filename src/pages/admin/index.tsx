@@ -21,6 +21,7 @@ import CohortAllocationsPage from './OJTs/CohortAllocationsPage';
 import CohortTrackConfigPage from './OJTs/CohortTrackConfigPage';
 import TrackEligibleStudentsPage from './OJTs/TrackEligibleStudentsPage';
 import TrackMentorsPage from './OJTs/TrackMentorsPage';
+import CatalogProposalPage from './OJTs/CatalogProposalPage';
 import AllocationBlueprintPage from './OJTs/AllocationBlueprintPage';
 import EvaluationBlueprintPage from './OJTs/EvaluationBlueprintPage';
 import CohortEvaluationSummaryPage from './OJTs/CohortEvaluationSummaryPage';
@@ -146,6 +147,9 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route path="ojts/:cohortId/track-config" element={<CohortTrackConfigPage />} />
         <Route path="ojts/:cohortId/track-config/:trackSlug/students" element={<TrackEligibleStudentsPage />} />
         <Route path="ojts/:cohortId/track-config/:trackSlug/mentors" element={<TrackMentorsPage />} />
+        {/* Registered before the :trackSlug routes above would ever match it —
+            "catalog-proposal" is a page, not a track. */}
+        <Route path="ojts/:cohortId/track-config-from-catalog" element={<CatalogProposalPage />} />
         <Route path="ojts/:cohortId/blueprint" element={<AllocationBlueprintPage />} />
         <Route path="ojts/:cohortId/evaluation/:configId" element={<EvaluationBlueprintPage />} />
         <Route path="ojts/:cohortId/evaluation-summary" element={<CohortEvaluationSummaryPage />} />

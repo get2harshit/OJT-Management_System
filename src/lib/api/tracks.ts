@@ -333,3 +333,98 @@ export async function apiGetAvailableTracks(cohortId: string): Promise<ApiAvaila
   );
   return data;
 }
+
+// ── Configuration proposed from the project catalog ──────────────────────────
+
+export interface ProposalMentor {
+  mentorId: string;
+  fullName: string | null;
+}
+
+// What the catalog says this OJT's configuration should look like, against how
+// it is set up now. Read-only until the admin picks from it — the catalog
+// carries no project mode or submission options, so it can suggest a
+// configuration but never be one.
+export type CatalogProposal =
+  // Projects exist for an admission year no configuration covers.
+  | {
+      kind: 'missing_variant';
+      trackId: string;
+      trackName: string;
+      year: string;
+      projectCount: number;
+      mentorIds: string[];
+      mentors: ProposalMentor[];
+    }
+  // A configuration exists but its mentors differ from the catalog's.
+  | {
+      kind: 'roster_differs';
+      configId: string;
+      trackId: string;
+      trackName: string;
+      variantLabel: string | null;
+      years: string[];
+      projectCount: number;
+      toAdd: string[];
+      toRemove: string[];
+      mentorsToAdd: ProposalMentor[];
+      mentorsToRemove: ProposalMentor[];
+    }
+  | {
+      kind: 'in_sync';
+      configId: string;
+      trackId: string;
+      trackName: string;
+      variantLabel: string | null;
+      years: string[];
+      projectCount: number;
+    }
+  // A configuration no catalog project speaks to. Reported, never proposed for
+  // removal — an empty catalog is usually an un-uploaded sheet.
+  | {
+      kind: 'no_catalog_projects';
+      configId: string;
+      trackId: string;
+      trackName: string;
+      variantLabel: string | null;
+      eligibilityType: TrackEligibilityType;
+      eligibilityValue: string | null;
+    };
+
+export interface CatalogProposalResult {
+  proposals: CatalogProposal[];
+  catalogProjectCount: number;
+}
+
+export async function apiGetCatalogProposal(cohortId: string): Promise<CatalogProposalResult> {
+  const res = await apiFetch<{ proposals: CatalogProposal[]; catalogProjectCount: number }>(
+    `/api/v1/cohorts/${cohortId}/track-config/catalog-proposal`
+  );
+  return { proposals: res.proposals, catalogProjectCount: res.catalogProjectCount };
+}
+
+// Actions only identify a change; the server recomputes the proposal before
+// applying, so a screen left open can't write a roster the catalog no longer
+// says.
+export type ApplyCatalogAction =
+  | { kind: 'create'; trackId: string; year: string }
+  | { kind: 'sync_roster'; configId: string };
+
+export interface ApplyCatalogResult {
+  created: number;
+  rostersUpdated: number;
+  /** Changes that were no longer proposed by the time the server recomputed. */
+  skipped: string[];
+  /** Recommended mentors left out because they are not on this OJT. */
+  droppedMentors: string[];
+}
+
+export async function apiApplyCatalogProposal(
+  cohortId: string,
+  actions: ApplyCatalogAction[]
+): Promise<ApplyCatalogResult> {
+  return apiFetch<ApplyCatalogResult>(
+    `/api/v1/cohorts/${cohortId}/track-config/catalog-proposal/apply`,
+    { method: 'POST', body: JSON.stringify({ actions }) }
+  );
+}
