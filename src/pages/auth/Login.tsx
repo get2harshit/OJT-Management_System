@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, GraduationCap, User, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/useAuth';
 import { apiForgotPassword } from '../../lib/api';
+import { consumeGoogleRedirect, isGoogleSignInConfigured, startGoogleSignIn } from '../../lib/googleAuth';
 import type { ApiUserRole } from '../../lib/types';
 import { useToast } from '../../toast';
 
@@ -28,6 +29,20 @@ const signupRoles: { value: ApiUserRole; label: string; icon: typeof Shield }[] 
   { value: 'mentor', label: 'Mentor', icon: GraduationCap },
   { value: 'student', label: 'Student', icon: User },
 ];
+
+// Google's brand mark, inline rather than from an icon set: the four-colour
+// logo is required by their branding guidelines, and lucide only ships
+// single-colour glyphs.
+function GoogleMark() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-2.8-.4-4H24v7.3h12.1c-.2 2-1.6 5-4.5 7l-.1.3 6.5 5 .5.1c4.1-3.8 6.6-9.4 6.6-15.7" />
+      <path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.3l-6.9-5.4c-1.8 1.3-4.3 2.2-7.6 2.2-5.8 0-10.7-3.8-12.5-9.1l-.3.1-6.8 5.2-.1.3C7.9 41 15.4 46 24 46" />
+      <path fill="#FBBC05" d="M11.5 28.4c-.5-1.4-.7-2.9-.7-4.4s.3-3 .7-4.4v-.3l-6.9-5.3-.2.1C2.9 17 2 20.4 2 24s.9 7 2.4 10z" />
+      <path fill="#EA4335" d="M24 10.2c4.1 0 6.9 1.8 8.5 3.3l6.2-6C34.9 4 29.9 2 24 2 15.4 2 7.9 7 4.4 14l7.1 5.5c1.8-5.3 6.7-9.3 12.5-9.3" />
+    </svg>
+  );
+}
 
 interface PasswordFieldProps {
   label: string;
@@ -64,7 +79,7 @@ function PasswordField({ label, value, onChange, placeholder, show, onToggle }: 
 }
 
 export default function Login() {
-  const { user, login, signup } = useAuth();
+  const { user, login, signup, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
 
@@ -78,12 +93,40 @@ export default function Login() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Distinct from `submitting`: this covers the moment between landing back
+  // from Google and the session being accepted, during which the form must
+  // not look idle and invite a second sign-in attempt.
+  const [finishingGoogle, setFinishingGoogle] = useState(() => window.location.hash.includes('access_token'));
 
   useEffect(() => {
     if (user) {
       navigate(dashboardPathForRole(user.role), { replace: true });
     }
   }, [user, navigate]);
+
+  // Google hands the session back in the URL fragment. Consuming it here —
+  // rather than on a dedicated callback route — keeps Supabase's redirect
+  // allow-list down to the site origin, and this page is where an error has
+  // to be shown anyway.
+  useEffect(() => {
+    const redirect = consumeGoogleRedirect();
+    if (!redirect) {
+      setFinishingGoogle(false);
+      return;
+    }
+    if (redirect.error || !redirect.session) {
+      setFinishingGoogle(false);
+      showError(redirect.error ?? 'Google sign-in failed. Please try again.');
+      return;
+    }
+    const { accessToken, refreshToken } = redirect.session;
+    loginWithGoogle(accessToken, refreshToken)
+      .then((authUser) => showSuccess(`Logged in as ${authUser.role}`))
+      .catch((err: unknown) =>
+        showError(err instanceof Error ? err.message : 'Google sign-in failed.')
+      )
+      .finally(() => setFinishingGoogle(false));
+  }, [loginWithGoogle, showError, showSuccess]);
 
   const resetForm = () => {
     setName(''); setEmail(''); setPassword(''); setConfirmPassword('');
@@ -164,6 +207,26 @@ export default function Login() {
             {/* ── LOGIN VIEW ── */}
             {view === 'login' && (
               <>
+                {isGoogleSignInConfigured && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={startGoogleSignIn}
+                      disabled={submitting || finishingGoogle}
+                      className="w-full py-2.5 bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-gray-800 font-bold rounded-lg transition-all text-xs flex items-center justify-center gap-2.5 shadow-sm"
+                    >
+                      <GoogleMark />
+                      {finishingGoogle ? 'Signing you in…' : 'Continue with Google'}
+                    </button>
+
+                    <div className="flex items-center gap-3">
+                      <span className="h-px flex-1 bg-login-border" />
+                      <span className="text-[10px] uppercase tracking-wider text-gray-500">or</span>
+                      <span className="h-px flex-1 bg-login-border" />
+                    </div>
+                  </>
+                )}
+
                 <form onSubmit={handleSubmit} className="space-y-3">
                   <div>
                     <label className="block text-gray-400 text-xs mb-1">Email address</label>
