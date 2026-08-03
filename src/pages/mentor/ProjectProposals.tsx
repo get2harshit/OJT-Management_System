@@ -117,26 +117,36 @@ export default function ProjectProposals() {
           <p className="text-gray-400">No proposals waiting on your review right now.</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {proposals.map((proposal) => (
             <button
               key={proposal.preferenceId}
               onClick={() => setSelected(proposal)}
-              className="w-full flex items-center justify-between gap-4 bg-zinc-850 border border-zinc-750 rounded-xl px-5 py-4 text-left hover:border-gold/30 hover:bg-zinc-800 transition-colors"
+              className="w-full flex items-center justify-between gap-4 bg-zinc-850 border border-zinc-750 rounded-xl p-5 text-left hover:border-gold/50 hover:bg-zinc-800 transition-all duration-200 shadow-sm group"
             >
-              <div className="min-w-0 space-y-1">
+              <div className="min-w-0 space-y-2 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-white font-semibold truncate">{proposal.project.title}</p>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-gold/10 text-gold font-semibold uppercase tracking-wider shrink-0">
+                  <p className="text-white font-bold text-base group-hover:text-gold transition-colors truncate">{proposal.project.title}</p>
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-gold/15 text-gold border border-gold/30 font-bold uppercase tracking-wider shrink-0">
                     {proposal.track}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5 text-gray-400 text-xs">
-                  <Users size={13} />
-                  {proposal.members.map((m) => m.fullName ?? 'Unknown').join(', ')}
+                <div className="flex items-center gap-4 text-gray-400 text-xs flex-wrap">
+                  <div className="flex items-center gap-1.5 text-gray-300">
+                    <Users size={14} className="text-gold shrink-0" />
+                    <span>{proposal.members.map((m) => m.fullName ?? 'Unknown').join(', ')}</span>
+                  </div>
+                  {proposal.submittedAt && (
+                    <span className="text-gray-500">Submitted: {new Date(proposal.submittedAt).toLocaleDateString()}</span>
+                  )}
                 </div>
               </div>
-              <ChevronRight size={18} className="text-gray-500 shrink-0" />
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs font-semibold text-gold bg-gold/10 px-3 py-1 rounded-lg border border-gold/20 group-hover:bg-gold group-hover:text-black transition-all">
+                  Review Proposal
+                </span>
+                <ChevronRight size={18} className="text-gray-500 group-hover:text-gold transition-colors shrink-0" />
+              </div>
             </button>
           ))}
         </div>

@@ -125,15 +125,15 @@ export default function StudentTasks({
             render: (row) => {
               const statusConfig: Record<TaskFilter, { bg: string; text: string; label: string; icon?: React.ReactNode }> = {
                 ALL: { bg: '', text: '', label: '' },
-                COMPLETED: { bg: 'bg-green-500/10 border-green-500/20', text: 'text-green-400', label: 'Approved', icon: <CheckCircle2 size={12} /> },
-                IN_REVIEW: { bg: 'bg-yellow-500/10 border-yellow-500/20', text: 'text-yellow-400', label: 'In Review', icon: <Clock size={12} /> },
-                RESUBMIT: { bg: 'bg-orange-500/10 border-orange-500/20', text: 'text-orange-400', label: 'Resubmit', icon: <RotateCcw size={12} /> },
-                MISSED: { bg: 'bg-red-500/10 border-red-500/20', text: 'text-red-400', label: 'Missed', icon: <AlertTriangle size={12} /> },
-                UPCOMING: { bg: 'bg-gray-500/10 border-gray-500/20', text: 'text-gray-400', label: 'Upcoming' },
+                COMPLETED: { bg: 'bg-green-500/10 border-green-500/30', text: 'text-green-400', label: 'Submitted', icon: <CheckCircle2 size={12} /> },
+                IN_REVIEW: { bg: 'bg-gold/15 border-gold/30', text: 'text-gold', label: 'In Review', icon: <Clock size={12} /> },
+                RESUBMIT: { bg: 'bg-amber-500/10 border-amber-500/30', text: 'text-amber-400', label: 'Resubmit', icon: <RotateCcw size={12} /> },
+                MISSED: { bg: 'bg-red-500/10 border-red-500/30', text: 'text-red-400', label: 'Overdue', icon: <AlertTriangle size={12} /> },
+                UPCOMING: { bg: 'bg-zinc-800 border-zinc-700', text: 'text-gray-300', label: 'Upcoming' },
               };
               const cfg = statusConfig[row.status as TaskFilter] ?? statusConfig.UPCOMING;
               return (
-                <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.text}`}>
+                <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border font-semibold ${cfg.bg} ${cfg.text}`}>
                   {cfg.icon}
                   {cfg.label}
                 </span>

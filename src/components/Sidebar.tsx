@@ -14,6 +14,8 @@ import {
   Award,
   ClipboardCheck,
   X,
+  Pin,
+  PinOff,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
 
@@ -24,6 +26,8 @@ interface SidebarProps {
   onLogout?: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  isPinned?: boolean;
+  onTogglePin?: () => void;
 }
 
 const adminTabs = [
@@ -59,19 +63,21 @@ const studentTabs = [
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
 ];
 
-export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobileOpen, onCloseMobile }: SidebarProps) {
-  // Desktop: the bar rests as a 16-wide icon rail and expands to its full
-  // 64 width only while the pointer is over it — a temporary flyout that
-  // overlays the content (which stays pinned at lg:ml-16), never shifting it.
-  // Below lg this state is inert: the responsive classes it drives are all
-  // lg:-prefixed, and the bar is a full-width off-canvas drawer there.
+export default function Sidebar({
+  panel,
+  activeTab,
+  onTabChange,
+  onLogout,
+  mobileOpen,
+  onCloseMobile,
+  isPinned = false,
+  onTogglePin,
+}: SidebarProps) {
   const [hovered, setHovered] = useState(false);
 
-  let user = null;
   let logout: (() => Promise<void>) | null = null;
   try {
     const auth = useAuth();
-    user = auth.user;
     logout = auth.logout;
   } catch {
     // AuthProvider not present
@@ -87,31 +93,45 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
       panel === 'mentor' ? 'Mentor' :
         'Student';
 
-  // On desktop, the expanded (labelled) look is driven purely by hover.
-  const labelHidden = hovered ? '' : 'lg:hidden';
-  const railCenter = hovered ? '' : 'lg:justify-center';
+  const isExpanded = isPinned || hovered;
+  const labelHidden = isExpanded ? '' : 'lg:hidden';
+  const railCenter = isExpanded ? '' : 'lg:justify-center';
 
   return (
     <aside
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-zinc-850 border-r border-zinc-750 transition-all duration-300 w-64 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 ${hovered ? 'lg:w-64 lg:shadow-2xl lg:shadow-black/50' : 'lg:w-16'
-        }`}
+      className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-zinc-850 border-r border-zinc-750 transition-all duration-300 w-64 ${
+        mobileOpen ? 'translate-x-0' : '-translate-x-full'
+      } lg:translate-x-0 ${
+        isExpanded ? 'lg:w-64' : 'lg:w-16'
+      } ${!isPinned && hovered ? 'lg:shadow-2xl lg:shadow-black/50' : ''}`}
     >
-      <div className="flex items-center justify-between h-16 px-4 border-b border-zinc-750">
-        <span className={`text-lg font-bold text-gold tracking-wider uppercase whitespace-nowrap ${labelHidden}`}>
+      <div className={`flex items-center h-16 px-3.5 border-b border-zinc-750 shrink-0 ${isExpanded ? 'justify-between' : 'justify-center'}`}>
+        <span className={`text-lg font-bold text-gold tracking-wider uppercase whitespace-nowrap overflow-hidden transition-all duration-200 ${labelHidden}`}>
           {panelLabel}
         </span>
-        <button
-          onClick={onCloseMobile}
-          className="lg:hidden p-1 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
-        >
-          <X size={18} />
-        </button>
+        <div className="flex items-center gap-1">
+          {onTogglePin && (
+            <button
+              type="button"
+              onClick={onTogglePin}
+              title={isPinned ? 'Unpin sidebar' : 'Pin sidebar'}
+              className="hidden lg:flex items-center justify-center p-1.5 rounded-lg text-gray-400 hover:text-gold hover:bg-zinc-750 transition-colors"
+            >
+              {isPinned ? <PinOff size={18} /> : <Pin size={18} />}
+            </button>
+          )}
+          <button
+            onClick={onCloseMobile}
+            className="lg:hidden p-1 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
-      <nav className="flex-1 py-4 space-y-1 overflow-y-auto overflow-x-hidden">
+      <nav className="flex-1 py-4 space-y-1 overflow-y-auto overflow-x-hidden scrollbar-thin">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -119,19 +139,21 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
             <button
               key={tab.id}
               onClick={() => { onTabChange(tab.id); onCloseMobile(); }}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200 ${isActive
+              title={tab.label}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                isActive
                   ? 'text-gold bg-zinc-750 border-l-2 border-gold'
                   : 'text-gray-400 hover:text-white hover:bg-zinc-750'
-                } ${railCenter}`}
+              } ${railCenter}`}
             >
               <Icon size={18} className="shrink-0" />
-              <span className={`whitespace-nowrap ${labelHidden}`}>{tab.label}</span>
+              <span className={`whitespace-nowrap overflow-hidden transition-all duration-200 ${labelHidden}`}>{tab.label}</span>
             </button>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t border-zinc-750">
+      <div className="p-4 border-t border-zinc-750 shrink-0">
         <button
           onClick={async () => {
             if (onLogout) {
@@ -145,7 +167,7 @@ export default function Sidebar({ panel, activeTab, onTabChange, onLogout, mobil
           className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors w-full ${railCenter}`}
         >
           <LogOut size={18} className="shrink-0" />
-          <span className={`whitespace-nowrap ${labelHidden}`}>{(onLogout || logout) ? 'Sign Out' : 'Switch Panel'}</span>
+          <span className={`whitespace-nowrap overflow-hidden transition-all duration-200 ${labelHidden}`}>{(onLogout || logout) ? 'Sign Out' : 'Switch Panel'}</span>
         </button>
       </div>
     </aside>

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star } from 'lucide-react';
+import { Briefcase, Users, Clock, CheckCircle2, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Modal from '../../components/Modal';
 import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project, PreferenceReviewStatus, PreferenceResubmissionMode, TrackSubmissionMode } from '../../lib/types';
@@ -9,7 +9,6 @@ import {
   apiGetMyTeamStatus,
   apiGetAvailableTeammates,
   apiSendTeamRequest,
-  apiRespondToTeamRequest,
   apiRevokeTeamRequest,
   apiCreateIndividualTeam,
   apiGetAvailableProjects,
@@ -25,26 +24,6 @@ import {
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useTracks } from '../../hooks/useTracks';
-
-
-
-function useCountdown(expiresAt: string | undefined) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!expiresAt) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [expiresAt]);
-
-  if (!expiresAt) return { label: '', expired: true };
-  const remainingMs = new Date(expiresAt).getTime() - now;
-  if (remainingMs <= 0) return { label: 'Expired', expired: true };
-  const totalSeconds = Math.floor(remainingMs / 1000);
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  return { label: h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`, expired: false };
-}
 
 export default function ProjectPicker() {
   const { showError, showSuccess } = useToast();
@@ -609,62 +588,6 @@ function TrackAndTeammateScreen({
 }
 
 // ── Step 3: waiting on the invite you sent ───────────────────────────────────
-
-// ── Step 3b: someone invited you ─────────────────────────────────────────────
-
-function IncomingRequestScreen({
-  request,
-  onDecide,
-}: {
-  request: { senderName: string | null; track: string; expiresAt: string };
-  onDecide: (action: 'accept' | 'reject') => void;
-}) {
-  const { label, expired } = useCountdown(request.expiresAt);
-  const { tracks } = useTracks();
-  const trackName = tracks.find(t => t.slug === request.track)?.name ?? request.track;
-  const [deciding, setDeciding] = useState(false);
-
-  const handleDecide = async (action: 'accept' | 'reject') => {
-    setDeciding(true);
-    try {
-      await onDecide(action);
-    } finally {
-      setDeciding(false);
-    }
-  };
-
-  return (
-    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-8 text-center space-y-4">
-      <Users size={32} className="mx-auto text-gold" />
-      <h2 className="text-white font-bold text-lg">Team Invite</h2>
-      <p className="text-gray-400 text-sm">
-        <span className="text-white font-medium">{request.senderName}</span> invited you to team up for{' '}
-        <span className="text-gold">{trackName}</span>.
-      </p>
-      <p className="text-xs text-gray-500">
-        {expired ? 'This invite has expired.' : `Expires in ${label}`}
-      </p>
-      <div className="flex items-center justify-center gap-3 pt-2">
-        <button
-          onClick={() => handleDecide('reject')}
-          disabled={deciding}
-          className="flex items-center gap-1.5 text-sm px-4 py-2 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
-        >
-          <XCircle size={16} />
-          Reject
-        </button>
-        <button
-          onClick={() => handleDecide('accept')}
-          disabled={deciding}
-          className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
-        >
-          <CheckCircle2 size={16} />
-          Accept
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ── Step 4 & 5: team picks how to fill its 2 project preferences ────────────
 

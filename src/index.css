@@ -83,33 +83,30 @@ html.light .border-white\/20 {
   border-color: rgba(0, 0, 0, 0.08) !important;
 }
 
-/* Text Overrides for crisp legibility */
-html.light .text-white {
-  color: #0f172a !important;
+/* Status & Accent Text Colors adjusted for high contrast in light mode */
+html.light .text-amber-400,
+html.light .text-amber-300 {
+  color: #d97706;
 }
 
-html.light .text-gray-100,
-html.light .text-gray-200,
-html.light .text-zinc-100,
-html.light .text-zinc-200,
-html.light .text-slate-100,
-html.light .text-slate-200 {
-  color: #1e293b !important;
+/* Custom thin scrollbar utility */
+.custom-scrollbar::-webkit-scrollbar,
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
-
-html.light .text-gray-300,
-html.light .text-gray-400,
-html.light .text-zinc-300,
-html.light .text-zinc-400,
-html.light .text-slate-300,
-html.light .text-slate-400 {
-  color: #334155 !important;
+.custom-scrollbar::-webkit-scrollbar-track,
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
 }
-
-html.light .text-gray-500,
-html.light .text-zinc-500,
-html.light .text-slate-500 {
-  color: #64748b !important;
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.25);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 161, 170, 0.45);
 }
 
 /* Status & Accent Text Colors adjusted for high contrast in light mode */

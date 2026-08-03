@@ -41,9 +41,28 @@ function getDisplayName(user: { fullName?: string; email?: string } | null): str
 export default function AppShell({ panel, activeTab, onTabChange, onLogout, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [isPinned, setIsPinned] = useState(() => {
+    try {
+      return localStorage.getItem('ojt_sidebar_pinned') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { theme, toggleTheme } = useTheme();
   const { refreshCurrentPage, isRefreshing } = useRefreshContext();
+
+  const togglePin = () => {
+    setIsPinned((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('ojt_sidebar_pinned', String(next));
+      } catch {
+        // localStorage unavailable
+      }
+      return next;
+    });
+  };
 
   let user = null;
   let logout: (() => Promise<void>) | null = null;
@@ -69,7 +88,7 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
   }, [profileOpen]);
 
   return (
-    <div className="flex h-screen bg-black">
+    <div className="flex h-screen bg-black overflow-hidden">
       {mobileOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-30 lg:hidden"
@@ -84,14 +103,12 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
         onLogout={onLogout}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
+        isPinned={isPinned}
+        onTogglePin={togglePin}
       />
 
-      {/* The sidebar is fixed (out of normal flow); this margin reserves its
-          resting icon-rail width. On hover it flies out to the full 64 as an
-          overlay on top of this content — the margin deliberately stays at 16
-          so the page never shifts under the pointer. */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 lg:ml-16">
-        <header className="flex items-center justify-between h-12 px-4 sm:px-6 bg-black">
+      <div className={`flex-1 flex flex-col min-w-0 min-h-0 transition-[margin] duration-300 ${isPinned ? 'lg:ml-64' : 'lg:ml-16'}`}>
+        <header className="flex items-center justify-between h-16 px-4 sm:px-6 bg-black border-b border-zinc-750 shrink-0">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileOpen(true)}
@@ -120,7 +137,7 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
               {theme === 'dark' ? <Sun size={20} className="text-amber-400" /> : <Moon size={20} className="text-indigo-400" />}
             </button>
 
-            {/* Profile Header Avatar (Click to Open Dropdown Down Below) */}
+            {/* Profile Header Avatar */}
             {user && (
               <div className="relative" ref={dropdownRef}>
                 <button
@@ -136,9 +153,9 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
                   </span>
                 </button>
 
-                {/* Dropdown Menu (Visible Down On Click) */}
+                {/* Dropdown Menu */}
                 {profileOpen && (
-                  <div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-750 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150 p-3 space-y-3">
+                  <div className="absolute right-0 mt-2 w-56 max-w-[calc(100vw-2rem)] bg-zinc-900 border border-zinc-750 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150 p-3 space-y-3">
                     <div className="flex items-center gap-3 p-2 bg-zinc-800/60 rounded-lg border border-zinc-750">
                       <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-amber-500 to-amber-400 text-black font-bold text-xs flex items-center justify-center shrink-0 shadow-inner">
                         {displayName ? displayName.charAt(0).toUpperCase() : <User size={16} />}
@@ -176,7 +193,7 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
           </div>
         </header>
 
-        <main className="flex-1 min-h-0 p-4 sm:p-6 lg:p-8 overflow-hidden flex flex-col">
+        <main className="flex-1 min-h-0 p-4 sm:p-6 lg:p-8 overflow-y-auto scrollbar-thin flex flex-col">
           <div className="w-full flex-1 min-h-0 flex flex-col">
             {children}
           </div>

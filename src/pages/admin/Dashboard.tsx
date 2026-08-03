@@ -189,13 +189,14 @@ export default function AdminDashboard({
               return (
                 <div key={status}>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-300">{status}</span>
+                    <span className="text-gray-300 font-medium">{status}</span>
                     <span className="text-gray-400">{count} ({pct}%)</span>
                   </div>
                   <div className="h-2 bg-zinc-750 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-500 ${status === 'PENDING' ? 'bg-yellow-500' : status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
-                        }`}
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        status === 'PENDING' ? 'bg-gold' : status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
+                      }`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -212,10 +213,11 @@ export default function AdminDashboard({
           <div className="space-y-3">
             {submissions.slice(-5).reverse().map(sub => (
               <div key={sub.id} className="flex items-center gap-3 text-sm">
-                <div className={`w-2 h-2 rounded-full ${sub.status === 'PENDING' ? 'bg-yellow-500' : sub.status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
-                  }`} />
-                <span className="text-gray-300 flex-1">{sub.file_name}</span>
-                <span className="text-gray-500 text-xs">{sub.submitted_at}</span>
+                <div className={`w-2 h-2 rounded-full shrink-0 ${
+                  sub.status === 'PENDING' ? 'bg-gold' : sub.status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
+                }`} />
+                <span className="text-gray-300 flex-1 truncate">{sub.file_name}</span>
+                <span className="text-gray-500 text-xs shrink-0">{sub.submitted_at}</span>
               </div>
             ))}
           </div>

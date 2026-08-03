@@ -39,12 +39,31 @@ export default function Select({ value, onChange, options, placeholder, disabled
   const listRef = useRef<HTMLDivElement>(null);
 
   const selected = isMulti
-    ? options.filter(o => (value as string[]).includes(o.value))
+    ? options.filter(o => Array.isArray(value) && value.includes(o.value))
     : options.find(o => o.value === value);
 
-  const displayLabel = isMulti
-    ? ((selected as SelectOption[]).length > 0 ? (selected as SelectOption[]).map(o => o.label).join(', ') : placeholder)
-    : ((selected as SelectOption) ? (selected as SelectOption).label : placeholder);
+  const selectedItems = isMulti ? (selected as SelectOption[]) : [];
+  const singleSelected = !isMulti ? (selected as SelectOption | undefined) : null;
+
+  const renderLabel = () => {
+    if (isMulti) {
+      if (selectedItems.length === 0) {
+        return <span className="text-gray-500 truncate">{placeholder || 'Select...'}</span>;
+      }
+      if (selectedItems.length === 1) {
+        return <span className="truncate">{selectedItems[0].label}</span>;
+      }
+      return (
+        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gold/15 text-gold border border-gold/30 shrink-0">
+          {selectedItems.length} Selected
+        </span>
+      );
+    }
+    if (singleSelected) {
+      return <span className="truncate">{singleSelected.label}</span>;
+    }
+    return <span className="text-gray-500 truncate">{placeholder || 'Select...'}</span>;
+  };
 
   const filteredOptions = options.filter(o => o.label.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -66,8 +85,6 @@ export default function Select({ value, onChange, options, placeholder, disabled
     }
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        // Capture phase + stopPropagation so this only closes the dropdown,
-        // not a parent Modal/Drawer also listening for Escape on window.
         e.stopPropagation();
         setOpen(false);
       }
@@ -94,9 +111,9 @@ export default function Select({ value, onChange, options, placeholder, disabled
           disabled ? 'text-gray-400 cursor-not-allowed opacity-70' : 'hover:border-zinc-650'
         } ${open && !disabled ? 'border-gold' : ''} ${className}`}
       >
-        <span className={`truncate ${(!isMulti && !selected) || (isMulti && (selected as SelectOption[]).length === 0) ? 'text-gray-500' : ''}`}>
-          {displayLabel}
-        </span>
+        <div className="min-w-0 flex-1 flex items-center">
+          {renderLabel()}
+        </div>
         <ChevronDown size={15} className={`shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useContext } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Download, Inbox } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Download, Inbox, X } from 'lucide-react';
 import { exportToCSV } from '../lib/csvExport';
 import { AuthContext } from '../context/AuthContext';
 
@@ -16,12 +16,8 @@ interface ServerPagination {
   totalPages: number;
   total: number;
   onPageChange: (page: number) => void;
-  // Page-size choices (e.g. [20, 40, 80, 100]) rendered as small buttons next
-  // to the "Showing X - Y of Z" label. Omit to keep the fixed page size.
   limitOptions?: number[];
   onLimitChange?: (limit: number) => void;
-  // Runs the "Fit to screen" sizing once automatically after the first page
-  // of rows renders, instead of waiting for the admin to click the button.
   autoFit?: boolean;
 }
 
@@ -32,20 +28,10 @@ interface DataTableProps<T> {
   searchKeys?: (keyof T)[];
   actions?: (row: T) => React.ReactNode;
   onRowClick?: (row: T) => void;
-  // When set, `data` is treated as already being the current page (fetched
-  // from the server) — local slicing/pagination is skipped and page changes
-  // are delegated to the caller instead of tracked in local state.
   serverPagination?: ServerPagination;
-  // When set alongside serverPagination, the search box reports its value
-  // here instead of filtering `data` locally (the server only holds one page).
   onSearchChange?: (search: string) => void;
-  // Custom content to render on the left side of the search header (e.g., custom filters).
   leftHeaderContent?: React.ReactNode;
-  // Page-size choices for local (client-side) pagination — same button row
-  // as serverPagination.limitOptions, but slices `data` in-browser since it's
-  // already fully loaded. Ignored when serverPagination is set.
   pageSizeOptions?: number[];
-  // Options to customize CSV export behavior.
   exportFilename?: string;
   hideExport?: boolean;
 }
@@ -75,12 +61,7 @@ export default function DataTable<T extends Record<string, unknown>>({
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
   const tableWrapRef = useRef<HTMLDivElement>(null);
-  const [maxBodyHeight, setMaxBodyHeight] = useState<number | undefined>(undefined);
 
-  // Picks a page size so the current page of rows fills the viewport below
-  // the table without needing to scroll — measures an actual rendered row
-  // rather than assuming a fixed height, since wrapped preference text etc.
-  // makes row height vary per page.
   const handleFitToViewport = () => {
     if (!serverPagination?.onLimitChange) return;
     const firstRow = tbodyRef.current?.querySelector('tr');
@@ -102,48 +83,6 @@ export default function DataTable<T extends Record<string, unknown>>({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverPagination?.autoFit, data]);
-
-  // Sizes the table body to fill the space actually available below it
-  // (not just cap it) — so a page with a full table scrolls internally
-  // instead of pushing the pagination footer off-screen, AND a page with
-  // few/zero rows still occupies the full remaining screen height instead
-  // of collapsing to fit its content. Applies to every DataTable (local or
-  // server pagination), not just ones with page-size buttons.
-  useEffect(() => {
-    const computeMaxHeight = () => {
-      const wrap = tableWrapRef.current;
-      if (!wrap) return;
-      const wrapTop = wrap.getBoundingClientRect().top;
-      const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 56;
-      // Trimmed from 36/24 — the extra reserved margin was making the table
-      // noticeably shorter than the space actually available below it.
-      const paddingBottom = window.innerWidth >= 1024 ? 16 : 12;
-      const available = window.innerHeight - wrapTop - footerHeight - paddingBottom;
-      // `available` (leftover space below the table) is the real, honest
-      // constraint — it already accounts for however tall the browser
-      // chrome/OS taskbar happens to be on this machine (this is where a
-      // fixed "floor at 70% of window.innerHeight" previously went wrong:
-      // on a shorter viewport — e.g. Windows, where browser chrome eats more
-      // of window.innerHeight than on this Mac dev machine — `available` can
-      // legitimately be less than 70vh, and forcing the bigger 70vh number
-      // anyway pushed the table past the real available space, causing a
-      // page scroll — the same class of bug already fixed once on
-      // ProjectPicker, for a different, sibling-footer reason).
-      setMaxBodyHeight(Math.max(180, Math.floor(available)));
-    };
-
-    computeMaxHeight();
-    const rafId = requestAnimationFrame(computeMaxHeight);
-    const timerId = setTimeout(computeMaxHeight, 100);
-
-    window.addEventListener('resize', computeMaxHeight);
-    return () => {
-      cancelAnimationFrame(rafId);
-      clearTimeout(timerId);
-      window.removeEventListener('resize', computeMaxHeight);
-    };
-  }, [data.length]);
-
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -197,6 +136,16 @@ export default function DataTable<T extends Record<string, unknown>>({
             placeholder={searchPlaceholder}
             className="bg-transparent text-sm text-white placeholder-gray-500 outline-none flex-1 min-w-0"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => handleSearchChange('')}
+              className="text-gray-500 hover:text-white p-0.5 rounded transition-colors shrink-0"
+              aria-label="Clear search"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
         {showExportButton && (
           <button
@@ -216,10 +165,10 @@ export default function DataTable<T extends Record<string, unknown>>({
         )}
       </div>
 
-      {/* Desktop/tablet: the usual scrollable table. */}
+      {/* Desktop/tablet: standard scrollable table */}
       <div
         ref={tableWrapRef}
-        className="hidden md:block flex-1 min-h-0 overflow-auto w-full"
+        className="hidden md:block flex-1 min-h-0 overflow-auto w-full scrollbar-thin"
       >
         <table className="w-full text-sm">
           <thead>
@@ -267,10 +216,23 @@ export default function DataTable<T extends Record<string, unknown>>({
             {paginated.length === 0 && (
               <tr>
                 <td colSpan={columns.length + (actions ? 1 : 0)} className="px-4 py-16 text-center text-gray-500">
-                  <div className="flex flex-col items-center justify-center gap-1">
-                    <Inbox size={32} className="text-zinc-600 mb-2" />
-                    <p className="text-sm font-medium text-gray-400">No records found</p>
-                    <p className="text-xs text-gray-500">Try adjusting your search or filters</p>
+                  <div className="flex flex-col items-center justify-center gap-2 max-w-xs mx-auto">
+                    <div className="p-3 bg-zinc-800 rounded-full text-gold/80 border border-zinc-750">
+                      <Inbox size={32} />
+                    </div>
+                    <p className="text-sm font-semibold text-white">No records found</p>
+                    <p className="text-xs text-gray-400">
+                      {search ? `No items match "${search}"` : 'There are no records available in this view.'}
+                    </p>
+                    {search && (
+                      <button
+                        type="button"
+                        onClick={() => handleSearchChange('')}
+                        className="mt-2 text-xs font-semibold px-3 py-1.5 bg-zinc-750 text-gold rounded-lg hover:bg-zinc-700 transition-colors"
+                      >
+                        Clear Search
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -279,9 +241,8 @@ export default function DataTable<T extends Record<string, unknown>>({
         </table>
       </div>
 
-      {/* Mobile: one stacked card per row instead of a horizontally-scrolling
-          table — nothing gets clipped, and there's nothing to swipe sideways. */}
-      <div className="md:hidden flex-1 min-h-0 overflow-auto divide-y divide-zinc-750/50 w-full">
+      {/* Mobile view */}
+      <div className="md:hidden flex-1 min-h-0 overflow-auto divide-y divide-zinc-750/50 w-full scrollbar-thin">
         {paginated.map((row, idx) => (
           <div
             key={typeof row.id === 'string' || typeof row.id === 'number' ? row.id : idx}
@@ -319,10 +280,23 @@ export default function DataTable<T extends Record<string, unknown>>({
           </div>
         ))}
         {paginated.length === 0 && (
-          <div className="px-4 py-16 text-center text-gray-500 flex flex-col items-center justify-center gap-1">
-            <Inbox size={32} className="text-zinc-600 mb-2" />
-            <p className="text-sm font-medium text-gray-400">No records found</p>
-            <p className="text-xs text-gray-500">Try adjusting your search or filters</p>
+          <div className="px-4 py-16 text-center text-gray-500 flex flex-col items-center justify-center gap-2 max-w-xs mx-auto">
+            <div className="p-3 bg-zinc-800 rounded-full text-gold/80 border border-zinc-750">
+              <Inbox size={32} />
+            </div>
+            <p className="text-sm font-semibold text-white">No records found</p>
+            <p className="text-xs text-gray-400">
+              {search ? `No items match "${search}"` : 'There are no records available in this view.'}
+            </p>
+            {search && (
+              <button
+                type="button"
+                onClick={() => handleSearchChange('')}
+                className="mt-2 text-xs font-semibold px-3 py-1.5 bg-zinc-750 text-gold rounded-lg hover:bg-zinc-700 transition-colors"
+              >
+                Clear Search
+              </button>
+            )}
           </div>
         )}
       </div>
