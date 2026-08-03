@@ -34,10 +34,9 @@ export interface Project {
   description?: string;
   problemStatement?: string;
   track: string;
-  /** Free-text classification from the CSV import, separate from track config. */
-  trackClassification?: string | null;
   techStack?: string[];
   endUsersDefined?: string;
+  /** Admission years, e.g. ['2024', '2025'] — every section of a listed year. */
   batch?: string[];
   created_at: string;
   end_goals?: string;
@@ -69,6 +68,11 @@ export interface Project {
   estimatedDuration?: number;   // weeks
   sourceStartupSchool?: string;
   recommendedMentors?: RecommendedMentor[];
+  // Which mentor this project originated from — provenance only, stored as
+  // the plain name the sheet supplied. Distinct from recommendedMentors,
+  // which names the mentors suggested *for* the project and resolves to real
+  // accounts.
+  recommendedByMentor?: string | null;
   creditMapping?: string[];
   partners?: ProjectPartner[];
 }

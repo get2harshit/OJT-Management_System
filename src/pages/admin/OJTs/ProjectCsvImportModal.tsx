@@ -51,8 +51,17 @@ function normalizeLevel(raw: string): ProjectLevel | undefined {
   return undefined;
 }
 
+// Quote characters left on the edges of a value, stripped. Whoever fills the
+// sheet may write a list as react,next or as "react,next", and an export that
+// double-encodes leaves the quotes in the parsed value either way. Only the
+// leading and trailing ones go, so a value that legitimately contains a quote
+// (5" pipe) keeps it.
+function stripEdgeQuotes(value: string): string {
+  return value.trim().replace(/^"+/, '').replace(/"+$/, '').trim();
+}
+
 function splitList(raw: string): string[] {
-  return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
+  return raw ? raw.split(',').map(stripEdgeQuotes).filter(Boolean) : [];
 }
 
 // The sheet only ever puts a plain number in this cell (weeks) — the
@@ -69,18 +78,22 @@ function parseDurationWeeks(raw: string): number | undefined {
 // don't break the import.
 const COLUMN_PATTERNS = {
   projectId: ['ojtid', 'project_id', 'project id'],
+  // Admission years ("2024", "2025"). A cell that still names a section
+  // ("2025 A") is accepted — the backend reduces it to the year, since every
+  // section of a listed year sees the project.
   batch: ['batch'],
   track: ['track'],
-  // Free-text classification, separate from track eligibility config —
-  // optional, so it's not in REQUIRED_COLUMNS.
-  trackClassification: ['track_classification', 'track classification'],
   courseCovered: ['course_covered', 'course covered'],
   problemStatement: ['problem_statement', 'problem statement'],
   projectDescription: ['project description', 'project_description'],
   endUsersDefined: ['end_users_defined', 'end users defined'],
   techStack: ['tech_stack', 'tech stack', 'techstack'],
   framework: ['framework'],
-  suggestedLibrariesTools: ['suggested librar'],
+  // Both spellings: every other column here accepts the underscored header as
+  // well as the spaced one, and this was the only one that didn't — so a sheet
+  // written consistently in snake_case lost this column silently, with no
+  // error, because the field is optional.
+  suggestedLibrariesTools: ['suggested librar', 'suggested_librar'],
   coreLearningGoals: ['core_learning', 'core learning'],
   stretchGoal: ['stretch'],
   evaluationMetrics: ['evaluation'],
@@ -99,6 +112,11 @@ const COLUMN_PATTERNS = {
   // Comma-separated mentor names — the backend resolves each one against a
   // real mentor and rejects the row if any name is unknown.
   recommendedMentor: ['recommended_mentor', 'recommended mentor', 'recommended mentors'],
+  // Which mentor the project came from — free text, never resolved against
+  // the roster. Distinct from recommendedMentor above, and the two headers
+  // can't collide: neither string contains the other ("recommended mentor"
+  // does not appear inside "recommended by mentor", or the reverse).
+  recommendedByMentor: ['recommended_by_mentor', 'recommended by mentor'],
   creditMapping: ['credit_mapping', 'credit mapping', 'credits'],
   // Comma-separated partner organisation names; logos come from the server.
   partners: ['partners', 'partner organization', 'partner organisation'],
@@ -108,26 +126,50 @@ const COLUMN_PATTERNS = {
 // — if the header row is missing one of these columns entirely, every row
 // would fail validation for the same reason, so that's surfaced once up
 // front instead of as N identical per-row errors after the request.
-const REQUIRED_COLUMNS: Array<{ label: string; patterns: readonly string[] }> = [
-  { label: 'Title', patterns: ['title'] },
-  { label: 'Track', patterns: COLUMN_PATTERNS.track },
+//
+// An admin sheet describes a project completely, so this is every column
+// except the four the backend marks optional: Recommended Mentor (a project
+// can be catalogued before anyone is lined up to mentor it), Recommended by
+// Mentor (plenty of projects aren't sourced from a mentor at all), Credit
+// Mapping and Partners (not every project carries either). Keep this list in
+// step with ADMIN_OPTIONAL_FIELDS in domain/projectFields.ts.
+//
+// `exclude` mirrors the columns parseRows resolves with an exclusion. Without
+// it the presence check disagrees with the resolver: a sheet whose only
+// description column is named "Project Description" satisfies a bare
+// `description` pattern, passes preflight, and then fails on every single row
+// because the resolver correctly refused to treat it as the description.
+// Track keeps its exclusion even though Track Classification is no longer a
+// field we read — sheets still carry that column, and both sides have to
+// agree on which one is the real Track.
+const REQUIRED_COLUMNS: Array<{ label: string; patterns: readonly string[]; exclude?: string }> = [
+  { label: 'Title', patterns: ['title'], exclude: 'track' },
+  { label: 'Track', patterns: COLUMN_PATTERNS.track, exclude: 'classification' },
   { label: 'Batch', patterns: COLUMN_PATTERNS.batch },
   { label: 'Project ID (OJTID)', patterns: COLUMN_PATTERNS.projectId },
   { label: 'Course Covered', patterns: COLUMN_PATTERNS.courseCovered },
   { label: 'Problem Statement', patterns: COLUMN_PATTERNS.problemStatement },
-  { label: 'Description', patterns: ['description'] },
+  { label: 'Description', patterns: ['description'], exclude: 'project' },
+  { label: 'Project Description', patterns: COLUMN_PATTERNS.projectDescription },
+  { label: 'End Users Defined', patterns: COLUMN_PATTERNS.endUsersDefined },
   { label: 'Tech Stack', patterns: COLUMN_PATTERNS.techStack },
+  { label: 'Framework', patterns: COLUMN_PATTERNS.framework },
+  { label: 'Suggested Libraries / Tools', patterns: COLUMN_PATTERNS.suggestedLibrariesTools },
   { label: 'Core Learning Goals', patterns: COLUMN_PATTERNS.coreLearningGoals },
+  { label: 'Stretch Goal', patterns: COLUMN_PATTERNS.stretchGoal },
   { label: 'Expected Output', patterns: COLUMN_PATTERNS.expectedOutput },
+  { label: 'First Month Milestones', patterns: COLUMN_PATTERNS.firstMonthMilestones },
+  { label: 'Second Month Milestones', patterns: COLUMN_PATTERNS.secondMonthMilestones },
+  { label: 'Third Month Milestones', patterns: COLUMN_PATTERNS.thirdMonthMilestones },
   { label: 'Industry', patterns: COLUMN_PATTERNS.industry },
   { label: 'Must Have Features', patterns: COLUMN_PATTERNS.mustHaveFeatures },
   { label: 'Good To Have Features', patterns: COLUMN_PATTERNS.goodToHaveFeatures },
   { label: 'Evaluation Metrics', patterns: COLUMN_PATTERNS.evaluationMetrics },
+  { label: 'Level', patterns: COLUMN_PATTERNS.level },
   { label: 'Theme', patterns: COLUMN_PATTERNS.theme },
   { label: 'Reference Docs', patterns: COLUMN_PATTERNS.referenceDocs },
   { label: 'Estimated Duration', patterns: COLUMN_PATTERNS.estimatedDuration },
   { label: 'Source / Startup School', patterns: COLUMN_PATTERNS.sourceStartupSchool },
-  { label: 'Recommended Mentor', patterns: COLUMN_PATTERNS.recommendedMentor },
 ];
 
 function findColumn(headers: string[], patterns: readonly string[]): number {
@@ -156,7 +198,8 @@ function parseRows(parsed: string[][], tracks: ApiTrack[]): { rowNumber: number;
 
   // "Track Classification" also contains "track", so a sheet listing it before
   // the Track column would otherwise bind col.track to the wrong column and
-  // give every row that cell's free text as its track.
+  // give every row that cell's free text as its track. Still needed after that
+  // column stopped being imported — the sheets have not stopped carrying it.
   col.track = headers.findIndex(h => h.includes('track') && !h.includes('classification'));
 
   const cell = (cols: string[], i: number) => (i !== -1 ? (cols[i]?.trim() ?? '') : '');
@@ -174,7 +217,6 @@ function parseRows(parsed: string[][], tracks: ApiTrack[]): { rowNumber: number;
       projectId: cell(cols, col.projectId),
       batch: splitList(cell(cols, col.batch)),
       track: normalizedTrack ?? trackRaw,
-      trackClassification: cell(cols, col.trackClassification) || undefined,
       courseCovered: splitList(cell(cols, col.courseCovered)),
       title: cell(cols, titleIdx),
       problemStatement: cell(cols, col.problemStatement),
@@ -200,6 +242,7 @@ function parseRows(parsed: string[][], tracks: ApiTrack[]): { rowNumber: number;
       estimatedDuration: parseDurationWeeks(cell(cols, col.estimatedDuration)),
       sourceStartupSchool: cell(cols, col.sourceStartupSchool) || undefined,
       recommendedMentor: splitList(cell(cols, col.recommendedMentor)),
+      recommendedByMentor: cell(cols, col.recommendedByMentor) || undefined,
       creditMapping: splitList(cell(cols, col.creditMapping)),
       partners: splitList(cell(cols, col.partners)),
     };
@@ -286,8 +329,24 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
     // Track is required on every path, including a track-scoped import: that
     // import checks each row against the page's track rather than assuming it,
     // and a sheet with no Track column has nothing to check.
-    const missingColumns = REQUIRED_COLUMNS.filter(({ patterns }) => !headers.some(h => patterns.some(p => h.includes(p))));
+    const missingColumns = REQUIRED_COLUMNS.filter(
+      ({ patterns, exclude }) =>
+        !headers.some(h => patterns.some(p => h.includes(p)) && (!exclude || !h.includes(exclude)))
+    );
     const dataRowsCount = Math.max(0, parsed.length - 1);
+
+    // More cells than the header means a comma inside an unquoted cell split
+    // the row — a tech stack written as react,next rather than "react,next".
+    // Everything past the split sits in the wrong column, so the row would
+    // import as convincing nonsense rather than failing. Which cell split
+    // can't be recovered (the commas are indistinguishable from the real
+    // separators), so the row is named and the import stopped instead of
+    // guessed at. Short rows are left alone — trailing empty cells are
+    // routinely dropped on export and mean nothing is wrong.
+    const raggedRows = parsed
+      .slice(1)
+      .map((cols, i) => ({ rowNumber: i + 2, cells: cols.length }))
+      .filter(r => r.cells > headers.length);
 
     let sampleRows: Array<{ title: string; projectId: string; track: string }> = [];
     if (dataRowsCount > 0) {
@@ -302,9 +361,10 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
     return {
       headers,
       missingColumns,
+      raggedRows,
       dataRowsCount,
       sampleRows,
-      isValid: missingColumns.length === 0 && dataRowsCount > 0,
+      isValid: missingColumns.length === 0 && raggedRows.length === 0 && dataRowsCount > 0,
     };
   }, [parsed, tracks]);
 
@@ -521,6 +581,23 @@ export default function ProjectCsvImportModal({ open, onClose, onImportSuccess, 
                             Missing required CSV column(s):
                           </p>
                           <p className="text-red-300 font-mono pl-5">{validation.missingColumns.map(c => c.label).join(', ')}</p>
+                        </div>
+                      ) : validation.raggedRows.length > 0 ? (
+                        <div className="p-3.5 bg-red-500/10 border border-red-500/25 rounded-xl text-xs text-red-400 space-y-1.5">
+                          <p className="font-bold flex items-center gap-1.5 text-sm">
+                            <AlertTriangle size={16} />
+                            {validation.raggedRows.length === 1 ? 'Row' : 'Rows'} with too many columns:
+                          </p>
+                          <p className="text-red-300 font-mono pl-5">
+                            {validation.raggedRows.slice(0, 12).map(r => `Row ${r.rowNumber}`).join(', ')}
+                            {validation.raggedRows.length > 12 && ` +${validation.raggedRows.length - 12} more`}
+                          </p>
+                          <p className="text-red-300/80 pl-5 leading-relaxed">
+                            A cell containing a comma wasn&apos;t wrapped in quotes, so it split into
+                            extra columns and shifted the rest of the row. Write it as{' '}
+                            <span className="font-mono">&quot;react, next&quot;</span> rather than{' '}
+                            <span className="font-mono">react, next</span>.
+                          </p>
                         </div>
                       ) : validation.dataRowsCount === 0 ? (
                         <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-400 flex items-center gap-2">
