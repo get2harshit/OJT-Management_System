@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { FileSpreadsheet, Check, Plus, Users, AlertTriangle, RefreshCw } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import { FileSpreadsheet, Check, Plus, Users, AlertTriangle } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import { apiGetCohort, apiGetCatalogProposal, apiApplyCatalogProposal } from '../../../lib/api';
 import type { CatalogProposal, ApplyCatalogAction, ProposalMentor } from '../../../lib/api/tracks';
@@ -48,7 +48,6 @@ const MentorList = ({ mentors, tone }: { mentors: ProposalMentor[]; tone: 'add' 
 
 export default function CatalogProposalPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
-  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
 
   const [cohortLabel, setCohortLabel] = useState('');
@@ -276,16 +275,6 @@ export default function CatalogProposalPage() {
           ))}
         </div>
       )}
-
-      <div className="pt-2">
-        <button
-          onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/track-config`)}
-          className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors"
-        >
-          <RefreshCw size={14} />
-          Back to Track Configuration
-        </button>
-      </div>
     </div>
   );
 }
