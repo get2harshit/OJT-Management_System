@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, useContext } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Download, Inbox, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, useContext } from 'react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Download, Inbox, X, Maximize2, Minimize2 } from 'lucide-react';
 import { exportToCSV } from '../lib/csvExport';
+import SpinnerSquare from './SpinnerSquare';
 import { AuthContext } from '../context/AuthContext';
 
 interface Column<T> {
@@ -34,9 +35,44 @@ interface DataTableProps<T> {
   pageSizeOptions?: number[];
   exportFilename?: string;
   hideExport?: boolean;
+  /**
+   * Shows a spinner over the rows without unmounting the table.
+   *
+   * Callers used to swap the whole table out for a spinner while fetching,
+   * which threw away everything the table holds — most visibly the expanded
+   * state, so changing page or page size while full screen collapsed it.
+   */
+  loading?: boolean;
+  /**
+   * Optional controlled full-screen state.
+   *
+   * Left out, the table owns it — which is right until the caller renders
+   * something *else* in place of the table, like a detail view for the row you
+   * clicked. The table unmounts then, taking its own state with it, and the
+   * detail opens at normal size after you had asked for the whole screen. A
+   * caller that can replace the table has to own the flag.
+   */
+  fullscreen?: boolean;
+  onFullscreenChange?: (open: boolean) => void;
 }
 
-export default function DataTable<T extends Record<string, unknown>>({
+// `object`, not `Record<string, unknown>`: nothing here needs an index
+// signature, only `keyof T` access, which works on any object type. The
+// stricter constraint turned away perfectly ordinary interfaces — a caller
+// had to widen its own domain type just to render it in a table, which is the
+// table's problem leaking into the data model.
+/**
+ * A stable React key for a row: its `id` when it has a usable one, otherwise
+ * its index. Rows are not required to carry an id — the table renders whatever
+ * it is given — so this reads the field defensively rather than the type
+ * demanding it.
+ */
+function rowKey(row: object, index: number): string | number {
+  const id = (row as { id?: unknown }).id;
+  return typeof id === 'string' || typeof id === 'number' ? id : index;
+}
+
+export default function DataTable<T extends object>({
   columns,
   data,
   searchPlaceholder = 'Search...',
@@ -49,6 +85,9 @@ export default function DataTable<T extends Record<string, unknown>>({
   pageSizeOptions,
   exportFilename = 'export_data',
   hideExport = false,
+  loading = false,
+  fullscreen,
+  onFullscreenChange,
 }: DataTableProps<T>) {
   const auth = useContext(AuthContext);
   const isAdmin = auth?.user?.role === 'admin';
@@ -56,6 +95,23 @@ export default function DataTable<T extends Record<string, unknown>>({
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  // Tables sit under a page header, filters and often a dropdown or two, so
+  // what is left for rows is a fraction of the screen. This hands the whole
+  // viewport over when someone asks for it.
+  //
+  // Asked for, not inferred: entering on scroll was considered and rejected.
+  // Scrolling is the most casual interaction there is — a nudge of the wheel
+  // to see one more row would take over the display, and the same gesture
+  // couldn't undo it. Wanting more room is a decision, so it gets a button.
+  const [uncontrolledFullscreen, setUncontrolledFullscreen] = useState(false);
+  const isFullscreen = fullscreen ?? uncontrolledFullscreen;
+  const setIsFullscreen = useCallback(
+    (next: boolean) => {
+      if (fullscreen === undefined) setUncontrolledFullscreen(next);
+      onFullscreenChange?.(next);
+    },
+    [fullscreen, onFullscreenChange]
+  );
   const [localPageSize, setLocalPageSize] = useState(pageSizeOptions?.[0] ?? 12);
   const pageSize = localPageSize;
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
@@ -83,6 +139,60 @@ export default function DataTable<T extends Record<string, unknown>>({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverPagination?.autoFit, data]);
+
+  // Re-fit when the window changes size. Fitting once on mount left a table
+  // sized for whatever the viewport was then — maximise the window and the
+  // extra height stays empty, which is the same complaint the expand button
+  // exists to answer. Debounced, since resize fires continuously and each fit
+  // asks the server for a new page.
+  useEffect(() => {
+    if (!serverPagination?.autoFit) return;
+    let timer: number;
+    const onResize = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(handleFitToViewport, 200);
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('resize', onResize);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverPagination?.autoFit]);
+
+  // Escape is what people try first to leave anything covering the screen,
+  // and the listener only exists while it is covering the screen — otherwise
+  // every table on the page would be swallowing Escape from modals above it.
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    // The page behind must not scroll under the overlay — restored on exit,
+    // including when the component unmounts while still expanded.
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      document.body.style.overflow = previousOverflow;
+    };
+    // setIsFullscreen is stable (useCallback) and included so the listener
+    // never closes over a stale controlled setter.
+  }, [isFullscreen, setIsFullscreen]);
+
+  // Expanding roughly doubles the room for rows, so a table that sized its
+  // page to the viewport should ask for that many again — otherwise the whole
+  // screen shows the twelve rows that fitted the old one.
+  useEffect(() => {
+    if (!serverPagination?.autoFit) return;
+    const timer = window.setTimeout(handleFitToViewport, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFullscreen]);
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -120,7 +230,13 @@ export default function DataTable<T extends Record<string, unknown>>({
   };
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden shadow-sm">
+    <div
+      className={
+        isFullscreen
+          ? 'fixed inset-0 z-[120] flex flex-col bg-zinc-850 border-0 rounded-none overflow-hidden'
+          : 'relative flex-1 min-h-0 flex flex-col bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden shadow-sm'
+      }
+    >
       <div className="p-4 border-b border-zinc-750 flex items-center gap-3 shrink-0">
         {leftHeaderContent && (
           <div className="flex items-center gap-3 mr-auto">
@@ -154,7 +270,10 @@ export default function DataTable<T extends Record<string, unknown>>({
                 key: String(c.key),
                 header: c.header,
               }));
-              exportToCSV(exportFilename, filtered, exportCols);
+              // exportToCSV still wants the indexable form; it reads rows by
+              // the string keys the columns name, which every object supports
+              // at runtime.
+              exportToCSV(exportFilename, filtered as unknown as Record<string, unknown>[], exportCols);
             }}
             title="Export CSV"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-zinc-750 hover:bg-zinc-700 text-gold border border-zinc-700 rounded-lg transition-colors shrink-0"
@@ -163,7 +282,25 @@ export default function DataTable<T extends Record<string, unknown>>({
             <span className="hidden sm:inline">Export CSV</span>
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setIsFullscreen(!isFullscreen)}
+          title={isFullscreen ? 'Exit full screen (Esc)' : 'Expand to full screen'}
+          aria-label={isFullscreen ? 'Exit full screen' : 'Expand to full screen'}
+          className="p-1.5 rounded-lg text-gray-400 hover:text-gold hover:bg-zinc-750 transition-colors shrink-0"
+        >
+          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        </button>
       </div>
+
+      {/* Dimmed with a spinner rather than replaced: the rows on screen are
+          the previous page, which is a better thing to look at for the moment
+          a fetch takes than an empty table — and nothing gets remounted. */}
+      {loading && (
+        <div className="absolute inset-0 top-16 z-10 flex items-center justify-center bg-zinc-850/60 pointer-events-none">
+          <SpinnerSquare size={36} />
+        </div>
+      )}
 
       {/* Desktop/tablet: standard scrollable table */}
       <div
@@ -187,7 +324,7 @@ export default function DataTable<T extends Record<string, unknown>>({
           <tbody ref={tbodyRef}>
             {paginated.map((row, idx) => (
               <tr
-                key={typeof row.id === 'string' || typeof row.id === 'number' ? row.id : idx}
+                key={rowKey(row, idx)}
                 onClick={() => onRowClick && onRowClick(row)}
                 tabIndex={onRowClick ? 0 : undefined}
                 role={onRowClick ? 'button' : undefined}
@@ -245,7 +382,7 @@ export default function DataTable<T extends Record<string, unknown>>({
       <div className="md:hidden flex-1 min-h-0 overflow-auto divide-y divide-zinc-750/50 w-full scrollbar-thin">
         {paginated.map((row, idx) => (
           <div
-            key={typeof row.id === 'string' || typeof row.id === 'number' ? row.id : idx}
+            key={rowKey(row, idx)}
             onClick={() => onRowClick && onRowClick(row)}
             tabIndex={onRowClick ? 0 : undefined}
             role={onRowClick ? 'button' : undefined}
