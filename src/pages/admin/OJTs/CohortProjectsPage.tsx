@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Upload, Trash2 } from 'lucide-react';
+import { Upload, Trash2, BarChart3 } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
@@ -8,7 +8,8 @@ import Select from '../../../components/Select';
 import ProjectCsvImportModal from './ProjectCsvImportModal';
 import type { Project, ProjectPartner, RecommendedMentor } from '../../../lib/types';
 import { getTrackColor } from '../../../lib/constants';
-import { apiGetCohort, apiGetProjectsForCohortPage, apiDeleteProject } from '../../../lib/api';
+import { apiGetCohort, apiGetProjectsForCohortPage, apiDeleteProject, apiGetProjectInsights } from '../../../lib/api';
+import type { ProjectInsights } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
@@ -56,6 +57,7 @@ export default function CohortProjectsPage() {
   const [projectIdFilter, setProjectIdFilter] = useState('');
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
   const [projectCsvModalOpen, setProjectCsvModalOpen] = useState(false);
+  const [insights, setInsights] = useState<ProjectInsights | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
   const fetchPage = useCallback(async (
@@ -99,9 +101,26 @@ export default function CohortProjectsPage() {
     fetchPage(page, limit, search, trackFilter, projectIdFilter).catch(() => {});
   }, [page, limit, search, trackFilter, projectIdFilter, fetchPage]);
 
+  // Deliberately not tied to the filters. These describe the whole catalog,
+  // not the current view — the filtered figure is already under the table.
+  const loadInsights = useCallback(async () => {
+    if (!cohortId) return;
+    try {
+      setInsights(await apiGetProjectInsights(cohortId));
+    } catch {
+      // A failed count must not take the table down with it; the numbers
+      // simply don't render.
+      setInsights(null);
+    }
+  }, [cohortId]);
+
+  useEffect(() => {
+    loadInsights();
+  }, [loadInsights]);
+
   usePageRefresh(useCallback(
-    () => Promise.all([loadCohortLabel(), fetchPage(page, limit, search, trackFilter, projectIdFilter)]),
-    [loadCohortLabel, fetchPage, page, limit, search, trackFilter, projectIdFilter]
+    () => Promise.all([loadCohortLabel(), loadInsights(), fetchPage(page, limit, search, trackFilter, projectIdFilter)]),
+    [loadCohortLabel, loadInsights, fetchPage, page, limit, search, trackFilter, projectIdFilter]
   ));
 
   // Debounce the free-text inputs so every keystroke doesn't fire a request.
@@ -172,14 +191,43 @@ export default function CohortProjectsPage() {
 
       <div className="space-y-4 flex-1 min-h-0 flex flex-col">
         <div className="flex flex-wrap justify-between items-center gap-3">
-          <h2 className="text-lg font-bold text-white">Uploaded project templates</h2>
-          <button
-            onClick={() => setProjectCsvModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 text-sm"
-          >
-            <Upload size={16} />
-            Upload Projects CSV
-          </button>
+          <div className="flex items-center gap-4 flex-wrap">
+            <h2 className="text-lg font-bold text-white">Uploaded project templates</h2>
+            {/* Only the three headline numbers here — the rest of the picture
+                lives on its own page rather than pushing the table, which is
+                what people open this screen for, below the fold. */}
+            {insights && (
+              <div className="flex items-center gap-3 text-xs">
+                {[
+                  { value: insights.totals.projects, label: 'projects' },
+                  { value: insights.totals.tracks, label: 'tracks' },
+                  { value: insights.totals.batches, label: 'batches' },
+                ].map(item => (
+                  <span key={item.label} className="flex items-baseline gap-1">
+                    <span className="text-white font-semibold text-sm tabular-nums">{item.value}</span>
+                    <span className="text-gray-500">{item.label}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/projects/insights`)}
+              title="Catalog analytics"
+              className="flex items-center gap-2 px-3 py-2 bg-zinc-850 border border-zinc-750 rounded-lg text-gray-300 hover:text-gold hover:border-gold/40 transition-colors text-sm"
+            >
+              <BarChart3 size={16} />
+              Analytics
+            </button>
+            <button
+              onClick={() => setProjectCsvModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 text-sm"
+            >
+              <Upload size={16} />
+              Upload Projects CSV
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

@@ -134,3 +134,41 @@ export async function apiAddMentorsToCohort(cohortId: string, userIds: string[])
   });
   invalidateCached(`cohorts:get:${cohortId}`);
 }
+
+// ── Project catalog insights ────────────────────────────────────────────────
+
+export interface CountBucket {
+  label: string;
+  count: number;
+}
+
+export interface CrossTabCell {
+  row: string;
+  column: string;
+  count: number;
+}
+
+export interface MentorCoverageRow {
+  mentorId: string;
+  fullName: string | null;
+  projectCount: number;
+}
+
+export interface ProjectInsights {
+  totals: { projects: number; tracks: number; batches: number; avgDurationWeeks: number | null };
+  byTrack: CountBucket[];
+  byBatch: CountBucket[];
+  byLevel: CountBucket[];
+  byDuration: CountBucket[];
+  trackByBatch: CrossTabCell[];
+  trackByLevel: CrossTabCell[];
+  /** How many catalog projects name each mentor — not how many teams they have. */
+  mentorCoverage: MentorCoverageRow[];
+}
+
+// Counted over the whole catalog on the server. The projects list is
+// paginated, so anything totalled from its rows would describe one page.
+export async function apiGetProjectInsights(cohortId: string): Promise<ProjectInsights> {
+  const res = await apiFetch<{ data: ProjectInsights }>(`/api/v1/cohorts/${cohortId}/projects/insights`);
+  return res.data;
+}
