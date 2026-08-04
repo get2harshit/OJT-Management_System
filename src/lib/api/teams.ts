@@ -455,6 +455,11 @@ export interface ProjectSummary {
   title: string;
   problemStatement?: string;
   isRecommended: boolean;
+  /** Who the catalog recommends for this project — shown on the card so a
+   * team can weigh the mentor alongside the project, not after picking it. */
+  recommendedMentors: RecommendedMentor[];
+  /** Partner organisations backing the project; empty for most. */
+  partners: ProjectPartner[];
 }
 
 export interface AvailableProjectsPage {
@@ -464,6 +469,10 @@ export interface AvailableProjectsPage {
 
 // Paginated, field-trimmed sibling of apiGetAvailableProjects — the browse
 // list only ever needs enough per row to render a card, not every field.
+//
+// The server orders suggested projects first. Re-sorting here would only
+// reorder the twenty rows on screen, which on page 3 means "the suggestions
+// within page 3" — not what the ordering is for.
 export async function apiGetAvailableProjectsPage(
   cohortId: string,
   params: { page: number; limit: number; search?: string; excludeId?: string }

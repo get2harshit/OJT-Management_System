@@ -1232,6 +1232,57 @@ function ProjectCatalogBrowser({
                 )}
               </div>
               {p.problemStatement && <p className="text-gray-400 text-xs mt-1 line-clamp-2">{p.problemStatement}</p>}
+
+              {/* Mentors and partners are what a team actually weighs against
+                  the project itself, so they belong on the card rather than
+                  one click deeper. Both come from the list response — no
+                  per-card fetch. */}
+              {(p.recommendedMentors.length > 0 || p.partners.length > 0) && (
+                <div className="mt-3 pt-3 border-t border-zinc-750 space-y-2">
+                  {/* Same visual language as the detail drawer, one size down:
+                      a mentor is a pill with the gold check, a partner is a
+                      white chip carrying its logo. Two places showing the same
+                      two things should not look like two different features. */}
+                  {p.recommendedMentors.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {p.recommendedMentors.map(mentor => (
+                        <span
+                          key={mentor.mentorId}
+                          className="inline-flex items-center gap-1 text-[11px] text-gray-200 bg-zinc-800 border border-zinc-750 rounded-md px-1.5 py-0.5"
+                        >
+                          <UserCheck size={11} className="text-gold shrink-0" />
+                          {mentor.fullName ?? '—'}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {p.partners.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {p.partners.map(partner => (
+                        <span
+                          key={partner.name}
+                          title={partner.name}
+                          className="inline-flex items-center bg-white/90 rounded-md px-1.5 py-1"
+                        >
+                          {/* No logo when the stored name matches no known
+                              partner — the name still shows, so a sheet typo
+                              reads as a missing image, not a lost partner. */}
+                          {partner.logoUrl ? (
+                            <img
+                              src={partner.logoUrl}
+                              alt={partner.name}
+                              className="h-3.5 max-w-[64px] object-contain"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <span className="text-[10px] font-semibold text-zinc-800">{partner.name}</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </button>
           ))}
           {projects.length === 0 && (
