@@ -138,10 +138,10 @@ export default function DataTable<T extends object>({
    * Skipped in full screen, where `fixed inset-0` does bound the height and
    * flexbox handles it properly.
    */
-  const [maxBodyHeight, setMaxBodyHeight] = useState<number | undefined>(undefined);
+  const [bodyHeight, setBodyHeight] = useState<number | undefined>(undefined);
   useEffect(() => {
     if (isFullscreen) {
-      setMaxBodyHeight(undefined);
+      setBodyHeight(undefined);
       return;
     }
     const measure = () => {
@@ -156,7 +156,7 @@ export default function DataTable<T extends object>({
       const available = window.innerHeight - top - headerHeight - footerHeight - pageGutter;
       // A floor, so a table that starts far down the page still shows rows
       // rather than collapsing to a sliver.
-      setMaxBodyHeight(Math.max(220, Math.floor(available)));
+      setBodyHeight(Math.max(220, Math.floor(available)));
     };
     measure();
     // The footer only renders once there is more than one page, and the header
@@ -240,6 +240,29 @@ export default function DataTable<T extends object>({
     }
   };
 
+  // One definition for both layouts — it was written out twice, which is two
+  // places to update the wording and two chances for them to drift.
+  const emptyState = (
+    <div className="flex flex-col items-center justify-center gap-2 max-w-xs mx-auto px-4 py-16 text-center">
+      <div className="p-3 bg-zinc-800 rounded-full text-gold/80 border border-zinc-750">
+        <Inbox size={32} />
+      </div>
+      <p className="text-sm font-semibold text-white">No records found</p>
+      <p className="text-xs text-gray-400">
+        {search ? `No items match "${search}"` : 'There are no records available in this view.'}
+      </p>
+      {search && (
+        <button
+          type="button"
+          onClick={() => handleSearchChange('')}
+          className="mt-2 text-xs font-semibold px-3 py-1.5 bg-zinc-750 text-gold rounded-lg hover:bg-zinc-700 transition-colors"
+        >
+          Clear Search
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div
       ref={containerRef}
@@ -317,10 +340,11 @@ export default function DataTable<T extends object>({
       {/* Desktop/tablet: standard scrollable table */}
       <div
         ref={tableWrapRef}
-        className="hidden md:block flex-1 min-h-0 overflow-auto w-full scrollbar-thin"
-        style={maxBodyHeight ? { maxHeight: maxBodyHeight } : undefined}
+        className="hidden md:flex md:flex-col flex-1 min-h-0 overflow-auto w-full scrollbar-thin"
+        style={bodyHeight ? { height: bodyHeight } : undefined}
       >
-        <table className="w-full text-sm">
+        {/* shrink-0: the container scrolls, the table keeps its height */}
+        <table className="w-full text-sm shrink-0">
           <thead>
             <tr className="border-b border-zinc-750">
               {columns.map((col) => (
@@ -363,38 +387,15 @@ export default function DataTable<T extends object>({
                 )}
               </tr>
             ))}
-            {paginated.length === 0 && (
-              <tr>
-                <td colSpan={columns.length + (actions ? 1 : 0)} className="px-4 py-16 text-center text-gray-500">
-                  <div className="flex flex-col items-center justify-center gap-2 max-w-xs mx-auto">
-                    <div className="p-3 bg-zinc-800 rounded-full text-gold/80 border border-zinc-750">
-                      <Inbox size={32} />
-                    </div>
-                    <p className="text-sm font-semibold text-white">No records found</p>
-                    <p className="text-xs text-gray-400">
-                      {search ? `No items match "${search}"` : 'There are no records available in this view.'}
-                    </p>
-                    {search && (
-                      <button
-                        type="button"
-                        onClick={() => handleSearchChange('')}
-                        className="mt-2 text-xs font-semibold px-3 py-1.5 bg-zinc-750 text-gold rounded-lg hover:bg-zinc-700 transition-colors"
-                      >
-                        Clear Search
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
+        {paginated.length === 0 && <div className="flex-1 flex items-center justify-center">{emptyState}</div>}
       </div>
 
       {/* Mobile view */}
       <div
-        className="md:hidden flex-1 min-h-0 overflow-auto divide-y divide-zinc-750/50 w-full scrollbar-thin"
-        style={maxBodyHeight ? { maxHeight: maxBodyHeight } : undefined}
+        className="md:hidden flex flex-col flex-1 min-h-0 overflow-auto divide-y divide-zinc-750/50 w-full scrollbar-thin"
+        style={bodyHeight ? { height: bodyHeight } : undefined}
       >
         {paginated.map((row, idx) => (
           <div
@@ -408,7 +409,7 @@ export default function DataTable<T extends object>({
                 onRowClick(row);
               }
             } : undefined}
-            className={`p-4 space-y-2 transition-colors ${
+            className={`p-4 space-y-2 shrink-0 transition-colors ${
               onRowClick ? 'cursor-pointer hover:bg-gold/5 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-gold/50' : ''
             }`}
           >
@@ -432,26 +433,7 @@ export default function DataTable<T extends object>({
             )}
           </div>
         ))}
-        {paginated.length === 0 && (
-          <div className="px-4 py-16 text-center text-gray-500 flex flex-col items-center justify-center gap-2 max-w-xs mx-auto">
-            <div className="p-3 bg-zinc-800 rounded-full text-gold/80 border border-zinc-750">
-              <Inbox size={32} />
-            </div>
-            <p className="text-sm font-semibold text-white">No records found</p>
-            <p className="text-xs text-gray-400">
-              {search ? `No items match "${search}"` : 'There are no records available in this view.'}
-            </p>
-            {search && (
-              <button
-                type="button"
-                onClick={() => handleSearchChange('')}
-                className="mt-2 text-xs font-semibold px-3 py-1.5 bg-zinc-750 text-gold rounded-lg hover:bg-zinc-700 transition-colors"
-              >
-                Clear Search
-              </button>
-            )}
-          </div>
-        )}
+        {paginated.length === 0 && <div className="flex-1 flex items-center justify-center">{emptyState}</div>}
       </div>
 
       {(serverPagination ? serverPagination.totalPages > 1 : filtered.length > pageSize) && (
