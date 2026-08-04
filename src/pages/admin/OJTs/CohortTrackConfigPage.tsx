@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import DataTable from '../../../components/DataTable';
 import { Settings2, Plus, Pencil, Trash2, Users, X, UserPlus, ArrowRight, FileSpreadsheet } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
@@ -493,105 +494,110 @@ export default function CohortTrackConfigPage() {
               <p className="text-gray-400 text-sm">No tracks configured yet. Students won't see any track options until you add at least one.</p>
             </div>
           ) : (
-            <div className="bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-750 text-left text-gray-400 text-xs uppercase tracking-wider">
-                      <th className="px-4 py-3">Track</th>
-                      <th className="px-4 py-3">Who can pick this track</th>
-                      <th className="px-4 py-3">Track can go</th>
-                      <th className="px-4 py-3">Project mode</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {configs.map(config => (
-                      <tr key={config.configId} className="border-b border-zinc-800 last:border-0">
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => navigate(variantPath(config, 'projects'))}
-                            className="text-white font-medium hover:text-gold hover:underline underline-offset-4 transition-colors text-left"
-                            title="Open this track's projects & CSV upload"
-                          >
-                            {config.trackName}
-                          </button>
-                          {/* Only rendered when the track really is configured
-                              more than once — otherwise every row would carry a
-                              redundant restatement of its own eligibility. */}
-                          {variantSuffix(config) && (
-                            <span className="block text-xs text-gray-500 mt-0.5">{variantSuffix(config)}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-gray-400">{ELIGIBILITY_LABELS[config.eligibilityType]}</td>
-                        <td className="px-4 py-3 text-gray-300">
-                          {config.eligibilityType === 'year' && (config.eligibilityValue ?? '').split(',').join(', ')}
-                          {config.eligibilityType === 'batch' && (config.eligibilityValue ?? '').split(',').join(', ')}
-                          {config.eligibilityType === 'unique' && (
-                            <button
-                              onClick={() => openStudentsModal(config.configId)}
-                              className="flex items-center gap-1.5 text-gold hover:underline"
-                            >
-                              <Users size={13} />
-                              {config.eligibleStudents.length} named student(s)
-                            </button>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-gray-300">
-                          {config.projectMode === 'individual' ? 'Individual only' : 'Team required'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1">
-                            {/* A track with nobody on it is a dead end — students
-                                reach project submission and find an empty mentor
-                                list — so its own entry point carries the warning
-                                rather than sitting quietly among the others. */}
-                            <button
-                              onClick={() => navigate(variantPath(config, 'mentors'))}
-                              className={`p-1.5 rounded-lg transition-colors ${
-                                config.mentors.length === 0
-                                  ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
-                                  : 'text-gray-400 hover:text-gold hover:bg-zinc-750'
-                              }`}
-                              title={
-                                config.mentors.length === 0
-                                  ? 'No mentors on this track — students can’t pick anyone'
-                                  : `Mentors (${config.mentors.length})`
-                              }
-                            >
-                              <Users size={14} />
-                            </button>
-                            {config.eligibilityType === 'unique' && (
-                              <button
-                                onClick={() => navigate(variantPath(config, 'students'))}
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-gold hover:bg-zinc-750 transition-colors"
-                                title="Add students by performance"
-                              >
-                                <UserPlus size={14} />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => openEditModal(config)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
-                              title="Edit"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              onClick={() => handleRemoveConfig(config)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                              title="Remove from this OJT"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <DataTable<ApiCohortTrackConfig>
+              columns={[
+                {
+                  key: 'trackName',
+                  header: 'Track',
+                  render: (config) => (
+                    <>
+                      <button
+                        onClick={() => navigate(variantPath(config, 'projects'))}
+                        className="text-white font-medium hover:text-gold hover:underline underline-offset-4 transition-colors text-left"
+                        title="Open this track's projects & CSV upload"
+                      >
+                        {config.trackName}
+                      </button>
+                      {/* Only rendered when the track really is configured
+                          more than once — otherwise every row would carry a
+                          redundant restatement of its own eligibility. */}
+                      {variantSuffix(config) && (
+                        <span className="block text-xs text-gray-500 mt-0.5">{variantSuffix(config)}</span>
+                      )}
+                    </>
+                  ),
+                },
+                {
+                  key: 'eligibilityType',
+                  header: 'Who can pick this track',
+                  render: (config) => <span className="text-gray-400">{ELIGIBILITY_LABELS[config.eligibilityType]}</span>,
+                },
+                {
+                  key: 'eligibilityValue',
+                  header: 'Track can go',
+                  render: (config) => (
+                    <>
+                      {config.eligibilityType === 'year' && (config.eligibilityValue ?? '').split(',').join(', ')}
+                      {config.eligibilityType === 'batch' && (config.eligibilityValue ?? '').split(',').join(', ')}
+                      {config.eligibilityType === 'unique' && (
+                        <button
+                          onClick={() => openStudentsModal(config.configId)}
+                          className="flex items-center gap-1.5 text-gold hover:underline"
+                        >
+                          <Users size={13} />
+                          {config.eligibleStudents.length} named student(s)
+                        </button>
+                      )}
+                    </>
+                  ),
+                },
+                {
+                  key: 'projectMode',
+                  header: 'Project mode',
+                  render: (config) => (config.projectMode === 'individual' ? 'Individual only' : 'Team required'),
+                },
+              ]}
+              data={configs}
+              searchPlaceholder="Search tracks..."
+              searchKeys={['trackName']}
+              hideExport
+              actions={(config) => (
+                <div className="flex items-center justify-end gap-1">
+                  {/* A track with nobody on it is a dead end — students
+                      reach project submission and find an empty mentor
+                      list — so its own entry point carries the warning
+                      rather than sitting quietly among the others. */}
+                  <button
+                    onClick={() => navigate(variantPath(config, 'mentors'))}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      config.mentors.length === 0
+                        ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
+                        : 'text-gray-400 hover:text-gold hover:bg-zinc-750'
+                    }`}
+                    title={
+                      config.mentors.length === 0
+                        ? 'No mentors on this track \u2014 students can\u2019t pick anyone'
+                        : `Mentors (${config.mentors.length})`
+                    }
+                  >
+                    <Users size={14} />
+                  </button>
+                  {config.eligibilityType === 'unique' && (
+                    <button
+                      onClick={() => navigate(variantPath(config, 'students'))}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-gold hover:bg-zinc-750 transition-colors"
+                      title="Add students by performance"
+                    >
+                      <UserPlus size={14} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => openEditModal(config)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
+                    title="Edit"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={() => handleRemoveConfig(config)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title="Remove from this OJT"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
+            />
           )}
         </div>
       )}

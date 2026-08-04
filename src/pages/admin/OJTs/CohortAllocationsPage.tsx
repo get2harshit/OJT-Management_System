@@ -739,67 +739,61 @@ export default function CohortAllocationsPage() {
           <SpinnerSquare size={48} />
         </div>
       ) : previewMode ? (
-        <div className="bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-750 text-left text-gray-400 text-xs uppercase tracking-wider">
-                  <th className="px-4 py-3">Team</th>
-                  <th className="px-4 py-3">Track</th>
-                  <th className="px-4 py-3">Project</th>
-                  <th className="px-4 py-3">Mentor</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {previewEntries.map((entry) => (
-                  <tr key={entry.teamId} className="border-b border-zinc-800 last:border-0">
-                    <td className="px-4 py-3 text-white font-medium">
-                      {entry.teamName || entry.teamId}
-                      {entry.members.length > 0 && (
-                        <span className="text-gray-400 font-normal">
-                          {' '}
-                          ({entry.members.map((m) => m.fullName || m.studentId).join(', ')})
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-400">{entry.track}</td>
-                    <td className="px-4 py-3 text-gray-300">{entry.projectTitle || '—'}</td>
-                    <td className="px-4 py-3 text-gray-300">{entry.mentorName || '—'}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-                          (STATUS_DOT[entry.status] ?? STATUS_DOT.pending).text
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${(STATUS_DOT[entry.status] ?? STATUS_DOT.pending).dot}`} />
-                        {STATUS_LABELS[entry.status] ?? entry.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => openManualAllocateModal(entry)}
-                        disabled={drafting}
-                        className="text-xs text-gold hover:underline font-semibold disabled:opacity-50"
-                      >
-                        Reallocate
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <DataTable<AllocationPreviewEntry>
+          columns={[
+            {
+              key: 'teamName',
+              header: 'Team',
+              render: (entry) => (
+                <span className="text-white font-medium">
+                  {entry.teamName || entry.teamId}
+                  {entry.members.length > 0 && (
+                    <span className="text-gray-400 font-normal">
+                      {' '}
+                      ({entry.members.map((m) => m.fullName || m.studentId).join(', ')})
+                    </span>
+                  )}
+                </span>
+              ),
+            },
+            { key: 'track', header: 'Track', render: (entry) => <span className="text-gray-400">{entry.track}</span> },
+            { key: 'projectTitle', header: 'Project', render: (entry) => entry.projectTitle || '\u2014' },
+            { key: 'mentorName', header: 'Mentor', render: (entry) => entry.mentorName || '\u2014' },
+            {
+              key: 'status',
+              header: 'Status',
+              render: (entry) => (
+                <span
+                  className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                    (STATUS_DOT[entry.status] ?? STATUS_DOT.pending).text
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${(STATUS_DOT[entry.status] ?? STATUS_DOT.pending).dot}`} />
+                  {STATUS_LABELS[entry.status] ?? entry.status}
+                </span>
+              ),
+            },
+          ]}
+          data={previewEntries}
+          searchPlaceholder="Search teams..."
+          searchKeys={['teamName', 'track', 'projectTitle', 'mentorName']}
+          /* Nothing here is saved yet, so there is nothing worth exporting —
+             and a file of provisional allocations is the kind of thing that
+             gets circulated as if it were final. */
+          hideExport
+          actions={(entry) => (
+            <button
+              onClick={() => openManualAllocateModal(entry)}
+              disabled={drafting}
+              className="text-xs text-gold hover:underline font-semibold disabled:opacity-50"
+            >
+              Reallocate
+            </button>
+          )}
+        />
       ) : (
-        <div className={`relative ${tableLoading ? 'opacity-20 transition-opacity' : 'transition-opacity'}`}>
-        {tableLoading && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center">
-            <SpinnerSquare size={56} />
-          </div>
-        )}
         <DataTable
+          loading={tableLoading}
           columns={[
             {
               key: 'members',
@@ -949,7 +943,6 @@ export default function CohortAllocationsPage() {
             </>
           }
         />
-        </div>
       )}
 
       <Modal open={showProposalsModal} onClose={() => setShowProposalsModal(false)} title="Self-proposed projects — mentor review">
