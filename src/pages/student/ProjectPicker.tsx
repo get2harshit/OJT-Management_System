@@ -1422,7 +1422,7 @@ function ProjectDetailView({
             {textField('End users defined', detail.endUsersDefined)}
           </div>
 
-          {(detail.recommendedMentors?.length || detail.creditMapping?.length || detail.partners?.length) && (
+          {(detail.recommendedMentors?.length || detail.partners?.length) && (
             <div className="space-y-3">
               <p className="text-xs text-gold uppercase font-bold tracking-wider">Mentors & partners</p>
 
@@ -1438,22 +1438,6 @@ function ProjectDetailView({
                         <UserCheck size={13} className="text-gold shrink-0" />
                         {mentor.fullName ?? '—'}
                         {mentor.organization && <span className="text-gray-500 text-xs">· {mentor.organization}</span>}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {detail.creditMapping && detail.creditMapping.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1.5">Credit mapping</p>
-                  <div className="flex flex-wrap gap-2">
-                    {detail.creditMapping.map(credit => (
-                      <span
-                        key={credit}
-                        className="text-sm text-gray-200 bg-zinc-800 border border-zinc-750 rounded-lg px-2.5 py-1"
-                      >
-                        {credit}
                       </span>
                     ))}
                   </div>
