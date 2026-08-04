@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { LayoutGrid, ArrowLeft, Search, Plus, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useParams } from 'react-router-dom';
+import { LayoutGrid, Plus, Download } from 'lucide-react';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import Drawer from '../../../components/Drawer';
+import DataTable from '../../../components/DataTable';
+import CohortPageHeader from './CohortPageHeader';
 import type { AllocationBlueprintCounts, AllocationBlueprintStage, AllocationBlueprintStudent, AllocationBlueprintSummary } from '../../../lib/api/allocations';
 import { apiGetCohort, apiGetAllocationBlueprint, apiGetAllocationBlueprintStudents } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
@@ -13,7 +15,6 @@ import { usePageRefresh } from '../../../context/RefreshContext';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
-const LIMIT_OPTIONS = [20, 40, 80, 100, 500, 1000, 2000];
 
 // Lifecycle order — this is the sequence a student actually moves through.
 const STAGE_ORDER: AllocationBlueprintStage[] = [
@@ -94,7 +95,6 @@ const AVAILABLE_COLUMNS: OptionalColumn[] = [
 
 export default function AllocationBlueprintPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
-  const navigate = useNavigate();
   const { showError } = useToast();
 
   const [cohortLabel, setCohortLabel] = useState('');
@@ -105,7 +105,8 @@ export default function AllocationBlueprintPage() {
 
   const [stageFilter, setStageFilter] = useState<AllocationBlueprintStage | ''>('');
   const [batchFilter, setBatchFilter] = useState('');
-  const [searchInput, setSearchInput] = useState('');
+  // The search box belongs to DataTable now, so only the debounced value that
+  // the fetch actually runs on is held here.
   const [search, setSearch] = useState('');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -133,37 +134,6 @@ export default function AllocationBlueprintPage() {
   // doesn't know about. The rAF + delayed recompute catch the footer's real
   // height once it actually renders (it's conditional on totalPages > 1, so
   // the very first synchronous measurement can undercount it as 0).
-  const tableWrapRef = useRef<HTMLDivElement>(null);
-  const footerRef = useRef<HTMLDivElement>(null);
-  const [maxTableHeight, setMaxTableHeight] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    const computeMaxHeight = () => {
-      const wrap = tableWrapRef.current;
-      if (!wrap) return;
-      const wrapTop = wrap.getBoundingClientRect().top;
-      const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 0;
-      const paddingBottom = window.innerWidth >= 1024 ? 16 : 12;
-      const available = window.innerHeight - wrapTop - footerHeight - paddingBottom;
-      setMaxTableHeight(Math.max(200, Math.floor(available)));
-    };
-    computeMaxHeight();
-    const rafId = requestAnimationFrame(computeMaxHeight);
-    const timerId = setTimeout(computeMaxHeight, 100);
-    window.addEventListener('resize', computeMaxHeight);
-    return () => {
-      cancelAnimationFrame(rafId);
-      clearTimeout(timerId);
-      window.removeEventListener('resize', computeMaxHeight);
-    };
-    // `loading` (the overview fetch) and `studentsLoading`/students.length
-    // (the students fetch) are two independent parallel requests — whichever
-    // resolves second is what actually mounts the table into the DOM. Without
-    // `loading` here, a run that finishes while the table isn't mounted yet
-    // (tableWrapRef.current still null) permanently no-ops, since neither
-    // students.length nor pagination.totalPages necessarily change again
-    // afterward to trigger a re-run.
-  }, [loading, students.length, pagination.totalPages]);
-
   const fetchOverview = useCallback(async () => {
     if (!cohortId) return;
     setLoading(true);
@@ -216,7 +186,6 @@ export default function AllocationBlueprintPage() {
   }, [fetchOverview, fetchStudents]));
 
   const handleSearchInputChange = (value: string) => {
-    setSearchInput(value);
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     searchDebounceRef.current = setTimeout(() => {
       setPage(1);
@@ -282,200 +251,131 @@ export default function AllocationBlueprintPage() {
 
   const total = counts ? STAGE_ORDER.reduce((sum, s) => sum + counts[s], 0) : 0;
 
+  // Name/Batch/Status always, then whatever the admin added. Built from the
+  // same AVAILABLE_COLUMNS entries the CSV export reads, so a column shows the
+  // same thing on screen as in the file.
+  const columns = useMemo(
+    () => [
+      {
+        key: 'fullName',
+        header: 'Student Name',
+        render: (s: AllocationBlueprintStudent) => (
+          <span className="text-white font-medium">{s.fullName || '—'}</span>
+        ),
+      },
+      {
+        key: 'batch',
+        header: 'Batch',
+        render: (s: AllocationBlueprintStudent) => s.batch || '—',
+      },
+      {
+        key: 'stage',
+        header: 'Status',
+        render: (s: AllocationBlueprintStudent) => (
+          <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${STAGE_TEXT[s.stage]}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${STAGE_DOT[s.stage]}`} />
+            {STAGE_LABELS[s.stage]}
+          </span>
+        ),
+      },
+      ...activeColumns.map(c => ({
+        key: c.key,
+        header: c.label,
+        render: (s: AllocationBlueprintStudent) => c.value(s),
+      })),
+    ],
+    [activeColumns]
+  );
+
   return (
     <div className="space-y-3">
-      {/* flex-wrap so the summary numbers drop to their own line on a narrow
-          screen instead of squeezing the title — the title is what tells you
-          which page you're on, so it is the last thing that should give way. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => navigate(-1)}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors shrink-0"
-          title="Back"
-        >
-          <ArrowLeft size={18} />
-        </button>
-        <LayoutGrid className="text-gold shrink-0" size={16} />
-        <h1 className="text-sm font-semibold text-white shrink-0">Allocation Blueprint</h1>
-        {cohortLabel && <span className="text-xs text-gray-500 shrink-0">— {cohortLabel}</span>}
-        {summary && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 ml-2">
-            {SUMMARY_ITEMS.map(item => (
-              <span key={item.key} className="flex items-baseline gap-1.5">
-                {/* The number is the thing being scanned, so it carries the
-                    size and the colour; the label stays quiet behind it. */}
-                <span className={`text-base font-semibold tabular-nums leading-none ${item.tone}`}>
-                  {summary[item.key]}
+      <CohortPageHeader
+        title="Allocation Blueprint"
+        subtitle={cohortLabel || undefined}
+        icon={LayoutGrid}
+        trailing={
+          summary ? (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 ml-1">
+              {SUMMARY_ITEMS.map(item => (
+                <span key={item.key} className="flex items-baseline gap-1.5">
+                  {/* The number is the thing being scanned, so it carries the
+                      size and the colour; the label stays quiet behind it. */}
+                  <span className={`text-base font-semibold tabular-nums leading-none ${item.tone}`}>
+                    {summary[item.key]}
+                  </span>
+                  <span className="text-xs text-gray-500 leading-none">{item.label}</span>
                 </span>
-                <span className="text-xs text-gray-500 leading-none">{item.label}</span>
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          ) : null
+        }
+      />
 
       {loading ? (
         <div className="min-h-[40vh] flex items-center justify-center">
           <SpinnerSquare size={48} />
         </div>
       ) : (
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative max-w-xs flex-1 min-w-[200px]">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
-              <input
-                type="text"
-                value={searchInput}
-                onChange={e => handleSearchInputChange(e.target.value)}
-                placeholder="Search by name or roll number..."
-                className="w-full bg-zinc-850 border border-zinc-750 rounded-lg pl-8 pr-3 py-1.5 text-white text-xs focus:outline-none focus:border-gold"
-              />
-            </div>
-            <Select
-              variant="filter"
-              value={stageFilter}
-              onChange={v => handleStageFilterChange(v as string)}
-              options={STAGE_ORDER.map(s => ({ value: s, label: STAGE_LABELS[s] }))}
-              placeholder="All Statuses"
-              className="min-w-[160px] !text-xs !py-1.5"
-            />
-            {allowedBatches.length > 0 && (
+        <DataTable<AllocationBlueprintStudent>
+          columns={columns}
+          data={students}
+          loading={studentsLoading}
+          searchPlaceholder="Search by name or roll number..."
+          onSearchChange={handleSearchInputChange}
+          /* The table's own export writes the rows it currently holds, which
+             here is one page. This page's button fetches the whole filtered
+             set first, so it stays. */
+          hideExport
+          leftHeaderContent={
+            <>
               <Select
                 variant="filter"
-                value={batchFilter}
-                onChange={v => handleBatchFilterChange(v as string)}
-                options={allowedBatches.map(b => ({ value: b, label: b }))}
-                placeholder="All Batches"
-                className="min-w-[120px] !text-xs !py-1.5"
+                value={stageFilter}
+                onChange={v => handleStageFilterChange(v as string)}
+                options={STAGE_ORDER.map(s => ({ value: s, label: STAGE_LABELS[s] }))}
+                placeholder="All Statuses"
+                className="min-w-[160px] !text-xs !py-1.5"
               />
-            )}
-            {counts && (
-              <span className="text-xs text-gray-500 shrink-0">{total} student{total === 1 ? '' : 's'}</span>
-            )}
-            <button
-              onClick={handleExportCSV}
-              disabled={exportingCsv || pagination.total === 0}
-              className="ml-auto flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors shrink-0 disabled:opacity-50"
-            >
-              <Download size={13} />
-              {exportingCsv ? 'Exporting...' : 'Export CSV'}
-            </button>
-            <button
-              onClick={() => setColumnsDrawerOpen(true)}
-              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-zinc-850 border border-zinc-750 rounded-lg text-gray-300 hover:text-white hover:border-gold/40 transition-colors shrink-0"
-            >
-              <Plus size={13} />
+              {allowedBatches.length > 0 && (
+                <Select
+                  variant="filter"
+                  value={batchFilter}
+                  onChange={v => handleBatchFilterChange(v as string)}
+                  options={allowedBatches.map(b => ({ value: b, label: b }))}
+                  placeholder="All Batches"
+                  className="min-w-[120px] !text-xs !py-1.5"
+                />
+              )}
+              {counts && (
+                <span className="text-xs text-gray-500 shrink-0">{total} student{total === 1 ? '' : 's'}</span>
+              )}
+              <button
+                onClick={handleExportCSV}
+                disabled={exportingCsv || pagination.total === 0}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors shrink-0 disabled:opacity-50"
+              >
+                <Download size={13} />
+                {exportingCsv ? 'Exporting...' : 'Export CSV'}
+              </button>
+              <button
+                onClick={() => setColumnsDrawerOpen(true)}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-zinc-850 border border-zinc-750 rounded-lg text-gray-300 hover:text-white hover:border-gold/40 transition-colors shrink-0"
+              >
+                <Plus size={13} />
                 Customize Columns
-            </button>
-          </div>
-
-          <div className="bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden">
-            <div
-              ref={tableWrapRef}
-              className="overflow-auto"
-              style={maxTableHeight ? { maxHeight: maxTableHeight } : undefined}
-            >
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-zinc-850">
-                  <tr className="border-b border-zinc-750 text-left text-gray-400 text-xs uppercase tracking-wider">
-                    <th className="px-4 py-3">Student Name</th>
-                    <th className="px-4 py-3">Batch</th>
-                    <th className="px-4 py-3">Status</th>
-                    {activeColumns.map(c => (
-                      <th key={c.key} className="px-4 py-3">{c.label}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {studentsLoading ? (
-                    <tr>
-                      <td colSpan={3 + activeColumns.length} className="p-6">
-                        <div className="flex justify-center"><SpinnerSquare size={28} /></div>
-                      </td>
-                    </tr>
-                  ) : students.length === 0 ? (
-                    <tr>
-                      <td colSpan={3 + activeColumns.length} className="p-8 text-center text-gray-500">No students match these filters.</td>
-                    </tr>
-                  ) : (
-                    students.map(s => (
-                      <tr key={s.id} className="border-b border-zinc-800 last:border-0">
-                        <td className="px-4 py-3 text-white font-medium">{s.fullName || '—'}</td>
-                        <td className="px-4 py-3 text-gray-300">{s.batch || '—'}</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${STAGE_TEXT[s.stage]}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${STAGE_DOT[s.stage]}`} />
-                            {STAGE_LABELS[s.stage]}
-                          </span>
-                        </td>
-                        {activeColumns.map(c => (
-                          <td key={c.key} className="px-4 py-3 text-gray-300">{c.value(s)}</td>
-                        ))}
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {!studentsLoading && pagination.total > 0 && (
-              <div ref={footerRef} className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-zinc-750 flex-wrap">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500">
-                    {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    {LIMIT_OPTIONS.map(opt => (
-                      <button
-                        key={opt}
-                        onClick={() => handleLimitChange(opt)}
-                        className={`text-xs px-2 py-1 rounded-md transition-colors ${
-                          opt === limit ? 'bg-gold/20 text-gold font-semibold' : 'text-gray-400 hover:text-white hover:bg-zinc-750'
-                        }`}
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {pagination.totalPages > 1 && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setPage(1)}
-                      disabled={page === 1}
-                      className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
-                    >
-                      <ChevronsLeft size={16} />
-                    </button>
-                    <button
-                      onClick={() => setPage(p => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                      className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-                    <span className="text-sm text-gray-400">{pagination.page} / {pagination.totalPages}</span>
-                    <button
-                      onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
-                      disabled={page === pagination.totalPages}
-                      className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                    <button
-                      onClick={() => setPage(pagination.totalPages)}
-                      disabled={page === pagination.totalPages}
-                      className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
-                    >
-                      <ChevronsRight size={16} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+              </button>
+            </>
+          }
+          serverPagination={{
+            page: pagination.page,
+            limit: pagination.limit,
+            totalPages: pagination.totalPages,
+            total: pagination.total,
+            onPageChange: setPage,
+            onLimitChange: handleLimitChange,
+            autoFit: true,
+          }}
+        />
       )}
 
       <Drawer open={columnsDrawerOpen} onClose={() => setColumnsDrawerOpen(false)} title="Customize Columns" widthClassName="max-w-xs">
