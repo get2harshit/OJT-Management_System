@@ -965,7 +965,6 @@ export default function ViewCohortPage() {
                     totalPages: listPagination.totalPages,
                     onPageChange: setListPage,
                     onLimitChange: handleListLimitChange,
-                    autoFit: true,
                   }}
                 />
               )}
@@ -998,7 +997,6 @@ export default function ViewCohortPage() {
                     totalPages: listPagination.totalPages,
                     onPageChange: setListPage,
                     onLimitChange: handleListLimitChange,
-                    autoFit: true,
                   }}
                 />
               )}
@@ -1039,7 +1037,6 @@ export default function ViewCohortPage() {
                     totalPages: listPagination.totalPages,
                     onPageChange: setListPage,
                     onLimitChange: handleListLimitChange,
-                    autoFit: true,
                   }}
                 />
               )}

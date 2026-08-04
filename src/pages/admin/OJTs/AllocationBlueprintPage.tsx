@@ -126,14 +126,6 @@ export default function AllocationBlueprintPage() {
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
-  // Sizes the table body to fill the space actually available below it — same
-  // technique as DataTable's own handleFitToViewport — so the table scrolls
-  // internally instead of pushing the pagination footer (or the page itself)
-  // past the viewport. paddingBottom accounts for AppShell's <main> element's
-  // own bottom padding (p-4/sm:p-6/lg:p-8), which window.innerHeight alone
-  // doesn't know about. The rAF + delayed recompute catch the footer's real
-  // height once it actually renders (it's conditional on totalPages > 1, so
-  // the very first synchronous measurement can undercount it as 0).
   const fetchOverview = useCallback(async () => {
     if (!cohortId) return;
     setLoading(true);
@@ -373,7 +365,6 @@ export default function AllocationBlueprintPage() {
             total: pagination.total,
             onPageChange: setPage,
             onLimitChange: handleLimitChange,
-            autoFit: true,
           }}
         />
       )}

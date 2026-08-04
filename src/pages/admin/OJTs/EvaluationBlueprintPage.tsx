@@ -319,7 +319,6 @@ export default function EvaluationBlueprintPage() {
             total: pagination.total,
             onPageChange: setPage,
             onLimitChange: handleLimitChange,
-            autoFit: true,
           }}
         />
       )}

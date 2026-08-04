@@ -20,7 +20,6 @@ interface ServerPagination {
   onPageChange: (page: number) => void;
   limitOptions?: number[];
   onLimitChange?: (limit: number) => void;
-  autoFit?: boolean;
 }
 
 interface DataTableProps<T> {
@@ -119,51 +118,60 @@ export default function DataTable<T extends object>({
   // showing a row count none of its own buttons was highlighting.
   const [localPageSize, setLocalPageSize] = useState(pageSizeOptions?.[0] ?? BASE_PAGE_SIZE);
   const pageSize = localPageSize;
-  const tbodyRef = useRef<HTMLTableSectionElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
   const tableWrapRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
 
-  const handleFitToViewport = () => {
-    if (!serverPagination?.onLimitChange) return;
-    const firstRow = tbodyRef.current?.querySelector('tr');
-    if (!firstRow) return;
-    const rowHeight = firstRow.getBoundingClientRect().height;
-    if (!rowHeight) return;
-    const tbodyTop = firstRow.getBoundingClientRect().top;
-    const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 60;
-    const available = window.innerHeight - tbodyTop - footerHeight - 16;
-    const count = Math.max(5, Math.floor(available / rowHeight));
-    serverPagination.onLimitChange(count);
-  };
-
-  const hasAutoFitted = useRef(false);
+  /**
+   * How tall the rows may get before they start scrolling inside the table.
+   *
+   * Without this the table is as tall as its rows, so a long page pushes the
+   * pagination footer below the fold and the only way to reach it is to scroll
+   * the whole page — with the header scrolling away too. The rows are the part
+   * that should move; the controls around them should stay put.
+   *
+   * The card is measured against the viewport rather than sized by flexbox
+   * because nothing above it is height-bounded: it sits in a plain content
+   * column, so `flex-1` has no fixed height to divide and simply grows.
+   *
+   * Skipped in full screen, where `fixed inset-0` does bound the height and
+   * flexbox handles it properly.
+   */
+  const [maxBodyHeight, setMaxBodyHeight] = useState<number | undefined>(undefined);
   useEffect(() => {
-    if (serverPagination?.autoFit && !hasAutoFitted.current && data.length > 0) {
-      hasAutoFitted.current = true;
-      handleFitToViewport();
+    if (isFullscreen) {
+      setMaxBodyHeight(undefined);
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverPagination?.autoFit, data]);
-
-  // Re-fit when the window changes size. Fitting once on mount left a table
-  // sized for whatever the viewport was then — maximise the window and the
-  // extra height stays empty, which is the same complaint the expand button
-  // exists to answer. Debounced, since resize fires continuously and each fit
-  // asks the server for a new page.
-  useEffect(() => {
-    if (!serverPagination?.autoFit) return;
-    let timer: number;
-    const onResize = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(handleFitToViewport, 200);
+    const measure = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const top = container.getBoundingClientRect().top;
+      const headerHeight = headerRef.current?.offsetHeight ?? 0;
+      const footerHeight = footerRef.current?.offsetHeight ?? 0;
+      // The page's own bottom padding (AppShell's main is p-4/sm:p-6/lg:p-8)
+      // plus the card border, neither of which window.innerHeight knows about.
+      const pageGutter = window.innerWidth >= 1024 ? 36 : 20;
+      const available = window.innerHeight - top - headerHeight - footerHeight - pageGutter;
+      // A floor, so a table that starts far down the page still shows rows
+      // rather than collapsing to a sliver.
+      setMaxBodyHeight(Math.max(220, Math.floor(available)));
     };
-    window.addEventListener('resize', onResize);
+    measure();
+    // The footer only renders once there is more than one page, and the header
+    // wraps at some widths — both change the height available, and neither is
+    // settled on the first synchronous pass.
+    const rafId = requestAnimationFrame(measure);
+    const timerId = window.setTimeout(measure, 120);
+    window.addEventListener('resize', measure);
     return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener('resize', onResize);
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(timerId);
+      window.removeEventListener('resize', measure);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverPagination?.autoFit]);
+  }, [isFullscreen, data.length, serverPagination?.totalPages, loading]);
+
 
   // Escape is what people try first to leave anything covering the screen,
   // and the listener only exists while it is covering the screen — otherwise
@@ -189,15 +197,6 @@ export default function DataTable<T extends object>({
     // never closes over a stale controlled setter.
   }, [isFullscreen, setIsFullscreen]);
 
-  // Expanding roughly doubles the room for rows, so a table that sized its
-  // page to the viewport should ask for that many again — otherwise the whole
-  // screen shows the twelve rows that fitted the old one.
-  useEffect(() => {
-    if (!serverPagination?.autoFit) return;
-    const timer = window.setTimeout(handleFitToViewport, 0);
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFullscreen]);
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -243,13 +242,14 @@ export default function DataTable<T extends object>({
 
   return (
     <div
+      ref={containerRef}
       className={
         isFullscreen
           ? 'fixed inset-0 z-[120] flex flex-col bg-zinc-850 border-0 rounded-none overflow-hidden'
           : 'relative flex-1 min-h-0 flex flex-col bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden shadow-sm'
       }
     >
-      <div className="p-4 border-b border-zinc-750 flex items-center gap-3 shrink-0">
+      <div ref={headerRef} className="p-4 border-b border-zinc-750 flex items-center gap-3 shrink-0">
         {leftHeaderContent && (
           <div className="flex items-center gap-3 mr-auto">
             {leftHeaderContent}
@@ -318,6 +318,7 @@ export default function DataTable<T extends object>({
       <div
         ref={tableWrapRef}
         className="hidden md:block flex-1 min-h-0 overflow-auto w-full scrollbar-thin"
+        style={maxBodyHeight ? { maxHeight: maxBodyHeight } : undefined}
       >
         <table className="w-full text-sm">
           <thead>
@@ -333,7 +334,7 @@ export default function DataTable<T extends object>({
               {actions && <th className="sticky top-0 z-10 bg-zinc-800 px-4 py-3" />}
             </tr>
           </thead>
-          <tbody ref={tbodyRef}>
+          <tbody>
             {paginated.map((row, idx) => (
               <tr
                 key={rowKey(row, idx)}
@@ -391,7 +392,10 @@ export default function DataTable<T extends object>({
       </div>
 
       {/* Mobile view */}
-      <div className="md:hidden flex-1 min-h-0 overflow-auto divide-y divide-zinc-750/50 w-full scrollbar-thin">
+      <div
+        className="md:hidden flex-1 min-h-0 overflow-auto divide-y divide-zinc-750/50 w-full scrollbar-thin"
+        style={maxBodyHeight ? { maxHeight: maxBodyHeight } : undefined}
+      >
         {paginated.map((row, idx) => (
           <div
             key={rowKey(row, idx)}

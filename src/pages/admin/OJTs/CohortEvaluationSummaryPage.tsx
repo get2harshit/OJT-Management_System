@@ -252,7 +252,6 @@ export default function CohortEvaluationSummaryPage() {
             total: pagination.total,
             onPageChange: setPage,
             onLimitChange: handleLimitChange,
-            autoFit: true,
           }}
         />
       )}
