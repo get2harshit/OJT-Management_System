@@ -9,8 +9,6 @@ import type { PanelType } from '../lib/types';
 
 interface AppShellProps {
   panel: PanelType;
-  activeTab: string;
-  onTabChange: (tab: string) => void;
   onLogout?: () => void;
   children: React.ReactNode;
 }
@@ -38,7 +36,7 @@ function getDisplayName(user: { fullName?: string; email?: string } | null): str
 
 // Shared layout shell for the admin/mentor/student panels: inline sidebar on
 // desktop, hamburger-triggered off-canvas drawer below the lg breakpoint.
-export default function AppShell({ panel, activeTab, onTabChange, onLogout, children }: AppShellProps) {
+export default function AppShell({ panel, onLogout, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [isPinned, setIsPinned] = useState(() => {
@@ -98,8 +96,6 @@ export default function AppShell({ panel, activeTab, onTabChange, onLogout, chil
 
       <Sidebar
         panel={panel}
-        activeTab={activeTab}
-        onTabChange={onTabChange}
         onLogout={onLogout}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}

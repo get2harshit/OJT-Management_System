@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import {
   LayoutDashboard,
@@ -21,14 +22,17 @@ import type { PanelType } from '../lib/types';
 
 interface SidebarProps {
   panel: PanelType;
-  activeTab: string;
-  onTabChange: (tab: string) => void;
   onLogout?: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
   isPinned?: boolean;
   onTogglePin?: () => void;
 }
+
+// Each section is a route under the panel's base path, so `id` doubles as the
+// URL segment. Dashboard is the index — it owns the base path itself rather
+// than sitting at /admin/dashboard/dashboard.
+const DASHBOARD_ID = 'dashboard';
 
 const adminTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -65,8 +69,6 @@ const studentTabs = [
 
 export default function Sidebar({
   panel,
-  activeTab,
-  onTabChange,
   onLogout,
   mobileOpen,
   onCloseMobile,
@@ -87,6 +89,10 @@ export default function Sidebar({
     panel === 'admin' ? adminTabs :
       panel === 'mentor' ? mentorTabs :
         studentTabs;
+
+  // Every panel is mounted at /<panel>/dashboard, and its sections are routes
+  // beneath it.
+  const basePath = `/${panel}/dashboard`;
 
   const panelLabel =
     panel === 'admin' ? 'Admin' :
@@ -134,21 +140,30 @@ export default function Sidebar({
       <nav className="flex-1 py-4 space-y-1 overflow-y-auto overflow-x-hidden scrollbar-thin">
         {tabs.map((tab) => {
           const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
+          const isDashboard = tab.id === DASHBOARD_ID;
           return (
-            <button
+            <NavLink
               key={tab.id}
-              onClick={() => { onTabChange(tab.id); onCloseMobile(); }}
+              to={isDashboard ? basePath : `${basePath}/${tab.id}`}
+              // `end` only on the index, so it doesn't light up for every
+              // section. The others deliberately stay active on their own
+              // sub-pages — inside a cohort, OJT Setup should still be the
+              // section you are in, which the old activeTab string could not
+              // express because a sub-page had no tab of its own.
+              end={isDashboard}
+              onClick={onCloseMobile}
               title={tab.label}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
-                isActive
-                  ? 'text-gold bg-zinc-750 border-l-2 border-gold'
-                  : 'text-gray-400 hover:text-white hover:bg-zinc-750'
-              } ${railCenter}`}
+              className={({ isActive }) =>
+                `w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                  isActive
+                    ? 'text-gold bg-zinc-750 border-l-2 border-gold'
+                    : 'text-gray-400 hover:text-white hover:bg-zinc-750'
+                } ${railCenter}`
+              }
             >
               <Icon size={18} className="shrink-0" />
               <span className={`whitespace-nowrap overflow-hidden transition-all duration-200 ${labelHidden}`}>{tab.label}</span>
-            </button>
+            </NavLink>
           );
         })}
       </nav>

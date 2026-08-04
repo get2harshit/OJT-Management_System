@@ -14,7 +14,7 @@ import { usePageRefresh } from '../../context/RefreshContext';
 interface Props {
   mentorId: string;
   attendance: Attendance[];
-  onNavigateToTab: (tab: string) => void;
+  onNavigateToSection: (tab: string) => void;
 }
 
 interface MentorStudent {
@@ -35,8 +35,8 @@ const SUBMISSION_STATUS_BUCKETS: { label: string; statuses: PrdStatus[]; barClas
 
 export default function MentorDashboard({
   attendance: propAttendance,
-  onNavigateToTab,
-}: Partial<Props> & Pick<Props, 'mentorId' | 'onNavigateToTab'>) {
+  onNavigateToSection,
+}: Partial<Props> & Pick<Props, 'mentorId' | 'onNavigateToSection'>) {
   // mentorId is no longer needed here — GET /tasks and the submissions list
   // both scope to the authenticated caller server-side, not a passed id.
   // Attendance has no real backend endpoint anywhere in this app yet — still
@@ -158,9 +158,9 @@ export default function MentorDashboard({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-6">
-        <StatCard title="My Teams" value={myTeams.length} icon={Users} onClick={() => onNavigateToTab('ojts')} />
-        <StatCard title="My Tasks" value={tasks.length} icon={CheckSquare} onClick={() => onNavigateToTab('tasks')} />
-        <StatCard title="Pending Reviews" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToTab('submissions')} />
+        <StatCard title="My Teams" value={myTeams.length} icon={Users} onClick={() => onNavigateToSection('ojts')} />
+        <StatCard title="My Tasks" value={tasks.length} icon={CheckSquare} onClick={() => onNavigateToSection('tasks')} />
+        <StatCard title="Pending Reviews" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToSection('submissions')} />
         <StatCard title="Attendance Records" value={filteredAttendance.length} icon={CalendarCheck} />
         <StatCard title="Avg Progress" value="72%" icon={TrendingUp} trend="+5%" />
       </div>

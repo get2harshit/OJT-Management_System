@@ -18,7 +18,7 @@ interface Props {
   studentId: string;
   credits: Credit[];
   attendance: Attendance[];
-  onNavigateToTab: (tab: string) => void;
+  onNavigateToSection: (tab: string) => void;
 }
 
 // How many announcements the card holds. Newest first, and the list scrolls
@@ -44,8 +44,8 @@ export default function StudentDashboard({
   studentId,
   credits: propCredits,
   attendance: propAttendance,
-  onNavigateToTab,
-}: Partial<Props> & Pick<Props, 'studentId' | 'onNavigateToTab'>) {
+  onNavigateToSection,
+}: Partial<Props> & Pick<Props, 'studentId' | 'onNavigateToSection'>) {
   const { user } = useAuth();
   const { credits: hookCredits } = useCredits();
   const { attendance: hookAttendance } = useAttendance();
@@ -154,7 +154,7 @@ export default function StudentDashboard({
           <p className="text-gray-400 text-sm mt-1">Here is a summary of your active OJT project, tasks, and progress.</p>
         </div>
         <button
-          onClick={() => onNavigateToTab('projects')}
+          onClick={() => onNavigateToSection('projects')}
           className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-bold text-xs rounded-xl hover:bg-gold-hover transition-colors shadow-sm"
         >
           <Briefcase size={16} />
@@ -312,11 +312,11 @@ export default function StudentDashboard({
 
       {/* Stat Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatCard title="Pending Tasks" value={pendingTasks.length} icon={Clock} trend="To do" onClick={() => onNavigateToTab('tasks')} />
-        <StatCard title="Submissions" value={submissions.length} icon={FolderOpen} onClick={() => onNavigateToTab('submissions')} />
-        <StatCard title="Pending Review" value={pendingReviewCount} icon={CheckSquare} trend="Awaiting" onClick={() => onNavigateToTab('submissions')} />
-        <StatCard title="Cloud Credits" value={`$${totalCredits}`} icon={Cloud} onClick={() => onNavigateToTab('credits')} />
-        <StatCard title="Attendance Days" value={attendanceDays} icon={CalendarCheck} onClick={() => onNavigateToTab('attendance')} />
+        <StatCard title="Pending Tasks" value={pendingTasks.length} icon={Clock} trend="To do" onClick={() => onNavigateToSection('tasks')} />
+        <StatCard title="Submissions" value={submissions.length} icon={FolderOpen} onClick={() => onNavigateToSection('submissions')} />
+        <StatCard title="Pending Review" value={pendingReviewCount} icon={CheckSquare} trend="Awaiting" onClick={() => onNavigateToSection('submissions')} />
+        <StatCard title="Cloud Credits" value={`$${totalCredits}`} icon={Cloud} onClick={() => onNavigateToSection('credits')} />
+        <StatCard title="Attendance Days" value={attendanceDays} icon={CalendarCheck} onClick={() => onNavigateToSection('attendance')} />
         <StatCard title="Progress" value={`${progressPct}%`} icon={TrendingUp} trend="Keep going" />
       </div>
 
@@ -330,7 +330,7 @@ export default function StudentDashboard({
                 Upcoming Task Deadlines
               </h3>
               <button
-                onClick={() => onNavigateToTab('tasks')}
+                onClick={() => onNavigateToSection('tasks')}
                 className="text-xs font-semibold text-gold hover:underline flex items-center gap-1"
               >
                 View all <ArrowUpRight size={14} />
@@ -351,7 +351,7 @@ export default function StudentDashboard({
                   return (
                     <div
                       key={t.id}
-                      onClick={() => onNavigateToTab('tasks')}
+                      onClick={() => onNavigateToSection('tasks')}
                       className="p-3 bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-750 rounded-xl cursor-pointer transition-colors flex items-center justify-between gap-3"
                     >
                       <div className="min-w-0 flex-1">

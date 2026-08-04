@@ -46,10 +46,10 @@ export function useNotificationNavigateContext() {
 }
 
 // Each panel (admin/mentor/student index.tsx) calls this with its own
-// notification-type -> tab/focus-state mapping, since each has a different
-// set of tabs and a different local "focus" shape. Re-registers whenever
+// notification-type -> section/focus-state mapping, since each has a different
+// set of sections and a different local "focus" shape. Re-registers whenever
 // `fn`'s identity changes so the handler always sees the panel's latest
-// setActiveTab/setFocus closures.
+// navigate/setFocus closures.
 export function useNotificationNavigate(fn: NavigateFn) {
   const { registerNavigate } = useNotificationNavigateContext();
   const fnRef = useRef(fn);

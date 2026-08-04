@@ -19,14 +19,14 @@ import { useTracks } from '../../hooks/useTracks';
 interface Props {
   submissions: Submission[];
   attendance: Attendance[];
-  onNavigateToTab: (tab: string) => void;
+  onNavigateToSection: (tab: string) => void;
 }
 
 export default function AdminDashboard({
   submissions: propSubmissions,
   attendance: propAttendance,
-  onNavigateToTab,
-}: Partial<Props> & Pick<Props, 'onNavigateToTab'>) {
+  onNavigateToSection,
+}: Partial<Props> & Pick<Props, 'onNavigateToSection'>) {
   const { submissions: hookSubmissions } = useSubmissions();
   const { attendance: hookAttendance } = useAttendance();
   const { options: trackOptions } = useTracks();
@@ -166,14 +166,14 @@ export default function AdminDashboard({
           the metrics endpoint has no data for them. Each card jumps to its
           matching sidebar tab, except Batch Managers which has no page yet. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        <StatCard title="Students" value={showStudentsCount} icon={Users} onClick={() => onNavigateToTab('students')} />
-        <StatCard title="Mentors" value={showMentorsCount} icon={Users} onClick={() => onNavigateToTab('mentors')} />
+        <StatCard title="Students" value={showStudentsCount} icon={Users} onClick={() => onNavigateToSection('students')} />
+        <StatCard title="Mentors" value={showMentorsCount} icon={Users} onClick={() => onNavigateToSection('mentors')} />
         <StatCard title="Batch Managers" value={showBatchManagersCount} icon={UserCog} />
-        <StatCard title="Projects" value={showProjectsCount} icon={Briefcase} onClick={() => onNavigateToTab('ojts')} />
-        <StatCard title="Cloud Credits" value={metrics ? `$${metrics.totalCreditsAvailable}` : '—'} icon={Cloud} onClick={() => onNavigateToTab('credits')} />
-        <StatCard title="Tasks" value={showTasksCount} icon={CheckSquare} onClick={() => onNavigateToTab('tasks')} />
-        <StatCard title="Pending Submissions" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToTab('submissions')} />
-        <StatCard title="Attendance Records" value={attendanceCount} icon={CalendarCheck} onClick={() => onNavigateToTab('attendance')} />
+        <StatCard title="Projects" value={showProjectsCount} icon={Briefcase} onClick={() => onNavigateToSection('ojts')} />
+        <StatCard title="Cloud Credits" value={metrics ? `$${metrics.totalCreditsAvailable}` : '—'} icon={Cloud} onClick={() => onNavigateToSection('credits')} />
+        <StatCard title="Tasks" value={showTasksCount} icon={CheckSquare} onClick={() => onNavigateToSection('tasks')} />
+        <StatCard title="Pending Submissions" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToSection('submissions')} />
+        <StatCard title="Attendance Records" value={attendanceCount} icon={CalendarCheck} onClick={() => onNavigateToSection('attendance')} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
