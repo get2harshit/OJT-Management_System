@@ -161,7 +161,6 @@ export default function StudentTasks({
           total: pagination.total,
           totalPages: pagination.pages,
           onPageChange: setPage,
-          limitOptions: [20, 40, 80, 100],
           onLimitChange: (l) => { setPage(1); setLimit(l); },
         }}
         actions={(row) => {

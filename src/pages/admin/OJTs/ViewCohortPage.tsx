@@ -964,7 +964,6 @@ export default function ViewCohortPage() {
                     total: listPagination.total,
                     totalPages: listPagination.totalPages,
                     onPageChange: setListPage,
-                    limitOptions: [20, 40, 80, 100],
                     onLimitChange: handleListLimitChange,
                     autoFit: true,
                   }}
@@ -998,7 +997,6 @@ export default function ViewCohortPage() {
                     total: listPagination.total,
                     totalPages: listPagination.totalPages,
                     onPageChange: setListPage,
-                    limitOptions: [20, 40, 80, 100],
                     onLimitChange: handleListLimitChange,
                     autoFit: true,
                   }}
@@ -1040,7 +1038,6 @@ export default function ViewCohortPage() {
                     total: listPagination.total,
                     totalPages: listPagination.totalPages,
                     onPageChange: setListPage,
-                    limitOptions: [20, 40, 80, 100],
                     onLimitChange: handleListLimitChange,
                     autoFit: true,
                   }}

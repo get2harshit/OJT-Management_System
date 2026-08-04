@@ -246,7 +246,6 @@ export default function TrackEligibleStudentsPage() {
           total: pagination.total,
           totalPages: pagination.totalPages,
           onPageChange: setPage,
-          limitOptions: [20, 40, 80],
           onLimitChange: (l) => {
             setLimit(l);
             setPage(1);

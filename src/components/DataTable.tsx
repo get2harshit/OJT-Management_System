@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useContext } from 'react';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Download, Inbox, X, Maximize2, Minimize2 } from 'lucide-react';
 import { exportToCSV } from '../lib/csvExport';
+import { BASE_PAGE_SIZE, derivePageSizeOptions } from '../lib/pageSize';
 import SpinnerSquare from './SpinnerSquare';
 import { AuthContext } from '../context/AuthContext';
 
@@ -112,7 +113,11 @@ export default function DataTable<T extends object>({
     },
     [fullscreen, onFullscreenChange]
   );
-  const [localPageSize, setLocalPageSize] = useState(pageSizeOptions?.[0] ?? 12);
+  // Falls back to the same base the derived choices start from, so the size
+  // actually in use is one of the buttons offered. It used to default to 12
+  // against a list starting at 20, which left every client-paginated table
+  // showing a row count none of its own buttons was highlighting.
+  const [localPageSize, setLocalPageSize] = useState(pageSizeOptions?.[0] ?? BASE_PAGE_SIZE);
   const pageSize = localPageSize;
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
@@ -221,6 +226,13 @@ export default function DataTable<T extends object>({
     [filtered, serverPagination, page, pageSize]
   );
   const totalCount = serverPagination ? serverPagination.total : filtered.length;
+  // A caller's own list still wins — a table that genuinely needs fixed
+  // choices can say so — but not supplying one is now the normal case, and
+  // gets choices that fit the data instead of a number somebody typed once.
+  const sizeOptions = useMemo(
+    () => serverPagination?.limitOptions ?? pageSizeOptions ?? derivePageSizeOptions(totalCount),
+    [serverPagination?.limitOptions, pageSizeOptions, totalCount]
+  );
   const goToPage = (p: number) => {
     if (serverPagination) {
       serverPagination.onPageChange(p);
@@ -446,9 +458,9 @@ export default function DataTable<T extends object>({
                 ? `Showing ${(currentPage - 1) * serverPagination.limit + 1} - ${Math.min(currentPage * serverPagination.limit, totalCount)} of ${totalCount}`
                 : `Showing ${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}`}
             </span>
-            {(serverPagination?.limitOptions ?? (!serverPagination ? pageSizeOptions : undefined)) && (
+            {sizeOptions.length > 0 && (
               <div className="flex items-center gap-1">
-                {(serverPagination?.limitOptions ?? pageSizeOptions ?? []).map((opt) => (
+                {sizeOptions.map((opt) => (
                   <button
                     key={opt}
                     onClick={() => {
@@ -465,7 +477,9 @@ export default function DataTable<T extends object>({
                         : 'text-gray-400 hover:text-white hover:bg-zinc-750'
                     }`}
                   >
-                    {opt}
+                    {/* The largest choice is the whole table, so it says so —
+                        a bare row count reads as one more arbitrary number. */}
+                    {opt === totalCount ? 'All' : opt}
                   </button>
                 ))}
               </div>

@@ -166,7 +166,6 @@ export default function MentorEvaluationTracker() {
           total,
           totalPages: Math.max(1, Math.ceil(total / limit)),
           onPageChange: setPage,
-          limitOptions: [20, 40, 80, 100],
           onLimitChange: (l) => {
             setPage(1);
             setLimit(l);

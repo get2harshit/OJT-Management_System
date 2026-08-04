@@ -483,7 +483,6 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
           total: pagination.total,
           totalPages: pagination.pages,
           onPageChange: setPage,
-          limitOptions: [20, 40, 80, 100],
           onLimitChange: handleLimitChange,
         }}
         actions={(row) => (

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Briefcase, Users, Clock, CheckCircle2, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star, Minimize2 } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import DataTable from '../../components/DataTable';
+import { derivePageSizeOptions } from '../../lib/pageSize';
 import Modal from '../../components/Modal';
 import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project, PreferenceReviewStatus, PreferenceResubmissionMode, TrackSubmissionMode } from '../../lib/types';
 import type { ProjectSummary, ProjectDetail, ApiAvailableTrack } from '../../lib/api';
@@ -218,7 +219,6 @@ export default function ProjectPicker() {
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
-const LIMIT_OPTIONS = [20, 40, 80, 100];
 
 /**
  * The full-screen surface a project's detail opens into.
@@ -648,7 +648,7 @@ function TrackAndTeammateScreen({
               Showing {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
             </span>
             <div className="flex items-center gap-1">
-              {LIMIT_OPTIONS.map(opt => (
+              {derivePageSizeOptions(pagination.total).map(opt => (
                 <button
                   key={opt}
                   onClick={() => handleLimitChange(opt)}
@@ -656,7 +656,7 @@ function TrackAndTeammateScreen({
                     opt === limit ? 'bg-gold/20 text-gold font-semibold' : 'text-gray-400 hover:text-white hover:bg-zinc-750'
                   }`}
                 >
-                  {opt}
+                  {opt === pagination.total ? 'All' : opt}
                 </button>
               ))}
             </div>
@@ -1360,7 +1360,6 @@ function ProjectCatalogBrowser({
           totalPages: pagination.totalPages,
           total: pagination.total,
           onPageChange: setPage,
-          limitOptions: LIMIT_OPTIONS,
           onLimitChange: handleLimitChange,
         }}
       />

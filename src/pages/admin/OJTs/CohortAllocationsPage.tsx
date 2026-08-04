@@ -913,7 +913,6 @@ export default function CohortAllocationsPage() {
             total: pagination.total,
             totalPages: pagination.totalPages,
             onPageChange: setPage,
-            limitOptions: [20, 40, 80, 100],
             onLimitChange: handleLimitChange,
           }}
           leftHeaderContent={

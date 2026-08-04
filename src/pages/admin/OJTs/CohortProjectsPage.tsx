@@ -22,7 +22,6 @@ const SEARCH_DEBOUNCE_MS = 400;
 // A catalog this size is routinely reviewed in bulk — an admin checking what a
 // CSV actually imported wants the whole track on one screen, not nine pages of
 // it. The server caps `limit` at the largest value here.
-const PAGE_SIZE_OPTIONS = [20, 40, 80, 100, 500, 1000];
 
 // The projects already uploaded/linked to this cohort — CSV import is the
 // only way projects get here now (see ProjectCsvImportModal's cohortId
@@ -298,7 +297,6 @@ export default function CohortProjectsPage() {
             total: pagination.total,
             totalPages: pagination.totalPages,
             onPageChange: setPage,
-            limitOptions: PAGE_SIZE_OPTIONS,
             onLimitChange: handleLimitChange,
           }}
           onSearchChange={handleSearchChange}
