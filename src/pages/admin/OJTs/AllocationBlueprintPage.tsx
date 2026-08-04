@@ -4,7 +4,7 @@ import { LayoutGrid, ArrowLeft, Search, Plus, Download, ChevronLeft, ChevronRigh
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import Drawer from '../../../components/Drawer';
-import type { AllocationBlueprintCounts, AllocationBlueprintStage, AllocationBlueprintStudent } from '../../../lib/api/allocations';
+import type { AllocationBlueprintCounts, AllocationBlueprintStage, AllocationBlueprintStudent, AllocationBlueprintSummary } from '../../../lib/api/allocations';
 import { apiGetCohort, apiGetAllocationBlueprint, apiGetAllocationBlueprintStudents } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { exportToCSV } from '../../../lib/csvExport';
@@ -44,6 +44,20 @@ const STAGE_DOT: Record<AllocationBlueprintStage, string> = {
   allocated_not_published: 'bg-blue-400',
   allocated_published: 'bg-green-500',
 };
+
+// The headline numbers beside the page title, in lifecycle order.
+//
+// The unit is spelled out in every label rather than left implied, because
+// three of these count teams and one counts students — "1 team" next to a bare
+// "487" would read as 487 of the same thing. They are counted on the server;
+// nothing here derives a number from the table's own rows, which would only
+// ever describe the page currently loaded.
+const SUMMARY_ITEMS: { key: keyof AllocationBlueprintSummary; label: string; tone: string }[] = [
+  { key: 'notYetStarted', label: 'students not started', tone: 'text-red-400' },
+  { key: 'teamsFormed', label: 'teams formed', tone: 'text-gray-300' },
+  { key: 'projectsSubmitted', label: 'teams picked a project', tone: 'text-yellow-500' },
+  { key: 'allocationDone', label: 'teams allocated', tone: 'text-green-500' },
+];
 
 const STAGE_TEXT: Record<AllocationBlueprintStage, string> = {
   no_team: 'text-red-400',
@@ -87,6 +101,7 @@ export default function AllocationBlueprintPage() {
   const [allowedBatches, setAllowedBatches] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState<AllocationBlueprintCounts | null>(null);
+  const [summary, setSummary] = useState<AllocationBlueprintSummary | null>(null);
 
   const [stageFilter, setStageFilter] = useState<AllocationBlueprintStage | ''>('');
   const [batchFilter, setBatchFilter] = useState('');
@@ -159,7 +174,8 @@ export default function AllocationBlueprintPage() {
       ]);
       setCohortLabel(getCohortLabel(cohort));
       setAllowedBatches(cohort.allowedBatches ?? []);
-      setCounts(data);
+      setCounts(data.stages);
+      setSummary(data.summary);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load allocation blueprint');
     } finally {
@@ -268,7 +284,10 @@ export default function AllocationBlueprintPage() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      {/* flex-wrap so the summary numbers drop to their own line on a narrow
+          screen instead of squeezing the title — the title is what tells you
+          which page you're on, so it is the last thing that should give way. */}
+      <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() => navigate(-1)}
           className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors shrink-0"
@@ -277,8 +296,22 @@ export default function AllocationBlueprintPage() {
           <ArrowLeft size={18} />
         </button>
         <LayoutGrid className="text-gold shrink-0" size={16} />
-        <h1 className="text-sm font-semibold text-white">Allocation Blueprint</h1>
-        {cohortLabel && <span className="text-xs text-gray-500">— {cohortLabel}</span>}
+        <h1 className="text-sm font-semibold text-white shrink-0">Allocation Blueprint</h1>
+        {cohortLabel && <span className="text-xs text-gray-500 shrink-0">— {cohortLabel}</span>}
+        {summary && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 ml-2">
+            {SUMMARY_ITEMS.map(item => (
+              <span key={item.key} className="flex items-baseline gap-1.5">
+                {/* The number is the thing being scanned, so it carries the
+                    size and the colour; the label stays quiet behind it. */}
+                <span className={`text-base font-semibold tabular-nums leading-none ${item.tone}`}>
+                  {summary[item.key]}
+                </span>
+                <span className="text-xs text-gray-500 leading-none">{item.label}</span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {loading ? (
