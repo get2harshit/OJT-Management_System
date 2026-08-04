@@ -1,11 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Clock, Briefcase, UserCheck, AlertCircle, ArrowUpRight } from 'lucide-react';
+import { CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Clock, Briefcase, UserCheck, AlertCircle, ArrowUpRight, Megaphone, RefreshCw } from 'lucide-react';
 import StatCard from '../../components/StatCard';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import Modal from '../../components/Modal';
 import type { Credit, Attendance, PrdSubmission, PrdStatus, MyTeamStatus } from '../../lib/types';
 import { apiGetMySubmissions, apiGetMyCohort, apiGetMyTeamStatus } from '../../lib/api';
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask } from '../../lib/api/tasks';
+import { apiGetMyNotifications, apiMarkNotificationRead } from '../../lib/api/notifications';
+import type { AppNotification } from '../../lib/api/notifications';
 import { useAuth } from '../../context/useAuth';
 import { useCredits } from '../../hooks/useCredits';
 import { useAttendance } from '../../hooks/useAttendance';
@@ -17,6 +20,19 @@ interface Props {
   attendance: Attendance[];
   onNavigateToTab: (tab: string) => void;
 }
+
+// How many announcements the card holds. Newest first, and the list scrolls
+// inside the card rather than stretching it — the dashboard's shape shouldn't
+// change because an admin posted three more notices.
+const ANNOUNCEMENT_LIMIT = 20;
+
+// Priority is the only thing that changes an announcement's weight, so it is
+// the only thing that gets a colour. Everything else stays uniform.
+const ANNOUNCEMENT_TONE: Record<AppNotification['priority'], string> = {
+  urgent: 'text-red-400 border-red-400/30 bg-red-400/10',
+  important: 'text-gold border-gold/30 bg-gold/10',
+  normal: 'text-gray-400 border-zinc-700 bg-zinc-800',
+};
 
 const SUBMISSION_STATUS_BUCKETS: { label: string; statuses: PrdStatus[]; barClass: string }[] = [
   { label: 'Pending Review', statuses: ['submitted', 'under_review'], barClass: 'bg-gold' },
@@ -40,6 +56,23 @@ export default function StudentDashboard({
   const [submissions, setSubmissions] = useState<PrdSubmission[]>([]);
   const [teamStatus, setTeamStatus] = useState<MyTeamStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [announcements, setAnnouncements] = useState<AppNotification[]>([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
+  const [openAnnouncement, setOpenAnnouncement] = useState<AppNotification | null>(null);
+
+  // Its own function, not folded into loadDashboardData, because the card's
+  // refresh button re-runs only this — reloading tasks, submissions and team
+  // status to redraw one list would be work nobody asked for.
+  const loadAnnouncements = useCallback(async () => {
+    setAnnouncementsLoading(true);
+    try {
+      setAnnouncements(await apiGetMyNotifications({ type: 'announcement', limit: ANNOUNCEMENT_LIMIT }));
+    } catch (err) {
+      console.error('Announcements failed to load', err);
+    } finally {
+      setAnnouncementsLoading(false);
+    }
+  }, []);
 
   const loadDashboardData = useCallback(() => {
     return Promise.all([
@@ -60,9 +93,30 @@ export default function StudentDashboard({
 
   useEffect(() => {
     loadDashboardData();
-  }, [loadDashboardData]);
+    loadAnnouncements();
+  }, [loadDashboardData, loadAnnouncements]);
 
-  usePageRefresh(loadDashboardData);
+  // The page-wide refresh covers announcements too, so the card's own button
+  // is a shortcut rather than the only way to get fresh ones.
+  usePageRefresh(
+    useCallback(async () => {
+      await Promise.all([loadDashboardData(), loadAnnouncements()]);
+    }, [loadDashboardData, loadAnnouncements])
+  );
+
+  // Opening one is what reading it means, so the unread badge should agree.
+  // The local row is updated too rather than refetching the list — the server
+  // already knows, and a refetch would flicker the card for one changed flag.
+  const openAnnouncementDetail = useCallback(async (announcement: AppNotification) => {
+    setOpenAnnouncement(announcement);
+    if (announcement.isRead) return;
+    setAnnouncements(prev => prev.map(a => (a.id === announcement.id ? { ...a, isRead: true } : a)));
+    try {
+      await apiMarkNotificationRead(announcement.id);
+    } catch (err) {
+      console.error('Could not mark announcement read', err);
+    }
+  }, []);
 
   const myCredits = useMemo(() => credits.filter((c) => c.student_id === studentId), [credits, studentId]);
   const myAttendance = useMemo(() => attendance.filter((a) => a.student_id === studentId), [attendance, studentId]);
@@ -108,6 +162,10 @@ export default function StudentDashboard({
         </button>
       </div>
 
+      {/* Active project and announcements share the row, half each. Both
+          stretch to the taller of the two so the dashboard keeps a straight
+          edge whether there are no announcements or twenty. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 items-stretch">
       {/* Active OJT Project Status Card */}
       <div className="bg-zinc-850 border border-zinc-750 rounded-2xl p-6 space-y-4 shadow-sm">
         <div className="flex items-center justify-between border-b border-zinc-750 pb-4 flex-wrap gap-3">
@@ -133,7 +191,7 @@ export default function StudentDashboard({
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 pt-1">
           <div className="bg-zinc-800/60 p-4 rounded-xl border border-zinc-750">
             <p className="text-xs text-gray-400 font-medium">Team Status</p>
             <p className="text-white font-bold text-sm mt-1">
@@ -162,6 +220,95 @@ export default function StudentDashboard({
           </div>
         </div>
       </div>
+
+      {/* Announcements */}
+      <div className="bg-zinc-850 border border-zinc-750 rounded-2xl p-6 shadow-sm flex flex-col min-h-0">
+        <div className="flex items-center justify-between border-b border-zinc-750 pb-4 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-gold/10 text-gold border border-gold/20 shrink-0">
+              <Megaphone size={22} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">Announcements</p>
+              <h2 className="text-lg font-bold text-white">
+                {announcements.length > 0 ? `${announcements.length} posted` : 'Nothing yet'}
+              </h2>
+            </div>
+          </div>
+          <button
+            onClick={loadAnnouncements}
+            disabled={announcementsLoading}
+            title="Refresh announcements"
+            className="p-2 rounded-lg text-gray-400 hover:text-gold hover:bg-zinc-800 transition-colors disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw size={16} className={announcementsLoading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto mt-4 -mr-2 pr-2 space-y-2">
+          {announcements.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center py-8">
+              <AlertCircle size={28} className="text-gray-600 mb-2" />
+              <p className="text-sm text-gray-400">No announcements yet</p>
+              <p className="text-xs text-gray-500 mt-1">Anything your admin posts will show up here.</p>
+            </div>
+          ) : (
+            announcements.map(a => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => openAnnouncementDetail(a)}
+                className="w-full text-left bg-zinc-800/60 border border-zinc-750 rounded-xl p-3 hover:border-gold/40 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-semibold text-white leading-snug">{a.title}</p>
+                  {/* Unread is a dot rather than a word — it repeats on every
+                      row, and a row full of labels stops reading as a list. */}
+                  {!a.isRead && <span className="mt-1.5 h-2 w-2 rounded-full bg-gold shrink-0" title="Unread" />}
+                </div>
+                <p className="text-xs text-gray-400 mt-1 line-clamp-2">{a.message}</p>
+                <div className="flex items-center gap-2 mt-2">
+                  {a.priority !== 'normal' && (
+                    <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded border ${ANNOUNCEMENT_TONE[a.priority]}`}>
+                      {a.priority}
+                    </span>
+                  )}
+                  <span className="text-[11px] text-gray-500">
+                    {new Date(a.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </span>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+      </div>
+
+      <Modal
+        open={openAnnouncement !== null}
+        onClose={() => setOpenAnnouncement(null)}
+        title={openAnnouncement?.title ?? 'Announcement'}
+      >
+        {openAnnouncement && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              {openAnnouncement.priority !== 'normal' && (
+                <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border ${ANNOUNCEMENT_TONE[openAnnouncement.priority]}`}>
+                  {openAnnouncement.priority}
+                </span>
+              )}
+              <span className="text-xs text-gray-500">
+                {new Date(openAnnouncement.createdAt).toLocaleString(undefined, {
+                  day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit',
+                })}
+              </span>
+            </div>
+            {/* whitespace-pre-line: an admin writing a notice uses line breaks,
+                and collapsing them turns a list of dates into one paragraph. */}
+            <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-line">{openAnnouncement.message}</p>
+          </div>
+        )}
+      </Modal>
 
       {/* Stat Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
