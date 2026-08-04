@@ -13,7 +13,7 @@ import { useNotificationNavigate } from '../../context/NotificationNavigateConte
 
 const BASE_PATH = '/student/dashboard';
 
-function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
+function StudentPanelContent({ studentId, onLogout }: { studentId: string; onLogout?: () => void }) {
   const navigate = useNavigate();
   useLegacyTabRedirect(BASE_PATH);
 
@@ -27,15 +27,6 @@ function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
 
   const [initialSelectedSubId, setInitialSelectedSubId] = useState<string | null>(null);
   const [initialNewSubTaskId, setInitialNewSubTaskId] = useState<string | null>(null);
-
-  let authUser = null;
-  try {
-    const auth = useAuth();
-    authUser = auth.user;
-  } catch {
-    // AuthProvider not present
-  }
-  const studentId = authUser?.id || 's1';
 
   // This hand-off state lives on the panel, which stays mounted while its
   // routes change underneath it — so a value set here survives the navigation
@@ -108,5 +99,17 @@ function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
 }
 
 export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
-  return <StudentPanelContent onLogout={onLogout} />;
+  // ProtectedRoute has already established there is a signed-in student, so a
+  // missing user here is not a state to paper over with a stand-in id — there
+  // is simply nobody to show. It used to fall back to 's1', which would have
+  // quietly fetched a different person's tasks, submissions and credits and
+  // presented them as yours.
+  //
+  // Resolved out here rather than inside the panel so the id the panel works
+  // with is non-null by construction, and the check sits before any of the
+  // panel's own hooks.
+  const { user } = useAuth();
+  if (!user) return null;
+
+  return <StudentPanelContent studentId={user.id} onLogout={onLogout} />;
 }

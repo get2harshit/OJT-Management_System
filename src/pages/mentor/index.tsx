@@ -17,7 +17,7 @@ import { useToast } from '../../toast';
 
 const BASE_PATH = '/mentor/dashboard';
 
-function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
+function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout?: () => void }) {
   const navigate = useNavigate();
   useLegacyTabRedirect(BASE_PATH);
 
@@ -35,14 +35,6 @@ function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
   // panel, which stays mounted while its routes change underneath it, so the
   // value survives the navigation that follows it.
   const [submissionFocus, setSubmissionFocus] = useState<{ studentId: string; taskId?: string } | null>(null);
-  let authUser = null;
-  try {
-    const auth = useAuth();
-    authUser = auth.user;
-  } catch {
-    // AuthProvider not present
-  }
-  const mentorId = authUser?.id || 'm1'; // demo mentor
   const { showError } = useToast();
 
   useNotificationNavigate((n) => {
@@ -122,5 +114,16 @@ function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
 }
 
 export default function MentorPanel({ onLogout }: { onLogout?: () => void }) {
-  return <MentorPanelContent onLogout={onLogout} />;
+  // ProtectedRoute has already established there is a signed-in mentor, so a
+  // missing user here is not a state to paper over with a stand-in id — there
+  // is simply nobody to show. It used to fall back to 'm1', a demo mentor,
+  // which would have quietly shown somebody else's teams and review queue.
+  //
+  // Resolved out here rather than inside the panel so the id the panel works
+  // with is non-null by construction, and the check sits before any of the
+  // panel's own hooks.
+  const { user } = useAuth();
+  if (!user) return null;
+
+  return <MentorPanelContent mentorId={user.id} onLogout={onLogout} />;
 }

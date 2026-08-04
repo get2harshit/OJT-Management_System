@@ -62,15 +62,7 @@ export default function AppShell({ panel, onLogout, children }: AppShellProps) {
     });
   };
 
-  let user = null;
-  let logout: (() => Promise<void>) | null = null;
-  try {
-    const auth = useAuth();
-    user = auth.user;
-    logout = auth.logout;
-  } catch {
-    // AuthProvider not present
-  }
+  const { user, logout } = useAuth();
   const displayName = getDisplayName(user);
 
   useEffect(() => {
@@ -164,15 +156,9 @@ export default function AppShell({ panel, onLogout, children }: AppShellProps) {
 
                     <div className="border-t border-zinc-800 pt-2">
                       <button
-                        onClick={async () => {
+                        onClick={() => {
                           setProfileOpen(false);
-                          if (onLogout) {
-                            onLogout();
-                          } else if (logout) {
-                            await logout();
-                          } else {
-                            window.location.reload();
-                          }
+                          return onLogout ? onLogout() : logout();
                         }}
                         className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
                       >

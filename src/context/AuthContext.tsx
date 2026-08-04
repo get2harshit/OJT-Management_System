@@ -1,4 +1,4 @@
-import { createContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import type { AuthResult, AuthUser, ApiUserRole } from '../lib/types';
 import {
@@ -115,9 +115,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, token, loading, login, signup, loginWithGoogle, logout }}>
-      {children}
-    </AuthContext.Provider>
+  // Memoised so the value only changes when the session does. Every action on
+  // it is already a stable useCallback, so without this the one thing that
+  // changed on a re-render was the object holding them — and every consumer of
+  // auth, which is most of the app, re-rendered for it.
+  const value = useMemo(
+    () => ({ user, token, loading, login, signup, loginWithGoogle, logout }),
+    [user, token, loading, login, signup, loginWithGoogle, logout]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

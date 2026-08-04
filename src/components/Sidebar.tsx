@@ -77,13 +77,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const [hovered, setHovered] = useState(false);
 
-  let logout: (() => Promise<void>) | null = null;
-  try {
-    const auth = useAuth();
-    logout = auth.logout;
-  } catch {
-    // AuthProvider not present
-  }
+  const { logout } = useAuth();
 
   const tabs =
     panel === 'admin' ? adminTabs :
@@ -170,19 +164,11 @@ export default function Sidebar({
 
       <div className="p-4 border-t border-zinc-750 shrink-0">
         <button
-          onClick={async () => {
-            if (onLogout) {
-              onLogout();
-            } else if (logout) {
-              await logout();
-            } else {
-              window.location.reload();
-            }
-          }}
+          onClick={() => (onLogout ? onLogout() : logout())}
           className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors w-full ${railCenter}`}
         >
           <LogOut size={18} className="shrink-0" />
-          <span className={`whitespace-nowrap overflow-hidden transition-all duration-200 ${labelHidden}`}>{(onLogout || logout) ? 'Sign Out' : 'Switch Panel'}</span>
+          <span className={`whitespace-nowrap overflow-hidden transition-all duration-200 ${labelHidden}`}>Sign Out</span>
         </button>
       </div>
     </aside>
