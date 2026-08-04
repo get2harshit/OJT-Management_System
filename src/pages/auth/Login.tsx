@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, GraduationCap, User, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/useAuth';
 import { apiForgotPassword } from '../../lib/api';
-import { consumeGoogleRedirect, isGoogleSignInConfigured, startGoogleSignIn } from '../../lib/googleAuth';
+import { consumeGoogleRedirect, startGoogleSignIn } from '../../lib/googleAuth';
 import type { ApiUserRole } from '../../lib/types';
 import { useToast } from '../../toast';
 
@@ -207,25 +207,21 @@ export default function Login() {
             {/* ── LOGIN VIEW ── */}
             {view === 'login' && (
               <>
-                {isGoogleSignInConfigured && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={startGoogleSignIn}
-                      disabled={submitting || finishingGoogle}
-                      className="w-full py-2.5 bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-gray-800 font-bold rounded-lg transition-all text-xs flex items-center justify-center gap-2.5 shadow-sm"
-                    >
-                      <GoogleMark />
-                      {finishingGoogle ? 'Signing you in…' : 'Continue with Google'}
-                    </button>
+                <button
+                  type="button"
+                  onClick={startGoogleSignIn}
+                  disabled={submitting || finishingGoogle}
+                  className="w-full py-2.5 bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-gray-800 font-bold rounded-lg transition-all text-xs flex items-center justify-center gap-2.5 shadow-sm"
+                >
+                  <GoogleMark />
+                  {finishingGoogle ? 'Signing you in…' : 'Continue with Google'}
+                </button>
 
-                    <div className="flex items-center gap-3">
-                      <span className="h-px flex-1 bg-login-border" />
-                      <span className="text-[10px] uppercase tracking-wider text-gray-500">or</span>
-                      <span className="h-px flex-1 bg-login-border" />
-                    </div>
-                  </>
-                )}
+                <div className="flex items-center gap-3">
+                  <span className="h-px flex-1 bg-login-border" />
+                  <span className="text-[10px] uppercase tracking-wider text-gray-500">or</span>
+                  <span className="h-px flex-1 bg-login-border" />
+                </div>
 
                 <form onSubmit={handleSubmit} className="space-y-3">
                   <div>

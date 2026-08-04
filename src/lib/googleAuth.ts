@@ -10,12 +10,19 @@
 // it and sets the same cookies the password flow sets, and is then discarded.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-
-// Google sign-in is only offered when the project is actually configured for
-// it. Without this the button would render, redirect to a broken URL, and
-// look like the feature is failing rather than absent.
-export const isGoogleSignInConfigured = Boolean(SUPABASE_URL);
+// The Supabase project every environment authenticates against, defaulted the
+// same way the backend's own URL is in lib/api/client.ts — env var for a local
+// override, real value in code.
+//
+// This used to be env-only, with the button hidden whenever the variable was
+// missing. That hid it everywhere except a machine that happened to have a
+// .env.local: the deploy builds in Docker, and .dockerignore excludes .env*, so
+// no env file can reach the build at all. The result was a feature that looked
+// unbuilt rather than unconfigured, on every environment including staging.
+//
+// Not a secret. It is the address the browser is sent to, it ships in every
+// bundle, and the backend's URL sits in code beside it for the same reason.
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cumeeqozfrnehtjivirf.supabase.co';
 
 /**
  * Hands the browser to Google. Control does not return — the page navigates
@@ -25,7 +32,6 @@ export const isGoogleSignInConfigured = Boolean(SUPABASE_URL);
  * origin this is served from has to be registered in the dashboard.
  */
 export function startGoogleSignIn(): void {
-  if (!SUPABASE_URL) return;
   const redirectTo = `${window.location.origin}/`;
   window.location.assign(
     `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`
