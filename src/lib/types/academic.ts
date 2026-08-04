@@ -328,7 +328,8 @@ export interface PendingProposal {
 // A single flat number shared across every track the mentor covers.
 export interface MentorCapacitySummary {
   mentorId: string;
-  computedBaseline: number;
+  /** Applies until an admin sets a capacity — the same number for everyone. */
+  defaultCapacity: number;
   override: number | null;
   effectiveTotal: number;
 }

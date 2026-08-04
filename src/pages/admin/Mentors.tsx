@@ -269,22 +269,24 @@ export default function AdminMentors() {
           ) : capacitySummary ? (
             <>
               <div className="bg-zinc-800/50 p-3 rounded-lg border border-zinc-700 text-xs text-gray-400">
-                Computed baseline for this cohort: <span className="text-white font-semibold">{capacitySummary.computedBaseline}</span> projects
-                {capacitySummary.override !== null && (
-                  <span> — currently overridden to <span className="text-gold font-semibold">{capacitySummary.override}</span></span>
+                {capacitySummary.override !== null ? (
+                  <>Set to <span className="text-gold font-semibold">{capacitySummary.override}</span> team(s) for this OJT.</>
+                ) : (
+                  <>Not set — using the default of <span className="text-white font-semibold">{capacitySummary.defaultCapacity}</span> team(s).</>
                 )}
+                {' '}Capacity is how many teams this mentor will take. 0 removes them from the student's picker.
               </div>
 
               <div>
                 <label className="block text-sm text-gray-400 mb-2">
-                  Capacity override <span className="text-gray-600">(leave empty to use computed baseline)</span>
+                  Capacity <span className="text-gray-600">(leave empty to use the default of {capacitySummary.defaultCapacity})</span>
                 </label>
                 <input
                   type="number"
                   min={0}
                   value={capacityInput}
                   onChange={(e) => setCapacityInput(e.target.value)}
-                  placeholder={String(capacitySummary.computedBaseline)}
+                  placeholder={String(capacitySummary.defaultCapacity)}
                   className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
                 />
               </div>

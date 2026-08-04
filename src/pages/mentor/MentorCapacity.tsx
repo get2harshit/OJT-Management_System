@@ -121,8 +121,8 @@ export default function MentorCapacity() {
             <p className="text-white text-3xl font-bold">{summary.effectiveTotal}</p>
             <p className="text-gray-400 text-xs leading-relaxed">
               {summary.override !== null
-                ? `Manually set by admin (computed baseline default was ${summary.computedBaseline})`
-                : "Computed automatically from this cohort's project-to-mentor ratio"}
+                ? 'Set by your admin for this OJT'
+                : `Not set by your admin yet — the default of ${summary.defaultCapacity} applies`}
             </p>
           </div>
         </div>
