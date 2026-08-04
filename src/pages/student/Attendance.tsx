@@ -1,5 +1,6 @@
 import { CalendarCheck } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import type { Attendance, Profile } from '../../lib/types';
 
 import { useAttendance } from '../../hooks/useAttendance';
@@ -34,7 +35,7 @@ export default function StudentAttendance({
   const presentCount = myAttendance.length;
 
   return (
-    <div className="space-y-4">
+    <PageLayout className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">My Attendance</h1>
@@ -56,6 +57,6 @@ export default function StudentAttendance({
         searchPlaceholder="Search attendance..."
         hideExport
       />
-    </div>
+    </PageLayout>
   );
 }

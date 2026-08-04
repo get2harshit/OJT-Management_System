@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Check, X, AlertTriangle, Calendar, Users, CheckCircle, XCircle } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import type { Attendance, Profile, Student } from '../../lib/types';
 import { useStudentProfiles } from '../../hooks/useStudentProfiles';
 
@@ -95,7 +96,7 @@ export default function MentorAttendance({
   };
 
   return (
-    <div className="space-y-6">
+    <PageLayout className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Attendance Sheets</h1>
         <p className="text-gray-400 text-sm mt-1">
@@ -147,7 +148,7 @@ export default function MentorAttendance({
       </div>
 
       {/* Main Single Sheet Panel */}
-      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5 space-y-4">
+      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5 space-y-4 flex-1 min-h-0 flex flex-col [&>*]:shrink-0">
         {/* Header Controls Bar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-zinc-750">
           <div>
@@ -254,6 +255,6 @@ export default function MentorAttendance({
           )}
         />
       </div>
-    </div>
+    </PageLayout>
   );
 }

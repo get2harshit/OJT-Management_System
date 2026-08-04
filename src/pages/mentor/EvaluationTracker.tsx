@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Award, Loader2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Button from '../../components/Button';
 import { apiGetMyEvaluationQueue, apiGetEvaluationDetail, apiScoreEvaluation } from '../../lib/api/evaluations';
@@ -125,7 +126,7 @@ export default function MentorEvaluationTracker() {
   const otherPanelists = detail?.panelists.filter((p) => p.evaluatorId !== myId) || [];
 
   return (
-    <div className="space-y-4">
+    <PageLayout className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Award className="text-gold" size={26} />
@@ -243,6 +244,6 @@ export default function MentorEvaluationTracker() {
           </div>
         ) : null}
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

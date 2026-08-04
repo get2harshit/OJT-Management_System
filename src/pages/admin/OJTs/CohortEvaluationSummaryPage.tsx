@@ -1,3 +1,4 @@
+import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { Table2, Plus, Download } from 'lucide-react';
@@ -195,7 +196,7 @@ export default function CohortEvaluationSummaryPage() {
   );
 
   return (
-    <div className="space-y-3">
+    <PageLayout className="space-y-3">
       <CohortPageHeader title="Evaluation Summary" subtitle={cohortLabel || undefined} icon={Table2} />
 
       {loading ? (
@@ -277,6 +278,6 @@ export default function CohortEvaluationSummaryPage() {
           })}
         </div>
       </Drawer>
-    </div>
+    </PageLayout>
   );
 }

@@ -1,3 +1,4 @@
+import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Users, Save, Sparkles, ClipboardPaste } from 'lucide-react';
@@ -240,7 +241,7 @@ export default function TrackMentorsPage() {
   };
 
   return (
-    <div className="space-y-4 flex-1 min-h-0 flex flex-col">
+    <PageLayout className="space-y-4">
       <CohortPageHeader
         title={`${trackName} — Mentors`}
         subtitle={cohortLabel ? `${cohortLabel} · who students on this track can pick` : undefined}
@@ -383,6 +384,6 @@ export default function TrackMentorsPage() {
           <Select value={typeFilter} onChange={(v) => handleTypeChange(v as string)} options={TYPE_OPTIONS} className="w-40" />
         }
       />
-    </div>
+    </PageLayout>
   );
 }

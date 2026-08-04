@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { AlertTriangle, CheckCircle2, Clock, RotateCcw, Upload } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import Select from '../../components/Select';
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask, ApiAssignmentStatus } from '../../lib/api/tasks';
@@ -107,7 +108,7 @@ export default function StudentTasks({
   };
 
   return (
-    <div className="space-y-6">
+    <PageLayout className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">My Tasks</h1>
         <p className="text-gray-400 text-sm mt-1">Track your assigned tasks and identify missed deadlines</p>
@@ -204,6 +205,6 @@ export default function StudentTasks({
           );
         }}
       />
-    </div>
+    </PageLayout>
   );
 }

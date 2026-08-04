@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Percent } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Select from '../../components/Select';
@@ -148,7 +149,7 @@ export default function AdminMentors() {
   }));
 
   return (
-    <div className="space-y-4">
+    <PageLayout className="space-y-4">
       <div className="space-y-1">
         <h1 className="text-2xl font-bold text-white">Mentors</h1>
         <p className="text-sm text-gray-400">
@@ -162,14 +163,8 @@ export default function AdminMentors() {
           <SpinnerSquare size={48} />
         </div>
       ) : (
-        <div className="relative">
-          {tableLoading && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center">
-              <SpinnerSquare size={56} />
-            </div>
-          )}
-          <div className={tableLoading ? 'opacity-20 transition-opacity' : 'transition-opacity'}>
-          <DataTable
+        <DataTable
+          loading={tableLoading}
           columns={[
             { key: 'name', header: 'Name' },
             { key: 'email', header: 'Email' },
@@ -229,9 +224,7 @@ export default function AdminMentors() {
               ]}
             />
           )}
-          />
-          </div>
-        </div>
+        />
       )}
 
       {/* Set Capacity Modal */}
@@ -301,6 +294,6 @@ export default function AdminMentors() {
           ) : null}
         </div>
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

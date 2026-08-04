@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Award, Plus, ArrowLeft, Table2 } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import { AddEvaluationModal } from './OJTs/AddEvaluationModal';
 import type { Cohort, CohortDetails, CohortEvaluationConfig, EvaluationMode } from '../../lib/types';
 import { apiListCohorts, apiGetCohort } from '../../lib/api';
@@ -109,7 +110,7 @@ export default function AdminEvaluationTracker() {
   }));
 
   return (
-    <div className="space-y-4">
+    <PageLayout className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Award className="text-gold" size={26} />
@@ -145,7 +146,7 @@ export default function AdminEvaluationTracker() {
           </div>
         )
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 flex-1 min-h-0 flex flex-col [&>*]:shrink-0">
           <button
             onClick={backToCohorts}
             className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-white px-2.5 py-1.5 -ml-2.5 rounded-lg hover:bg-zinc-800 transition-colors"
@@ -259,6 +260,6 @@ export default function AdminEvaluationTracker() {
           }}
         />
       )}
-    </div>
+    </PageLayout>
   );
 }

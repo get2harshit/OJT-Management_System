@@ -1,3 +1,4 @@
+import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Upload, Trash2, BarChart3 } from 'lucide-react';
@@ -182,7 +183,7 @@ export default function CohortProjectsPage() {
   };
 
   return (
-    <div className="space-y-6 flex-1 min-h-0 flex flex-col">
+    <PageLayout className="space-y-6">
       <CohortPageHeader
         title={trackName ? `${trackName} Projects` : 'Projects'}
         subtitle={trackName ? `${cohortLabel} · ${trackName} track only` : cohortLabel}
@@ -326,7 +327,7 @@ export default function CohortProjectsPage() {
           <ProjectDetail project={selectedProject} />
         </Modal>
       )}
-    </div>
+    </PageLayout>
   );
 }
 

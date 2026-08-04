@@ -1,3 +1,4 @@
+import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { UserPlus, Check } from 'lucide-react';
@@ -174,7 +175,7 @@ export default function TrackEligibleStudentsPage() {
   const batchOptions = [{ value: '', label: 'Any batch' }, ...allowedBatches.map((b) => ({ value: b, label: b }))];
 
   return (
-    <div className="space-y-4 flex-1 min-h-0 flex flex-col">
+    <PageLayout className="space-y-4">
       <CohortPageHeader
         title={`${trackName} — Select Students`}
         subtitle={cohortLabel ? `${cohortLabel} · add specific students to this track` : undefined}
@@ -273,6 +274,6 @@ export default function TrackEligibleStudentsPage() {
           </div>
         }
       />
-    </div>
+    </PageLayout>
   );
 }

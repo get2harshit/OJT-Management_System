@@ -1,9 +1,10 @@
+import PageLayout from '../../../components/PageLayout';
 import { Briefcase } from 'lucide-react';
 import CohortsPanel from './CohortsPanel';
 
 export default function AdminOJTs() {
   return (
-    <div className="space-y-6">
+    <PageLayout className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Briefcase className="text-gold" size={26} />
@@ -13,6 +14,6 @@ export default function AdminOJTs() {
       </div>
 
       <CohortsPanel />
-    </div>
+    </PageLayout>
   );
 }

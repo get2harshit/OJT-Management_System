@@ -1,3 +1,4 @@
+import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, ArrowLeft, UserCog, UserPlus, Gauge, RotateCcw, AlertTriangle } from 'lucide-react';
@@ -577,7 +578,7 @@ export default function CohortAllocationsPage() {
   const hasBlockingProposals = pendingProposals.length > 0;
 
   return (
-    <div className="space-y-6">
+    <PageLayout className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="space-y-1.5">
           <CohortPageHeader title="Project Allocations" subtitle={cohortLabel} icon={Shuffle} />
@@ -1644,6 +1645,6 @@ export default function CohortAllocationsPage() {
           )}
         </div>
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

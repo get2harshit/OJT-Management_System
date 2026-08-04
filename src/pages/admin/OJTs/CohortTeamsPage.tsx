@@ -1,3 +1,4 @@
+import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Users2, Trash2 } from 'lucide-react';
@@ -78,7 +79,7 @@ export default function CohortTeamsPage() {
   }));
 
   return (
-    <div className="space-y-6">
+    <PageLayout className="space-y-6">
       <CohortPageHeader title="Teams" subtitle={cohortLabel} />
 
       {loading ? (
@@ -130,6 +131,6 @@ export default function CohortTeamsPage() {
           }}
         />
       )}
-    </div>
+    </PageLayout>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useContext } from 'react';
+import { useCallback, useEffect, useMemo, useState, useContext } from 'react';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Download, Inbox, X, Maximize2, Minimize2 } from 'lucide-react';
 import { exportToCSV } from '../lib/csvExport';
 import { BASE_PAGE_SIZE, derivePageSizeOptions } from '../lib/pageSize';
@@ -54,6 +54,19 @@ interface DataTableProps<T> {
    */
   fullscreen?: boolean;
   onFullscreenChange?: (open: boolean) => void;
+  /**
+   * Whether the card takes the space left over on the page (the default) or
+   * sizes itself to its rows up to a cap.
+   *
+   * Filling is what a page with one table wants: the card ends at the bottom of
+   * the window regardless of how many rows there are, so loading data or
+   * changing a filter never moves anything else on screen. It relies on the
+   * page being a bounded column — see PageLayout, which is what supplies that.
+   *
+   * Pass `false` on the pages that stack two tables, where there is no single
+   * remainder to give away and the page scrolls between them instead.
+   */
+  fill?: boolean;
 }
 
 // `object`, not `Record<string, unknown>`: nothing here needs an index
@@ -88,6 +101,7 @@ export default function DataTable<T extends object>({
   loading = false,
   fullscreen,
   onFullscreenChange,
+  fill = true,
 }: DataTableProps<T>) {
   const auth = useContext(AuthContext);
   const isAdmin = auth?.user?.role === 'admin';
@@ -118,59 +132,36 @@ export default function DataTable<T extends object>({
   // showing a row count none of its own buttons was highlighting.
   const [localPageSize, setLocalPageSize] = useState(pageSizeOptions?.[0] ?? BASE_PAGE_SIZE);
   const pageSize = localPageSize;
-  const footerRef = useRef<HTMLDivElement>(null);
-  const tableWrapRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const headerRef = useRef<HTMLDivElement>(null);
 
   /**
-   * How tall the rows may get before they start scrolling inside the table.
+   * How the card claims its height.
    *
-   * Without this the table is as tall as its rows, so a long page pushes the
-   * pagination footer below the fold and the only way to reach it is to scroll
-   * the whole page — with the header scrolling away too. The rows are the part
-   * that should move; the controls around them should stay put.
+   * This used to be a viewport measurement written onto the scroll wrapper as
+   * an inline `height`. It never took effect: the same element carries
+   * `flex-1`, whose `flex-basis: 0%` wins over `height` inside a flex column.
+   * Where the measurement did appear to work, the parent chain was already
+   * bounded and `flex-grow` was producing the number on its own — so the
+   * measurement was either ignored or redundant, and in exchange it ran a
+   * resize listener, a rAF and a timeout per table and went stale whenever
+   * anything above the table changed height.
    *
-   * The card is measured against the viewport rather than sized by flexbox
-   * because nothing above it is height-bounded: it sits in a plain content
-   * column, so `flex-1` has no fixed height to divide and simply grows.
-   *
-   * Skipped in full screen, where `fixed inset-0` does bound the height and
-   * flexbox handles it properly.
+   * Flexbox does all of it, given a definite height to divide up. PageLayout
+   * supplies that. `basis-0` keeps the rows out of the calculation, so the card
+   * is sized by the space available rather than by how much data arrived, and
+   * the floor keeps it usable on a short window (the page scrolls then).
    */
-  const [bodyHeight, setBodyHeight] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    if (isFullscreen) {
-      setBodyHeight(undefined);
-      return;
-    }
-    const measure = () => {
-      const container = containerRef.current;
-      if (!container) return;
-      const top = container.getBoundingClientRect().top;
-      const headerHeight = headerRef.current?.offsetHeight ?? 0;
-      const footerHeight = footerRef.current?.offsetHeight ?? 0;
-      // The page's own bottom padding (AppShell's main is p-4/sm:p-6/lg:p-8)
-      // plus the card border, neither of which window.innerHeight knows about.
-      const pageGutter = window.innerWidth >= 1024 ? 36 : 20;
-      const available = window.innerHeight - top - headerHeight - footerHeight - pageGutter;
-      // A floor, so a table that starts far down the page still shows rows
-      // rather than collapsing to a sliver.
-      setBodyHeight(Math.max(220, Math.floor(available)));
-    };
-    measure();
-    // The footer only renders once there is more than one page, and the header
-    // wraps at some widths — both change the height available, and neither is
-    // settled on the first synchronous pass.
-    const rafId = requestAnimationFrame(measure);
-    const timerId = window.setTimeout(measure, 120);
-    window.addEventListener('resize', measure);
-    return () => {
-      cancelAnimationFrame(rafId);
-      window.clearTimeout(timerId);
-      window.removeEventListener('resize', measure);
-    };
-  }, [isFullscreen, data.length, serverPagination?.totalPages, loading]);
+  const fillMode = fill && !isFullscreen;
+  const containerSizing = isFullscreen
+    // `!m-0`: taken out of flow it still keeps its margin, and the page column
+    // it came from is usually a `space-y-*` stack — so the card that was meant
+    // to cover the window was starting a row-gap short of the top instead.
+    ? 'fixed inset-0 z-[120] border-0 rounded-none !m-0'
+    : `relative border border-zinc-750 rounded-xl shadow-sm ${
+        fillMode ? 'flex-1 basis-0 min-h-[240px]' : ''
+      }`;
+  // Filling: the rows take what is left of the card. Not filling: the card is
+  // as tall as its rows need, up to a cap, and the page scrolls past it.
+  const bodySizing = fillMode || isFullscreen ? 'flex-1 min-h-0' : 'max-h-[55vh]';
 
 
   // Escape is what people try first to leave anything covering the screen,
@@ -264,15 +255,8 @@ export default function DataTable<T extends object>({
   );
 
   return (
-    <div
-      ref={containerRef}
-      className={
-        isFullscreen
-          ? 'fixed inset-0 z-[120] flex flex-col bg-zinc-850 border-0 rounded-none overflow-hidden'
-          : 'relative flex-1 min-h-0 flex flex-col bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden shadow-sm'
-      }
-    >
-      <div ref={headerRef} className="p-4 border-b border-zinc-750 flex items-center gap-3 shrink-0">
+    <div className={`flex flex-col bg-zinc-850 overflow-hidden ${containerSizing}`}>
+      <div className="p-4 border-b border-zinc-750 flex items-center gap-3 shrink-0">
         {leftHeaderContent && (
           <div className="flex items-center gap-3 mr-auto">
             {leftHeaderContent}
@@ -338,11 +322,7 @@ export default function DataTable<T extends object>({
       )}
 
       {/* Desktop/tablet: standard scrollable table */}
-      <div
-        ref={tableWrapRef}
-        className="hidden md:flex md:flex-col flex-1 min-h-0 overflow-auto w-full scrollbar-thin"
-        style={bodyHeight ? { height: bodyHeight } : undefined}
-      >
+      <div className={`hidden md:flex md:flex-col overflow-auto w-full scrollbar-thin ${bodySizing}`}>
         {/* shrink-0: the container scrolls, the table keeps its height */}
         <table className="w-full text-sm shrink-0">
           <thead>
@@ -389,14 +369,15 @@ export default function DataTable<T extends object>({
             ))}
           </tbody>
         </table>
-        {paginated.length === 0 && <div className="flex-1 flex items-center justify-center">{emptyState}</div>}
+        {/* min-h so the message still has somewhere to centre itself when the
+            card is sized by its rows rather than by the space left on screen. */}
+        {paginated.length === 0 && (
+          <div className="flex-1 min-h-[220px] flex items-center justify-center">{emptyState}</div>
+        )}
       </div>
 
       {/* Mobile view */}
-      <div
-        className="md:hidden flex flex-col flex-1 min-h-0 overflow-auto divide-y divide-zinc-750/50 w-full scrollbar-thin"
-        style={bodyHeight ? { height: bodyHeight } : undefined}
-      >
+      <div className={`md:hidden flex flex-col overflow-auto divide-y divide-zinc-750/50 w-full scrollbar-thin ${bodySizing}`}>
         {paginated.map((row, idx) => (
           <div
             key={rowKey(row, idx)}
@@ -433,11 +414,15 @@ export default function DataTable<T extends object>({
             )}
           </div>
         ))}
-        {paginated.length === 0 && <div className="flex-1 flex items-center justify-center">{emptyState}</div>}
+        {/* min-h so the message still has somewhere to centre itself when the
+            card is sized by its rows rather than by the space left on screen. */}
+        {paginated.length === 0 && (
+          <div className="flex-1 min-h-[220px] flex items-center justify-center">{emptyState}</div>
+        )}
       </div>
 
       {(serverPagination ? serverPagination.totalPages > 1 : filtered.length > pageSize) && (
-        <div ref={footerRef} className="p-4 border-t border-zinc-750 flex items-center justify-between flex-wrap gap-3 shrink-0 mt-auto">
+        <div className="p-4 border-t border-zinc-750 flex items-center justify-between flex-wrap gap-3 shrink-0 mt-auto">
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-500">
               {serverPagination

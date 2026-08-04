@@ -1,3 +1,4 @@
+import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import DataTable from '../../../components/DataTable';
@@ -454,7 +455,7 @@ export default function CohortTrackConfigPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageLayout className="space-y-6">
       <CohortPageHeader
         title="Track Configuration"
         subtitle={cohortLabel ? `${cohortLabel} — who can pick which track` : undefined}
@@ -466,7 +467,7 @@ export default function CohortTrackConfigPage() {
           <SpinnerSquare size={48} />
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4 flex-1 min-h-0 flex flex-col [&>*]:shrink-0">
           <div className="flex justify-end">
             {/* Configuring a track per batch by hand is a dozen trips through
                 the form for a catalog that already says most of it. */}
@@ -956,6 +957,6 @@ export default function CohortTrackConfigPage() {
           )}
         </div>
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

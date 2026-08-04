@@ -1,3 +1,4 @@
+import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { Award, Plus, Download } from 'lucide-react';
@@ -250,7 +251,7 @@ export default function EvaluationBlueprintPage() {
   );
 
   return (
-    <div className="space-y-3">
+    <PageLayout className="space-y-3">
       <CohortPageHeader
         title={meta?.evaluationName ? `${meta.evaluationName} \u00b7 Blueprint` : 'Evaluation Blueprint'}
         subtitle={cohortLabel || undefined}
@@ -344,6 +345,6 @@ export default function EvaluationBlueprintPage() {
           })}
         </div>
       </Drawer>
-    </div>
+    </PageLayout>
   );
 }

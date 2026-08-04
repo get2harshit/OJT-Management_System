@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, Loader2, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import { apiListTasks, apiGetTask, apiDeleteTask, apiUpdateTask, apiGetAssigneeProgress, apiApproveTask, apiRequestResubmit } from '../../lib/api/tasks';
 import type { ApiTask, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
 import Button from '../../components/Button';
@@ -267,7 +268,7 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
   };
 
   return (
-    <div className="space-y-4">
+    <PageLayout className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Week-wise Goals & Tasks</h1>
@@ -756,7 +757,7 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
           />
         ) : null}
       </Modal>
-    </div>
+    </PageLayout>
   );
 }
 

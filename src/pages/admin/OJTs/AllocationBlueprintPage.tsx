@@ -1,3 +1,4 @@
+import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { LayoutGrid, Plus, Download } from 'lucide-react';
@@ -280,7 +281,7 @@ export default function AllocationBlueprintPage() {
   );
 
   return (
-    <div className="space-y-3">
+    <PageLayout className="space-y-3">
       <CohortPageHeader
         title="Allocation Blueprint"
         subtitle={cohortLabel || undefined}
@@ -389,6 +390,6 @@ export default function AllocationBlueprintPage() {
           })}
         </div>
       </Drawer>
-    </div>
+    </PageLayout>
   );
 }

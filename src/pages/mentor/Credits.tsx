@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Cloud, Check, X, ShieldAlert, Award } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import type { CreditRequest, Profile, Student } from '../../lib/types';
 
 import { useCredits } from '../../hooks/useCredits';
@@ -54,7 +55,7 @@ export default function MentorCredits({
   const historyRequests = tableData.filter(r => r.mentor_status !== 'PENDING');
 
   return (
-    <div className="space-y-6">
+    <PageLayout mode="scroll" className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Cloud className="text-gold" size={26} />
@@ -70,6 +71,7 @@ export default function MentorCredits({
           Awaiting Mentor Verification ({pendingRequests.length})
         </h2>
         <DataTable
+          fill={false}
           columns={[
             { key: 'student_name', header: 'Student' },
             { key: 'roll_number', header: 'Roll Number' },
@@ -109,6 +111,7 @@ export default function MentorCredits({
           Verification History
         </h2>
         <DataTable
+          fill={false}
           columns={[
             { key: 'student_name', header: 'Student' },
             { key: 'roll_number', header: 'Roll Number' },
@@ -133,6 +136,6 @@ export default function MentorCredits({
           hideExport
         />
       </div>
-    </div>
+    </PageLayout>
   );
 }
