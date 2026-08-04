@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTabParam } from '../../hooks/useTabParam';
 import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import OJTs from './OJTs';
@@ -14,7 +15,7 @@ import { apiGetPrdSubmission } from '../../lib/api';
 import { useToast } from '../../toast';
 
 function MentorPanelContent({ onLogout }: { onLogout?: () => void }) {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useTabParam('dashboard');
   // Set by Tasks' "View Submission" action to hand off which student+task
   // the Submissions tab should jump straight to; cleared once Submissions
   // consumes it so a later manual visit to the tab doesn't re-trigger it.

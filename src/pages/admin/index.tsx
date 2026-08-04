@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
+import { useTabParam } from '../../hooks/useTabParam';
 import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import Students from './Students';
@@ -31,7 +32,7 @@ import { apiGetPrdSubmission } from '../../lib/api';
 import { useToast } from '../../toast';
 
 function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useTabParam('dashboard');
   // Set by Tasks' "View Submission" action to hand off which student+task
   // (and cohort — a task belongs to exactly one, which may differ from
   // Submissions' currently-selected one) the Submissions tab should jump
