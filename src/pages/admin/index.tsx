@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { useTabParam } from '../../hooks/useTabParam';
 import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
@@ -32,24 +32,20 @@ import { apiGetPrdSubmission } from '../../lib/api';
 import { useToast } from '../../toast';
 
 function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
-  const [activeTab, setActiveTab] = useTabParam('dashboard');
+  // The base path goes to the hook because this panel has nested routes: while
+  // a cohort sub-page (view/edit/select student/project/mentor) is open, that
+  // route still matches and renders over whichever tab is picked, so choosing
+  // a tab has to return to the base path as well. The hook does both in one
+  // navigation — done as two calls, the path change dropped the query string
+  // the tab had just been written into and every sidebar click did nothing.
+  const [activeTab, handleTabChange] = useTabParam('dashboard', '/admin/dashboard');
   // Set by Tasks' "View Submission" action to hand off which student+task
   // (and cohort — a task belongs to exactly one, which may differ from
   // Submissions' currently-selected one) the Submissions tab should jump
   // straight to; cleared once Submissions consumes it so a later manual
   // visit to the tab doesn't re-trigger it.
   const [submissionFocus, setSubmissionFocus] = useState<{ studentId: string; taskId: string; cohortId: string } | null>(null);
-  const navigate = useNavigate();
   const { showError } = useToast();
-
-  // Sidebar tab clicks only flip local state; while a cohort sub-page route
-  // (view/edit/select student/project/mentor) is open, that nested route
-  // still matches and keeps rendering over the tab. Navigating back to the
-  // base path here clears it so the newly picked tab actually shows.
-  const handleTabChange = (tab: string) => {
-    setActiveTab(tab);
-    navigate('/admin/dashboard');
-  };
 
   useNotificationNavigate((n) => {
     switch (n.type) {
