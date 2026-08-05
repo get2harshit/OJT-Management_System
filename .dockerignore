@@ -5,8 +5,14 @@ dist-ssr
 .gitignore
 *.log
 npm-debug.log*
+# .env and .env.local hold local secrets and must never reach an image.
+# .env.staging and .env.production are deliberately NOT excluded: they carry the
+# per-environment URLs the build needs, they are in git, and they contain no
+# secrets — only addresses the browser is sent to, which ship in the bundle
+# anyway.
 .env
-.env.*
+.env.local
+.env.*.local
 .vscode
 .idea
 .DS_Store

@@ -160,6 +160,24 @@ export type AllocationBlueprintStage =
 
 export type AllocationBlueprintCounts = Record<AllocationBlueprintStage, number>;
 
+// The headline numbers shown beside the page title. Three of the four count
+// *teams*, because that is the unit the work happens in — a project is picked
+// by a team and an allocation is made to a team. notYetStarted counts students
+// on purpose: it's the chase list, and a team that doesn't exist yet can't be
+// counted. The labels say which is which so the two can't be read as one.
+export interface AllocationBlueprintSummary {
+  teamsFormed: number;
+  projectsSubmitted: number;
+  /** Students with no team and no team request sent — nothing done at all. */
+  notYetStarted: number;
+  allocationDone: number;
+}
+
+export interface AllocationBlueprintOverview {
+  stages: AllocationBlueprintCounts;
+  summary: AllocationBlueprintSummary;
+}
+
 export interface AllocationBlueprintStudent {
   id: string;
   fullName: string | null;
@@ -184,10 +202,12 @@ export interface AllocationBlueprintStudentsPage {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
-// Admin — summary counts across all 5 lifecycle stages (no team formed yet,
-// through allocated & published) for this OJT.
-export async function apiGetAllocationBlueprint(cohortId: string): Promise<AllocationBlueprintCounts> {
-  const res = await apiFetch<{ data: AllocationBlueprintCounts }>(`/api/v1/cohorts/${cohortId}/allocation-blueprint`);
+// Admin — the page's whole overview in one call: the 5 lifecycle stage counts
+// (no team formed yet, through allocated & published) and the headline summary.
+// One request rather than two so the header can never briefly disagree with the
+// table under it.
+export async function apiGetAllocationBlueprint(cohortId: string): Promise<AllocationBlueprintOverview> {
+  const res = await apiFetch<{ data: AllocationBlueprintOverview }>(`/api/v1/cohorts/${cohortId}/allocation-blueprint`);
   return res.data;
 }
 

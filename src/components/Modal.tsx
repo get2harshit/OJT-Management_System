@@ -17,9 +17,22 @@ const SIZE_CLASSES: Record<'lg' | 'xl', string> = {
 export default function Modal({ open, onClose, title, children, size = 'lg' }: ModalProps) {
   const ref = useRef<HTMLDivElement>(null);
 
+  // Moving focus into the dialog is an *opening* action, so it belongs in an
+  // effect that only depends on `open`. It used to sit alongside the Escape
+  // listener below, whose deps include `onClose` — and almost every caller
+  // passes an inline arrow, which is a new function on every render. So each
+  // keystroke re-ran the effect and pulled focus out of the field being typed
+  // into, and only the first character ever landed.
+  useEffect(() => {
+    if (open) ref.current?.focus();
+  }, [open]);
+
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
     }
     if (open) window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
@@ -28,23 +41,25 @@ export default function Modal({ open, onClose, title, children, size = 'lg' }: M
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
       <div
         ref={ref}
-        className={`relative bg-zinc-850 border border-zinc-750 rounded-2xl w-full ${SIZE_CLASSES[size]} shadow-2xl shadow-black/50 ring-1 ring-white/[0.04] animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] flex flex-col overflow-hidden`}
+        tabIndex={-1}
+        className={`relative bg-zinc-850 border border-zinc-750 rounded-2xl w-full ${SIZE_CLASSES[size]} shadow-2xl shadow-black/50 ring-1 ring-white/[0.04] animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] flex flex-col overflow-hidden outline-none`}
       >
         <div className="h-1 bg-gradient-to-r from-gold/50 via-gold to-gold/50 shrink-0" />
         <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-zinc-750 shrink-0">
-          <h3 className="text-lg font-semibold text-white tracking-tight">{title}</h3>
+          <h3 id="modal-title" className="text-lg font-semibold text-white tracking-tight">{title}</h3>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="p-1.5 rounded-full text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
           >
             <X size={18} />
           </button>
         </div>
-        <div className="px-4 sm:px-6 py-5 overflow-y-auto">{children}</div>
+        <div className="px-4 sm:px-6 py-5 overflow-y-auto scrollbar-thin">{children}</div>
       </div>
     </div>
   );

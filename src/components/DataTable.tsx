@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState, useContext } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Download, Inbox } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, useContext } from 'react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, Download, Inbox, X, Maximize2, Minimize2 } from 'lucide-react';
 import { exportToCSV } from '../lib/csvExport';
+import { BASE_PAGE_SIZE, derivePageSizeOptions } from '../lib/pageSize';
+import SpinnerSquare from './SpinnerSquare';
 import { AuthContext } from '../context/AuthContext';
 
 interface Column<T> {
@@ -16,13 +18,8 @@ interface ServerPagination {
   totalPages: number;
   total: number;
   onPageChange: (page: number) => void;
-  // Page-size choices (e.g. [20, 40, 80, 100]) rendered as small buttons next
-  // to the "Showing X - Y of Z" label. Omit to keep the fixed page size.
   limitOptions?: number[];
   onLimitChange?: (limit: number) => void;
-  // Runs the "Fit to screen" sizing once automatically after the first page
-  // of rows renders, instead of waiting for the admin to click the button.
-  autoFit?: boolean;
 }
 
 interface DataTableProps<T> {
@@ -32,25 +29,63 @@ interface DataTableProps<T> {
   searchKeys?: (keyof T)[];
   actions?: (row: T) => React.ReactNode;
   onRowClick?: (row: T) => void;
-  // When set, `data` is treated as already being the current page (fetched
-  // from the server) — local slicing/pagination is skipped and page changes
-  // are delegated to the caller instead of tracked in local state.
   serverPagination?: ServerPagination;
-  // When set alongside serverPagination, the search box reports its value
-  // here instead of filtering `data` locally (the server only holds one page).
   onSearchChange?: (search: string) => void;
-  // Custom content to render on the left side of the search header (e.g., custom filters).
   leftHeaderContent?: React.ReactNode;
-  // Page-size choices for local (client-side) pagination — same button row
-  // as serverPagination.limitOptions, but slices `data` in-browser since it's
-  // already fully loaded. Ignored when serverPagination is set.
   pageSizeOptions?: number[];
-  // Options to customize CSV export behavior.
   exportFilename?: string;
   hideExport?: boolean;
+  /**
+   * Shows a spinner over the rows without unmounting the table.
+   *
+   * Callers used to swap the whole table out for a spinner while fetching,
+   * which threw away everything the table holds — most visibly the expanded
+   * state, so changing page or page size while full screen collapsed it.
+   */
+  loading?: boolean;
+  /**
+   * Optional controlled full-screen state.
+   *
+   * Left out, the table owns it — which is right until the caller renders
+   * something *else* in place of the table, like a detail view for the row you
+   * clicked. The table unmounts then, taking its own state with it, and the
+   * detail opens at normal size after you had asked for the whole screen. A
+   * caller that can replace the table has to own the flag.
+   */
+  fullscreen?: boolean;
+  onFullscreenChange?: (open: boolean) => void;
+  /**
+   * Whether the card takes the space left over on the page (the default) or
+   * sizes itself to its rows up to a cap.
+   *
+   * Filling is what a page with one table wants: the card ends at the bottom of
+   * the window regardless of how many rows there are, so loading data or
+   * changing a filter never moves anything else on screen. It relies on the
+   * page being a bounded column — see PageLayout, which is what supplies that.
+   *
+   * Pass `false` on the pages that stack two tables, where there is no single
+   * remainder to give away and the page scrolls between them instead.
+   */
+  fill?: boolean;
 }
 
-export default function DataTable<T extends Record<string, unknown>>({
+// `object`, not `Record<string, unknown>`: nothing here needs an index
+// signature, only `keyof T` access, which works on any object type. The
+// stricter constraint turned away perfectly ordinary interfaces — a caller
+// had to widen its own domain type just to render it in a table, which is the
+// table's problem leaking into the data model.
+/**
+ * A stable React key for a row: its `id` when it has a usable one, otherwise
+ * its index. Rows are not required to carry an id — the table renders whatever
+ * it is given — so this reads the field defensively rather than the type
+ * demanding it.
+ */
+function rowKey(row: object, index: number): string | number {
+  const id = (row as { id?: unknown }).id;
+  return typeof id === 'string' || typeof id === 'number' ? id : index;
+}
+
+export default function DataTable<T extends object>({
   columns,
   data,
   searchPlaceholder = 'Search...',
@@ -63,6 +98,10 @@ export default function DataTable<T extends Record<string, unknown>>({
   pageSizeOptions,
   exportFilename = 'export_data',
   hideExport = false,
+  loading = false,
+  fullscreen,
+  onFullscreenChange,
+  fill = true,
 }: DataTableProps<T>) {
   const auth = useContext(AuthContext);
   const isAdmin = auth?.user?.role === 'admin';
@@ -70,79 +109,84 @@ export default function DataTable<T extends Record<string, unknown>>({
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [localPageSize, setLocalPageSize] = useState(pageSizeOptions?.[0] ?? 12);
+  // Tables sit under a page header, filters and often a dropdown or two, so
+  // what is left for rows is a fraction of the screen. This hands the whole
+  // viewport over when someone asks for it.
+  //
+  // Asked for, not inferred: entering on scroll was considered and rejected.
+  // Scrolling is the most casual interaction there is — a nudge of the wheel
+  // to see one more row would take over the display, and the same gesture
+  // couldn't undo it. Wanting more room is a decision, so it gets a button.
+  const [uncontrolledFullscreen, setUncontrolledFullscreen] = useState(false);
+  const isFullscreen = fullscreen ?? uncontrolledFullscreen;
+  const setIsFullscreen = useCallback(
+    (next: boolean) => {
+      if (fullscreen === undefined) setUncontrolledFullscreen(next);
+      onFullscreenChange?.(next);
+    },
+    [fullscreen, onFullscreenChange]
+  );
+  // Falls back to the same base the derived choices start from, so the size
+  // actually in use is one of the buttons offered. It used to default to 12
+  // against a list starting at 20, which left every client-paginated table
+  // showing a row count none of its own buttons was highlighting.
+  const [localPageSize, setLocalPageSize] = useState(pageSizeOptions?.[0] ?? BASE_PAGE_SIZE);
   const pageSize = localPageSize;
-  const tbodyRef = useRef<HTMLTableSectionElement>(null);
-  const footerRef = useRef<HTMLDivElement>(null);
-  const tableWrapRef = useRef<HTMLDivElement>(null);
-  const [maxBodyHeight, setMaxBodyHeight] = useState<number | undefined>(undefined);
 
-  // Picks a page size so the current page of rows fills the viewport below
-  // the table without needing to scroll — measures an actual rendered row
-  // rather than assuming a fixed height, since wrapped preference text etc.
-  // makes row height vary per page.
-  const handleFitToViewport = () => {
-    if (!serverPagination?.onLimitChange) return;
-    const firstRow = tbodyRef.current?.querySelector('tr');
-    if (!firstRow) return;
-    const rowHeight = firstRow.getBoundingClientRect().height;
-    if (!rowHeight) return;
-    const tbodyTop = firstRow.getBoundingClientRect().top;
-    const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 60;
-    const available = window.innerHeight - tbodyTop - footerHeight - 16;
-    const count = Math.max(5, Math.floor(available / rowHeight));
-    serverPagination.onLimitChange(count);
-  };
+  /**
+   * How the card claims its height.
+   *
+   * This used to be a viewport measurement written onto the scroll wrapper as
+   * an inline `height`. It never took effect: the same element carries
+   * `flex-1`, whose `flex-basis: 0%` wins over `height` inside a flex column.
+   * Where the measurement did appear to work, the parent chain was already
+   * bounded and `flex-grow` was producing the number on its own — so the
+   * measurement was either ignored or redundant, and in exchange it ran a
+   * resize listener, a rAF and a timeout per table and went stale whenever
+   * anything above the table changed height.
+   *
+   * Flexbox does all of it, given a definite height to divide up. PageLayout
+   * supplies that. `basis-0` keeps the rows out of the calculation, so the card
+   * is sized by the space available rather than by how much data arrived, and
+   * the floor keeps it usable on a short window (the page scrolls then).
+   */
+  const fillMode = fill && !isFullscreen;
+  const containerSizing = isFullscreen
+    // `!m-0`: taken out of flow it still keeps its margin, and the page column
+    // it came from is usually a `space-y-*` stack — so the card that was meant
+    // to cover the window was starting a row-gap short of the top instead.
+    ? 'fixed inset-0 z-[120] border-0 rounded-none !m-0'
+    : `relative border border-zinc-750 rounded-xl shadow-sm ${
+        fillMode ? 'flex-1 basis-0 min-h-[240px]' : ''
+      }`;
+  // Filling: the rows take what is left of the card. Not filling: the card is
+  // as tall as its rows need, up to a cap, and the page scrolls past it.
+  const bodySizing = fillMode || isFullscreen ? 'flex-1 min-h-0' : 'max-h-[55vh]';
 
-  const hasAutoFitted = useRef(false);
+
+  // Escape is what people try first to leave anything covering the screen,
+  // and the listener only exists while it is covering the screen — otherwise
+  // every table on the page would be swallowing Escape from modals above it.
   useEffect(() => {
-    if (serverPagination?.autoFit && !hasAutoFitted.current && data.length > 0) {
-      hasAutoFitted.current = true;
-      handleFitToViewport();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverPagination?.autoFit, data]);
-
-  // Sizes the table body to fill the space actually available below it
-  // (not just cap it) — so a page with a full table scrolls internally
-  // instead of pushing the pagination footer off-screen, AND a page with
-  // few/zero rows still occupies the full remaining screen height instead
-  // of collapsing to fit its content. Applies to every DataTable (local or
-  // server pagination), not just ones with page-size buttons.
-  useEffect(() => {
-    const computeMaxHeight = () => {
-      const wrap = tableWrapRef.current;
-      if (!wrap) return;
-      const wrapTop = wrap.getBoundingClientRect().top;
-      const footerHeight = footerRef.current?.getBoundingClientRect().height ?? 56;
-      // Trimmed from 36/24 — the extra reserved margin was making the table
-      // noticeably shorter than the space actually available below it.
-      const paddingBottom = window.innerWidth >= 1024 ? 16 : 12;
-      const available = window.innerHeight - wrapTop - footerHeight - paddingBottom;
-      // `available` (leftover space below the table) is the real, honest
-      // constraint — it already accounts for however tall the browser
-      // chrome/OS taskbar happens to be on this machine (this is where a
-      // fixed "floor at 70% of window.innerHeight" previously went wrong:
-      // on a shorter viewport — e.g. Windows, where browser chrome eats more
-      // of window.innerHeight than on this Mac dev machine — `available` can
-      // legitimately be less than 70vh, and forcing the bigger 70vh number
-      // anyway pushed the table past the real available space, causing a
-      // page scroll — the same class of bug already fixed once on
-      // ProjectPicker, for a different, sibling-footer reason).
-      setMaxBodyHeight(Math.max(180, Math.floor(available)));
+    if (!isFullscreen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        setIsFullscreen(false);
+      }
     };
-
-    computeMaxHeight();
-    const rafId = requestAnimationFrame(computeMaxHeight);
-    const timerId = setTimeout(computeMaxHeight, 100);
-
-    window.addEventListener('resize', computeMaxHeight);
+    window.addEventListener('keydown', onKeyDown, true);
+    // The page behind must not scroll under the overlay — restored on exit,
+    // including when the component unmounts while still expanded.
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
-      cancelAnimationFrame(rafId);
-      clearTimeout(timerId);
-      window.removeEventListener('resize', computeMaxHeight);
+      window.removeEventListener('keydown', onKeyDown, true);
+      document.body.style.overflow = previousOverflow;
     };
-  }, [data.length]);
+    // setIsFullscreen is stable (useCallback) and included so the listener
+    // never closes over a stale controlled setter.
+  }, [isFullscreen, setIsFullscreen]);
 
 
   const handleSearchChange = (value: string) => {
@@ -172,6 +216,13 @@ export default function DataTable<T extends Record<string, unknown>>({
     [filtered, serverPagination, page, pageSize]
   );
   const totalCount = serverPagination ? serverPagination.total : filtered.length;
+  // A caller's own list still wins — a table that genuinely needs fixed
+  // choices can say so — but not supplying one is now the normal case, and
+  // gets choices that fit the data instead of a number somebody typed once.
+  const sizeOptions = useMemo(
+    () => serverPagination?.limitOptions ?? pageSizeOptions ?? derivePageSizeOptions(totalCount),
+    [serverPagination?.limitOptions, pageSizeOptions, totalCount]
+  );
   const goToPage = (p: number) => {
     if (serverPagination) {
       serverPagination.onPageChange(p);
@@ -180,8 +231,31 @@ export default function DataTable<T extends Record<string, unknown>>({
     }
   };
 
+  // One definition for both layouts — it was written out twice, which is two
+  // places to update the wording and two chances for them to drift.
+  const emptyState = (
+    <div className="flex flex-col items-center justify-center gap-2 max-w-xs mx-auto px-4 py-16 text-center">
+      <div className="p-3 bg-zinc-800 rounded-full text-gold/80 border border-zinc-750">
+        <Inbox size={32} />
+      </div>
+      <p className="text-sm font-semibold text-white">No records found</p>
+      <p className="text-xs text-gray-400">
+        {search ? `No items match "${search}"` : 'There are no records available in this view.'}
+      </p>
+      {search && (
+        <button
+          type="button"
+          onClick={() => handleSearchChange('')}
+          className="mt-2 text-xs font-semibold px-3 py-1.5 bg-zinc-750 text-gold rounded-lg hover:bg-zinc-700 transition-colors"
+        >
+          Clear Search
+        </button>
+      )}
+    </div>
+  );
+
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden shadow-sm">
+    <div className={`flex flex-col bg-zinc-850 overflow-hidden ${containerSizing}`}>
       <div className="p-4 border-b border-zinc-750 flex items-center gap-3 shrink-0">
         {leftHeaderContent && (
           <div className="flex items-center gap-3 mr-auto">
@@ -197,6 +271,16 @@ export default function DataTable<T extends Record<string, unknown>>({
             placeholder={searchPlaceholder}
             className="bg-transparent text-sm text-white placeholder-gray-500 outline-none flex-1 min-w-0"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => handleSearchChange('')}
+              className="text-gray-500 hover:text-white p-0.5 rounded transition-colors shrink-0"
+              aria-label="Clear search"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
         {showExportButton && (
           <button
@@ -205,7 +289,10 @@ export default function DataTable<T extends Record<string, unknown>>({
                 key: String(c.key),
                 header: c.header,
               }));
-              exportToCSV(exportFilename, filtered, exportCols);
+              // exportToCSV still wants the indexable form; it reads rows by
+              // the string keys the columns name, which every object supports
+              // at runtime.
+              exportToCSV(exportFilename, filtered as unknown as Record<string, unknown>[], exportCols);
             }}
             title="Export CSV"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-zinc-750 hover:bg-zinc-700 text-gold border border-zinc-700 rounded-lg transition-colors shrink-0"
@@ -214,14 +301,30 @@ export default function DataTable<T extends Record<string, unknown>>({
             <span className="hidden sm:inline">Export CSV</span>
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setIsFullscreen(!isFullscreen)}
+          title={isFullscreen ? 'Exit full screen (Esc)' : 'Expand to full screen'}
+          aria-label={isFullscreen ? 'Exit full screen' : 'Expand to full screen'}
+          className="p-1.5 rounded-lg text-gray-400 hover:text-gold hover:bg-zinc-750 transition-colors shrink-0"
+        >
+          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        </button>
       </div>
 
-      {/* Desktop/tablet: the usual scrollable table. */}
-      <div
-        ref={tableWrapRef}
-        className="hidden md:block flex-1 min-h-0 overflow-auto w-full"
-      >
-        <table className="w-full text-sm">
+      {/* Dimmed with a spinner rather than replaced: the rows on screen are
+          the previous page, which is a better thing to look at for the moment
+          a fetch takes than an empty table — and nothing gets remounted. */}
+      {loading && (
+        <div className="absolute inset-0 top-16 z-10 flex items-center justify-center bg-zinc-850/60 pointer-events-none">
+          <SpinnerSquare size={36} />
+        </div>
+      )}
+
+      {/* Desktop/tablet: standard scrollable table */}
+      <div className={`hidden md:flex md:flex-col overflow-auto w-full scrollbar-thin ${bodySizing}`}>
+        {/* shrink-0: the container scrolls, the table keeps its height */}
+        <table className="w-full text-sm shrink-0">
           <thead>
             <tr className="border-b border-zinc-750">
               {columns.map((col) => (
@@ -235,10 +338,10 @@ export default function DataTable<T extends Record<string, unknown>>({
               {actions && <th className="sticky top-0 z-10 bg-zinc-800 px-4 py-3" />}
             </tr>
           </thead>
-          <tbody ref={tbodyRef}>
+          <tbody>
             {paginated.map((row, idx) => (
               <tr
-                key={typeof row.id === 'string' || typeof row.id === 'number' ? row.id : idx}
+                key={rowKey(row, idx)}
                 onClick={() => onRowClick && onRowClick(row)}
                 tabIndex={onRowClick ? 0 : undefined}
                 role={onRowClick ? 'button' : undefined}
@@ -264,27 +367,20 @@ export default function DataTable<T extends Record<string, unknown>>({
                 )}
               </tr>
             ))}
-            {paginated.length === 0 && (
-              <tr>
-                <td colSpan={columns.length + (actions ? 1 : 0)} className="px-4 py-16 text-center text-gray-500">
-                  <div className="flex flex-col items-center justify-center gap-1">
-                    <Inbox size={32} className="text-zinc-600 mb-2" />
-                    <p className="text-sm font-medium text-gray-400">No records found</p>
-                    <p className="text-xs text-gray-500">Try adjusting your search or filters</p>
-                  </div>
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
+        {/* min-h so the message still has somewhere to centre itself when the
+            card is sized by its rows rather than by the space left on screen. */}
+        {paginated.length === 0 && (
+          <div className="flex-1 min-h-[220px] flex items-center justify-center">{emptyState}</div>
+        )}
       </div>
 
-      {/* Mobile: one stacked card per row instead of a horizontally-scrolling
-          table — nothing gets clipped, and there's nothing to swipe sideways. */}
-      <div className="md:hidden flex-1 min-h-0 overflow-auto divide-y divide-zinc-750/50 w-full">
+      {/* Mobile view */}
+      <div className={`md:hidden flex flex-col overflow-auto divide-y divide-zinc-750/50 w-full scrollbar-thin ${bodySizing}`}>
         {paginated.map((row, idx) => (
           <div
-            key={typeof row.id === 'string' || typeof row.id === 'number' ? row.id : idx}
+            key={rowKey(row, idx)}
             onClick={() => onRowClick && onRowClick(row)}
             tabIndex={onRowClick ? 0 : undefined}
             role={onRowClick ? 'button' : undefined}
@@ -294,7 +390,7 @@ export default function DataTable<T extends Record<string, unknown>>({
                 onRowClick(row);
               }
             } : undefined}
-            className={`p-4 space-y-2 transition-colors ${
+            className={`p-4 space-y-2 shrink-0 transition-colors ${
               onRowClick ? 'cursor-pointer hover:bg-gold/5 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-gold/50' : ''
             }`}
           >
@@ -318,26 +414,24 @@ export default function DataTable<T extends Record<string, unknown>>({
             )}
           </div>
         ))}
+        {/* min-h so the message still has somewhere to centre itself when the
+            card is sized by its rows rather than by the space left on screen. */}
         {paginated.length === 0 && (
-          <div className="px-4 py-16 text-center text-gray-500 flex flex-col items-center justify-center gap-1">
-            <Inbox size={32} className="text-zinc-600 mb-2" />
-            <p className="text-sm font-medium text-gray-400">No records found</p>
-            <p className="text-xs text-gray-500">Try adjusting your search or filters</p>
-          </div>
+          <div className="flex-1 min-h-[220px] flex items-center justify-center">{emptyState}</div>
         )}
       </div>
 
       {(serverPagination ? serverPagination.totalPages > 1 : filtered.length > pageSize) && (
-        <div ref={footerRef} className="p-4 border-t border-zinc-750 flex items-center justify-between flex-wrap gap-3 shrink-0 mt-auto">
+        <div className="p-4 border-t border-zinc-750 flex items-center justify-between flex-wrap gap-3 shrink-0 mt-auto">
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-500">
               {serverPagination
                 ? `Showing ${(currentPage - 1) * serverPagination.limit + 1} - ${Math.min(currentPage * serverPagination.limit, totalCount)} of ${totalCount}`
                 : `Showing ${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}`}
             </span>
-            {(serverPagination?.limitOptions ?? (!serverPagination ? pageSizeOptions : undefined)) && (
+            {sizeOptions.length > 0 && (
               <div className="flex items-center gap-1">
-                {(serverPagination?.limitOptions ?? pageSizeOptions ?? []).map((opt) => (
+                {sizeOptions.map((opt) => (
                   <button
                     key={opt}
                     onClick={() => {
@@ -354,7 +448,9 @@ export default function DataTable<T extends Record<string, unknown>>({
                         : 'text-gray-400 hover:text-white hover:bg-zinc-750'
                     }`}
                   >
-                    {opt}
+                    {/* The largest choice is the whole table, so it says so —
+                        a bare row count reads as one more arbitrary number. */}
+                    {opt === totalCount ? 'All' : opt}
                   </button>
                 ))}
               </div>

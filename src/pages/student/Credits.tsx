@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import type { Credit, CreditRequest, Profile, CloudProvider } from '../../lib/types';
@@ -57,7 +58,7 @@ export default function StudentCredits({
   };
 
   return (
-    <div className="space-y-6">
+    <PageLayout mode="scroll" className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">My Cloud Credits</h1>
@@ -75,6 +76,7 @@ export default function StudentCredits({
       <div className="space-y-4">
         <h2 className="text-lg font-bold text-white">Assigned Voucher Keys</h2>
         <DataTable
+          fill={false}
           columns={[
             { key: 'provider', header: 'Provider' },
             { key: 'amount', header: 'Amount ($)' },
@@ -93,6 +95,7 @@ export default function StudentCredits({
       <div className="space-y-4 pt-6 border-t border-zinc-750">
         <h2 className="text-lg font-bold text-white">My Credit Requests</h2>
         <DataTable
+          fill={false}
           columns={[
             { key: 'provider', header: 'Provider' },
             { key: 'amount', header: 'Requested ($)' },
@@ -163,6 +166,6 @@ export default function StudentCredits({
           </button>
         </div>
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

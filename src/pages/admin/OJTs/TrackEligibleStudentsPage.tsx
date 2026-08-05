@@ -1,5 +1,6 @@
+import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { UserPlus, Check } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
@@ -34,6 +35,15 @@ type CandidateRow = ApiCandidateStudent & Record<string, unknown> & { id: string
 // group can be built across several filtered views before adding in one go.
 export default function TrackEligibleStudentsPage() {
   const { cohortId, trackSlug } = useParams<{ cohortId: string; trackSlug: string }>();
+  // Which configuration of the track this list belongs to — two
+  // configurations of one track each name their own students. Absent for a
+  // track with a single configuration, which the server resolves on its own.
+  const [searchParams] = useSearchParams();
+  // Guarded against the literal strings a bad interpolation produces —
+  // ?configId=undefined must read as "not specified", not as an id.
+  const rawConfigId = searchParams.get('configId');
+  const configId =
+    rawConfigId && rawConfigId !== 'undefined' && rawConfigId !== 'null' ? rawConfigId : undefined;
   const { showSuccess, showError } = useToast();
   const { tracks } = useTracks();
   const trackName = trackSlug ? (tracks.find((t) => t.slug === trackSlug)?.name ?? trackSlug) : '';
@@ -78,13 +88,13 @@ export default function TrackEligibleStudentsPage() {
         search: search || undefined,
         batch: batchFilter || undefined,
         minPerformance: minPerformance !== '' ? Number(minPerformance) : undefined,
-      });
+      }, configId);
       setRows(res.data.map((s) => ({ ...s, id: s.studentId })));
       setPagination(res.pagination);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load students');
     }
-  }, [cohortId, trackSlug, page, limit, search, batchFilter, minPerformance, showError]);
+  }, [cohortId, trackSlug, configId, page, limit, search, batchFilter, minPerformance, showError]);
 
   useEffect(() => {
     loadCohort();
@@ -146,7 +156,12 @@ export default function TrackEligibleStudentsPage() {
     if (!cohortId || !trackSlug || selected.size === 0) return;
     setAdding(true);
     try {
-      const res = await apiAddEligibleStudents(cohortId, trackSlug, { studentIds: Array.from(selected) });
+      const res = await apiAddEligibleStudents(
+        cohortId,
+        trackSlug,
+        { studentIds: Array.from(selected) },
+        configId
+      );
       showSuccess(`${res.added} student${res.added === 1 ? '' : 's'} added to ${trackName}`);
       setSelected(new Set());
       await fetchPage();
@@ -160,7 +175,7 @@ export default function TrackEligibleStudentsPage() {
   const batchOptions = [{ value: '', label: 'Any batch' }, ...allowedBatches.map((b) => ({ value: b, label: b }))];
 
   return (
-    <div className="space-y-4 flex-1 min-h-0 flex flex-col">
+    <PageLayout className="space-y-4">
       <CohortPageHeader
         title={`${trackName} — Select Students`}
         subtitle={cohortLabel ? `${cohortLabel} · add specific students to this track` : undefined}
@@ -232,7 +247,6 @@ export default function TrackEligibleStudentsPage() {
           total: pagination.total,
           totalPages: pagination.totalPages,
           onPageChange: setPage,
-          limitOptions: [20, 40, 80],
           onLimitChange: (l) => {
             setLimit(l);
             setPage(1);
@@ -260,6 +274,6 @@ export default function TrackEligibleStudentsPage() {
           </div>
         }
       />
-    </div>
+    </PageLayout>
   );
 }

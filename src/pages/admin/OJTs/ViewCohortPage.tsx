@@ -1,3 +1,4 @@
+import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, Megaphone, X, type LucideIcon } from 'lucide-react';
@@ -799,7 +800,7 @@ export default function ViewCohortPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageLayout className="space-y-6">
       <CohortPageHeader title={getCohortLabel(cohort)} subtitle="OJT cohort details" />
 
       {/* Filter Bar */}
@@ -873,7 +874,7 @@ export default function ViewCohortPage() {
 
       {/* Students / Projects / Mentors */}
       {panelView !== '' && (
-        <div className="space-y-3">
+        <div className="space-y-3 flex-1 min-h-0 flex flex-col [&>*]:shrink-0">
           <div className="flex items-center gap-2 px-1">
             <div className="p-1.5 bg-gold/10 rounded-lg">
               {panelView === 'students' && <Users size={14} className="text-gold" />}
@@ -932,7 +933,7 @@ export default function ViewCohortPage() {
               )}
             </div>
           ) : (
-            <div className={`relative ${listLoading ? 'opacity-40 transition-opacity' : 'transition-opacity'}`}>
+            <div className={`relative flex-1 min-h-0 flex flex-col ${listLoading ? 'opacity-40 transition-opacity' : 'transition-opacity'}`}>
               {listLoading && (
                 <div className="absolute inset-0 z-20 flex items-center justify-center">
                   <SpinnerSquare size={40} />
@@ -964,9 +965,7 @@ export default function ViewCohortPage() {
                     total: listPagination.total,
                     totalPages: listPagination.totalPages,
                     onPageChange: setListPage,
-                    limitOptions: [20, 40, 80, 100],
                     onLimitChange: handleListLimitChange,
-                    autoFit: true,
                   }}
                 />
               )}
@@ -998,9 +997,7 @@ export default function ViewCohortPage() {
                     total: listPagination.total,
                     totalPages: listPagination.totalPages,
                     onPageChange: setListPage,
-                    limitOptions: [20, 40, 80, 100],
                     onLimitChange: handleListLimitChange,
-                    autoFit: true,
                   }}
                 />
               )}
@@ -1040,9 +1037,7 @@ export default function ViewCohortPage() {
                     total: listPagination.total,
                     totalPages: listPagination.totalPages,
                     onPageChange: setListPage,
-                    limitOptions: [20, 40, 80, 100],
                     onLimitChange: handleListLimitChange,
-                    autoFit: true,
                   }}
                 />
               )}
@@ -1188,6 +1183,6 @@ export default function ViewCohortPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }

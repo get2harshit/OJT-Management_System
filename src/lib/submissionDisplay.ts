@@ -9,5 +9,5 @@ export function fileNameFromGcsUri(uri: string): string {
 export function statusDotClass(status: string): { dot: string; text: string } {
   if (status === 'approved') return { dot: 'bg-green-500', text: 'text-green-500' };
   if (status === 'changes_requested') return { dot: 'bg-red-400', text: 'text-red-400' };
-  return { dot: 'bg-yellow-500', text: 'text-yellow-500' };
+  return { dot: 'bg-gold', text: 'text-gold' };
 }

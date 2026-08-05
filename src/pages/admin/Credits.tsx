@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Check, X, ShieldAlert, Award } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import type { Credit, CreditRequest, Profile, Student, CloudProvider } from '../../lib/types';
@@ -75,7 +76,7 @@ export default function AdminCredits({
   };
 
   return (
-    <div className="space-y-6">
+    <PageLayout mode={activeSubTab === 'assigned' ? 'fill' : 'scroll'} className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Cloud Credits Manager</h1>
@@ -134,6 +135,7 @@ export default function AdminCredits({
             </h2>
             <p className="text-gray-400 text-xs">These requests are vetted by mentors and are safe to approve.</p>
             <DataTable
+              fill={false}
               columns={[
                 { key: 'student_name', header: 'Student' },
                 { key: 'provider', header: 'Provider' },
@@ -172,6 +174,7 @@ export default function AdminCredits({
             </h2>
             <p className="text-gray-400 text-xs">Requests that have NOT been approved by a mentor yet. Can be reviewed if needed.</p>
             <DataTable
+              fill={false}
               columns={[
                 { key: 'student_name', header: 'Student' },
                 { key: 'provider', header: 'Provider' },
@@ -307,6 +310,6 @@ export default function AdminCredits({
           </div>
         </div>
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

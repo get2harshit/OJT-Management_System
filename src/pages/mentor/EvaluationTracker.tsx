@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Award, Loader2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Button from '../../components/Button';
 import { apiGetMyEvaluationQueue, apiGetEvaluationDetail, apiScoreEvaluation } from '../../lib/api/evaluations';
@@ -125,7 +126,7 @@ export default function MentorEvaluationTracker() {
   const otherPanelists = detail?.panelists.filter((p) => p.evaluatorId !== myId) || [];
 
   return (
-    <div className="space-y-4">
+    <PageLayout className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Award className="text-gold" size={26} />
@@ -157,6 +158,7 @@ export default function MentorEvaluationTracker() {
           { key: 'finalScore', header: 'Final' },
         ]}
         data={tableData}
+        loading={loading}
         searchPlaceholder="Search by student name..."
         hideExport
         onRowClick={(row) => openEvaluation(row.id as string)}
@@ -166,16 +168,12 @@ export default function MentorEvaluationTracker() {
           total,
           totalPages: Math.max(1, Math.ceil(total / limit)),
           onPageChange: setPage,
-          limitOptions: [20, 40, 80, 100],
           onLimitChange: (l) => {
             setPage(1);
             setLimit(l);
           },
         }}
       />
-      {!loading && queue.length === 0 && (
-        <p className="text-gray-500 text-sm text-center py-8">No evaluations assigned to you yet.</p>
-      )}
 
       <Modal open={!!selectedId} onClose={closeModal} title="Score Evaluation" size="lg">
         {detailLoading ? (
@@ -244,6 +242,6 @@ export default function MentorEvaluationTracker() {
           </div>
         ) : null}
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

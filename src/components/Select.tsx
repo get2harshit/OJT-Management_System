@@ -1,15 +1,14 @@
-import { useState, useRef, useLayoutEffect, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
+import { useAnchoredPosition } from '../hooks/useAnchoredPosition';
 
 export interface SelectOption {
   value: string;
   label: string;
 }
 
-interface SelectProps {
-  value: string | string[];
-  onChange: (value: any) => void;
+interface SelectBaseProps {
   options: SelectOption[];
   placeholder?: string;
   disabled?: boolean;
@@ -17,10 +16,29 @@ interface SelectProps {
   /** 'field' matches form-input selects (zinc-750/white); 'filter' matches
    * the lighter filter-bar look (zinc-850/gray-300) used on dashboards. */
   variant?: 'field' | 'filter';
-  isMulti?: boolean;
   isSearchable?: boolean;
   isCreatable?: boolean;
 }
+
+// value/onChange are typed off isMulti rather than being one loose
+// `string | string[]` pair, because the two modes genuinely have different
+// contracts: single hands back the chosen option, multi the whole array. A
+// shared signature forced every call site to cast, which is what let the
+// original `any` in — and a cast is exactly where a multi-select's array
+// silently reaches a handler expecting a string.
+interface SingleSelectProps extends SelectBaseProps {
+  isMulti?: false;
+  value: string;
+  onChange: (value: string) => void;
+}
+
+interface MultiSelectProps extends SelectBaseProps {
+  isMulti: true;
+  value: string[];
+  onChange: (value: string[]) => void;
+}
+
+type SelectProps = SingleSelectProps | MultiSelectProps;
 
 const VARIANT_STYLES: Record<'field' | 'filter', string> = {
   field: 'bg-zinc-750 border-zinc-750 text-white',
@@ -31,28 +49,55 @@ const VARIANT_STYLES: Record<'field' | 'filter', string> = {
 // dropdown list is rendered by the OS, ignoring app CSS entirely (it shows
 // up with the OS's default highlight color instead of the app's theme).
 // This renders its own portal-based list instead, styled to match.
-export default function Select({ value, onChange, options, placeholder, disabled, className = '', variant = 'field', isMulti = false, isSearchable = false, isCreatable = false }: SelectProps) {
+export default function Select(props: SelectProps) {
+  const { options, placeholder, disabled, className = '', variant = 'field', isMulti = false, isSearchable = false, isCreatable = false } = props;
+  // The union is enforced at the call boundary above; inside, the body handles
+  // both shapes and needs the widened form. One cast here replaces the one
+  // every caller used to write.
+  const value = props.value as string | string[];
+  const onChange = props.onChange as (value: string | string[]) => void;
+
   const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // Matches the trigger's width so the list reads as an extension of it.
+  const position = useAnchoredPosition(
+    triggerRef,
+    open,
+    rect => ({ top: rect.bottom + 4, left: rect.left, width: rect.width }),
+    { top: 0, left: 0, width: 0 },
+  );
+
   const selected = isMulti
-    ? options.filter(o => (value as string[]).includes(o.value))
+    ? options.filter(o => Array.isArray(value) && value.includes(o.value))
     : options.find(o => o.value === value);
 
-  const displayLabel = isMulti
-    ? ((selected as SelectOption[]).length > 0 ? (selected as SelectOption[]).map(o => o.label).join(', ') : placeholder)
-    : ((selected as SelectOption) ? (selected as SelectOption).label : placeholder);
+  const selectedItems = isMulti ? (selected as SelectOption[]) : [];
+  const singleSelected = !isMulti ? (selected as SelectOption | undefined) : null;
+
+  const renderLabel = () => {
+    if (isMulti) {
+      if (selectedItems.length === 0) {
+        return <span className="text-gray-500 truncate">{placeholder || 'Select...'}</span>;
+      }
+      if (selectedItems.length === 1) {
+        return <span className="truncate">{selectedItems[0].label}</span>;
+      }
+      return (
+        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gold/15 text-gold border border-gold/30 shrink-0">
+          {selectedItems.length} Selected
+        </span>
+      );
+    }
+    if (singleSelected) {
+      return <span className="truncate">{singleSelected.label}</span>;
+    }
+    return <span className="text-gray-500 truncate">{placeholder || 'Select...'}</span>;
+  };
 
   const filteredOptions = options.filter(o => o.label.toLowerCase().includes(searchQuery.toLowerCase()));
-
-  useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    setPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width });
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -66,8 +111,6 @@ export default function Select({ value, onChange, options, placeholder, disabled
     }
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        // Capture phase + stopPropagation so this only closes the dropdown,
-        // not a parent Modal/Drawer also listening for Escape on window.
         e.stopPropagation();
         setOpen(false);
       }
@@ -94,9 +137,9 @@ export default function Select({ value, onChange, options, placeholder, disabled
           disabled ? 'text-gray-400 cursor-not-allowed opacity-70' : 'hover:border-zinc-650'
         } ${open && !disabled ? 'border-gold' : ''} ${className}`}
       >
-        <span className={`truncate ${(!isMulti && !selected) || (isMulti && (selected as SelectOption[]).length === 0) ? 'text-gray-500' : ''}`}>
-          {displayLabel}
-        </span>
+        <div className="min-w-0 flex-1 flex items-center">
+          {renderLabel()}
+        </div>
         <ChevronDown size={15} className={`shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 

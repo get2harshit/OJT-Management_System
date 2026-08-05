@@ -1,6 +1,8 @@
+import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Settings2, Plus, Pencil, Trash2, Users, X, UserPlus } from 'lucide-react';
+import DataTable from '../../../components/DataTable';
+import { Settings2, Plus, Pencil, Trash2, Users, X, UserPlus, ArrowRight, FileSpreadsheet } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
@@ -11,9 +13,8 @@ import type {
   TrackProjectMode,
   TrackSubmissionMode,
   ApiEligibleStudent,
-  ApiCandidateMentor,
 } from '../../../lib/api/tracks';
-import { SUBMISSION_MODE_LABELS, apiGetTrackCandidateMentors } from '../../../lib/api/tracks';
+import { SUBMISSION_MODE_LABELS } from '../../../lib/api/tracks';
 import {
   apiGetCohort,
   apiGetCohortTrackConfig,
@@ -43,7 +44,15 @@ const ELIGIBILITY_LABELS: Record<TrackEligibilityType, string> = {
   unique: 'Specific students',
 };
 
-const PROJECT_MODE_OPTIONS: { value: TrackProjectMode; label: string }[] = [
+// '' means "don't send a mode" — the server then derives it from who the
+// configuration is for (an individual-only admission year gets Individual,
+// everyone else Team). Offered as a real choice rather than mirroring that
+// rule here, because a copy of the year list in the client would drift from
+// the one in domain/projectMode.ts the first time the programme changes.
+type ProjectModeChoice = TrackProjectMode | '';
+
+const PROJECT_MODE_OPTIONS: { value: ProjectModeChoice; label: string }[] = [
+  { value: '', label: 'Automatic — decided by the batch this is for' },
   { value: 'individual', label: 'Individual — every student works solo on this track' },
   { value: 'team', label: 'Team — students must pair up to work on this track' },
 ];
@@ -65,6 +74,11 @@ export default function CohortTrackConfigPage() {
   // Add/edit-track-config modal
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [editingTrackSlug, setEditingTrackSlug] = useState<string | null>(null);
+  // The variant being edited. A track can be configured several times per
+  // OJT, so the slug alone no longer says which row the form is writing to —
+  // without this an edit of the 2025 configuration would overwrite the 2024 one.
+  const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
+  const [formVariantLabel, setFormVariantLabel] = useState('');
   // Only shown when adding (not editing) a track — pick one or more existing
   // not-yet-configured tracks via checkboxes (all get the same eligibility/
   // mode config below), or create a brand new one right here instead of
@@ -81,18 +95,17 @@ export default function CohortTrackConfigPage() {
   const [formBatches, setFormBatches] = useState<string[]>([]);
   // No default — admin must explicitly pick individual/team every time a
   // track is configured for this OJT, same as eligibility type.
-  const [formProjectMode, setFormProjectMode] = useState<TrackProjectMode>('team');
-  // Mentors staffing the track(s) being configured, and what teams on them may
-  // submit. Both are required by the backend — a track with no mentor leaves
-  // students facing an empty dropdown at preference time.
-  const [formMentorIds, setFormMentorIds] = useState<Set<string>>(new Set());
+  const [formProjectMode, setFormProjectMode] = useState<ProjectModeChoice>('');
   const [formSubmissionModes, setFormSubmissionModes] = useState<TrackSubmissionMode[]>(['2_recommended']);
-  const [candidateMentors, setCandidateMentors] = useState<ApiCandidateMentor[]>([]);
-  const [mentorsLoading, setMentorsLoading] = useState(false);
+  // Read-only here: mentors are staffed on their own screen, and this only
+  // labels the link across to it.
+  const [editingMentorCount, setEditingMentorCount] = useState(0);
   const [savingConfig, setSavingConfig] = useState(false);
 
   // Manage-students modal (only for 'unique' tracks)
-  const [studentsModalTrackSlug, setStudentsModalTrackSlug] = useState<string | null>(null);
+  // Keyed by variant, not track: two configurations of one track each keep
+  // their own hand-picked student list.
+  const [studentsModalConfigId, setStudentsModalConfigId] = useState<string | null>(null);
   const [regNumbersInput, setRegNumbersInput] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [studentSearchInput, setStudentSearchInput] = useState('');
@@ -127,11 +140,39 @@ export default function CohortTrackConfigPage() {
 
   usePageRefresh(fetchData);
 
-  // Tracks in the master list not yet configured for this cohort — the "add"
-  // picker only offers these (editing an existing row keeps its own track
-  // fixed).
-  const configuredSlugs = new Set(configs.map(c => c.trackSlug));
-  const unconfiguredTracks = allTracks.filter(t => !configuredSlugs.has(t.slug));
+  // Every active track is offerable, including ones already configured here:
+  // adding Product Development a second time is how an admin gives the 2025
+  // batch different rules from the 2024 batch. The server refuses only the
+  // genuinely broken case — a second configuration covering the same students.
+  const addableTracks = allTracks;
+
+  // How many configurations each track has in this OJT, so a track that
+  // appears more than once can be labelled to tell the rows apart.
+  const configCountByTrack = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of configs) counts.set(c.trackSlug, (counts.get(c.trackSlug) ?? 0) + 1);
+    return counts;
+  }, [configs]);
+
+  // What distinguishes this row from its siblings — shown only when there are
+  // siblings, so a single-variant track stays as uncluttered as before.
+  const variantSuffix = (config: ApiCohortTrackConfig): string | null => {
+    if ((configCountByTrack.get(config.trackSlug) ?? 0) < 2) return null;
+    if (config.variantLabel) return config.variantLabel;
+    return config.eligibilityType === 'unique' ? 'specific students' : config.eligibilityValue;
+  };
+
+  // Where a per-variant sub-page lives. The path still keys on the slug; the
+  // variant rides as a query param, which keeps every existing URL valid.
+  //
+  // The param is omitted rather than interpolated blindly: a missing configId
+  // would otherwise become the literal string "undefined" in the URL, travel to
+  // the server as an id, and fail there instead of here. Without it the server
+  // resolves a single-variant track on its own, which is the right fallback.
+  const variantPath = (config: ApiCohortTrackConfig, page: string) => {
+    const base = `/admin/dashboard/ojts/${cohortId}/track-config/${config.trackSlug}/${page}`;
+    return config.configId ? `${base}?configId=${config.configId}` : base;
+  };
 
   // Admission years, derived from this cohort's own batch sections (e.g.
   // "2025 A" -> "2025") rather than any fixed/hardcoded range — so the
@@ -147,21 +188,24 @@ export default function CohortTrackConfigPage() {
 
   const openAddModal = () => {
     setEditingTrackSlug(null);
+    setEditingConfigId(null);
+    setFormVariantLabel('');
     setTrackSource('existing');
     setNewTrackName('');
     setFormTrackSlugs([]);
     setFormEligibilityType('year');
     setFormYears([]);
     setFormBatches([]);
-    setFormProjectMode('team');
-    setFormMentorIds(new Set());
+    setFormProjectMode('');
+    setEditingMentorCount(0);
     setFormSubmissionModes(['2_recommended']);
-    setCandidateMentors([]);
     setConfigModalOpen(true);
   };
 
   const openEditModal = (config: ApiCohortTrackConfig) => {
     setEditingTrackSlug(config.trackSlug);
+    setEditingConfigId(config.configId);
+    setFormVariantLabel(config.variantLabel ?? '');
     setFormTrackSlugs([config.trackSlug]);
     setFormEligibilityType(config.eligibilityType);
     setFormYears(
@@ -175,9 +219,8 @@ export default function CohortTrackConfigPage() {
         : []
     );
     setFormProjectMode(config.projectMode);
-    setFormMentorIds(new Set(config.mentors.map(m => m.mentorId)));
+    setEditingMentorCount(config.mentors.length);
     setFormSubmissionModes(config.allowedSubmissionModes.length ? config.allowedSubmissionModes : ['2_recommended']);
-    setCandidateMentors([]);
     setConfigModalOpen(true);
   };
 
@@ -185,75 +228,29 @@ export default function CohortTrackConfigPage() {
     setFormTrackSlugs(prev => (prev.includes(slug) ? prev.filter(s => s !== slug) : [...prev, slug]));
   };
 
-  const toggleFormMentor = (mentorId: string) => {
-    setFormMentorIds(prev => {
-      const next = new Set(prev);
-      if (next.has(mentorId)) next.delete(mentorId);
-      else next.add(mentorId);
-      return next;
-    });
-  };
-
   const toggleSubmissionMode = (mode: TrackSubmissionMode) => {
     setFormSubmissionModes(prev => (prev.includes(mode) ? prev.filter(m => m !== mode) : [...prev, mode]));
   };
 
-  // The mentor roster is the same list for every track — only the
-  // already-assigned/expertise flags differ — so when several tracks are being
-  // configured at once we load the flags for the first one and apply the same
-  // mentors to all of them.
-  const mentorFlagTrackSlug = editingTrackSlug ?? formTrackSlugs[0] ?? null;
-
-  // A track being created has no slug yet, but its mentors still have to be
-  // picked here — saving requires at least one. So the roster loads either
-  // way; without a slug it just comes back with no expertise flags.
-  const canPickMentors = !!mentorFlagTrackSlug || (!editingTrackSlug && trackSource === 'new');
-
-  useEffect(() => {
-    if (!configModalOpen || !cohortId || !canPickMentors) {
-      if (configModalOpen && !canPickMentors) setCandidateMentors([]);
-      return;
-    }
-    let cancelled = false;
-    setMentorsLoading(true);
-    apiGetTrackCandidateMentors(cohortId, mentorFlagTrackSlug)
-      .then(rows => {
-        if (cancelled) return;
-        setCandidateMentors(rows);
-        // On a fresh add, pre-tick the mentors whose declared expertise
-        // already covers this track — the admin can still change it.
-        if (!editingTrackSlug) {
-          setFormMentorIds(prev =>
-            prev.size > 0 ? prev : new Set(rows.filter(r => r.hasExpertise).map(r => r.mentorId))
-          );
-        }
-      })
-      .catch(err => showError(err instanceof Error ? err.message : 'Failed to load mentors'))
-      .finally(() => {
-        if (!cancelled) setMentorsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [configModalOpen, cohortId, mentorFlagTrackSlug, canPickMentors, editingTrackSlug, showError]);
-
-  const handleSaveConfig = async () => {
-    if (!cohortId) return;
+  /**
+   * Saves the form and returns the configurations it wrote, or null if it
+   * didn't get that far. The return value is what lets "Save & choose mentors"
+   * continue on to the mentor screen: a brand-new track has no slug — and a
+   * brand-new configuration no id — until this runs, and that screen needs both.
+   */
+  const handleSaveConfig = async (): Promise<ApiCohortTrackConfig[] | null> => {
+    if (!cohortId) return null;
     if (formEligibilityType === 'year' && formYears.length === 0) {
       showError('Pick at least one admission year');
-      return;
+      return null;
     }
     if (formEligibilityType === 'batch' && formBatches.length === 0) {
       showError('Pick at least one batch section');
-      return;
-    }
-    if (formMentorIds.size === 0) {
-      showError('Assign at least one mentor — students on this track need someone to pick at project selection.');
-      return;
+      return null;
     }
     if (formSubmissionModes.length === 0) {
       showError('Pick at least one project submission option');
-      return;
+      return null;
     }
     setSavingConfig(true);
     try {
@@ -268,7 +265,7 @@ export default function CohortTrackConfigPage() {
         if (name.length < 2) {
           showError('Track name must be at least 2 characters');
           setSavingConfig(false);
-          return;
+          return null;
         }
         const created = await apiCreateTrack(name);
         trackSlugs = [created.slug];
@@ -276,20 +273,25 @@ export default function CohortTrackConfigPage() {
       if (trackSlugs.length === 0) {
         showError('Pick at least one track');
         setSavingConfig(false);
-        return;
+        return null;
       }
 
       const eligibilityValue =
         formEligibilityType === 'year' ? formYears.join(',') : formEligibilityType === 'batch' ? formBatches.join(',') : undefined;
-      const mentorIds = Array.from(formMentorIds);
-      await Promise.all(
+      // mentorIds is deliberately absent: this form no longer edits staffing,
+      // and sending an empty array would unassign every mentor on the track.
+      const saved = await Promise.all(
         trackSlugs.map(slug =>
           apiSetCohortTrackConfig(cohortId, {
             trackSlug: slug,
+            // Only set when editing. Absent, the server adds another
+            // configuration to the track rather than overwriting the existing
+            // one — which is what makes per-batch variants possible at all.
+            configId: editingConfigId ?? undefined,
+            variantLabel: formVariantLabel.trim() || null,
             eligibilityType: formEligibilityType,
             eligibilityValue,
-            projectMode: formProjectMode,
-            mentorIds,
+            projectMode: formProjectMode || undefined,
             allowedSubmissionModes: formSubmissionModes,
           })
         )
@@ -304,24 +306,51 @@ export default function CohortTrackConfigPage() {
       setConfigModalOpen(false);
       await refetchTracks();
       await fetchData();
+      return saved;
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to save track configuration');
+      return null;
     } finally {
       setSavingConfig(false);
     }
   };
 
+  // "Choose mentors" from inside the form. An existing track can be opened
+  // straight away; a new one has to be saved first to exist at all, so this
+  // does that save and carries on to the same screen rather than making the
+  // admin close the modal, find the row and click again.
+  const handleGoToMentors = async () => {
+    if (!cohortId) return;
+    if (editingTrackSlug && editingConfigId) {
+      navigate(
+        `/admin/dashboard/ojts/${cohortId}/track-config/${editingTrackSlug}/mentors?configId=${editingConfigId}`
+      );
+      return;
+    }
+    // Reached by saving first, so the id comes from the save's response — see
+    // variantPath for why it is never interpolated unchecked.
+    const saved = await handleSaveConfig();
+    // Several tracks can be configured in one go; the mentor screen handles
+    // one at a time, so the rest are reachable from their rows.
+    if (saved?.length) {
+      navigate(variantPath(saved[0], 'mentors'));
+    }
+  };
+
   const handleRemoveConfig = async (config: ApiCohortTrackConfig) => {
     if (!cohortId) return;
+    const suffix = variantSuffix(config);
     const confirmRemove = await confirm({
       title: 'Remove track from this OJT',
-      message: `Remove "${config.trackName}" from this OJT? Students will no longer be able to pick it here.`,
+      // Named by variant when there is more than one, so an admin can see
+      // which audience they are about to cut loose.
+      message: `Remove "${config.trackName}${suffix ? ` (${suffix})` : ''}" from this OJT? Students will no longer be able to pick it here.`,
       confirmLabel: 'Remove',
       variant: 'danger',
     });
     if (!confirmRemove) return;
     try {
-      await apiRemoveCohortTrackConfig(cohortId, config.trackSlug);
+      await apiRemoveCohortTrackConfig(cohortId, config.trackSlug, config.configId);
       showSuccess('Track removed from this OJT');
       await fetchData();
     } catch (err) {
@@ -331,8 +360,8 @@ export default function CohortTrackConfigPage() {
 
   // ── Manage-students modal (unique tracks) ──────────────────────────────────
 
-  const openStudentsModal = (trackSlug: string) => {
-    setStudentsModalTrackSlug(trackSlug);
+  const openStudentsModal = (configId: string) => {
+    setStudentsModalConfigId(configId);
     setRegNumbersInput('');
     setStudentSearch('');
     setStudentSearchInput('');
@@ -341,10 +370,10 @@ export default function CohortTrackConfigPage() {
     setPickedStudentIds(new Set());
   };
 
-  const activeConfig = configs.find(c => c.trackSlug === studentsModalTrackSlug) ?? null;
+  const activeConfig = configs.find(c => c.configId === studentsModalConfigId) ?? null;
 
   const runStudentSearch = useCallback(async () => {
-    if (!cohortId || !studentsModalTrackSlug) return;
+    if (!cohortId || !activeConfig) return;
     if (!studentSearch && !studentBatchFilter) {
       setSearchResults([]);
       return;
@@ -364,7 +393,7 @@ export default function CohortTrackConfigPage() {
     } finally {
       setSearchLoading(false);
     }
-  }, [cohortId, studentsModalTrackSlug, studentSearch, studentBatchFilter, showError]);
+  }, [cohortId, activeConfig, studentSearch, studentBatchFilter, showError]);
 
   useEffect(() => {
     runStudentSearch();
@@ -386,7 +415,7 @@ export default function CohortTrackConfigPage() {
   };
 
   const handleAddStudents = async () => {
-    if (!cohortId || !studentsModalTrackSlug) return;
+    if (!cohortId || !activeConfig) return;
     const registrationNumbers = regNumbersInput
       .split(/[,\n]/)
       .map(s => s.trim())
@@ -398,7 +427,7 @@ export default function CohortTrackConfigPage() {
     }
     setAddingStudents(true);
     try {
-      const res = await apiAddEligibleStudents(cohortId, studentsModalTrackSlug, { registrationNumbers, studentIds });
+      const res = await apiAddEligibleStudents(cohortId, activeConfig.trackSlug, { registrationNumbers, studentIds }, activeConfig.configId);
       if (res.unresolved.length > 0) {
         showError(`${res.added} added. Not found: ${res.unresolved.join(', ')}`);
       } else {
@@ -415,9 +444,9 @@ export default function CohortTrackConfigPage() {
   };
 
   const handleRemoveStudent = async (student: ApiEligibleStudent) => {
-    if (!cohortId || !studentsModalTrackSlug) return;
+    if (!cohortId || !activeConfig) return;
     try {
-      await apiRemoveEligibleStudent(cohortId, studentsModalTrackSlug, student.studentId);
+      await apiRemoveEligibleStudent(cohortId, activeConfig.trackSlug, student.studentId, activeConfig.configId);
       showSuccess('Student removed');
       await fetchData();
     } catch (err) {
@@ -426,7 +455,7 @@ export default function CohortTrackConfigPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageLayout className="space-y-6">
       <CohortPageHeader
         title="Track Configuration"
         subtitle={cohortLabel ? `${cohortLabel} — who can pick which track` : undefined}
@@ -438,13 +467,23 @@ export default function CohortTrackConfigPage() {
           <SpinnerSquare size={48} />
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4 flex-1 min-h-0 flex flex-col [&>*]:shrink-0">
           <div className="flex justify-end">
+            {/* Configuring a track per batch by hand is a dozen trips through
+                the form for a catalog that already says most of it. */}
+            <button
+              onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/track-config-from-catalog`)}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 border border-zinc-700 text-gray-300 font-medium rounded-lg hover:border-gold hover:text-white transition-colors text-sm"
+              title="See what the imported project catalog says this OJT's configuration should be"
+            >
+              <FileSpreadsheet size={16} />
+              From catalog
+            </button>
             <button
               onClick={openAddModal}
-              disabled={unconfiguredTracks.length === 0}
+              disabled={addableTracks.length === 0}
               className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-              title={unconfiguredTracks.length === 0 ? 'Every track is already configured for this OJT' : undefined}
+              title={addableTracks.length === 0 ? 'No tracks exist yet — create one first' : undefined}
             >
               <Plus size={16} />
               Add Track to this OJT
@@ -456,80 +495,110 @@ export default function CohortTrackConfigPage() {
               <p className="text-gray-400 text-sm">No tracks configured yet. Students won't see any track options until you add at least one.</p>
             </div>
           ) : (
-            <div className="bg-zinc-850 border border-zinc-750 rounded-xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-750 text-left text-gray-400 text-xs uppercase tracking-wider">
-                      <th className="px-4 py-3">Track</th>
-                      <th className="px-4 py-3">Who can pick this track</th>
-                      <th className="px-4 py-3">Track can go</th>
-                      <th className="px-4 py-3">Project mode</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {configs.map(config => (
-                      <tr key={config.trackSlug} className="border-b border-zinc-800 last:border-0">
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/track-config/${config.trackSlug}/projects`)}
-                            className="text-white font-medium hover:text-gold hover:underline underline-offset-4 transition-colors text-left"
-                            title="Open this track's projects & CSV upload"
-                          >
-                            {config.trackName}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-gray-400">{ELIGIBILITY_LABELS[config.eligibilityType]}</td>
-                        <td className="px-4 py-3 text-gray-300">
-                          {config.eligibilityType === 'year' && (config.eligibilityValue ?? '').split(',').join(', ')}
-                          {config.eligibilityType === 'batch' && (config.eligibilityValue ?? '').split(',').join(', ')}
-                          {config.eligibilityType === 'unique' && (
-                            <button
-                              onClick={() => openStudentsModal(config.trackSlug)}
-                              className="flex items-center gap-1.5 text-gold hover:underline"
-                            >
-                              <Users size={13} />
-                              {config.eligibleStudents.length} named student(s)
-                            </button>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-gray-300">
-                          {config.projectMode === 'individual' ? 'Individual only' : 'Team required'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1">
-                            {config.eligibilityType === 'unique' && (
-                              <button
-                                onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/track-config/${config.trackSlug}/students`)}
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-gold hover:bg-zinc-750 transition-colors"
-                                title="Add students by performance"
-                              >
-                                <UserPlus size={14} />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => openEditModal(config)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
-                              title="Edit"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              onClick={() => handleRemoveConfig(config)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                              title="Remove from this OJT"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <DataTable<ApiCohortTrackConfig>
+              columns={[
+                {
+                  key: 'trackName',
+                  header: 'Track',
+                  render: (config) => (
+                    <>
+                      <button
+                        onClick={() => navigate(variantPath(config, 'projects'))}
+                        className="text-white font-medium hover:text-gold hover:underline underline-offset-4 transition-colors text-left"
+                        title="Open this track's projects & CSV upload"
+                      >
+                        {config.trackName}
+                      </button>
+                      {/* Only rendered when the track really is configured
+                          more than once — otherwise every row would carry a
+                          redundant restatement of its own eligibility. */}
+                      {variantSuffix(config) && (
+                        <span className="block text-xs text-gray-500 mt-0.5">{variantSuffix(config)}</span>
+                      )}
+                    </>
+                  ),
+                },
+                {
+                  key: 'eligibilityType',
+                  header: 'Who can pick this track',
+                  render: (config) => <span className="text-gray-400">{ELIGIBILITY_LABELS[config.eligibilityType]}</span>,
+                },
+                {
+                  key: 'eligibilityValue',
+                  header: 'Track can go',
+                  render: (config) => (
+                    <>
+                      {config.eligibilityType === 'year' && (config.eligibilityValue ?? '').split(',').join(', ')}
+                      {config.eligibilityType === 'batch' && (config.eligibilityValue ?? '').split(',').join(', ')}
+                      {config.eligibilityType === 'unique' && (
+                        <button
+                          onClick={() => openStudentsModal(config.configId)}
+                          className="flex items-center gap-1.5 text-gold hover:underline"
+                        >
+                          <Users size={13} />
+                          {config.eligibleStudents.length} named student(s)
+                        </button>
+                      )}
+                    </>
+                  ),
+                },
+                {
+                  key: 'projectMode',
+                  header: 'Project mode',
+                  render: (config) => (config.projectMode === 'individual' ? 'Individual only' : 'Team required'),
+                },
+              ]}
+              data={configs}
+              searchPlaceholder="Search tracks..."
+              searchKeys={['trackName']}
+              hideExport
+              actions={(config) => (
+                <div className="flex items-center justify-end gap-1">
+                  {/* A track with nobody on it is a dead end — students
+                      reach project submission and find an empty mentor
+                      list — so its own entry point carries the warning
+                      rather than sitting quietly among the others. */}
+                  <button
+                    onClick={() => navigate(variantPath(config, 'mentors'))}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      config.mentors.length === 0
+                        ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
+                        : 'text-gray-400 hover:text-gold hover:bg-zinc-750'
+                    }`}
+                    title={
+                      config.mentors.length === 0
+                        ? 'No mentors on this track \u2014 students can\u2019t pick anyone'
+                        : `Mentors (${config.mentors.length})`
+                    }
+                  >
+                    <Users size={14} />
+                  </button>
+                  {config.eligibilityType === 'unique' && (
+                    <button
+                      onClick={() => navigate(variantPath(config, 'students'))}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-gold hover:bg-zinc-750 transition-colors"
+                      title="Add students by performance"
+                    >
+                      <UserPlus size={14} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => openEditModal(config)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-750 transition-colors"
+                    title="Edit"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={() => handleRemoveConfig(config)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title="Remove from this OJT"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
+            />
           )}
         </div>
       )}
@@ -573,23 +642,23 @@ export default function CohortTrackConfigPage() {
               </div>
 
               {trackSource === 'existing' ? (
-                unconfiguredTracks.length === 0 ? (
-                  <p className="text-xs text-gray-500">Every existing track is already configured for this OJT — create a new one instead.</p>
+                addableTracks.length === 0 ? (
+                  <p className="text-xs text-gray-500">No tracks exist yet — create a new one instead.</p>
                 ) : (
                   <div className="border border-zinc-700 rounded-lg overflow-hidden">
                     <button
                       type="button"
                       onClick={() => {
-                        const allSlugs = unconfiguredTracks.map(t => t.slug);
+                        const allSlugs = addableTracks.map(t => t.slug);
                         const allSelected = allSlugs.every(s => formTrackSlugs.includes(s));
                         setFormTrackSlugs(allSelected ? [] : allSlugs);
                       }}
                       className="w-full flex items-center px-3 py-2 text-sm text-blue-400 font-semibold hover:bg-zinc-800/60 transition-colors border-b border-zinc-750"
                     >
-                      {unconfiguredTracks.every(t => formTrackSlugs.includes(t.slug)) ? 'Deselect All' : 'Select All'}
+                      {addableTracks.every(t => formTrackSlugs.includes(t.slug)) ? 'Deselect All' : 'Select All'}
                     </button>
                     <div className="max-h-40 overflow-y-auto divide-y divide-zinc-800">
-                      {unconfiguredTracks.map(t => (
+                      {addableTracks.map(t => (
                         <label key={t.slug} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-zinc-800/60 cursor-pointer">
                           <input
                             type="checkbox"
@@ -598,6 +667,14 @@ export default function CohortTrackConfigPage() {
                             className="rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold"
                           />
                           <span className="flex-1">{t.name}</span>
+                          {/* Picking it again adds another configuration rather
+                              than replacing the existing one — worth saying, since
+                              the old form refused this outright. */}
+                          {(configCountByTrack.get(t.slug) ?? 0) > 0 && (
+                            <span className="text-xs text-gray-500">
+                              {configCountByTrack.get(t.slug)} already · adds another
+                            </span>
+                          )}
                         </label>
                       ))}
                     </div>
@@ -614,6 +691,27 @@ export default function CohortTrackConfigPage() {
               )}
             </div>
           )}
+
+          {/* Only meaningful once a track carries more than one configuration
+              — which is exactly when the rows need telling apart. Optional, and
+              the row falls back to showing the eligibility when it's blank. */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">
+              Label <span className="text-gray-600">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={formVariantLabel}
+              onChange={e => setFormVariantLabel(e.target.value)}
+              placeholder="e.g. 2024 — Individual"
+              maxLength={100}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Names this configuration where the same track is set up more than once. Left blank, its
+              eligibility is shown instead.
+            </p>
+          </div>
 
           <div>
             <label className="block text-sm text-gray-400 mb-1">Who can pick this track</label>
@@ -681,12 +779,14 @@ export default function CohortTrackConfigPage() {
             <label className="block text-sm text-gray-400 mb-1">Project mode for this track</label>
             <Select
               value={formProjectMode}
-              onChange={v => setFormProjectMode(v as TrackProjectMode)}
+              onChange={v => setFormProjectMode(v as ProjectModeChoice)}
               options={PROJECT_MODE_OPTIONS}
               className="w-full"
             />
             <p className="text-xs text-gray-500 mt-1">
-              This forces the mode for every student on this track, except those already mandated individual by their batch or an admin override — they always stay individual.
+              {formProjectMode === ''
+                ? 'The 2024 batch works solo; every other batch pairs up. Pick a mode above to override that.'
+                : 'This forces the mode for every student on this track, except those already mandated individual by their batch or an admin override — they always stay individual.'}
             </p>
           </div>
 
@@ -714,56 +814,36 @@ export default function CohortTrackConfigPage() {
             </p>
           </div>
 
-          {/* Mentors staffing this track in this OJT */}
+          {/* Mentors are staffed on their own screen — see the note on
+              editingTrackSlug below for why this is a link rather than a
+              picker. */}
           <div>
-            <label className="block text-sm text-gray-400 mb-2">
-              Mentors for this track
-              {formMentorIds.size > 0 && <span className="text-gold ml-1">({formMentorIds.size} selected)</span>}
-            </label>
+            <label className="block text-sm text-gray-400 mb-2">Mentors for this track</label>
 
-            {!canPickMentors ? (
-              <p className="text-xs text-gray-500 px-3 py-2 rounded-lg bg-zinc-800/50">
-                Pick a track first to choose its mentors.
-              </p>
-            ) : mentorsLoading ? (
-              <p className="text-xs text-gray-500 px-3 py-2">Loading mentors...</p>
-            ) : candidateMentors.length === 0 ? (
-              <p className="text-xs text-amber-400/90 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                No mentors are part of this OJT yet. Add mentors to the OJT before configuring a track.
-              </p>
-            ) : (
-              <div className="max-h-52 overflow-y-auto rounded-lg border border-zinc-800 divide-y divide-zinc-800">
-                {candidateMentors.map(mentor => (
-                  <label
-                    key={mentor.mentorId}
-                    className="flex items-center gap-2.5 px-3 py-2 hover:bg-zinc-800/60 cursor-pointer transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={formMentorIds.has(mentor.mentorId)}
-                      onChange={() => toggleFormMentor(mentor.mentorId)}
-                      className="w-4 h-4 accent-gold shrink-0"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm text-gray-200 truncate">{mentor.fullName ?? '—'}</span>
-                      <span className="block text-xs text-gray-500 truncate">
-                        {mentor.email ?? ''}
-                        {mentor.organization ? ` · ${mentor.organization}` : ''}
-                      </span>
-                    </span>
-                    {mentor.isExternal && (
-                      <span className="text-[10px] uppercase tracking-wide text-gray-500 shrink-0">External</span>
-                    )}
-                    {mentor.hasExpertise && (
-                      <span className="text-[10px] uppercase tracking-wide text-gold/70 shrink-0">Expertise</span>
-                    )}
-                  </label>
-                ))}
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={handleGoToMentors}
+              disabled={savingConfig}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border border-zinc-750 bg-zinc-850 hover:border-gold/50 hover:bg-zinc-800 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="flex items-center gap-2 min-w-0">
+                <Users size={15} className="text-gold shrink-0" />
+                <span className="text-sm text-gray-200 truncate">
+                  {!editingTrackSlug
+                    ? 'Save track & choose mentors'
+                    : editingMentorCount === 0
+                      ? 'No mentors yet — choose who staffs this track'
+                      : `${editingMentorCount} mentor${editingMentorCount === 1 ? '' : 's'} — change who staffs this track`}
+                </span>
+              </span>
+              <ArrowRight size={15} className="text-gray-500 shrink-0" />
+            </button>
+
             <p className="text-xs text-gray-500 mt-1">
               Only these mentors appear when a team on this track picks its project.
-              {formTrackSlugs.length > 1 && ' The same mentors are assigned to all selected tracks.'}
+              {!editingTrackSlug
+                ? ' A track has to exist before mentors can be attached to it, so this saves it first.'
+                : ' Assigning them is a separate step, so this form never changes them.'}
             </p>
           </div>
 
@@ -786,8 +866,8 @@ export default function CohortTrackConfigPage() {
 
       {/* Manage unique-track students */}
       <Modal
-        open={!!studentsModalTrackSlug}
-        onClose={() => setStudentsModalTrackSlug(null)}
+        open={!!studentsModalConfigId}
+        onClose={() => setStudentsModalConfigId(null)}
         title={`Students eligible for ${activeConfig?.trackName ?? ''}`}
         size="lg"
       >
@@ -877,6 +957,6 @@ export default function CohortTrackConfigPage() {
           )}
         </div>
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

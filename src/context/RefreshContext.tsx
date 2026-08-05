@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 type RefreshFn = () => void | Promise<unknown>;
 
@@ -19,6 +19,17 @@ export function RefreshProvider({ children }: { children: React.ReactNode }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const registerRefresh = useCallback((fn: RefreshFn) => {
+    // Last-write-wins is deliberate — exactly one page's content is on screen
+    // — but nothing enforces it, and a second registration silently disables
+    // the first. Now that sections are nested routes it is easy to end up
+    // with a page and something inside it both registering, and the symptom
+    // (a refresh button that quietly does nothing) gives no hint where to look.
+    if (import.meta.env.DEV && refreshFnRef.current) {
+      console.warn(
+        '[RefreshContext] A second handler was registered while one was still active. ' +
+          'Only the most recent one runs; the earlier one is now dead.'
+      );
+    }
     refreshFnRef.current = fn;
     return () => {
       if (refreshFnRef.current === fn) {
@@ -38,11 +49,12 @@ export function RefreshProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  return (
-    <RefreshContext.Provider value={{ registerRefresh, refreshCurrentPage, isRefreshing }}>
-      {children}
-    </RefreshContext.Provider>
+  const value = useMemo(
+    () => ({ registerRefresh, refreshCurrentPage, isRefreshing }),
+    [registerRefresh, refreshCurrentPage, isRefreshing]
   );
+
+  return <RefreshContext.Provider value={value}>{children}</RefreshContext.Provider>;
 }
 
 export function useRefreshContext() {

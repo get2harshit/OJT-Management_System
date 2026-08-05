@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { AlertTriangle, CheckCircle2, Clock, RotateCcw, Upload } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import Select from '../../components/Select';
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask, ApiAssignmentStatus } from '../../lib/api/tasks';
@@ -107,7 +108,7 @@ export default function StudentTasks({
   };
 
   return (
-    <div className="space-y-6">
+    <PageLayout className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">My Tasks</h1>
         <p className="text-gray-400 text-sm mt-1">Track your assigned tasks and identify missed deadlines</p>
@@ -125,15 +126,15 @@ export default function StudentTasks({
             render: (row) => {
               const statusConfig: Record<TaskFilter, { bg: string; text: string; label: string; icon?: React.ReactNode }> = {
                 ALL: { bg: '', text: '', label: '' },
-                COMPLETED: { bg: 'bg-green-500/10 border-green-500/20', text: 'text-green-400', label: 'Approved', icon: <CheckCircle2 size={12} /> },
-                IN_REVIEW: { bg: 'bg-yellow-500/10 border-yellow-500/20', text: 'text-yellow-400', label: 'In Review', icon: <Clock size={12} /> },
-                RESUBMIT: { bg: 'bg-orange-500/10 border-orange-500/20', text: 'text-orange-400', label: 'Resubmit', icon: <RotateCcw size={12} /> },
-                MISSED: { bg: 'bg-red-500/10 border-red-500/20', text: 'text-red-400', label: 'Missed', icon: <AlertTriangle size={12} /> },
-                UPCOMING: { bg: 'bg-gray-500/10 border-gray-500/20', text: 'text-gray-400', label: 'Upcoming' },
+                COMPLETED: { bg: 'bg-green-500/10 border-green-500/30', text: 'text-green-400', label: 'Submitted', icon: <CheckCircle2 size={12} /> },
+                IN_REVIEW: { bg: 'bg-gold/15 border-gold/30', text: 'text-gold', label: 'In Review', icon: <Clock size={12} /> },
+                RESUBMIT: { bg: 'bg-amber-500/10 border-amber-500/30', text: 'text-amber-400', label: 'Resubmit', icon: <RotateCcw size={12} /> },
+                MISSED: { bg: 'bg-red-500/10 border-red-500/30', text: 'text-red-400', label: 'Overdue', icon: <AlertTriangle size={12} /> },
+                UPCOMING: { bg: 'bg-zinc-800 border-zinc-700', text: 'text-gray-300', label: 'Upcoming' },
               };
               const cfg = statusConfig[row.status as TaskFilter] ?? statusConfig.UPCOMING;
               return (
-                <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.text}`}>
+                <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border font-semibold ${cfg.bg} ${cfg.text}`}>
                   {cfg.icon}
                   {cfg.label}
                 </span>
@@ -161,7 +162,6 @@ export default function StudentTasks({
           total: pagination.total,
           totalPages: pagination.pages,
           onPageChange: setPage,
-          limitOptions: [20, 40, 80, 100],
           onLimitChange: (l) => { setPage(1); setLimit(l); },
         }}
         actions={(row) => {
@@ -205,6 +205,6 @@ export default function StudentTasks({
           );
         }}
       />
-    </div>
+    </PageLayout>
   );
 }

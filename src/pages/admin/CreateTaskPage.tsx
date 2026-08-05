@@ -26,7 +26,6 @@ import { apiListStudents } from '../../lib/api/students';
 import type { ApiMentor, ApiStudent, Cohort } from '../../lib/types';
 import { useToast } from '../../toast';
 import { apiListCohorts } from '../../lib/api';
-import { toDateOnly } from '../../lib/utils';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 const WEEKS = Array.from({ length: 12 }, (_, i) => i + 1);

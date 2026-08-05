@@ -1,7 +1,8 @@
-import { useState, useRef, useLayoutEffect, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { MoreVertical } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useAnchoredPosition } from '../hooks/useAnchoredPosition';
 
 export interface ActionsMenuItem {
   label: string;
@@ -22,18 +23,18 @@ const MENU_WIDTH = 176;
 // by DataTable's overflow-x-auto scroll container.
 export default function ActionsMenu({ items }: ActionsMenuProps) {
   const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    setPosition({
-      top: rect.bottom + 4,
-      left: Math.max(8, rect.right - MENU_WIDTH),
-    });
-  }, [open]);
+  // Right-aligned to the trigger, since this sits in a row's last column and
+  // a left-aligned menu would hang off the table. The floor keeps it on screen
+  // when the trigger is close to the left edge on a narrow viewport.
+  const position = useAnchoredPosition(
+    triggerRef,
+    open,
+    rect => ({ top: rect.bottom + 4, left: Math.max(8, rect.right - MENU_WIDTH) }),
+    { top: 0, left: 0 },
+  );
 
   useEffect(() => {
     if (!open) return;

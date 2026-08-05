@@ -89,16 +89,21 @@ interface GetCohortProjectsPageParams {
   search?: string;
   /** Track slug, e.g. "gen_ai". */
   track?: string;
+  /** Catalog id, matched as a prefix — "PST_ADS" narrows to that block. */
+  projectId?: string;
 }
 
 // Same project list as apiGetProjectsForCohort, but server-paginated with
-// optional search/track filters, for the cohort detail page.
+// optional search/track/project-id filters, for the cohort detail page.
+// Every filter is applied by the server: the page only ever holds the rows it
+// is showing, so narrowing the list never means fetching the catalog first.
 export async function apiGetProjectsForCohortPage(cohortId: string, params: GetCohortProjectsPageParams): Promise<CohortProjectsPage> {
   const query = new URLSearchParams();
   query.set('page', String(params.page));
   query.set('limit', String(params.limit));
   if (params.search) query.set('search', params.search);
   if (params.track) query.set('track', params.track);
+  if (params.projectId) query.set('projectId', params.projectId);
   const res = await apiFetch<{ success: boolean; data: RawCohortProject[]; pagination: CohortProjectsPage['pagination'] }>(
     `/api/v1/cohorts/${cohortId}/projects?${query.toString()}`
   );
@@ -128,4 +133,42 @@ export async function apiAddMentorsToCohort(cohortId: string, userIds: string[])
     body: JSON.stringify({ userIds }),
   });
   invalidateCached(`cohorts:get:${cohortId}`);
+}
+
+// ── Project catalog insights ────────────────────────────────────────────────
+
+export interface CountBucket {
+  label: string;
+  count: number;
+}
+
+export interface CrossTabCell {
+  row: string;
+  column: string;
+  count: number;
+}
+
+export interface MentorCoverageRow {
+  mentorId: string;
+  fullName: string | null;
+  projectCount: number;
+}
+
+export interface ProjectInsights {
+  totals: { projects: number; tracks: number; batches: number; avgDurationWeeks: number | null };
+  byTrack: CountBucket[];
+  byBatch: CountBucket[];
+  byLevel: CountBucket[];
+  byDuration: CountBucket[];
+  trackByBatch: CrossTabCell[];
+  trackByLevel: CrossTabCell[];
+  /** How many catalog projects name each mentor — not how many teams they have. */
+  mentorCoverage: MentorCoverageRow[];
+}
+
+// Counted over the whole catalog on the server. The projects list is
+// paginated, so anything totalled from its rows would describe one page.
+export async function apiGetProjectInsights(cohortId: string): Promise<ProjectInsights> {
+  const res = await apiFetch<{ data: ProjectInsights }>(`/api/v1/cohorts/${cohortId}/projects/insights`);
+  return res.data;
 }

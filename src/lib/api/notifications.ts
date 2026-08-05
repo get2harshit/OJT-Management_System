@@ -67,8 +67,19 @@ export async function apiCreateAnnouncement(data: {
 
 // Caller's own notifications, newest first — no polling, this is only ever
 // called on mount or on an explicit manual refresh click.
-export async function apiGetMyNotifications(): Promise<AppNotification[]> {
-  const res = await apiFetch<{ data: RawNotification[] }>('/api/v1/notifications/my');
+//
+// `type` narrows server-side rather than here. The newest 50 of every type can
+// legitimately be all task notifications, so filtering the response would show
+// an empty list to somebody who does have announcements — a wrong answer, not
+// just a wasteful one.
+export async function apiGetMyNotifications(
+  filters?: { type?: NotificationType; limit?: number }
+): Promise<AppNotification[]> {
+  const query = new URLSearchParams();
+  if (filters?.type) query.set('type', filters.type);
+  if (filters?.limit) query.set('limit', String(filters.limit));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  const res = await apiFetch<{ data: RawNotification[] }>(`/api/v1/notifications/my${suffix}`);
   return res.data.map(mapNotification);
 }
 

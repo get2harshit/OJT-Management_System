@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Calendar, Loader2, Eye } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import Drawer from '../../components/Drawer';
 import Select from '../../components/Select';
 import Button from '../../components/Button';
@@ -351,7 +352,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   };
 
   return (
-    <div className="space-y-4">
+    <PageLayout className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Tasks</h1>
@@ -575,7 +576,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
           />
         ) : null}
       </Drawer>
-    </div>
+    </PageLayout>
   );
 }
 

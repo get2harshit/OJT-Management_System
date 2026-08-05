@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Briefcase, Users, Clock, CheckCircle2, XCircle, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star } from 'lucide-react';
+import { Briefcase, Users, Clock, CheckCircle2, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star, Minimize2 } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import DataTable from '../../components/DataTable';
+import { derivePageSizeOptions } from '../../lib/pageSize';
 import Modal from '../../components/Modal';
 import type { MyTeamStatus, AvailableTeammate, TeamProject, TeamAvailableMentor, Project, PreferenceReviewStatus, PreferenceResubmissionMode, TrackSubmissionMode } from '../../lib/types';
 import type { ProjectSummary, ProjectDetail, ApiAvailableTrack } from '../../lib/api';
@@ -9,7 +11,6 @@ import {
   apiGetMyTeamStatus,
   apiGetAvailableTeammates,
   apiSendTeamRequest,
-  apiRespondToTeamRequest,
   apiRevokeTeamRequest,
   apiCreateIndividualTeam,
   apiGetAvailableProjects,
@@ -25,26 +26,6 @@ import {
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useTracks } from '../../hooks/useTracks';
-
-
-
-function useCountdown(expiresAt: string | undefined) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!expiresAt) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [expiresAt]);
-
-  if (!expiresAt) return { label: '', expired: true };
-  const remainingMs = new Date(expiresAt).getTime() - now;
-  if (remainingMs <= 0) return { label: 'Expired', expired: true };
-  const totalSeconds = Math.floor(remainingMs / 1000);
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  return { label: h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`, expired: false };
-}
 
 export default function ProjectPicker() {
   const { showError, showSuccess } = useToast();
@@ -238,7 +219,116 @@ export default function ProjectPicker() {
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
-const LIMIT_OPTIONS = [20, 40, 80, 100];
+
+/**
+ * The full-screen surface a project's detail opens into.
+ *
+ * Same shell the expanded table uses, so going table -> project -> back never
+ * changes size under you. Escape leaves full screen rather than closing the
+ * project: it is the same key that leaves the expanded table, and having it
+ * mean two different things depending on what is showing is worse than having
+ * it mean one.
+ */
+function FullscreenShell({ onExit, children }: { onExit: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        onExit();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onExit]);
+
+  return (
+    <div className="fixed inset-0 z-[120] bg-black p-4 sm:p-6 overflow-y-auto">
+      <button
+        type="button"
+        onClick={onExit}
+        title="Exit full screen (Esc)"
+        aria-label="Exit full screen"
+        className="absolute top-4 right-4 sm:top-6 sm:right-6 z-10 p-1.5 rounded-lg text-gray-400 hover:text-gold hover:bg-zinc-800 transition-colors"
+      >
+        <Minimize2 size={16} />
+      </button>
+      {children}
+    </div>
+  );
+}
+
+// Columns for the browse table. Module scope, not rebuilt per render — they
+// close over nothing, and a fresh array each render makes DataTable re-key
+// every column on every keystroke of the search box.
+const PROJECT_COLUMNS = [
+  {
+    key: 'title',
+    header: 'Project',
+    render: (p: ProjectSummary) => (
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-white font-medium truncate">{p.title}</span>
+        {p.isRecommended && (
+          <span className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gold/10 text-gold font-semibold uppercase tracking-wider">
+            <Sparkles size={10} />
+            Suggested
+          </span>
+        )}
+      </div>
+    ),
+  },
+  {
+    key: 'problemStatement',
+    header: 'Problem statement',
+    render: (p: ProjectSummary) => (
+      <span className="text-gray-400 text-xs line-clamp-2">{p.problemStatement || '\u2014'}</span>
+    ),
+  },
+  {
+    key: 'recommendedMentors',
+    header: 'Recommended mentors',
+    render: (p: ProjectSummary) =>
+      p.recommendedMentors.length === 0 ? (
+        <span className="text-gray-600 text-xs">{'\u2014'}</span>
+      ) : (
+        <div className="flex flex-wrap gap-1">
+          {p.recommendedMentors.map(mentor => (
+            <span
+              key={mentor.mentorId}
+              className="inline-flex items-center gap-1 text-[11px] text-gray-200 bg-zinc-800 border border-zinc-750 rounded-md px-1.5 py-0.5 whitespace-nowrap"
+            >
+              <UserCheck size={11} className="text-gold shrink-0" />
+              {mentor.fullName ?? '\u2014'}
+            </span>
+          ))}
+        </div>
+      ),
+  },
+  {
+    key: 'partners',
+    header: 'Partners',
+    render: (p: ProjectSummary) =>
+      p.partners.length === 0 ? (
+        <span className="text-gray-600 text-xs">{'\u2014'}</span>
+      ) : (
+        <div className="flex flex-wrap items-center gap-1">
+          {p.partners.map(partner => (
+            <span key={partner.name} title={partner.name} className="inline-flex items-center bg-white/90 rounded-md px-1.5 py-1">
+              {partner.logoUrl ? (
+                <img src={partner.logoUrl} alt={partner.name} className="h-3.5 max-w-[64px] object-contain" loading="lazy" />
+              ) : (
+                <span className="text-[10px] font-semibold text-zinc-800">{partner.name}</span>
+              )}
+            </span>
+          ))}
+        </div>
+      ),
+  },
+];
 
 function TrackAndTeammateScreen({
   cohortId,
@@ -558,7 +648,7 @@ function TrackAndTeammateScreen({
               Showing {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
             </span>
             <div className="flex items-center gap-1">
-              {LIMIT_OPTIONS.map(opt => (
+              {derivePageSizeOptions(pagination.total).map(opt => (
                 <button
                   key={opt}
                   onClick={() => handleLimitChange(opt)}
@@ -566,7 +656,7 @@ function TrackAndTeammateScreen({
                     opt === limit ? 'bg-gold/20 text-gold font-semibold' : 'text-gray-400 hover:text-white hover:bg-zinc-750'
                   }`}
                 >
-                  {opt}
+                  {opt === pagination.total ? 'All' : opt}
                 </button>
               ))}
             </div>
@@ -609,62 +699,6 @@ function TrackAndTeammateScreen({
 }
 
 // ── Step 3: waiting on the invite you sent ───────────────────────────────────
-
-// ── Step 3b: someone invited you ─────────────────────────────────────────────
-
-function IncomingRequestScreen({
-  request,
-  onDecide,
-}: {
-  request: { senderName: string | null; track: string; expiresAt: string };
-  onDecide: (action: 'accept' | 'reject') => void;
-}) {
-  const { label, expired } = useCountdown(request.expiresAt);
-  const { tracks } = useTracks();
-  const trackName = tracks.find(t => t.slug === request.track)?.name ?? request.track;
-  const [deciding, setDeciding] = useState(false);
-
-  const handleDecide = async (action: 'accept' | 'reject') => {
-    setDeciding(true);
-    try {
-      await onDecide(action);
-    } finally {
-      setDeciding(false);
-    }
-  };
-
-  return (
-    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-8 text-center space-y-4">
-      <Users size={32} className="mx-auto text-gold" />
-      <h2 className="text-white font-bold text-lg">Team Invite</h2>
-      <p className="text-gray-400 text-sm">
-        <span className="text-white font-medium">{request.senderName}</span> invited you to team up for{' '}
-        <span className="text-gold">{trackName}</span>.
-      </p>
-      <p className="text-xs text-gray-500">
-        {expired ? 'This invite has expired.' : `Expires in ${label}`}
-      </p>
-      <div className="flex items-center justify-center gap-3 pt-2">
-        <button
-          onClick={() => handleDecide('reject')}
-          disabled={deciding}
-          className="flex items-center gap-1.5 text-sm px-4 py-2 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
-        >
-          <XCircle size={16} />
-          Reject
-        </button>
-        <button
-          onClick={() => handleDecide('accept')}
-          disabled={deciding}
-          className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
-        >
-          <CheckCircle2 size={16} />
-          Accept
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ── Step 4 & 5: team picks how to fill its 2 project preferences ────────────
 
@@ -750,6 +784,11 @@ function ProjectSelectionScreen({
   // of duplicating it, since only one is ever relevant at a time (steps 1
   // and 2 are mutually exclusive).
   const [mentorModalFor, setMentorModalFor] = useState<1 | 2 | null>(null);
+  // While a project's detail is open, its own "Back to projects" is the back
+  // that belongs on screen. Showing the wizard's alongside it puts two back
+  // arrows in view that go to different places — one step out of the detail,
+  // one all the way out of the flow.
+  const [viewingProjectDetail, setViewingProjectDetail] = useState(false);
 
   useEffect(() => {
     const own = availableProjects.find(p => p.projectBy === 'STUDENT');
@@ -874,13 +913,15 @@ function ProjectSelectionScreen({
       ) : (
         <div className="flex-1 min-h-0 flex flex-col space-y-3">
           <div className="shrink-0 flex items-center gap-4 flex-wrap">
-            <button
-              onClick={() => { setMode(null); setStep(1); }}
-              disabled={!!selfProject || offeredModes.length <= 1}
-              className="text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-            >
-              ← Change selection type
-            </button>
+            {!viewingProjectDetail && (
+              <button
+                onClick={() => { setMode(null); setStep(1); }}
+                disabled={!!selfProject || offeredModes.length <= 1}
+                className="text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+              >
+                ← Change selection type
+              </button>
+            )}
 
             {slotCount === 2 && (
               <>
@@ -915,6 +956,7 @@ function ProjectSelectionScreen({
                 selectedMentor={availableMentors.find(m => m.id === mentor1Id) ?? null}
                 onChooseMentor={() => setMentorModalFor(1)}
                 label={slotCount === 1 ? 'Your project' : 'Preference 1'}
+                onDetailOpenChange={setViewingProjectDetail}
               />
             )
           ) : (
@@ -925,6 +967,7 @@ function ProjectSelectionScreen({
               excludeId={slot1IsOwn ? undefined : existingProjectId1}
               selectedMentor={availableMentors.find(m => m.id === mentor2Id) ?? null}
               onChooseMentor={() => setMentorModalFor(2)}
+              onDetailOpenChange={setViewingProjectDetail}
               label="Preference 2"
             />
           )}
@@ -1104,6 +1147,7 @@ function ProjectCatalogBrowser({
   selectedMentor,
   onChooseMentor,
   label,
+  onDetailOpenChange,
 }: {
   cohortId: string;
   selectedId: string | null;
@@ -1115,16 +1159,20 @@ function ProjectCatalogBrowser({
   // component's own heading row instead of a separate stacked line above
   // it — one less full-width row eating into the grid's vertical space.
   label?: string;
+  /** Lets the caller drop its own back control while this one has a detail open. */
+  onDetailOpenChange?: (open: boolean) => void;
 }) {
   const { showError } = useToast();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
+  // Owned here, not inside DataTable, because opening a project replaces the
+  // table entirely — the table can't keep a flag it is about to unmount with.
+  const [tableFullscreen, setTableFullscreen] = useState(false);
   const [viewingProjectId, setViewingProjectId] = useState<string | null>(null);
   const [viewingDetail, setViewingDetail] = useState<ProjectDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -1152,6 +1200,15 @@ function ProjectCatalogBrowser({
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
+
+  // Derived from the id rather than fired at each call site, so a detail
+  // closed by selecting a project reports the same as one closed by the back
+  // button. Reset on unmount too, or the caller keeps its back hidden after
+  // this component goes away.
+  useEffect(() => {
+    onDetailOpenChange?.(viewingProjectId !== null);
+    return () => onDetailOpenChange?.(false);
+  }, [viewingProjectId, onDetailOpenChange]);
 
   useEffect(() => {
     if (!selectedId || selectedDetail?.id === selectedId) return;
@@ -1182,7 +1239,6 @@ function ProjectCatalogBrowser({
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleSearchInputChange = (value: string) => {
-    setSearchInput(value);
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     searchDebounceRef.current = setTimeout(() => {
       setPage(1);
@@ -1196,13 +1252,21 @@ function ProjectCatalogBrowser({
   };
 
   if (viewingProjectId) {
-    return (
+    const detailView = (
       <ProjectDetailView
         detail={viewingDetail}
         loading={detailLoading}
         onBack={() => { setViewingProjectId(null); setViewingDetail(null); }}
         onSelect={handleSelectFromDetail}
       />
+    );
+    // Asked for the whole screen, then clicked a row: the project you opened
+    // is what you wanted the room for, so it opens in the same shell. Back
+    // returns to the table, still expanded.
+    return tableFullscreen ? (
+      <FullscreenShell onExit={() => setTableFullscreen(false)}>{detailView}</FullscreenShell>
+    ) : (
+      detailView
     );
   }
 
@@ -1272,107 +1336,33 @@ function ProjectCatalogBrowser({
           </>
         )}
 
-        <div className="relative w-56 ml-auto sm:ml-0">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input
-            type="text"
-            value={searchInput}
-            onChange={e => handleSearchInputChange(e.target.value)}
-            placeholder="Search projects..."
-            className="w-full bg-zinc-850 border border-zinc-750 rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-          />
-        </div>
       </div>
 
-      {loading ? (
-        <div className="flex-1 min-h-0 flex items-center justify-center">
-          <SpinnerSquare size={40} />
-        </div>
-      ) : (
-        <div
-          className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 content-start overflow-y-auto"
-        >
-          {projects.map(p => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => openDetail(p.id)}
-              className="text-left bg-zinc-850 border border-zinc-750 rounded-xl p-4 hover:border-gold/40 hover:-translate-y-0.5 transition-all duration-200"
-            >
-              <div className="flex items-center gap-2">
-                <p className="text-white font-semibold text-sm">{p.title}</p>
-                {p.isRecommended && (
-                  <span className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gold/10 text-gold font-semibold uppercase tracking-wider">
-                    <Sparkles size={10} />
-                    Suggested
-                  </span>
-                )}
-              </div>
-              {p.problemStatement && <p className="text-gray-400 text-xs mt-1 line-clamp-2">{p.problemStatement}</p>}
-            </button>
-          ))}
-          {projects.length === 0 && (
-            <div className="col-span-full bg-zinc-850 border border-zinc-750 rounded-xl p-12 text-center">
-              <Briefcase size={40} className="mx-auto text-gray-600 mb-3" />
-              <p className="text-gray-400">No projects available for this track.</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {!loading && pagination.totalPages > 1 && (
-        <div className="shrink-0 flex items-center justify-between flex-wrap gap-3 pt-1">
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-500">
-              Showing {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
-            </span>
-            <div className="flex items-center gap-1">
-              {LIMIT_OPTIONS.map(opt => (
-                <button
-                  key={opt}
-                  onClick={() => handleLimitChange(opt)}
-                  className={`text-xs px-2 py-1 rounded-md transition-colors ${
-                    opt === limit ? 'bg-gold/20 text-gold font-semibold' : 'text-gray-400 hover:text-white hover:bg-zinc-750'
-                  }`}
-                >
-                  {opt}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage(1)}
-              disabled={pagination.page === 1}
-              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
-            >
-              <ChevronsLeft size={16} />
-            </button>
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={pagination.page === 1}
-              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-sm text-gray-400">{pagination.page} / {pagination.totalPages}</span>
-            <button
-              onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
-              disabled={pagination.page === pagination.totalPages}
-              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
-            >
-              <ChevronRight size={16} />
-            </button>
-            <button
-              onClick={() => setPage(pagination.totalPages)}
-              disabled={pagination.page === pagination.totalPages}
-              className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-750 disabled:opacity-30 transition-colors"
-            >
-              <ChevronsRight size={16} />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* One table, not a grid of cards: the same fields in far less height,
+          and DataTable already owns search, paging and the expand-to-full-
+          screen control. Eighty projects are a list to scan, not a gallery. */}
+      {/* Never swapped out for a spinner: unmounting the table throws away
+          everything it holds, and the visible symptom was that changing page
+          or page size while expanded quietly collapsed it back. The table
+          dims itself instead. */}
+      <DataTable<ProjectSummary>
+        columns={PROJECT_COLUMNS}
+        data={projects}
+        loading={loading}
+        fullscreen={tableFullscreen}
+        onFullscreenChange={setTableFullscreen}
+        searchPlaceholder="Search projects..."
+        onSearchChange={handleSearchInputChange}
+        onRowClick={p => openDetail(p.id)}
+        serverPagination={{
+          page: pagination.page,
+          limit: pagination.limit,
+          totalPages: pagination.totalPages,
+          total: pagination.total,
+          onPageChange: setPage,
+          onLimitChange: handleLimitChange,
+        }}
+      />
     </div>
   );
 }
@@ -1448,7 +1438,7 @@ function ProjectDetailView({
             {textField('End users defined', detail.endUsersDefined)}
           </div>
 
-          {(detail.recommendedMentors?.length || detail.creditMapping?.length || detail.partners?.length) && (
+          {(detail.recommendedMentors?.length || detail.partners?.length) && (
             <div className="space-y-3">
               <p className="text-xs text-gold uppercase font-bold tracking-wider">Mentors & partners</p>
 
@@ -1464,22 +1454,6 @@ function ProjectDetailView({
                         <UserCheck size={13} className="text-gold shrink-0" />
                         {mentor.fullName ?? '—'}
                         {mentor.organization && <span className="text-gray-500 text-xs">· {mentor.organization}</span>}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {detail.creditMapping && detail.creditMapping.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1.5">Credit mapping</p>
-                  <div className="flex flex-wrap gap-2">
-                    {detail.creditMapping.map(credit => (
-                      <span
-                        key={credit}
-                        className="text-sm text-gray-200 bg-zinc-800 border border-zinc-750 rounded-lg px-2.5 py-1"
-                      >
-                        {credit}
                       </span>
                     ))}
                   </div>

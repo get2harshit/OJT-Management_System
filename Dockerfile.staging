@@ -1,0 +1,45 @@
+# Staging image. Point the staging trigger's Dockerfile path at this file.
+#
+# The only line that may differ from Dockerfile.production is the `--mode` on
+# the build and the matching argument to verify-bundle.sh. Change anything else
+# here and change it there too.
+#
+# Why two files instead of one with a build arg: a Cloud Run trigger in
+# Dockerfile mode has nowhere to put a --build-arg, and every way of adding one
+# meant a Cloud Build config, substitutions and extra IAM. Choosing a file per
+# environment is a setting the trigger already has.
+
+# Stage 1: Build
+FROM node:20-alpine AS builder
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+
+# Vite resolves import.meta.env while bundling and writes the result into the
+# JS, so which backend and which Supabase project this image talks to is fixed
+# here. A Cloud Run variable would arrive far too late — by then the bundle
+# exists and nginx only hands out files. The addresses themselves are in
+# .env.staging, in git, where they can be read and diffed.
+RUN test -f .env.staging || (echo "ERROR: .env.staging is missing" >&2; exit 1)
+RUN npm run build -- --mode staging
+
+# Reads the addresses back out of the bundle that was just produced, so a
+# variable that never reached the build fails here rather than in front of
+# users. See scripts/verify-bundle.sh.
+RUN sh scripts/verify-bundle.sh staging
+
+# Stage 2: Serve static build with nginx
+FROM nginx:1.27-alpine
+
+COPY --from=builder /usr/src/app/dist /usr/share/nginx/html
+
+# SPA fallback so client-side routes (react-router-dom) don't 404 on refresh
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 8080
+
+CMD ["nginx", "-g", "daemon off;"]

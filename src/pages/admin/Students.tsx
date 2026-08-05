@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Edit2, UserCheck, UserX } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Select from '../../components/Select';
 import Modal from '../../components/Modal';
@@ -142,7 +143,7 @@ export default function AdminStudents() {
   }));
 
   return (
-    <div className="space-y-4 flex-1 min-h-0 flex flex-col">
+    <PageLayout className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-white">Students</h1>
         <p className="text-gray-400 text-sm mt-1">All enrolled students</p>
@@ -153,75 +154,66 @@ export default function AdminStudents() {
           <SpinnerSquare size={48} />
         </div>
       ) : (
-        <div className="relative flex-1 min-h-0 flex flex-col">
-          {tableLoading && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center">
-              <SpinnerSquare size={56} />
-            </div>
-          )}
-          <div className={`flex-1 min-h-0 flex flex-col ${tableLoading ? 'opacity-20 transition-opacity' : 'transition-opacity'}`}>
-            <DataTable
-              columns={[
-                { key: 'roll_number', header: 'Roll Number' },
-                { key: 'name', header: 'Name' },
-                { key: 'email', header: 'Email' },
-                { key: 'batch', header: 'Batch' },
-                { key: 'currentTier', header: 'Tier' },
-                {
-                  key: 'activeStatus',
-                  header: 'Status',
-                  render: (row) => (
-                    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-                      row.activeStatus === false ? 'text-gray-400' : 'text-green-500'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${row.activeStatus === false ? 'bg-gray-400' : 'bg-green-500'}`} />
-                      {row.activeStatus === false ? 'Inactive' : 'Active'}
-                    </span>
-                  ),
-                },
-              ]}
-              data={data}
-              searchPlaceholder="Search students..."
-              onSearchChange={handleSearchChange}
-              serverPagination={{
-                page: pagination.page,
-                limit: pagination.limit,
-                total: pagination.total,
-                totalPages: pagination.totalPages,
-                onPageChange: setPage,
-                limitOptions: [20, 40, 80, 100],
-                onLimitChange: handleLimitChange,
-              }}
-              leftHeaderContent={
-                <Select
-                  variant="filter"
-                  className="min-w-[160px]"
-                  value={selectedBatch}
-                  onChange={handleBatchFilterChange}
-                  placeholder="All Batches"
-                  options={batches.map(b => ({ value: b, label: b }))}
-                />
-              }
-              actions={(row) => {
-                const student = students.find(s => s.id === row.id);
-                if (!student) return null;
-                const isAllowedIndividual = !!student.allowedAsIndividual;
-                return (
-                  <ActionsMenu
-                    items={[
-                      { label: 'Edit Batch', icon: Edit2, onClick: () => openEditBatch(student) },
-                      {
-                        label: isAllowedIndividual ? 'Revoke Individual Project' : 'Allow Individual Project',
-                        icon: isAllowedIndividual ? UserX : UserCheck,
-                        onClick: () => handleToggleIndividualOverride(student),
-                      },
-                    ]}
-                  />
-                );
-              }}
+        <DataTable
+          loading={tableLoading}
+          columns={[
+            { key: 'roll_number', header: 'Roll Number' },
+            { key: 'name', header: 'Name' },
+            { key: 'email', header: 'Email' },
+            { key: 'batch', header: 'Batch' },
+            { key: 'currentTier', header: 'Tier' },
+            {
+              key: 'activeStatus',
+              header: 'Status',
+              render: (row) => (
+                <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                  row.activeStatus === false ? 'text-gray-400' : 'text-green-500'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${row.activeStatus === false ? 'bg-gray-400' : 'bg-green-500'}`} />
+                  {row.activeStatus === false ? 'Inactive' : 'Active'}
+                </span>
+              ),
+            },
+          ]}
+          data={data}
+          searchPlaceholder="Search students..."
+          onSearchChange={handleSearchChange}
+          serverPagination={{
+            page: pagination.page,
+            limit: pagination.limit,
+            total: pagination.total,
+            totalPages: pagination.totalPages,
+            onPageChange: setPage,
+            onLimitChange: handleLimitChange,
+          }}
+          leftHeaderContent={
+            <Select
+              variant="filter"
+              className="min-w-[160px]"
+              value={selectedBatch}
+              onChange={handleBatchFilterChange}
+              placeholder="All Batches"
+              options={batches.map(b => ({ value: b, label: b }))}
             />
-          </div>
-        </div>
+          }
+          actions={(row) => {
+            const student = students.find(s => s.id === row.id);
+            if (!student) return null;
+            const isAllowedIndividual = !!student.allowedAsIndividual;
+            return (
+              <ActionsMenu
+                items={[
+                  { label: 'Edit Batch', icon: Edit2, onClick: () => openEditBatch(student) },
+                  {
+                    label: isAllowedIndividual ? 'Revoke Individual Project' : 'Allow Individual Project',
+                    icon: isAllowedIndividual ? UserX : UserCheck,
+                    onClick: () => handleToggleIndividualOverride(student),
+                  },
+                ]}
+              />
+            );
+          }}
+        />
       )}
 
       <Modal open={!!editingStudent} onClose={closeEditBatch} title="Edit Batch">
@@ -248,6 +240,6 @@ export default function AdminStudents() {
           </button>
         </div>
       </Modal>
-    </div>
+    </PageLayout>
   );
 }

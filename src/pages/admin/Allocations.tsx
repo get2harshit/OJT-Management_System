@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shuffle, Calendar, RefreshCw, LayoutGrid } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import PageLayout from '../../components/PageLayout';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Button from '../../components/Button';
 import type { Cohort } from '../../lib/types';
@@ -46,7 +47,7 @@ export default function AdminAllocations() {
   const goToBlueprint = (cohortId: string) => navigate(`/admin/dashboard/ojts/${cohortId}/blueprint`);
 
   return (
-    <div className="space-y-6">
+    <PageLayout className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -131,6 +132,6 @@ export default function AdminAllocations() {
           )}
         />
       )}
-    </div>
+    </PageLayout>
   );
 }

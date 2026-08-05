@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import type { NotificationItem } from '../components/NotificationCenter';
 
 type NavigateFn = (n: NotificationItem) => void;
@@ -18,6 +18,17 @@ export function NotificationNavigateProvider({ children }: { children: React.Rea
   const navigateFnRef = useRef<NavigateFn | null>(null);
 
   const registerNavigate = useCallback((fn: NavigateFn) => {
+    // Last-write-wins is deliberate — exactly one page's content is on screen
+    // — but nothing enforces it, and a second registration silently disables
+    // the first. Now that sections are nested routes it is easy to end up
+    // with a page and something inside it both registering, and the symptom
+    // (clicking a notification going nowhere) gives no hint where to look.
+    if (import.meta.env.DEV && navigateFnRef.current) {
+      console.warn(
+        '[NotificationNavigateContext] A second handler was registered while one was still active. ' +
+          'Only the most recent one runs; the earlier one is now dead.'
+      );
+    }
     navigateFnRef.current = fn;
     return () => {
       if (navigateFnRef.current === fn) {
@@ -30,11 +41,12 @@ export function NotificationNavigateProvider({ children }: { children: React.Rea
     navigateFnRef.current?.(n);
   }, []);
 
-  return (
-    <NotificationNavigateContext.Provider value={{ registerNavigate, navigateFromNotification }}>
-      {children}
-    </NotificationNavigateContext.Provider>
+  const value = useMemo(
+    () => ({ registerNavigate, navigateFromNotification }),
+    [registerNavigate, navigateFromNotification]
   );
+
+  return <NotificationNavigateContext.Provider value={value}>{children}</NotificationNavigateContext.Provider>;
 }
 
 export function useNotificationNavigateContext() {
@@ -46,10 +58,10 @@ export function useNotificationNavigateContext() {
 }
 
 // Each panel (admin/mentor/student index.tsx) calls this with its own
-// notification-type -> tab/focus-state mapping, since each has a different
-// set of tabs and a different local "focus" shape. Re-registers whenever
+// notification-type -> section/focus-state mapping, since each has a different
+// set of sections and a different local "focus" shape. Re-registers whenever
 // `fn`'s identity changes so the handler always sees the panel's latest
-// setActiveTab/setFocus closures.
+// navigate/setFocus closures.
 export function useNotificationNavigate(fn: NavigateFn) {
   const { registerNavigate } = useNotificationNavigateContext();
   const fnRef = useRef(fn);

@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useLegacyTabRedirect } from '../../hooks/useLegacyTabRedirect';
 import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import ProjectPicker from './ProjectPicker';
@@ -9,30 +11,36 @@ import Attendance from './Attendance';
 import { useAuth } from '../../context/useAuth';
 import { useNotificationNavigate } from '../../context/NotificationNavigateContext';
 
-function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
-  const [activeTab, setActiveTab] = useState('dashboard');
+const BASE_PATH = '/student/dashboard';
+
+function StudentPanelContent({ studentId, onLogout }: { studentId: string; onLogout?: () => void }) {
+  const navigate = useNavigate();
+  useLegacyTabRedirect(BASE_PATH);
+
+  // Sections are routes now, but callers still name the section rather than
+  // the URL — a dashboard card asks to go to submissions and does not need to
+  // know where submissions lives.
+  const goToSection = useCallback(
+    (section: string) => navigate(`${BASE_PATH}/${section}`),
+    [navigate]
+  );
+
   const [initialSelectedSubId, setInitialSelectedSubId] = useState<string | null>(null);
   const [initialNewSubTaskId, setInitialNewSubTaskId] = useState<string | null>(null);
 
-  let authUser = null;
-  try {
-    const auth = useAuth();
-    authUser = auth.user;
-  } catch {
-    // AuthProvider not present
-  }
-  const studentId = authUser?.id || 's1';
-
+  // This hand-off state lives on the panel, which stays mounted while its
+  // routes change underneath it — so a value set here survives the navigation
+  // that follows it.
   const handleViewSubmission = (subId: string) => {
     setInitialSelectedSubId(subId);
     setInitialNewSubTaskId(null);
-    setActiveTab('submissions');
+    goToSection('submissions');
   };
 
   const handleNewSubmission = (taskId: string) => {
     setInitialNewSubTaskId(taskId);
     setInitialSelectedSubId(null);
-    setActiveTab('submissions');
+    goToSection('submissions');
   };
 
   const handleClearInitialState = () => {
@@ -44,74 +52,64 @@ function StudentPanelContent({ onLogout }: { onLogout?: () => void }) {
     switch (n.type) {
       case 'submission':
         if (n.referenceId) setInitialSelectedSubId(n.referenceId);
-        setActiveTab('submissions');
+        goToSection('submissions');
         break;
       case 'task':
-        setActiveTab('tasks');
+        goToSection('tasks');
         break;
       case 'allocation':
-        setActiveTab('projects');
+        goToSection('projects');
         break;
       default:
-        // team_invite / announcement have no dedicated tab of their own —
+        // team_invite / announcement have no dedicated section of their own —
         // the notification itself (Accept/Reject for an invite) is the
         // whole interaction, nothing further to navigate to.
         break;
     }
   });
 
-  const renderTab = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return (
-          <Dashboard
-            studentId={studentId}
-            onNavigateToTab={setActiveTab}
-          />
-        );
-      case 'projects':
-        return <ProjectPicker />;
-      case 'tasks':
-        return (
-          <Tasks
-            onViewSubmission={handleViewSubmission}
-            onNewSubmission={handleNewSubmission}
-          />
-        );
-      case 'submissions':
-        return (
-          <Submissions
-            studentId={studentId}
-            initialSelectedSubId={initialSelectedSubId}
-            initialNewSubTaskId={initialNewSubTaskId}
-            onClearInitialState={handleClearInitialState}
-          />
-        );
-      case 'credits':
-        return (
-          <Credits
-            studentId={studentId}
-          />
-        );
-      case 'attendance':
-        return <Attendance studentId={studentId} />;
-      default:
-        return (
-          <Dashboard
-            studentId={studentId}
-            onNavigateToTab={setActiveTab}
-          />
-        );
-    }
-  };
-
   return (
-    <AppShell panel="student" activeTab={activeTab} onTabChange={setActiveTab} onLogout={onLogout}>
-      {renderTab()}
+    <AppShell panel="student" onLogout={onLogout}>
+      <Routes>
+        <Route index element={<Dashboard studentId={studentId} onNavigateToSection={goToSection} />} />
+        <Route path="projects" element={<ProjectPicker />} />
+        <Route
+          path="tasks"
+          element={<Tasks onViewSubmission={handleViewSubmission} onNewSubmission={handleNewSubmission} />}
+        />
+        <Route
+          path="submissions"
+          element={
+            <Submissions
+              studentId={studentId}
+              initialSelectedSubId={initialSelectedSubId}
+              initialNewSubTaskId={initialNewSubTaskId}
+              onClearInitialState={handleClearInitialState}
+            />
+          }
+        />
+        <Route path="credits" element={<Credits studentId={studentId} />} />
+        <Route path="attendance" element={<Attendance studentId={studentId} />} />
+        {/* An unknown section is a bad link, not a blank screen — send it to
+            the panel's own front page rather than rendering nothing. */}
+        <Route path="*" element={<Navigate to={BASE_PATH} replace />} />
+      </Routes>
     </AppShell>
   );
 }
 
 export default function StudentPanel({ onLogout }: { onLogout?: () => void }) {
-  return <StudentPanelContent onLogout={onLogout} />;
+  // ProtectedRoute has already established there is a signed-in student, so a
+  // missing user here is not a state to paper over with a stand-in id — there
+  // is simply nobody to show. It used to fall back to 's1', which would have
+  // quietly fetched a different person's tasks, submissions and credits and
+  // presented them as yours.
+  //
+  // Resolved out here rather than inside the panel so the id the panel works
+  // with is non-null by construction, and the check sits before any of the
+  // panel's own hooks.
+  const { user } = useAuth();
+  if (!user) return null;
+
+  return <StudentPanelContent studentId={user.id} onLogout={onLogout} />;
 }
