@@ -158,6 +158,7 @@ export default function MentorEvaluationTracker() {
           { key: 'finalScore', header: 'Final' },
         ]}
         data={tableData}
+        loading={loading}
         searchPlaceholder="Search by student name..."
         hideExport
         onRowClick={(row) => openEvaluation(row.id as string)}
@@ -173,9 +174,6 @@ export default function MentorEvaluationTracker() {
           },
         }}
       />
-      {!loading && queue.length === 0 && (
-        <p className="text-gray-500 text-sm text-center py-8">No evaluations assigned to you yet.</p>
-      )}
 
       <Modal open={!!selectedId} onClose={closeModal} title="Score Evaluation" size="lg">
         {detailLoading ? (
