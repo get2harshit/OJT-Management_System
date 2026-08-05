@@ -1,0 +1,62 @@
+# Build and deploy the frontend to Cloud Run.
+#
+# This file exists because the image needs build args. Vite resolves
+# import.meta.env while bundling, so which backend and which Supabase project an
+# image talks to is decided during `docker build` and cannot be changed
+# afterwards — a Cloud Run variable arrives long after the bundle was written.
+# A trigger in "Dockerfile" mode has nowhere to put a --build-arg, which is how
+# every environment ended up with the same fallback values baked in and the
+# production bundle ended up calling the staging API.
+#
+# Nothing environment-specific belongs in this file. One trigger per
+# environment, each watching its own branch and carrying its own substitutions:
+#
+#   staging   _VITE_API_BASE_URL=https://ojt-system-be-672553132888.asia-south1.run.app
+#             _VITE_SUPABASE_URL=https://cumeeqozfrnehtjivirf.supabase.co
+#             _REGION=asia-south1
+#
+# The build fails if either _VITE_* is left empty — see the Dockerfile, which is
+# where that check lives so it applies to a local `docker build` too.
+
+substitutions:
+  _SERVICE_NAME: ojt-management-system
+  _REGION: asia-south1
+  _REPOSITORY: cloud-run-source-deploy
+  # Deliberately empty: a trigger that does not say which environment it is
+  # building for must not produce an image.
+  _VITE_API_BASE_URL: ''
+  _VITE_SUPABASE_URL: ''
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=VITE_API_BASE_URL=${_VITE_API_BASE_URL}
+      - --build-arg=VITE_SUPABASE_URL=${_VITE_SUPABASE_URL}
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}
+      - .
+
+  # Pushed here rather than through the top-level `images:` key, because that
+  # push runs after every step and the deploy below needs the tag to exist.
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE_NAME}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --quiet
