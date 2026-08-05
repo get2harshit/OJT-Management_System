@@ -1,13 +1,14 @@
 # Production image. Point the main trigger's Dockerfile path at this file.
 #
-# NOT SAFE TO DEPLOY YET — see .env.production. Production is currently served
-# by a bundle that calls the staging backend, and everything real lives in the
-# staging database. The production database has all 35 tables empty and in an
-# `ojt_system` schema the backend does not yet ask for. Building this today
-# would take production from working-on-staging-data to working-on-nothing.
+# This builds a bundle that talks to the production backend and the production
+# Supabase project — which is a cutover, not just a deploy. Until production's
+# database is populated the app will come up working and empty, and people whose
+# accounts exist only in the staging Supabase project will not be able to sign
+# in, because the two projects have separate auth.users. Deploy it deliberately.
 #
 # The only line that may differ from Dockerfile.staging is the `--mode` on the
-# build. Change anything else here and change it there too.
+# build and the matching argument to verify-bundle.sh. Change anything else here
+# and change it there too.
 
 # Stage 1: Build
 FROM node:20-alpine AS builder
@@ -24,8 +25,13 @@ COPY . .
 # here. A Cloud Run variable would arrive far too late — by then the bundle
 # exists and nginx only hands out files. The addresses themselves are in
 # .env.production, in git, where they can be read and diffed.
-RUN test -f .env.production || (echo "ERROR: .env.production is missing — the build would silently fall back to the source defaults" >&2; exit 1)
+RUN test -f .env.production || (echo "ERROR: .env.production is missing" >&2; exit 1)
 RUN npm run build -- --mode production
+
+# Reads the addresses back out of the bundle that was just produced, so a
+# variable that never reached the build fails here rather than in front of
+# users. See scripts/verify-bundle.sh.
+RUN sh scripts/verify-bundle.sh production
 
 # Stage 2: Serve static build with nginx
 FROM nginx:1.27-alpine

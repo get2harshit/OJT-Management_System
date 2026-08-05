@@ -1,7 +1,8 @@
 # Staging image. Point the staging trigger's Dockerfile path at this file.
 #
 # The only line that may differ from Dockerfile.production is the `--mode` on
-# the build. Change anything else here and change it there too.
+# the build and the matching argument to verify-bundle.sh. Change anything else
+# here and change it there too.
 #
 # Why two files instead of one with a build arg: a Cloud Run trigger in
 # Dockerfile mode has nowhere to put a --build-arg, and every way of adding one
@@ -23,8 +24,13 @@ COPY . .
 # here. A Cloud Run variable would arrive far too late — by then the bundle
 # exists and nginx only hands out files. The addresses themselves are in
 # .env.staging, in git, where they can be read and diffed.
-RUN test -f .env.staging || (echo "ERROR: .env.staging is missing — the build would silently fall back to the source defaults" >&2; exit 1)
+RUN test -f .env.staging || (echo "ERROR: .env.staging is missing" >&2; exit 1)
 RUN npm run build -- --mode staging
+
+# Reads the addresses back out of the bundle that was just produced, so a
+# variable that never reached the build fails here rather than in front of
+# users. See scripts/verify-bundle.sh.
+RUN sh scripts/verify-bundle.sh staging
 
 # Stage 2: Serve static build with nginx
 FROM nginx:1.27-alpine

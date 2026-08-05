@@ -1,11 +1,12 @@
 // Which backend — and so which database — this bundle talks to.
 //
-// Deployed builds always supply it, from .env.staging or .env.production
-// depending on the mode the Dockerfile is built with. The fallback below is the
-// staging backend and is only for `npm run dev` on a machine with no
-// .env.local; set VITE_API_BASE_URL there (e.g. http://localhost:8080) to use a
-// local backend.
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://ojt-system-be-672553132888.asia-south1.run.app';
+// Supplied per environment and never defaulted; see lib/env.ts for why a
+// fallback here is the specific mistake that put production on staging data.
+// For a local backend, set VITE_API_BASE_URL=http://localhost:8080 in
+// .env.local.
+import { requiredEnv } from '../env';
+
+export const API_BASE = requiredEnv('VITE_API_BASE_URL', import.meta.env.VITE_API_BASE_URL);
 
 const TOKEN_KEY = 'ojt-auth-token';
 

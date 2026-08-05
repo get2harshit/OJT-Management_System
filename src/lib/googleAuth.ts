@@ -10,18 +10,16 @@
 // it and sets the same cookies the password flow sets, and is then discarded.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { requiredEnv } from './env';
+
 // Which Supabase project signs users in. Prod and staging are separate
 // projects, so this decides whose auth.users a person is authenticated
-// against — not a cosmetic setting.
-//
-// Deployed builds always supply it, from .env.staging or .env.production
-// depending on the mode the Dockerfile is built with. The fallback is only for
-// `npm run dev` on a machine with no .env.local, and it names the dev/staging
-// project on purpose.
+// against — not a cosmetic setting, and the reason it is never defaulted.
+// See lib/env.ts.
 //
 // Not a secret. It is the address the browser is sent to and it ships in every
 // bundle, the same as the backend's URL in lib/api/client.ts.
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cumeeqozfrnehtjivirf.supabase.co';
+const SUPABASE_URL = requiredEnv('VITE_SUPABASE_URL', import.meta.env.VITE_SUPABASE_URL);
 
 /**
  * Hands the browser to Google. Control does not return — the page navigates
