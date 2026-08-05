@@ -1,9 +1,10 @@
 // Which backend — and so which database — this bundle talks to.
 //
-// Deployed builds always supply it: the Dockerfile takes it as a build arg and
-// refuses to build without one. The fallback below is the staging backend and
-// is only for `npm run dev` on a machine with no .env.local; set
-// VITE_API_BASE_URL there (e.g. http://localhost:8080) to use a local backend.
+// Deployed builds always supply it, from .env.staging or .env.production
+// depending on the mode the Dockerfile is built with. The fallback below is the
+// staging backend and is only for `npm run dev` on a machine with no
+// .env.local; set VITE_API_BASE_URL there (e.g. http://localhost:8080) to use a
+// local backend.
 export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://ojt-system-be-672553132888.asia-south1.run.app';
 
 const TOKEN_KEY = 'ojt-auth-token';

@@ -14,9 +14,10 @@
 // projects, so this decides whose auth.users a person is authenticated
 // against — not a cosmetic setting.
 //
-// Deployed builds always supply it: the Dockerfile takes it as a build arg and
-// refuses to build without one. The fallback is only for `npm run dev` on a
-// machine with no .env.local, and it names the dev/staging project on purpose.
+// Deployed builds always supply it, from .env.staging or .env.production
+// depending on the mode the Dockerfile is built with. The fallback is only for
+// `npm run dev` on a machine with no .env.local, and it names the dev/staging
+// project on purpose.
 //
 // Not a secret. It is the address the browser is sent to and it ships in every
 // bundle, the same as the backend's URL in lib/api/client.ts.

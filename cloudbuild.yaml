@@ -1,6 +1,6 @@
 # Build and deploy the frontend to Cloud Run.
 #
-# This file exists because the image needs build args. Vite resolves
+# This file exists because the image needs a build arg. Vite resolves
 # import.meta.env while bundling, so which backend and which Supabase project an
 # image talks to is decided during `docker build` and cannot be changed
 # afterwards — a Cloud Run variable arrives long after the bundle was written.
@@ -8,15 +8,14 @@
 # every environment ended up with the same fallback values baked in and the
 # production bundle ended up calling the staging API.
 #
-# Nothing environment-specific belongs in this file. One trigger per
-# environment, each watching its own branch and carrying its own substitutions:
+# The addresses live in .env.staging and .env.production, in git. All a trigger
+# supplies is which of them to use:
 #
-#   staging   _VITE_API_BASE_URL=https://ojt-system-be-672553132888.asia-south1.run.app
-#             _VITE_SUPABASE_URL=https://cumeeqozfrnehtjivirf.supabase.co
-#             _REGION=asia-south1
+#   staging trigger (branch staging)  _BUILD_MODE=staging
+#   main trigger    (branch main)     _BUILD_MODE=production
 #
-# The build fails if either _VITE_* is left empty — see the Dockerfile, which is
-# where that check lives so it applies to a local `docker build` too.
+# An unknown or empty mode fails the build — see the Dockerfile, which is where
+# that check lives so a local `docker build` gets it too.
 
 substitutions:
   _SERVICE_NAME: ojt-management-system
@@ -24,8 +23,7 @@ substitutions:
   _REPOSITORY: cloud-run-source-deploy
   # Deliberately empty: a trigger that does not say which environment it is
   # building for must not produce an image.
-  _VITE_API_BASE_URL: ''
-  _VITE_SUPABASE_URL: ''
+  _BUILD_MODE: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -35,8 +33,7 @@ steps:
     name: gcr.io/cloud-builders/docker
     args:
       - build
-      - --build-arg=VITE_API_BASE_URL=${_VITE_API_BASE_URL}
-      - --build-arg=VITE_SUPABASE_URL=${_VITE_SUPABASE_URL}
+      - --build-arg=BUILD_MODE=${_BUILD_MODE}
       - -t
       - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}
       - .
