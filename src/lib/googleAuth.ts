@@ -10,18 +10,16 @@
 // it and sets the same cookies the password flow sets, and is then discarded.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// The Supabase project every environment authenticates against, defaulted the
-// same way the backend's own URL is in lib/api/client.ts — env var for a local
-// override, real value in code.
+// Which Supabase project signs users in. Prod and staging are separate
+// projects, so this decides whose auth.users a person is authenticated
+// against — not a cosmetic setting.
 //
-// This used to be env-only, with the button hidden whenever the variable was
-// missing. That hid it everywhere except a machine that happened to have a
-// .env.local: the deploy builds in Docker, and .dockerignore excludes .env*, so
-// no env file can reach the build at all. The result was a feature that looked
-// unbuilt rather than unconfigured, on every environment including staging.
+// Deployed builds always supply it: the Dockerfile takes it as a build arg and
+// refuses to build without one. The fallback is only for `npm run dev` on a
+// machine with no .env.local, and it names the dev/staging project on purpose.
 //
-// Not a secret. It is the address the browser is sent to, it ships in every
-// bundle, and the backend's URL sits in code beside it for the same reason.
+// Not a secret. It is the address the browser is sent to and it ships in every
+// bundle, the same as the backend's URL in lib/api/client.ts.
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://cumeeqozfrnehtjivirf.supabase.co';
 
 /**
