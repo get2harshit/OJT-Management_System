@@ -1,0 +1,40 @@
+# Production image. Point the main trigger's Dockerfile path at this file.
+#
+# NOT SAFE TO DEPLOY YET — see .env.production. Production is currently served
+# by a bundle that calls the staging backend, and everything real lives in the
+# staging database. The production database has all 35 tables empty and in an
+# `ojt_system` schema the backend does not yet ask for. Building this today
+# would take production from working-on-staging-data to working-on-nothing.
+#
+# The only line that may differ from Dockerfile.staging is the `--mode` on the
+# build. Change anything else here and change it there too.
+
+# Stage 1: Build
+FROM node:20-alpine AS builder
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+
+# Vite resolves import.meta.env while bundling and writes the result into the
+# JS, so which backend and which Supabase project this image talks to is fixed
+# here. A Cloud Run variable would arrive far too late — by then the bundle
+# exists and nginx only hands out files. The addresses themselves are in
+# .env.production, in git, where they can be read and diffed.
+RUN test -f .env.production || (echo "ERROR: .env.production is missing — the build would silently fall back to the source defaults" >&2; exit 1)
+RUN npm run build -- --mode production
+
+# Stage 2: Serve static build with nginx
+FROM nginx:1.27-alpine
+
+COPY --from=builder /usr/src/app/dist /usr/share/nginx/html
+
+# SPA fallback so client-side routes (react-router-dom) don't 404 on refresh
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 8080
+
+CMD ["nginx", "-g", "daemon off;"]
