@@ -29,13 +29,17 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 steps:
+  # Tagged with BUILD_ID rather than SHORT_SHA: SHORT_SHA is empty when a
+  # trigger is run by hand rather than by a push, which makes the tag end in
+  # a bare colon and fails the build on an invalid image reference. BUILD_ID
+  # is always set, and the build it names links back to the commit anyway.
   - id: build
     name: gcr.io/cloud-builders/docker
     args:
       - build
       - --build-arg=BUILD_MODE=${_BUILD_MODE}
       - -t
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BUILD_ID}
       - .
 
   # Pushed here rather than through the top-level `images:` key, because that
@@ -44,7 +48,7 @@ steps:
     name: gcr.io/cloud-builders/docker
     args:
       - push
-      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BUILD_ID}
 
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -53,7 +57,7 @@ steps:
       - run
       - deploy
       - ${_SERVICE_NAME}
-      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${SHORT_SHA}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BUILD_ID}
       - --region=${_REGION}
       - --platform=managed
       - --quiet
