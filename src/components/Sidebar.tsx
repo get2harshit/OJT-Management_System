@@ -14,6 +14,7 @@ import {
   Briefcase,
   Award,
   ClipboardCheck,
+  ShieldCheck,
   X,
   Pin,
   PinOff,
@@ -45,6 +46,7 @@ const adminTabs = [
   { id: 'credits', label: 'Cloud Credits', icon: Cloud },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
+  { id: 'eligibility', label: 'Eligibility Status', icon: ShieldCheck },
 ];
 
 const mentorTabs = [

@@ -642,3 +642,29 @@ export interface EvaluationDetail {
   evaluatedAt: string | null;
 }
 
+// ── Eligibility status (platform-access gate) ───────────────────────────────
+// Admin-maintained, keyed by email/registration number rather than a student
+// id — a row can exist before, or outlive, the matching OJT account. Only
+// feePending is enforced today: a student whose row has feePending = true is
+// refused at sign-in (see AuthService.signIn/signInWithGoogle on the
+// backend). isOpenSource/isIntern are stored but not enforced anywhere yet.
+export interface EligibilityStatus {
+  id: string;
+  msuEmail: string;
+  msuRegistrationNumber: string | null;
+  isOpenSource: boolean;
+  /** true = fee not yet paid = sign-in refused. */
+  feePending: boolean;
+  isIntern: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EligibilityStatusInput {
+  msuEmail: string;
+  msuRegistrationNumber?: string | null;
+  isOpenSource?: boolean;
+  feePending?: boolean;
+  isIntern?: boolean;
+}
+
