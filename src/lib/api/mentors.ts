@@ -25,6 +25,8 @@ interface GetMentorsPageParams {
   track?: string;
   /** Scope to mentors actually mapped to a specific cohort. */
   cohortId?: string;
+  /** Internal vs external — maps to ojt_mentors.is_external server-side. */
+  type?: 'internal' | 'external';
 }
 
 // Admin — mentor roster, server-paginated with optional search/track/cohort
@@ -36,7 +38,30 @@ export async function apiListMentorsPage(params: GetMentorsPageParams): Promise<
   if (params.search) query.set('search', params.search);
   if (params.track) query.set('track', params.track);
   if (params.cohortId) query.set('cohortId', params.cohortId);
+  if (params.type) query.set('type', params.type);
   return apiFetch<MentorsPage>(`/api/v1/mentors?${query.toString()}`);
+}
+
+// Ids of every mentor a filter matches — what a picker's "select all matching"
+// needs, and nothing else. Asking apiListMentorsPage for everything and reading
+// one id off each row shipped every column of every mentor to build a list of
+// uuids.
+export async function apiListMentorIds(params: {
+  search?: string;
+  track?: string;
+  cohortId?: string;
+  type?: 'internal' | 'external';
+}): Promise<string[]> {
+  const query = new URLSearchParams();
+  if (params.search) query.set('search', params.search);
+  if (params.track) query.set('track', params.track);
+  if (params.cohortId) query.set('cohortId', params.cohortId);
+  if (params.type) query.set('type', params.type);
+  const qs = query.toString();
+  // apiFetch returns the response body as-is, so the { success, data } envelope
+  // is unwrapped here rather than assumed away.
+  const body = await apiFetch<{ data: string[] }>(`/api/v1/mentors/ids${qs ? `?${qs}` : ''}`);
+  return body.data;
 }
 
 // Admin or self — updates mutable mentor fields (organization, isExternal, track).

@@ -1,14 +1,17 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
-import { Users, Save, Sparkles, ClipboardPaste } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Users, Save, Sparkles, ClipboardPaste, AlertTriangle } from 'lucide-react';
+import SpinnerSquare from '../../../components/SpinnerSquare';
 import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
+import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
 import type { ApiCandidateMentor } from '../../../lib/api/tracks';
 import {
   apiGetCohort,
   apiGetTrackCandidateMentors,
+  apiGetCandidateMentorIds,
   apiGetTrackMentors,
   apiSetTrackMentors,
   apiResolveMentorNames,
@@ -41,6 +44,7 @@ type MentorRow = ApiCandidateMentor & Record<string, unknown> & { id: string };
 // paged roster, instead of inferring the set from whatever page is on screen.
 export default function TrackMentorsPage() {
   const { cohortId, trackSlug } = useParams<{ cohortId: string; trackSlug: string }>();
+  const navigate = useNavigate();
   // Which configuration of the track is being staffed. A track can be
   // configured several times per OJT and each has its own roster, so the slug
   // in the path doesn't identify one. Absent for a track with a single
@@ -72,6 +76,11 @@ export default function TrackMentorsPage() {
   const [saving, setSaving] = useState(false);
   const [pastedNames, setPastedNames] = useState('');
   const [resolving, setResolving] = useState(false);
+  // The paste box used to sit open above the table, taking a fifth of the
+  // screen to serve an occasional action and squeezing the roster it exists to
+  // help you fill. It is a dialog now — out of the way until asked for.
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -154,8 +163,11 @@ export default function TrackMentorsPage() {
     });
   };
 
-  // Select-all acts on the current page only, so it reads as "everyone I can
-  // see" rather than silently reaching into pages the admin hasn't looked at.
+  // The header checkbox acts on the current page, which is what a checkbox in a
+  // table header means everywhere else and keeps it from silently reaching into
+  // pages nobody has looked at. Selecting the whole roster is a separate,
+  // explicitly-labelled action below — ticking twenty at a time across four
+  // pages to staff everyone was the obvious thing this was missing.
   const pageIds = rows.map((r) => r.mentorId);
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
 
@@ -166,6 +178,33 @@ export default function TrackMentorsPage() {
       else pageIds.forEach((id) => next.add(id));
       return next;
     });
+  };
+
+  // Everyone the current search and type filter match, not just this page —
+  // the same filter the table is running on, so what gets ticked is exactly
+  // what is on screen across every page.
+  //
+  // Ids only. Asking the paged endpoint for the whole roster would ship every
+  // column of every mentor so the client could read one uuid off each row.
+  const selectAllMatching = async () => {
+    if (!cohortId) return;
+    setSelectingAll(true);
+    try {
+      const ids = await apiGetCandidateMentorIds(cohortId, {
+        search: search || undefined,
+        type: typeFilter === 'internal' || typeFilter === 'external' ? typeFilter : undefined,
+      });
+      setSelected((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.add(id));
+        return next;
+      });
+      showSuccess(`${ids.length} mentor${ids.length === 1 ? '' : 's'} selected`);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to select every mentor');
+    } finally {
+      setSelectingAll(false);
+    }
   };
 
   const isDirty =
@@ -220,6 +259,11 @@ export default function TrackMentorsPage() {
       showError(err instanceof Error ? err.message : 'Failed to match those names');
     } finally {
       setResolving(false);
+      // Closes either way. The outcome — matched, added, not found, ambiguous —
+      // is already carried by toasts, and keeping the dialog up over the table
+      // hides the ticks it just made. Unmatched text is left in the box, so
+      // reopening resumes where it left off.
+      setPasteOpen(false);
     }
   };
 
@@ -228,16 +272,17 @@ export default function TrackMentorsPage() {
     setSaving(true);
     try {
       const saved = await apiSetTrackMentors(cohortId, trackSlug, Array.from(selected), configId);
-      const ids = new Set(saved.map((m) => m.mentorId));
-      setSelected(ids);
-      setInitialSelected(ids);
-      showSuccess(`${ids.size} mentor${ids.size === 1 ? '' : 's'} now staffing ${trackName}`);
-      await fetchPage();
+      showSuccess(`${saved.length} mentor${saved.length === 1 ? '' : 's'} now staffing ${trackName}`);
+      // Back to Track Configuration, which is where this screen was opened from
+      // and where the result is visible. Re-fetching this page instead would
+      // leave the admin on a screen whose work is done.
+      navigate(`/admin/dashboard/ojts/${cohortId}/track-config`);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to save mentors');
-    } finally {
       setSaving(false);
     }
+    // Deliberately not cleared on success: the overlay stays up through the
+    // navigation rather than flashing the old screen back for a frame.
   };
 
   return (
@@ -248,60 +293,110 @@ export default function TrackMentorsPage() {
         icon={Users}
       />
 
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-sm text-gray-400">
-          {isDirty ? (
-            <>
-              {addedCount > 0 && <span className="text-emerald-400">+{addedCount} to add</span>}
-              {addedCount > 0 && removedCount > 0 && <span className="text-gray-600"> · </span>}
-              {removedCount > 0 && <span className="text-red-400">−{removedCount} to remove</span>}
-              <span className="text-gray-500"> — unsaved</span>
-            </>
-          ) : (
-            `${selected.size} mentor${selected.size === 1 ? '' : 's'} staffing this track`
+      {/* One compact row. Everything that used to stand between the header and
+          the table now lives here, so the roster — the reason for the screen —
+          gets the height instead. */}
+      <div className="flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
+        <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">
+          <p className="text-sm text-gray-400">
+            {isDirty ? (
+              <>
+                {addedCount > 0 && <span className="text-emerald-400">+{addedCount} to add</span>}
+                {addedCount > 0 && removedCount > 0 && <span className="text-gray-600"> · </span>}
+                {removedCount > 0 && <span className="text-red-400">−{removedCount} to remove</span>}
+                <span className="text-gray-500"> — unsaved</span>
+              </>
+            ) : (
+              `${selected.size} mentor${selected.size === 1 ? '' : 's'} staffing this track`
+            )}
+          </p>
+          {selected.size === 0 && (
+            <span className="flex items-center gap-1.5 text-xs text-red-400">
+              <AlertTriangle size={13} className="shrink-0" />
+              Nobody staffing this track — students who pick it will find no mentor to choose.
+            </span>
           )}
-        </p>
-        <button
-          onClick={handleSave}
-          disabled={!isDirty || saving}
-          className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
-        >
-          <Save size={16} />
-          {saving ? 'Saving...' : 'Save changes'}
-        </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPasteOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2 bg-zinc-800 border border-zinc-700 text-gray-300 font-medium rounded-lg hover:border-gold hover:text-white transition-colors text-sm"
+          >
+            <ClipboardPaste size={15} />
+            Paste names
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!isDirty || saving}
+            className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
+          >
+            <Save size={16} />
+            Save changes
+          </button>
+        </div>
       </div>
 
-      <div className="bg-zinc-850 border border-zinc-750 rounded-xl px-4 py-3 space-y-2">
-        <label className="block text-sm text-gray-400">
-          Paste mentor names <span className="text-gray-600">— comma separated</span>
-        </label>
-        <div className="flex gap-2 flex-wrap">
+      <Modal open={pasteOpen} onClose={() => setPasteOpen(false)} title="Paste mentor names">
+        <div className="space-y-3">
+          <label className="block text-sm text-gray-400">
+            Names, <span className="text-gray-600">comma separated</span>
+          </label>
           <textarea
             value={pastedNames}
             onChange={(e) => setPastedNames(e.target.value)}
             placeholder="Chennaveer Jogur, Soumen Mukherjee, Navneet Nautiyal"
-            rows={2}
-            className="flex-1 min-w-[260px] px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm resize-y focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
+            rows={4}
+            autoFocus
+            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm resize-y focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
           />
-          <button
-            onClick={handleResolveNames}
-            disabled={!pastedNames.trim() || resolving}
-            className="self-start flex items-center gap-2 px-4 py-2 bg-zinc-800 border border-zinc-700 text-gray-300 font-medium rounded-lg hover:border-gold hover:text-white transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <ClipboardPaste size={15} />
-            {resolving ? 'Matching...' : 'Select these'}
-          </button>
+          <p className="text-xs text-gray-500">
+            Ticks whoever is named, across every page — casing and extra spaces don't matter. Anything
+            that doesn't match is reported rather than skipped. Nothing is saved until you press Save
+            changes.
+          </p>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              onClick={() => setPasteOpen(false)}
+              className="px-4 py-2 bg-zinc-800 border border-zinc-700 text-gray-300 font-medium rounded-lg hover:border-zinc-600 hover:text-white transition-colors text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleResolveNames}
+              disabled={!pastedNames.trim() || resolving}
+              className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ClipboardPaste size={15} />
+              {resolving ? 'Matching...' : 'Select these'}
+            </button>
+          </div>
         </div>
-        <p className="text-xs text-gray-500">
-          Ticks whoever is named, across every page — casing and extra spaces don't matter. Anything
-          that doesn't match is reported rather than skipped. Nothing is saved until you press Save
-          changes.
-        </p>
-      </div>
+      </Modal>
 
-      {selected.size === 0 && (
-        <div className="text-sm text-amber-400 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3">
-          No mentors on this track. Students who pick it will find nobody to choose at project submission.
+      {/* Held up through the navigation that follows a successful save, rather
+          than dropped the moment the request returns — otherwise the old screen
+          flashes back for a frame on its way out. */}
+      {saving && (
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-4 bg-black/70 backdrop-blur-sm">
+          <SpinnerSquare size={72} />
+          <p className="text-sm text-gray-300">Saving mentors…</p>
+        </div>
+      )}
+
+      {/* Only once the page is fully ticked, and only when there is more than a
+          page — so it appears exactly when "select all" stops meaning what it
+          looks like it means. */}
+      {allPageSelected && pagination.total > rows.length && (
+        <div className="flex items-center gap-2 text-xs text-gray-400 px-1">
+          <span>All {rows.length} on this page selected.</span>
+          <button
+            onClick={selectAllMatching}
+            disabled={selectingAll}
+            className="text-gold hover:underline font-medium disabled:opacity-50 disabled:no-underline"
+          >
+            {selectingAll ? 'Selecting…' : `Select all ${pagination.total} matching`}
+          </button>
         </div>
       )}
 
