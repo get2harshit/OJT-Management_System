@@ -63,13 +63,15 @@ export default function ProjectProposals() {
     if (action !== 'approve' && !actionNote.trim()) return;
     setDeciding(true);
     try {
-      await apiDecideOnProposal(selected.preferenceId, action, action === 'approve' ? undefined : actionNote.trim());
+      const result = await apiDecideOnProposal(selected.preferenceId, action, action === 'approve' ? undefined : actionNote.trim());
       showSuccess(
         action === 'approve'
           ? 'Project approved.'
           : action === 'resubmit'
             ? 'Sent back to the student for resubmission.'
-            : 'Returned — the student will now pick from recommended projects.'
+            : result.catalogWarning
+              ? `Returned — ${result.catalogWarning}`
+              : 'Returned — the student will now pick from recommended projects.'
       );
       setProposals((prev) => prev.filter((p) => p.preferenceId !== selected.preferenceId));
       closeModal();
