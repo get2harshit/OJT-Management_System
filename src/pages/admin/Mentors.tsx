@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Percent } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
-import Modal from '../../components/Modal';
 import SpinnerSquare from '../../components/SpinnerSquare';
-import Select from '../../components/Select';
-import ActionsMenu from '../../components/ActionsMenu';
-import type { ApiMentor, Cohort, MentorCapacitySummary } from '../../lib/types';
+import type { ApiMentor } from '../../lib/types';
 import { getTrackColor, MENTOR_TYPE_DOT_COLORS } from '../../lib/constants';
-import { apiListMentorsPage, apiListCohorts, apiGetMentorCapacity, apiSetMentorCapacityOverride } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
-import { useToast } from '../../toast';
+import { apiListMentorsPage } from '../../lib/api';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useTracks } from '../../hooks/useTracks';
 
@@ -22,7 +16,6 @@ const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
 export default function AdminMentors() {
-  const { showSuccess, showError } = useToast();
   const { tracks } = useTracks();
   const trackNameBySlug = new Map(tracks.map(t => [t.slug, t.name]));
   const [mentors, setMentors] = useState<MentorRow[]>([]);
@@ -32,15 +25,6 @@ export default function AdminMentors() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
-
-  // Set Capacity
-  const [capacityMentor, setCapacityMentor] = useState<MentorRow | null>(null);
-  const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [capacityCohortId, setCapacityCohortId] = useState('');
-  const [capacitySummary, setCapacitySummary] = useState<MentorCapacitySummary | null>(null);
-  const [capacityLoading, setCapacityLoading] = useState(false);
-  const [capacityInput, setCapacityInput] = useState('');
-  const [capacitySaving, setCapacitySaving] = useState(false);
 
   const fetchMentors = useCallback(async () => {
     try {
@@ -77,66 +61,6 @@ export default function AdminMentors() {
   const handleLimitChange = (value: number) => {
     setPage(1);
     setLimit(value);
-  };
-
-  const loadCapacitySummary = async (mentorId: string, cohortId: string) => {
-    setCapacityLoading(true);
-    try {
-      const res = await apiGetMentorCapacity(mentorId, cohortId);
-      setCapacitySummary(res);
-      setCapacityInput(res.override !== null ? String(res.override) : '');
-    } catch (error) {
-      showError(error instanceof Error ? error.message : 'Failed to load capacity for this cohort');
-      setCapacitySummary(null);
-    } finally {
-      setCapacityLoading(false);
-    }
-  };
-
-  const handleOpenCapacity = async (mentor: MentorRow) => {
-    setCapacityMentor(mentor);
-    setCapacitySummary(null);
-    setCapacityInput('');
-    let cohortList = cohorts;
-    if (cohortList.length === 0) {
-      try {
-        cohortList = await apiListCohorts();
-        setCohorts(cohortList);
-      } catch (error) {
-        showError(error instanceof Error ? error.message : 'Failed to load cohorts');
-        return;
-      }
-    }
-    if (cohortList.length > 0) {
-      const cohortId = cohortList[0].id;
-      setCapacityCohortId(cohortId);
-      loadCapacitySummary(mentor.id, cohortId);
-    }
-  };
-
-  const handleCapacityCohortChange = (cohortId: string) => {
-    setCapacityCohortId(cohortId);
-    if (capacityMentor) loadCapacitySummary(capacityMentor.id, cohortId);
-  };
-
-  const handleSaveCapacity = async () => {
-    if (!capacityMentor) return;
-    const trimmed = capacityInput.trim();
-    const value = trimmed === '' ? null : Number(trimmed);
-    if (value !== null && (!Number.isFinite(value) || value < 0)) {
-      showError('Capacity must be a non-negative number');
-      return;
-    }
-    setCapacitySaving(true);
-    try {
-      await apiSetMentorCapacityOverride(capacityMentor.id, value);
-      showSuccess(value === null ? 'Capacity override cleared — using computed baseline again' : 'Capacity override saved');
-      await loadCapacitySummary(capacityMentor.id, capacityCohortId);
-    } catch (error) {
-      showError(error instanceof Error ? error.message : 'Failed to save capacity');
-    } finally {
-      setCapacitySaving(false);
-    }
   };
 
   const tableData = mentors.map(m => ({
@@ -217,83 +141,8 @@ export default function AdminMentors() {
             onPageChange: setPage,
             onLimitChange: handleLimitChange,
           }}
-          actions={(row) => (
-            <ActionsMenu
-              items={[
-                { label: 'Set Capacity', icon: Percent, onClick: () => handleOpenCapacity(row._raw) },
-              ]}
-            />
-          )}
         />
       )}
-
-      {/* Set Capacity Modal */}
-      <Modal
-        open={!!capacityMentor}
-        onClose={() => {
-          setCapacityMentor(null);
-          setCapacitySummary(null);
-          setCapacityInput('');
-          setCapacityCohortId('');
-        }}
-        title="Set Mentor Capacity"
-      >
-        <div className="space-y-4">
-          <div className="bg-zinc-800/60 border border-zinc-700 rounded-lg px-4 py-3 space-y-1">
-            <p className="text-white text-sm font-semibold">{capacityMentor?.fullName || '—'}</p>
-            <p className="text-gray-400 text-xs">{capacityMentor?.email || '—'}</p>
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-400 mb-2">Cohort</label>
-            <Select
-              value={capacityCohortId}
-              onChange={handleCapacityCohortChange}
-              options={cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }))}
-              placeholder="Select a cohort"
-            />
-          </div>
-
-          {capacityLoading ? (
-            <div className="min-h-[15vh] flex items-center justify-center">
-              <SpinnerSquare size={32} />
-            </div>
-          ) : capacitySummary ? (
-            <>
-              <div className="bg-zinc-800/50 p-3 rounded-lg border border-zinc-700 text-xs text-gray-400">
-                {capacitySummary.override !== null ? (
-                  <>Set to <span className="text-gold font-semibold">{capacitySummary.override}</span> team(s) for this OJT.</>
-                ) : (
-                  <>Not set — using the default of <span className="text-white font-semibold">{capacitySummary.defaultCapacity}</span> team(s).</>
-                )}
-                {' '}Capacity is how many teams this mentor will take. 0 removes them from the student's picker.
-              </div>
-
-              <div>
-                <label className="block text-sm text-gray-400 mb-2">
-                  Capacity <span className="text-gray-600">(leave empty to use the default of {capacitySummary.defaultCapacity})</span>
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={capacityInput}
-                  onChange={(e) => setCapacityInput(e.target.value)}
-                  placeholder={String(capacitySummary.defaultCapacity)}
-                  className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
-                />
-              </div>
-
-              <button
-                onClick={handleSaveCapacity}
-                disabled={capacitySaving}
-                className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
-              >
-                {capacitySaving ? 'Saving...' : 'Save Capacity'}
-              </button>
-            </>
-          ) : null}
-        </div>
-      </Modal>
     </PageLayout>
   );
 }

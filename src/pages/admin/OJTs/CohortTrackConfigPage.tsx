@@ -2,11 +2,12 @@ import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import DataTable from '../../../components/DataTable';
-import { Settings2, Plus, Pencil, Trash2, Users, X, UserPlus, ArrowRight, FileSpreadsheet } from 'lucide-react';
+import { Settings2, Plus, Pencil, Trash2, Users, X, UserPlus, ArrowRight, FileSpreadsheet, Percent, UserCog } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import Modal from '../../../components/Modal';
+import MentorCapacityModal from './MentorCapacityModal';
 import type {
   ApiCohortTrackConfig,
   TrackEligibilityType,
@@ -70,6 +71,8 @@ export default function CohortTrackConfigPage() {
   const [allowedBatches, setAllowedBatches] = useState<string[]>([]);
   const [configs, setConfigs] = useState<ApiCohortTrackConfig[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [mentorCapacityModalOpen, setMentorCapacityModalOpen] = useState(false);
 
   // Add/edit-track-config modal
   const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -472,7 +475,27 @@ export default function CohortTrackConfigPage() {
         </div>
       ) : (
         <div className="space-y-4 flex-1 min-h-0 flex flex-col [&>*]:shrink-0">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-3">
+            {/* Grows the cohort-wide mentor pool (additive only, no unmap) —
+                distinct from the per-track "Mentors (n)" action below, which
+                assigns from this pool onto one specific track. */}
+            <button
+              onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/mentors`)}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 border border-zinc-700 text-gray-300 font-medium rounded-lg hover:border-gold hover:text-white transition-colors text-sm"
+            >
+              <UserCog size={16} />
+              Add Mentors to this Cohort
+            </button>
+            {/* Capacity is a flat per-mentor number, not scoped to this OJT —
+                this button just gives it somewhere to live near the rest of
+                track staffing, not a cohort-scoped view of it. */}
+            <button
+              onClick={() => setMentorCapacityModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 border border-zinc-700 text-gray-300 font-medium rounded-lg hover:border-gold hover:text-white transition-colors text-sm"
+            >
+              <Percent size={16} />
+              Mentor Capacity
+            </button>
             {/* Configuring a track per batch by hand is a dozen trips through
                 the form for a catalog that already says most of it. */}
             <button
@@ -996,6 +1019,8 @@ export default function CohortTrackConfigPage() {
           )}
         </div>
       </Modal>
+
+      <MentorCapacityModal open={mentorCapacityModalOpen} onClose={() => setMentorCapacityModalOpen(false)} />
     </PageLayout>
   );
 }

@@ -334,6 +334,18 @@ export interface MentorCapacitySummary {
   effectiveTotal: number;
 }
 
+// One row per mentor for the admin's bulk capacity table (GET /api/v1/mentors/capacity)
+// — cohort-agnostic, since capacityOverride is one flat number per mentor.
+export interface MentorCapacityListRow {
+  mentorId: string;
+  fullName: string | null;
+  email: string | null;
+  organization: string | null;
+  isExternal: boolean;
+  capacityOverride: number | null;
+  effectiveCapacity: number;
+}
+
 // One row per mentor with allocated count vs. their flat capacity
 // (GET /api/v1/teams/cohort/:cohortId/mentor-load-summary).
 export interface MentorLoadSummaryRow {
