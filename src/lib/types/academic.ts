@@ -528,6 +528,8 @@ export interface DashboardMetrics {
   projectsCount: number;
   totalCreditsAvailable: number;
   tasksCount: number;
+  /** Submissions still awaiting a mentor decision (status 'submitted' or 'under_review'). */
+  pendingSubmissionsCount: number;
 }
 
 // ── Evaluation module ────────────────────────────────────────────────────────
