@@ -426,6 +426,14 @@ export interface TeamAvailableMentor {
    * time regardless of what the picker shows.
    */
   isFull: boolean;
+  /**
+   * At their nominal capacity but not yet the soft cap — still selectable
+   * (the soft cap is deliberately looser, so the allocation algorithm has a
+   * real pool to rank instead of pure first-come-first-served). Mutually
+   * exclusive with isFull; only meant to make an at-capacity mentor look
+   * different from one nobody has picked yet.
+   */
+  isNearingCapacity: boolean;
 }
 
 // What a team on a track may submit. 'own' is the team's self-proposed

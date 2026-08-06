@@ -119,6 +119,8 @@ interface RawTeamMentor {
    * every other field here.
    */
   isFull: boolean;
+  /** At nominal capacity but under the soft cap — see TeamAvailableMentor. */
+  isNearingCapacity: boolean;
 }
 
 interface RawProject {
@@ -287,6 +289,7 @@ function mapTeamMentor(m: RawTeamMentor): TeamAvailableMentor {
     organization: m.organization ?? undefined,
     isExternal: m.is_external,
     isFull: m.isFull,
+    isNearingCapacity: m.isNearingCapacity,
   };
 }
 

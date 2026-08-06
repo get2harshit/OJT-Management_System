@@ -487,27 +487,32 @@ function TrackAndTeammateScreen({
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {availableTracks.map(t => {
-              // Team-capacity full is the hard block (assertTrackHasRoom, at
-              // team creation) and always wins the card's color. Below that,
-              // the catalog itself getting thin is informative, not
-              // blocking — a team can still pick this track and self-propose
-              // — so it only tints the card, it never disables it. Ratio-based
+              // Two hard blocks, checked in this order: team-capacity full
+              // (assertTrackHasRoom) and catalog-exhausted (assertCatalogHasRoom
+              // — none of the track's allowed submission modes can currently be
+              // completed, e.g. a catalog-only track with nothing left, or a
+              // '2_recommended' track down to its last one). Both are re-checked
+              // server-side under the same advisory lock at team creation; this
+              // is just the advisory front door. Below both, the catalog merely
+              // getting thin (but a self-proposal escape hatch still exists) is
+              // informative, not blocking — it only tints the card. Ratio-based
               // rather than a flat "under N" cutoff: a track with a 3-project
               // catalog and all 3 open is healthy, not "low", the way a flat
               // threshold tuned for a 50-project catalog would call it.
-              const projectsCritical = !t.isFull && t.totalProjects > 0 && t.availableProjects === 0;
+              const locked = t.isFull || t.catalogExhausted;
+              const projectsCritical = !locked && t.totalProjects > 0 && t.availableProjects === 0;
               const projectsLow =
-                !t.isFull && !projectsCritical && t.totalProjects > 0 && t.availableProjects / t.totalProjects <= 0.25;
+                !locked && !projectsCritical && t.totalProjects > 0 && t.availableProjects / t.totalProjects <= 0.25;
               return (
-                // A full track stays on screen rather than disappearing. A
+                // A locked track stays on screen rather than disappearing. A
                 // student who was told to pick this track needs to see why they
                 // cannot; one that silently vanishes reads as a bug in the app.
                 <button
                   key={t.trackSlug}
                   onClick={() => handlePickTrack(t.trackSlug)}
-                  disabled={t.isFull}
+                  disabled={locked}
                   className={`relative flex flex-col items-start gap-3 border rounded-xl p-5 text-left transition-all duration-200 ${
-                    t.isFull
+                    locked
                       ? 'bg-zinc-850/60 border-red-500/30 cursor-not-allowed'
                       : projectsCritical
                         ? 'bg-zinc-850 border-red-500/20 hover:border-red-500/40 hover:-translate-y-0.5'
@@ -516,20 +521,25 @@ function TrackAndTeammateScreen({
                           : 'bg-zinc-850 border-zinc-750 hover:border-gold/40 hover:-translate-y-0.5'
                   }`}
                 >
-                  {t.opportunityEarned && !t.isFull && (
+                  {t.opportunityEarned && !locked && (
                     <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gold bg-gold/10 border border-gold/30 rounded-full px-2 py-0.5">
                       <Star size={10} className="fill-gold" />
                       Opportunity Earned
                     </span>
                   )}
-                  <div className={`p-2 rounded-lg ${t.isFull ? 'bg-zinc-800' : 'bg-zinc-750'}`}>
-                    <Layers size={20} className={t.isFull ? 'text-gray-600' : 'text-gold'} />
+                  <div className={`p-2 rounded-lg ${locked ? 'bg-zinc-800' : 'bg-zinc-750'}`}>
+                    <Layers size={20} className={locked ? 'text-gray-600' : 'text-gold'} />
                   </div>
-                  <p className={`font-semibold ${t.isFull ? 'text-gray-400' : 'text-white'}`}>{t.trackName}</p>
+                  <p className={`font-semibold ${locked ? 'text-gray-400' : 'text-white'}`}>{t.trackName}</p>
                   {t.isFull ? (
                     <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-400">
                       <AlertTriangle size={12} className="shrink-0" />
                       Capacity of this track is full
+                    </span>
+                  ) : t.catalogExhausted ? (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-400">
+                      <AlertTriangle size={12} className="shrink-0" />
+                      No projects left to pick on this track
                     </span>
                   ) : (
                     <>
@@ -1130,13 +1140,21 @@ function MentorPicker({
                 type="button"
                 onClick={() => onSelect(m.id)}
                 disabled={m.isFull}
-                title={m.isFull ? 'This mentor has reached their capacity for this OJT' : undefined}
+                title={
+                  m.isFull
+                    ? 'This mentor has reached their capacity for this OJT'
+                    : m.isNearingCapacity
+                      ? 'This mentor is nearing their capacity for this OJT — still available for now'
+                      : undefined
+                }
                 className={`relative flex items-center gap-3 text-left rounded-lg p-3 border transition-all duration-200 ${
                   m.isFull
                     ? 'bg-zinc-900/60 border-red-500/20 cursor-not-allowed opacity-70'
                     : isSelected
                       ? 'bg-gold/10 border-gold shadow-lg shadow-gold/10'
-                      : 'bg-zinc-900 border-zinc-750 hover:border-gold/30 hover:-translate-y-0.5'
+                      : m.isNearingCapacity
+                        ? 'bg-zinc-900 border-amber-500/25 hover:border-amber-500/50 hover:-translate-y-0.5'
+                        : 'bg-zinc-900 border-zinc-750 hover:border-gold/30 hover:-translate-y-0.5'
                 }`}
               >
                 <MentorAvatar name={m.fullName} selected={isSelected && !m.isFull} />
@@ -1146,6 +1164,11 @@ function MentorPicker({
                     <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-red-400">
                       <Lock size={10} className="shrink-0" />
                       Mentor capacity exceeded
+                    </span>
+                  ) : m.isNearingCapacity ? (
+                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-amber-400">
+                      <AlertTriangle size={10} className="shrink-0" />
+                      Nearing capacity
                     </span>
                   ) : (
                     <span

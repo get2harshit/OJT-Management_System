@@ -365,6 +365,15 @@ export interface ApiAvailableTrack {
   totalProjects: number;
   /** Of those, how many still have room (mapped to this cohort, under 2 teams already holding it). */
   availableProjects: number;
+  /**
+   * True when none of this track's allowed submission modes can currently be
+   * completed — e.g. a catalog-only track with nothing left, or a
+   * '2_recommended' track down to its last one. A track that allows
+   * self-proposal is never exhausted, regardless of catalog size. Advisory,
+   * same as isFull — the server re-checks under the same lock at team
+   * creation.
+   */
+  catalogExhausted: boolean;
 }
 
 export async function apiGetAvailableTracks(cohortId: string): Promise<ApiAvailableTrack[]> {
