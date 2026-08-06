@@ -408,6 +408,12 @@ export interface TeamAvailableMentor {
   email?: string;
   organization?: string;
   isExternal: boolean;
+  /**
+   * At their soft capacity — still shown (they may still be who a project
+   * recommends), but not selectable. The server re-checks this at submit
+   * time regardless of what the picker shows.
+   */
+  isFull: boolean;
 }
 
 // What a team on a track may submit. 'own' is the team's self-proposed

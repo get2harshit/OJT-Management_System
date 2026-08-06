@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Briefcase, Users, Clock, CheckCircle2, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star, Minimize2, AlertTriangle } from 'lucide-react';
+import { Briefcase, Users, Clock, CheckCircle2, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star, Minimize2, AlertTriangle, Lock } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import DataTable from '../../components/DataTable';
 import { derivePageSizeOptions } from '../../lib/pageSize';
@@ -486,42 +486,73 @@ function TrackAndTeammateScreen({
           <p className="text-gray-500 text-sm">No tracks are available for you in this OJT yet.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {availableTracks.map(t => (
-              // A full track stays on screen rather than disappearing. A
-              // student who was told to pick this track needs to see why they
-              // cannot; one that silently vanishes reads as a bug in the app.
-              <button
-                key={t.trackSlug}
-                onClick={() => handlePickTrack(t.trackSlug)}
-                disabled={t.isFull}
-                className={`relative flex flex-col items-start gap-3 border rounded-xl p-5 text-left transition-all duration-200 ${
-                  t.isFull
-                    ? 'bg-zinc-850/60 border-red-500/30 cursor-not-allowed'
-                    : 'bg-zinc-850 border-zinc-750 hover:border-gold/40 hover:-translate-y-0.5'
-                }`}
-              >
-                {t.opportunityEarned && !t.isFull && (
-                  <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gold bg-gold/10 border border-gold/30 rounded-full px-2 py-0.5">
-                    <Star size={10} className="fill-gold" />
-                    Opportunity Earned
-                  </span>
-                )}
-                <div className={`p-2 rounded-lg ${t.isFull ? 'bg-zinc-800' : 'bg-zinc-750'}`}>
-                  <Layers size={20} className={t.isFull ? 'text-gray-600' : 'text-gold'} />
-                </div>
-                <p className={`font-semibold ${t.isFull ? 'text-gray-400' : 'text-white'}`}>{t.trackName}</p>
-                {t.isFull ? (
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-400">
-                    <AlertTriangle size={12} className="shrink-0" />
-                    Capacity of this track is full
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide">
-                    {t.projectMode === 'individual' ? 'Individual project' : 'Team project'}
-                  </span>
-                )}
-              </button>
-            ))}
+            {availableTracks.map(t => {
+              // Team-capacity full is the hard block (assertTrackHasRoom, at
+              // team creation) and always wins the card's color. Below that,
+              // the catalog itself getting thin is informative, not
+              // blocking — a team can still pick this track and self-propose
+              // — so it only tints the card, it never disables it. Ratio-based
+              // rather than a flat "under N" cutoff: a track with a 3-project
+              // catalog and all 3 open is healthy, not "low", the way a flat
+              // threshold tuned for a 50-project catalog would call it.
+              const projectsCritical = !t.isFull && t.totalProjects > 0 && t.availableProjects === 0;
+              const projectsLow =
+                !t.isFull && !projectsCritical && t.totalProjects > 0 && t.availableProjects / t.totalProjects <= 0.25;
+              return (
+                // A full track stays on screen rather than disappearing. A
+                // student who was told to pick this track needs to see why they
+                // cannot; one that silently vanishes reads as a bug in the app.
+                <button
+                  key={t.trackSlug}
+                  onClick={() => handlePickTrack(t.trackSlug)}
+                  disabled={t.isFull}
+                  className={`relative flex flex-col items-start gap-3 border rounded-xl p-5 text-left transition-all duration-200 ${
+                    t.isFull
+                      ? 'bg-zinc-850/60 border-red-500/30 cursor-not-allowed'
+                      : projectsCritical
+                        ? 'bg-zinc-850 border-red-500/20 hover:border-red-500/40 hover:-translate-y-0.5'
+                        : projectsLow
+                          ? 'bg-zinc-850 border-amber-500/25 hover:border-amber-500/50 hover:-translate-y-0.5'
+                          : 'bg-zinc-850 border-zinc-750 hover:border-gold/40 hover:-translate-y-0.5'
+                  }`}
+                >
+                  {t.opportunityEarned && !t.isFull && (
+                    <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gold bg-gold/10 border border-gold/30 rounded-full px-2 py-0.5">
+                      <Star size={10} className="fill-gold" />
+                      Opportunity Earned
+                    </span>
+                  )}
+                  <div className={`p-2 rounded-lg ${t.isFull ? 'bg-zinc-800' : 'bg-zinc-750'}`}>
+                    <Layers size={20} className={t.isFull ? 'text-gray-600' : 'text-gold'} />
+                  </div>
+                  <p className={`font-semibold ${t.isFull ? 'text-gray-400' : 'text-white'}`}>{t.trackName}</p>
+                  {t.isFull ? (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-400">
+                      <AlertTriangle size={12} className="shrink-0" />
+                      Capacity of this track is full
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide">
+                        {t.projectMode === 'individual' ? 'Individual project' : 'Team project'}
+                      </span>
+                      {/* Zero total isn't shown at all — a self-proposal-only
+                          track having no catalog is normal, not a warning. */}
+                      {t.totalProjects > 0 && (
+                        <span
+                          className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${
+                            projectsCritical ? 'text-red-400' : projectsLow ? 'text-amber-400' : 'text-gray-400'
+                          }`}
+                        >
+                          {(projectsCritical || projectsLow) && <AlertTriangle size={12} className="shrink-0" />}
+                          {t.availableProjects} of {t.totalProjects} projects available
+                        </span>
+                      )}
+                    </>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1087,28 +1118,50 @@ function MentorPicker({
           {options.map(m => {
             const isSelected = selectedId === m.id;
             return (
+              // A mentor at capacity stays visible rather than dropping out
+              // of the pool — a student who saw them recommended on a
+              // project card needs to see why they can't be picked here, not
+              // have them silently disappear (same reasoning as the track
+              // card's isFull above). Locked, not removed: onSelect never
+              // fires for them, and the server refuses them independently at
+              // submit either way.
               <button
                 key={m.id}
                 type="button"
                 onClick={() => onSelect(m.id)}
+                disabled={m.isFull}
+                title={m.isFull ? 'This mentor has reached their capacity for this OJT' : undefined}
                 className={`relative flex items-center gap-3 text-left rounded-lg p-3 border transition-all duration-200 ${
-                  isSelected
-                    ? 'bg-gold/10 border-gold shadow-lg shadow-gold/10'
-                    : 'bg-zinc-900 border-zinc-750 hover:border-gold/30 hover:-translate-y-0.5'
+                  m.isFull
+                    ? 'bg-zinc-900/60 border-red-500/20 cursor-not-allowed opacity-70'
+                    : isSelected
+                      ? 'bg-gold/10 border-gold shadow-lg shadow-gold/10'
+                      : 'bg-zinc-900 border-zinc-750 hover:border-gold/30 hover:-translate-y-0.5'
                 }`}
               >
-                <MentorAvatar name={m.fullName} selected={isSelected} />
+                <MentorAvatar name={m.fullName} selected={isSelected && !m.isFull} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-white font-semibold text-sm truncate">{m.fullName}</p>
-                  <span
-                    className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-medium truncate max-w-full ${
-                      isSelected ? 'bg-gold/15 text-gold' : 'bg-zinc-800 text-gray-400'
-                    }`}
-                  >
-                    {m.organization || (m.isExternal ? 'External' : 'Internal')}
-                  </span>
+                  <p className={`font-semibold text-sm truncate ${m.isFull ? 'text-gray-400' : 'text-white'}`}>{m.fullName}</p>
+                  {m.isFull ? (
+                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-red-400">
+                      <Lock size={10} className="shrink-0" />
+                      Mentor capacity exceeded
+                    </span>
+                  ) : (
+                    <span
+                      className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-medium truncate max-w-full ${
+                        isSelected ? 'bg-gold/15 text-gold' : 'bg-zinc-800 text-gray-400'
+                      }`}
+                    >
+                      {m.organization || (m.isExternal ? 'External' : 'Internal')}
+                    </span>
+                  )}
                 </div>
-                {isSelected && <CheckCircle2 size={16} className="absolute top-2.5 right-2.5 text-gold shrink-0" />}
+                {m.isFull ? (
+                  <Lock size={14} className="absolute top-2.5 right-2.5 text-red-400/70 shrink-0" />
+                ) : (
+                  isSelected && <CheckCircle2 size={16} className="absolute top-2.5 right-2.5 text-gold shrink-0" />
+                )}
               </button>
             );
           })}

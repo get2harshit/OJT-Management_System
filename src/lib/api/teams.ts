@@ -113,6 +113,12 @@ interface RawTeamMentor {
   track: string[];
   full_name: string;
   email?: string | null;
+  /**
+   * At soft capacity — added in JS by TeamRepositoryImpl.getAvailableMentors
+   * rather than selected from the DB, so it arrives already camelCase unlike
+   * every other field here.
+   */
+  isFull: boolean;
 }
 
 interface RawProject {
@@ -280,6 +286,7 @@ function mapTeamMentor(m: RawTeamMentor): TeamAvailableMentor {
     email: m.email ?? undefined,
     organization: m.organization ?? undefined,
     isExternal: m.is_external,
+    isFull: m.isFull,
   };
 }
 

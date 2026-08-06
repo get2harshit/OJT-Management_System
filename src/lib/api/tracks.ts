@@ -361,6 +361,10 @@ export interface ApiAvailableTrack {
    * because the track can fill between this list rendering and that happening.
    */
   isFull: boolean;
+  /** Recommended (PST) projects mapped to this track in this cohort. Zero on a self-proposal-only track — not a warning state. */
+  totalProjects: number;
+  /** Of those, how many still have room (mapped to this cohort, under 2 teams already holding it). */
+  availableProjects: number;
 }
 
 export async function apiGetAvailableTracks(cohortId: string): Promise<ApiAvailableTrack[]> {
