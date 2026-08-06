@@ -106,6 +106,8 @@ export interface ApiCohortTrackConfig {
   eligibilityValue: string | null;
   projectMode: TrackProjectMode;
   allowedSubmissionModes: TrackSubmissionMode[];
+  /** Team ceiling for this track; null means uncapped. */
+  maxTeams: number | null;
   mentors: ApiTrackMentor[];
   eligibleStudents: ApiEligibleStudent[];
 }
@@ -142,6 +144,11 @@ export interface SetCohortTrackConfigInput {
   mentorIds?: string[];
   /** At least one. */
   allowedSubmissionModes: TrackSubmissionMode[];
+  /**
+   * How many teams this track will take. Null clears any ceiling; every
+   * configuration is uncapped until one is set.
+   */
+  maxTeams?: number | null;
 }
 
 export async function apiSetCohortTrackConfig(
@@ -195,6 +202,26 @@ export async function apiGetTrackCandidateMentors(
     ? `/api/v1/cohorts/${cohortId}/track-config/${trackSlug}/candidate-mentors`
     : `/api/v1/cohorts/${cohortId}/track-config/candidate-mentors`;
   return apiFetch<CandidateMentorsPage>(`${path}${qs ? `?${qs}` : ''}`);
+}
+
+// Ids of everyone the picker's filter matches, for "select all matching" —
+// the whole set, none of the rows. Takes the same search/type as the paged
+// list, so the selection covers exactly what the table is showing.
+//
+// No trackSlug: the roster belongs to the OJT, and the track only decides the
+// per-mentor flags this does not return.
+export async function apiGetCandidateMentorIds(
+  cohortId: string,
+  params: { search?: string; type?: 'internal' | 'external' } = {}
+): Promise<string[]> {
+  const query = new URLSearchParams();
+  if (params.search?.trim()) query.set('search', params.search.trim());
+  if (params.type) query.set('type', params.type);
+  const qs = query.toString();
+  const { data } = await apiFetch<{ data: string[] }>(
+    `/api/v1/cohorts/${cohortId}/track-config/candidate-mentor-ids${qs ? `?${qs}` : ''}`
+  );
+  return data;
 }
 
 /** The mentors currently staffing a track — seeds the picker's ticked state. */
@@ -325,6 +352,15 @@ export interface ApiAvailableTrack {
   projectMode: TrackProjectMode;
   /** True for a restricted (unique) track the student was specifically named for. */
   opportunityEarned: boolean;
+  /** The team ceiling the admin set, or null when the track is uncapped. */
+  maxTeams: number | null;
+  /** Teams already formed on this track in this OJT. */
+  teamCount: number;
+  /**
+   * Advisory. The server re-checks under a lock when a team is actually formed,
+   * because the track can fill between this list rendering and that happening.
+   */
+  isFull: boolean;
 }
 
 export async function apiGetAvailableTracks(cohortId: string): Promise<ApiAvailableTrack[]> {

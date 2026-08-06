@@ -79,6 +79,9 @@ export default function CohortTrackConfigPage() {
   // without this an edit of the 2025 configuration would overwrite the 2024 one.
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
   const [formVariantLabel, setFormVariantLabel] = useState('');
+  // Held as a string, not a number: an empty field has to stay distinguishable
+  // from 0, and a number input's value is a string anyway.
+  const [formMaxTeams, setFormMaxTeams] = useState('');
   // Only shown when adding (not editing) a track — pick one or more existing
   // not-yet-configured tracks via checkboxes (all get the same eligibility/
   // mode config below), or create a brand new one right here instead of
@@ -190,6 +193,7 @@ export default function CohortTrackConfigPage() {
     setEditingTrackSlug(null);
     setEditingConfigId(null);
     setFormVariantLabel('');
+    setFormMaxTeams('');
     setTrackSource('existing');
     setNewTrackName('');
     setFormTrackSlugs([]);
@@ -221,6 +225,7 @@ export default function CohortTrackConfigPage() {
     setFormProjectMode(config.projectMode);
     setEditingMentorCount(config.mentors.length);
     setFormSubmissionModes(config.allowedSubmissionModes.length ? config.allowedSubmissionModes : ['2_recommended']);
+    setFormMaxTeams(config.maxTeams === null || config.maxTeams === undefined ? '' : String(config.maxTeams));
     setConfigModalOpen(true);
   };
 
@@ -293,6 +298,8 @@ export default function CohortTrackConfigPage() {
             eligibilityValue,
             projectMode: formProjectMode || undefined,
             allowedSubmissionModes: formSubmissionModes,
+            // Blank clears the ceiling rather than leaving the old one in place.
+            maxTeams: formMaxTeams.trim() === '' ? null : Number(formMaxTeams),
           })
         )
       );
@@ -315,18 +322,15 @@ export default function CohortTrackConfigPage() {
     }
   };
 
-  // "Choose mentors" from inside the form. An existing track can be opened
-  // straight away; a new one has to be saved first to exist at all, so this
-  // does that save and carries on to the same screen rather than making the
-  // admin close the modal, find the row and click again.
+  // "Choose mentors" from inside the form. Always saves first, whether this
+  // is a brand-new track (which has to exist before mentors can attach to it)
+  // or an existing one being edited — a bare navigate would otherwise discard
+  // whatever the admin just changed in this form (eligibility, max teams,
+  // submission modes) without saving it, since the mentors screen is a
+  // separate page and never sees the modal's state. Only mentorIds itself is
+  // left untouched by that save — see the note on editingTrackSlug above.
   const handleGoToMentors = async () => {
     if (!cohortId) return;
-    if (editingTrackSlug && editingConfigId) {
-      navigate(
-        `/admin/dashboard/ojts/${cohortId}/track-config/${editingTrackSlug}/mentors?configId=${editingConfigId}`
-      );
-      return;
-    }
     // Reached by saving first, so the id comes from the save's response — see
     // variantPath for why it is never interpolated unchecked.
     const saved = await handleSaveConfig();
@@ -547,6 +551,20 @@ export default function CohortTrackConfigPage() {
                   header: 'Project mode',
                   render: (config) => (config.projectMode === 'individual' ? 'Individual only' : 'Team required'),
                 },
+                {
+                  // Shown as a column rather than left inside the edit form: a
+                  // ceiling nobody can see from the list is one nobody
+                  // remembers setting, and the whole point is that it changes
+                  // what students can do.
+                  key: 'maxTeams',
+                  header: 'Max teams',
+                  render: (config) =>
+                    config.maxTeams === null || config.maxTeams === undefined ? (
+                      <span className="text-gray-600">No limit</span>
+                    ) : (
+                      <span className="text-white">{config.maxTeams}</span>
+                    ),
+                },
               ]}
               data={configs}
               searchPlaceholder="Search tracks..."
@@ -710,6 +728,27 @@ export default function CohortTrackConfigPage() {
             <p className="text-xs text-gray-500 mt-1">
               Names this configuration where the same track is set up more than once. Left blank, its
               eligibility is shown instead.
+            </p>
+          </div>
+
+          {/* Blank means no ceiling, which is what every track means today.
+              Stated as a number of teams rather than students because that is
+              what the check counts and what allocation works in. */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">
+              Max teams <span className="text-gray-600">(optional)</span>
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={formMaxTeams}
+              onChange={e => setFormMaxTeams(e.target.value)}
+              placeholder="No limit"
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40 focus:border-gold transition-all"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Once this many teams have formed on the track, students see it as full and cannot pick
+              it. Leave blank for no limit.
             </p>
           </div>
 

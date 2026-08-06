@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Briefcase, Users, Clock, CheckCircle2, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star, Minimize2 } from 'lucide-react';
+import { Briefcase, Users, Clock, CheckCircle2, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star, Minimize2, AlertTriangle } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import DataTable from '../../components/DataTable';
 import { derivePageSizeOptions } from '../../lib/pageSize';
@@ -487,24 +487,39 @@ function TrackAndTeammateScreen({
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {availableTracks.map(t => (
+              // A full track stays on screen rather than disappearing. A
+              // student who was told to pick this track needs to see why they
+              // cannot; one that silently vanishes reads as a bug in the app.
               <button
                 key={t.trackSlug}
                 onClick={() => handlePickTrack(t.trackSlug)}
-                className="relative flex flex-col items-start gap-3 bg-zinc-850 border border-zinc-750 rounded-xl p-5 text-left hover:border-gold/40 hover:-translate-y-0.5 transition-all duration-200"
+                disabled={t.isFull}
+                className={`relative flex flex-col items-start gap-3 border rounded-xl p-5 text-left transition-all duration-200 ${
+                  t.isFull
+                    ? 'bg-zinc-850/60 border-red-500/30 cursor-not-allowed'
+                    : 'bg-zinc-850 border-zinc-750 hover:border-gold/40 hover:-translate-y-0.5'
+                }`}
               >
-                {t.opportunityEarned && (
+                {t.opportunityEarned && !t.isFull && (
                   <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gold bg-gold/10 border border-gold/30 rounded-full px-2 py-0.5">
                     <Star size={10} className="fill-gold" />
                     Opportunity Earned
                   </span>
                 )}
-                <div className="p-2 rounded-lg bg-zinc-750">
-                  <Layers size={20} className="text-gold" />
+                <div className={`p-2 rounded-lg ${t.isFull ? 'bg-zinc-800' : 'bg-zinc-750'}`}>
+                  <Layers size={20} className={t.isFull ? 'text-gray-600' : 'text-gold'} />
                 </div>
-                <p className="text-white font-semibold">{t.trackName}</p>
-                <span className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide">
-                  {t.projectMode === 'individual' ? 'Individual project' : 'Team project'}
-                </span>
+                <p className={`font-semibold ${t.isFull ? 'text-gray-400' : 'text-white'}`}>{t.trackName}</p>
+                {t.isFull ? (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-400">
+                    <AlertTriangle size={12} className="shrink-0" />
+                    Capacity of this track is full
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide">
+                    {t.projectMode === 'individual' ? 'Individual project' : 'Team project'}
+                  </span>
+                )}
               </button>
             ))}
           </div>
