@@ -334,6 +334,18 @@ export interface MentorCapacitySummary {
   effectiveTotal: number;
 }
 
+// One row per mentor for the admin's bulk capacity table (GET /api/v1/mentors/capacity)
+// — cohort-agnostic, since capacityOverride is one flat number per mentor.
+export interface MentorCapacityListRow {
+  mentorId: string;
+  fullName: string | null;
+  email: string | null;
+  organization: string | null;
+  isExternal: boolean;
+  capacityOverride: number | null;
+  effectiveCapacity: number;
+}
+
 // One row per mentor with allocated count vs. their flat capacity
 // (GET /api/v1/teams/cohort/:cohortId/mentor-load-summary).
 export interface MentorLoadSummaryRow {
@@ -408,6 +420,20 @@ export interface TeamAvailableMentor {
   email?: string;
   organization?: string;
   isExternal: boolean;
+  /**
+   * At their soft capacity — still shown (they may still be who a project
+   * recommends), but not selectable. The server re-checks this at submit
+   * time regardless of what the picker shows.
+   */
+  isFull: boolean;
+  /**
+   * At their nominal capacity but not yet the soft cap — still selectable
+   * (the soft cap is deliberately looser, so the allocation algorithm has a
+   * real pool to rank instead of pure first-come-first-served). Mutually
+   * exclusive with isFull; only meant to make an at-capacity mentor look
+   * different from one nobody has picked yet.
+   */
+  isNearingCapacity: boolean;
 }
 
 // What a team on a track may submit. 'own' is the team's self-proposed
@@ -528,6 +554,8 @@ export interface DashboardMetrics {
   projectsCount: number;
   totalCreditsAvailable: number;
   tasksCount: number;
+  /** Submissions still awaiting a mentor decision (status 'submitted' or 'under_review'). */
+  pendingSubmissionsCount: number;
 }
 
 // ── Evaluation module ────────────────────────────────────────────────────────
@@ -632,5 +660,31 @@ export interface EvaluationDetail {
   panelists: EvaluationPanelistScore[];
   finalMarksObtained: number | null;
   evaluatedAt: string | null;
+}
+
+// ── Eligibility status (platform-access gate) ───────────────────────────────
+// Admin-maintained, keyed by email/registration number rather than a student
+// id — a row can exist before, or outlive, the matching OJT account. Only
+// feePending is enforced today: a student whose row has feePending = true is
+// refused at sign-in (see AuthService.signIn/signInWithGoogle on the
+// backend). isOpenSource/isIntern are stored but not enforced anywhere yet.
+export interface EligibilityStatus {
+  id: string;
+  msuEmail: string;
+  msuRegistrationNumber: string | null;
+  isOpenSource: boolean;
+  /** true = fee not yet paid = sign-in refused. */
+  feePending: boolean;
+  isIntern: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EligibilityStatusInput {
+  msuEmail: string;
+  msuRegistrationNumber?: string | null;
+  isOpenSource?: boolean;
+  feePending?: boolean;
+  isIntern?: boolean;
 }
 

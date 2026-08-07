@@ -1,4 +1,4 @@
-import type { ApiMentor, MentorCapacitySummary } from '../types';
+import type { ApiMentor, MentorCapacityListRow, MentorCapacitySummary } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
 
 export async function apiListMentors(type?: 'internal' | 'external'): Promise<ApiMentor[]> {
@@ -25,6 +25,8 @@ interface GetMentorsPageParams {
   track?: string;
   /** Scope to mentors actually mapped to a specific cohort. */
   cohortId?: string;
+  /** Internal vs external — maps to ojt_mentors.is_external server-side. */
+  type?: 'internal' | 'external';
 }
 
 // Admin — mentor roster, server-paginated with optional search/track/cohort
@@ -36,7 +38,30 @@ export async function apiListMentorsPage(params: GetMentorsPageParams): Promise<
   if (params.search) query.set('search', params.search);
   if (params.track) query.set('track', params.track);
   if (params.cohortId) query.set('cohortId', params.cohortId);
+  if (params.type) query.set('type', params.type);
   return apiFetch<MentorsPage>(`/api/v1/mentors?${query.toString()}`);
+}
+
+// Ids of every mentor a filter matches — what a picker's "select all matching"
+// needs, and nothing else. Asking apiListMentorsPage for everything and reading
+// one id off each row shipped every column of every mentor to build a list of
+// uuids.
+export async function apiListMentorIds(params: {
+  search?: string;
+  track?: string;
+  cohortId?: string;
+  type?: 'internal' | 'external';
+}): Promise<string[]> {
+  const query = new URLSearchParams();
+  if (params.search) query.set('search', params.search);
+  if (params.track) query.set('track', params.track);
+  if (params.cohortId) query.set('cohortId', params.cohortId);
+  if (params.type) query.set('type', params.type);
+  const qs = query.toString();
+  // apiFetch returns the response body as-is, so the { success, data } envelope
+  // is unwrapped here rather than assumed away.
+  const body = await apiFetch<{ data: string[] }>(`/api/v1/mentors/ids${qs ? `?${qs}` : ''}`);
+  return body.data;
 }
 
 // Admin or self — updates mutable mentor fields (organization, isExternal, track).
@@ -57,10 +82,23 @@ export async function apiGetMentorCapacity(mentorId: string, cohortId: string): 
   return apiFetch<MentorCapacitySummary>(`/api/v1/mentors/${mentorId}/capacity?cohortId=${cohortId}`);
 }
 
-// Admin-only — sets or clears (pass null) the manual override of a mentor's total capacity.
-export async function apiSetMentorCapacityOverride(mentorId: string, overrideTotalCapacity: number | null): Promise<void> {
-  await apiFetch<void>(`/api/v1/mentors/${mentorId}/capacity`, {
+// Admin-only — every mentor matching search/type, with their capacity. Backs
+// the Track Configuration → Mentor Capacity bulk-edit table. Unpaginated:
+// that table edits whatever it's showing and saves it in one request.
+export async function apiListMentorCapacities(params: { search?: string; type?: 'internal' | 'external' }): Promise<MentorCapacityListRow[]> {
+  const query = new URLSearchParams();
+  if (params.search) query.set('search', params.search);
+  if (params.type) query.set('type', params.type);
+  const qs = query.toString();
+  const body = await apiFetch<{ data: MentorCapacityListRow[] }>(`/api/v1/mentors/capacity${qs ? `?${qs}` : ''}`);
+  return body.data;
+}
+
+// Admin-only — saves capacity for many mentors in one request (pass null per
+// mentor to clear their override back to the default).
+export async function apiBulkSetMentorCapacity(updates: { mentorId: string; capacityOverride: number | null }[]): Promise<void> {
+  await apiFetch<void>('/api/v1/mentors/capacity', {
     method: 'PATCH',
-    body: JSON.stringify({ overrideTotalCapacity }),
+    body: JSON.stringify({ updates }),
   });
 }

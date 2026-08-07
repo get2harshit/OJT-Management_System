@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Briefcase, Users, Clock, CheckCircle2, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star, Minimize2 } from 'lucide-react';
+import { Briefcase, Users, Clock, CheckCircle2, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star, Minimize2, AlertTriangle, Lock, Building2 } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import DataTable from '../../components/DataTable';
 import { derivePageSizeOptions } from '../../lib/pageSize';
@@ -39,7 +39,15 @@ export default function ProjectPicker() {
   const [availableMentors, setAvailableMentors] = useState<TeamAvailableMentor[]>([]);
   const [mentorsLoading, setMentorsLoading] = useState(true);
 
+  // Every action that changes what this page shows (forming a team, submitting
+  // preferences, resubmitting) ends by re-reading status, and that read is not
+  // instant. Without a marker the screen sits on the now-stale previous step
+  // looking like the click did nothing — so the transition gets its own
+  // overlay rather than leaving the wait invisible.
+  const [statusRefreshing, setStatusRefreshing] = useState(false);
+
   const refreshStatus = useCallback(async (cid: string) => {
+    setStatusRefreshing(true);
     try {
       const res = await apiGetMyTeamStatus(cid);
       setStatus(res);
@@ -47,6 +55,8 @@ export default function ProjectPicker() {
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load your status');
       return null;
+    } finally {
+      setStatusRefreshing(false);
     }
   }, [showError]);
 
@@ -170,7 +180,18 @@ export default function ProjectPicker() {
         )}
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col relative">
+        {/* Covers the step being replaced while the new status loads. Only for
+            a refresh of an already-rendered page — the very first load is
+            handled by the full-page spinner above, which returns early. */}
+        {statusRefreshing && (
+          <div className="absolute inset-0 z-20 bg-zinc-900/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl">
+            <div className="flex flex-col items-center gap-3">
+              <SpinnerSquare size={40} />
+              <p className="text-xs text-gray-400 font-medium">Updating your status...</p>
+            </div>
+          </div>
+        )}
         {status?.team ? (
           status.projectPreferences ? (
             <SummaryScreen
@@ -486,27 +507,83 @@ function TrackAndTeammateScreen({
           <p className="text-gray-500 text-sm">No tracks are available for you in this OJT yet.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {availableTracks.map(t => (
-              <button
-                key={t.trackSlug}
-                onClick={() => handlePickTrack(t.trackSlug)}
-                className="relative flex flex-col items-start gap-3 bg-zinc-850 border border-zinc-750 rounded-xl p-5 text-left hover:border-gold/40 hover:-translate-y-0.5 transition-all duration-200"
-              >
-                {t.opportunityEarned && (
-                  <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gold bg-gold/10 border border-gold/30 rounded-full px-2 py-0.5">
-                    <Star size={10} className="fill-gold" />
-                    Opportunity Earned
-                  </span>
-                )}
-                <div className="p-2 rounded-lg bg-zinc-750">
-                  <Layers size={20} className="text-gold" />
-                </div>
-                <p className="text-white font-semibold">{t.trackName}</p>
-                <span className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide">
-                  {t.projectMode === 'individual' ? 'Individual project' : 'Team project'}
-                </span>
-              </button>
-            ))}
+            {availableTracks.map(t => {
+              // Two hard blocks, checked in this order: team-capacity full
+              // (assertTrackHasRoom) and catalog-exhausted (assertCatalogHasRoom
+              // — none of the track's allowed submission modes can currently be
+              // completed, e.g. a catalog-only track with nothing left, or a
+              // '2_recommended' track down to its last one). Both are re-checked
+              // server-side under the same advisory lock at team creation; this
+              // is just the advisory front door. Below both, the catalog merely
+              // getting thin (but a self-proposal escape hatch still exists) is
+              // informative, not blocking — it only tints the card. Ratio-based
+              // rather than a flat "under N" cutoff: a track with a 3-project
+              // catalog and all 3 open is healthy, not "low", the way a flat
+              // threshold tuned for a 50-project catalog would call it.
+              const locked = t.isFull || t.catalogExhausted;
+              const projectsCritical = !locked && t.totalProjects > 0 && t.availableProjects === 0;
+              const projectsLow =
+                !locked && !projectsCritical && t.totalProjects > 0 && t.availableProjects / t.totalProjects <= 0.25;
+              return (
+                // A locked track stays on screen rather than disappearing. A
+                // student who was told to pick this track needs to see why they
+                // cannot; one that silently vanishes reads as a bug in the app.
+                <button
+                  key={t.trackSlug}
+                  onClick={() => handlePickTrack(t.trackSlug)}
+                  disabled={locked}
+                  className={`relative flex flex-col items-start gap-3 border rounded-xl p-5 text-left transition-all duration-200 ${
+                    locked
+                      ? 'bg-zinc-850/60 border-red-500/30 cursor-not-allowed'
+                      : projectsCritical
+                        ? 'bg-zinc-850 border-red-500/20 hover:border-red-500/40 hover:-translate-y-0.5'
+                        : projectsLow
+                          ? 'bg-zinc-850 border-amber-500/25 hover:border-amber-500/50 hover:-translate-y-0.5'
+                          : 'bg-zinc-850 border-zinc-750 hover:border-gold/40 hover:-translate-y-0.5'
+                  }`}
+                >
+                  {t.opportunityEarned && !locked && (
+                    <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gold bg-gold/10 border border-gold/30 rounded-full px-2 py-0.5">
+                      <Star size={10} className="fill-gold" />
+                      Opportunity Earned
+                    </span>
+                  )}
+                  <div className={`p-2 rounded-lg ${locked ? 'bg-zinc-800' : 'bg-zinc-750'}`}>
+                    <Layers size={20} className={locked ? 'text-gray-600' : 'text-gold'} />
+                  </div>
+                  <p className={`font-semibold ${locked ? 'text-gray-400' : 'text-white'}`}>{t.trackName}</p>
+                  {t.isFull ? (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-400">
+                      <AlertTriangle size={12} className="shrink-0" />
+                      Capacity of this track is full
+                    </span>
+                  ) : t.catalogExhausted ? (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-400">
+                      <AlertTriangle size={12} className="shrink-0" />
+                      No projects left to pick on this track
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide">
+                        {t.projectMode === 'individual' ? 'Individual project' : 'Team project'}
+                      </span>
+                      {/* Zero total isn't shown at all — a self-proposal-only
+                          track having no catalog is normal, not a warning. */}
+                      {t.totalProjects > 0 && (
+                        <span
+                          className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${
+                            projectsCritical ? 'text-red-400' : projectsLow ? 'text-amber-400' : 'text-gray-400'
+                          }`}
+                        >
+                          {(projectsCritical || projectsLow) && <AlertTriangle size={12} className="shrink-0" />}
+                          {t.availableProjects} of {t.totalProjects} projects available
+                        </span>
+                      )}
+                    </>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1071,29 +1148,74 @@ function MentorPicker({
         >
           {options.map(m => {
             const isSelected = selectedId === m.id;
+            // External mentors carry their own badge below, so this pill only
+            // has to fill in what that badge doesn't already say.
+            const provenanceLabel = m.organization || (m.isExternal ? null : 'Internal');
             return (
+              // A mentor at capacity stays visible rather than dropping out
+              // of the pool — a student who saw them recommended on a
+              // project card needs to see why they can't be picked here, not
+              // have them silently disappear (same reasoning as the track
+              // card's isFull above). Locked, not removed: onSelect never
+              // fires for them, and the server refuses them independently at
+              // submit either way.
               <button
                 key={m.id}
                 type="button"
                 onClick={() => onSelect(m.id)}
+                disabled={m.isFull}
+                title={
+                  m.isFull
+                    ? 'This mentor has reached their capacity for this OJT'
+                    : m.isNearingCapacity
+                      ? 'This mentor is nearing their capacity for this OJT — still available for now'
+                      : undefined
+                }
                 className={`relative flex items-center gap-3 text-left rounded-lg p-3 border transition-all duration-200 ${
-                  isSelected
-                    ? 'bg-gold/10 border-gold shadow-lg shadow-gold/10'
-                    : 'bg-zinc-900 border-zinc-750 hover:border-gold/30 hover:-translate-y-0.5'
+                  m.isFull
+                    ? 'bg-zinc-900/60 border-red-500/20 cursor-not-allowed opacity-70'
+                    : isSelected
+                      ? 'bg-gold/10 border-gold shadow-lg shadow-gold/10'
+                      : m.isNearingCapacity
+                        ? 'bg-zinc-900 border-amber-500/25 hover:border-amber-500/50 hover:-translate-y-0.5'
+                        : 'bg-zinc-900 border-zinc-750 hover:border-gold/30 hover:-translate-y-0.5'
                 }`}
               >
-                <MentorAvatar name={m.fullName} selected={isSelected} />
+                <MentorAvatar name={m.fullName} selected={isSelected && !m.isFull} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-white font-semibold text-sm truncate">{m.fullName}</p>
-                  <span
-                    className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-medium truncate max-w-full ${
-                      isSelected ? 'bg-gold/15 text-gold' : 'bg-zinc-800 text-gray-400'
-                    }`}
-                  >
-                    {m.organization || (m.isExternal ? 'External' : 'Internal')}
-                  </span>
+                  <p className={`font-semibold text-sm truncate ${m.isFull ? 'text-gray-400' : 'text-white'}`}>{m.fullName}</p>
+                  {/* Where a mentor comes from and how full they are are two
+                      independent facts, so they share a wrapping row rather
+                      than one replacing the other — a mentor at capacity is
+                      still an industry mentor, and used to lose that label. */}
+                  <div className="flex flex-wrap items-center gap-1 mt-1">
+                    {m.isExternal && <IndustryMentorBadge />}
+                    {m.isFull ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-400">
+                        <Lock size={10} className="shrink-0" />
+                        Mentor capacity exceeded
+                      </span>
+                    ) : m.isNearingCapacity ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400">
+                        <AlertTriangle size={10} className="shrink-0" />
+                        Nearing capacity
+                      </span>
+                    ) : provenanceLabel ? (
+                      <span
+                        className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-medium truncate max-w-full ${
+                          isSelected ? 'bg-gold/15 text-gold' : 'bg-zinc-800 text-gray-400'
+                        }`}
+                      >
+                        {provenanceLabel}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-                {isSelected && <CheckCircle2 size={16} className="absolute top-2.5 right-2.5 text-gold shrink-0" />}
+                {m.isFull ? (
+                  <Lock size={14} className="absolute top-2.5 right-2.5 text-red-400/70 shrink-0" />
+                ) : (
+                  isSelected && <CheckCircle2 size={16} className="absolute top-2.5 right-2.5 text-gold shrink-0" />
+                )}
               </button>
             );
           })}
@@ -1131,6 +1253,20 @@ function MentorAvatar({ name, selected }: { name: string; selected: boolean }) {
     >
       {initials || '?'}
     </div>
+  );
+}
+
+// An external mentor comes from a partner company rather than the university,
+// and a student choosing one should be able to see that at a glance. The
+// organization pill alone can't say it: a company name reads the same as any
+// other label, and an external mentor with no organization on record showed
+// nothing distinguishing at all.
+function IndustryMentorBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/30 whitespace-nowrap">
+      <Building2 size={9} className="shrink-0" />
+      Industry mentor
+    </span>
   );
 }
 
@@ -1301,6 +1437,9 @@ function ProjectCatalogBrowser({
                 <div className="min-w-0">
                   <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Mentor</p>
                   <p className="text-white font-semibold text-sm truncate">{selectedMentor.fullName}</p>
+                  {selectedMentor.isExternal && (
+                    <div className="mt-1"><IndustryMentorBadge /></div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -1681,6 +1820,9 @@ function SelfProjectProposer({
                   <div className="min-w-0">
                     <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Mentor</p>
                     <p className="text-white font-semibold text-sm truncate">{selectedMentor.fullName}</p>
+                    {selectedMentor.isExternal && (
+                      <div className="mt-1"><IndustryMentorBadge /></div>
+                    )}
                   </div>
                 </div>
               ) : (

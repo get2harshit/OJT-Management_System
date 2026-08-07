@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Bell, CheckCheck, AlertTriangle, CheckCircle2, Megaphone, Flame, Users, Check, X, FolderCheck, FileCheck2, ClipboardList, Award } from 'lucide-react';
+import { Bell, CheckCheck, AlertTriangle, CheckCircle2, Megaphone, Flame, Users, Check, X, FolderCheck, FileCheck2, ClipboardList, Award, Loader2 } from 'lucide-react';
 import { apiRespondToTeamRequest } from '../lib/api';
 import { apiGetMyNotifications, apiMarkNotificationRead, apiMarkAllNotificationsRead } from '../lib/api/notifications';
 import type { NotificationType } from '../lib/api/notifications';
@@ -41,6 +41,12 @@ function timeAgo(isoDate: string): string {
 export default function NotificationCenter() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  // Which invite is mid-response, and which way. Accepting an invite is one of
+  // the slowest actions in the app (the whole team-formation transaction, then
+  // a notification refetch), and it used to run with no feedback at all — the
+  // row sat there looking untouched, inviting a second click that could only
+  // ever fail with "Request is no longer pending."
+  const [respondingTo, setRespondingTo] = useState<{ id: string; action: 'accept' | 'reject' } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { showError, showSuccess } = useToast();
   const { navigateFromNotification } = useNotificationNavigateContext();
@@ -102,6 +108,20 @@ export default function NotificationCenter() {
   }, [buildNotifications]);
 
   usePageRefresh(buildNotifications);
+
+  // Wraps the handlers buildNotifications attached, purely to hold the
+  // in-flight state around them — the guard makes the buttons genuinely
+  // single-shot rather than only looking disabled, since a click can land
+  // between the request going out and React repainting.
+  const respondToInvite = async (n: NotificationItem, action: 'accept' | 'reject') => {
+    if (respondingTo) return;
+    setRespondingTo({ id: n.id, action });
+    try {
+      await (action === 'accept' ? n.onAccept?.() : n.onReject?.());
+    } finally {
+      setRespondingTo(null);
+    }
+  };
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -243,22 +263,34 @@ export default function NotificationCenter() {
 
                     <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">{n.message}</p>
 
-                    {n.isInvite && (
-                      <div className="flex items-center gap-2 mt-2">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); n.onAccept?.(); }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-gold text-black text-xs font-semibold rounded-lg hover:bg-gold-hover transition-colors"
-                        >
-                          <Check size={14} /> Accept
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); n.onReject?.(); }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-750 text-white text-xs font-medium rounded-lg hover:bg-zinc-700 transition-colors"
-                        >
-                          <X size={14} /> Reject
-                        </button>
-                      </div>
-                    )}
+                    {n.isInvite && (() => {
+                      // Both buttons go disabled while either is in flight —
+                      // the two are mutually exclusive answers to the same
+                      // invite, so "reject" mid-accept isn't a thing to allow.
+                      const accepting = respondingTo?.id === n.id && respondingTo.action === 'accept';
+                      const rejecting = respondingTo?.id === n.id && respondingTo.action === 'reject';
+                      const busy = respondingTo !== null;
+                      return (
+                        <div className="flex items-center gap-2 mt-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); respondToInvite(n, 'accept'); }}
+                            disabled={busy}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gold text-black text-xs font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {accepting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                            {accepting ? 'Accepting...' : 'Accept'}
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); respondToInvite(n, 'reject'); }}
+                            disabled={busy}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-750 text-white text-xs font-medium rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {rejecting ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                            {rejecting ? 'Rejecting...' : 'Reject'}
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                   {!n.read && <span className="w-2 h-2 rounded-full bg-gold shrink-0 mt-1.5" />}
                 </div>

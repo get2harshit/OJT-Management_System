@@ -113,6 +113,14 @@ interface RawTeamMentor {
   track: string[];
   full_name: string;
   email?: string | null;
+  /**
+   * At soft capacity — added in JS by TeamRepositoryImpl.getAvailableMentors
+   * rather than selected from the DB, so it arrives already camelCase unlike
+   * every other field here.
+   */
+  isFull: boolean;
+  /** At nominal capacity but under the soft cap — see TeamAvailableMentor. */
+  isNearingCapacity: boolean;
 }
 
 interface RawProject {
@@ -280,6 +288,8 @@ function mapTeamMentor(m: RawTeamMentor): TeamAvailableMentor {
     email: m.email ?? undefined,
     organization: m.organization ?? undefined,
     isExternal: m.is_external,
+    isFull: m.isFull,
+    isNearingCapacity: m.isNearingCapacity,
   };
 }
 
@@ -624,16 +634,22 @@ export async function apiGetProposalDetail(preferenceId: string): Promise<Propos
 // existing flow; 'resubmit' sends the student back to revise their own
 // project; 'return' sends them to pick a recommended/catalog project
 // instead — note is mandatory for the latter two (enforced server-side too).
+//
+// catalogWarning is only ever set on a 'return' whose track's recommended
+// catalog is getting thin (still above zero — the server blocks 'return'
+// outright once it hits zero) — surface it to the mentor rather than
+// discarding it, since they're the one who can still do something about it.
 export async function apiDecideOnProposal(
   preferenceId: string,
   action: 'approve' | 'resubmit' | 'return',
   note?: string
-): Promise<void> {
-  await apiFetch<void>(`/api/v1/teams/proposals/${preferenceId}/decide`, {
+): Promise<{ catalogWarning?: string }> {
+  const result = await apiFetch<{ catalogWarning?: string }>(`/api/v1/teams/proposals/${preferenceId}/decide`, {
     method: 'POST',
     body: JSON.stringify({ action, note }),
   });
   invalidateTeamCaches();
+  return result;
 }
 
 // Admin — lists every team formed within a cohort.

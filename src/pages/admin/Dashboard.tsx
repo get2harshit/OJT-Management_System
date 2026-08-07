@@ -84,10 +84,11 @@ export default function AdminDashboard({
     return Array.from(new Set(all)).sort().map(b => ({ value: b, label: b }));
   }, [semFilter, cohorts]);
 
-  // submissions/attendance are mock/localStorage data with no real student
-  // linkage worth scoping (see the state-declaration comment above) — shown
-  // as-is rather than filtered by a roster fetched just for this.
-  const pendingSubmissions = submissions.filter(s => s.status === 'PENDING').length;
+  // attendance is still mock/localStorage data with no real student linkage
+  // worth scoping (see the state-declaration comment above) — shown as-is
+  // rather than filtered by a roster fetched just for this. Submissions used
+  // to be counted the same mock way; see showPendingSubmissionsCount below,
+  // which now comes from the real endpoint instead.
   const attendanceCount = attendance.length;
 
   // Stat-card counts — always straight from /dashboard/metrics, which is
@@ -98,6 +99,7 @@ export default function AdminDashboard({
   const showBatchManagersCount = metrics ? metrics.batchManagersCount : '—';
   const showProjectsCount = metrics ? metrics.projectsCount : '—';
   const showTasksCount = metrics ? metrics.tasksCount : '—';
+  const showPendingSubmissionsCount = metrics ? metrics.pendingSubmissionsCount : '—';
 
   if (loadingReal) {
     return (
@@ -161,10 +163,11 @@ export default function AdminDashboard({
         />
       </div>
 
-      {/* Stat Cards — Students/Mentors/Batch Managers/Projects/Credits/Tasks are
-          real backend counts; Pending Submissions/Attendance stay mock since
-          the metrics endpoint has no data for them. Each card jumps to its
-          matching sidebar tab, except Batch Managers which has no page yet. */}
+      {/* Stat Cards — Students/Mentors/Batch Managers/Projects/Credits/Tasks/
+          Pending Submissions are real backend counts; only Attendance stays
+          mock since the metrics endpoint has no data for it yet. Each card
+          jumps to its matching sidebar tab, except Batch Managers which has
+          no page yet. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <StatCard title="Students" value={showStudentsCount} icon={Users} onClick={() => onNavigateToSection('students')} />
         <StatCard title="Mentors" value={showMentorsCount} icon={Users} onClick={() => onNavigateToSection('mentors')} />
@@ -172,7 +175,7 @@ export default function AdminDashboard({
         <StatCard title="Projects" value={showProjectsCount} icon={Briefcase} onClick={() => onNavigateToSection('ojts')} />
         <StatCard title="Cloud Credits" value={metrics ? `$${metrics.totalCreditsAvailable}` : '—'} icon={Cloud} onClick={() => onNavigateToSection('credits')} />
         <StatCard title="Tasks" value={showTasksCount} icon={CheckSquare} onClick={() => onNavigateToSection('tasks')} />
-        <StatCard title="Pending Submissions" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToSection('submissions')} />
+        <StatCard title="Pending Submissions" value={showPendingSubmissionsCount} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToSection('submissions')} />
         <StatCard title="Attendance Records" value={attendanceCount} icon={CalendarCheck} onClick={() => onNavigateToSection('attendance')} />
       </div>
 

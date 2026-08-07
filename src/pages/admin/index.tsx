@@ -13,6 +13,7 @@ import Submissions from './Submissions';
 import Credits from './Credits';
 import Attendance from './Attendance';
 import EvaluationTracker from './EvaluationTracker';
+import EligibilityStatusPage from './EligibilityStatus';
 import ViewCohortPage from './OJTs/ViewCohortPage';
 import CohortStudentsPage from './OJTs/CohortStudentsPage';
 import CohortProjectsPage from './OJTs/CohortProjectsPage';
@@ -130,6 +131,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route path="credits" element={<Credits />} />
         <Route path="attendance" element={<Attendance />} />
         <Route path="evaluation" element={<EvaluationTracker />} />
+        <Route path="eligibility" element={<EligibilityStatusPage />} />
 
         {/* Pages reached from within a section. They sit under the same path
             as the section they belong to, so the sidebar keeps that section

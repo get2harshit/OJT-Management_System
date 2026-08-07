@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Calendar, RefreshCw, Edit2, UserCog, Users, Users2, Download, Settings2 } from 'lucide-react';
+import { Plus, Trash2, Calendar, RefreshCw, Edit2, Users, Users2, Download, Settings2 } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import ActionsMenu from '../../../components/ActionsMenu';
@@ -241,7 +241,6 @@ export default function CohortsPanel() {
                 { label: 'Edit OJT', icon: Edit2, onClick: () => handleEditCohort(row.id) },
                 { label: 'Track Configuration', icon: Settings2, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/track-config`) },
                 { label: 'Select Student', icon: Users, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/students`) },
-                { label: 'Select Mentor', icon: UserCog, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/mentors`) },
                 { label: 'Manage Teams', icon: Users2, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/teams`) },
                 { label: 'Download Projects CSV', icon: Download, onClick: () => handleDownloadProjectsCsv(row) },
                 { label: 'Delete OJT', icon: Trash2, onClick: () => handleDeleteCohort(row.id), danger: true },

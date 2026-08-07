@@ -42,6 +42,19 @@ export default function MentorOJTs() {
 
   usePageRefresh(loadCohortsAndTeams);
 
+  // Default to the active cohort once the list arrives, rather than leaving
+  // the dropdown on its placeholder — a mentor almost always wants the OJT
+  // that's currently running, not a blank screen asking them to pick one.
+  // Only fires while nothing is selected yet, so it never overrides a
+  // mentor's own pick — including on the refresh usePageRefresh triggers.
+  // /cohorts/mine is already ordered created_at DESC, so the first active
+  // entry is the most recently created one, matching how the backend itself
+  // treats "the" active cohort (see deactivateOtherCohorts).
+  useEffect(() => {
+    if (cohorts.length === 0) return;
+    setSelectedCohortId((prev) => prev || cohorts.find((c) => c.isActive)?.id || prev);
+  }, [cohorts]);
+
   // Only this mentor's teams in the chosen cohort — the mentor picks a cohort
   // first, then sees its projects and students.
   const cohortTeams = useMemo(
