@@ -71,7 +71,7 @@ export default function ProjectProposals() {
             ? 'Sent back to the student for resubmission.'
             : result.catalogWarning
               ? `Returned — ${result.catalogWarning}`
-              : 'Returned — the student will now pick from recommended projects.'
+              : 'Returned — the student will now pick from PST recommended projects.'
       );
       setProposals((prev) => prev.filter((p) => p.preferenceId !== selected.preferenceId));
       closeModal();
@@ -220,7 +220,7 @@ export default function ProjectProposals() {
                     <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                     <span>
                       The student won't be able to submit their own project again after this — they'll only be able
-                      to pick a recommended project.
+                      to pick a PST recommended project.
                     </span>
                   </div>
                 )}
