@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Briefcase, Users, Clock, CheckCircle2, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star, Minimize2, AlertTriangle, Lock } from 'lucide-react';
+import { Briefcase, Users, Clock, CheckCircle2, Search, Layers, Sparkles, Plus, UserCheck, RotateCcw, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Star, Minimize2, AlertTriangle, Lock, Building2 } from 'lucide-react';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import DataTable from '../../components/DataTable';
 import { derivePageSizeOptions } from '../../lib/pageSize';
@@ -1148,6 +1148,9 @@ function MentorPicker({
         >
           {options.map(m => {
             const isSelected = selectedId === m.id;
+            // External mentors carry their own badge below, so this pill only
+            // has to fill in what that badge doesn't already say.
+            const provenanceLabel = m.organization || (m.isExternal ? null : 'Internal');
             return (
               // A mentor at capacity stays visible rather than dropping out
               // of the pool — a student who saw them recommended on a
@@ -1181,25 +1184,32 @@ function MentorPicker({
                 <MentorAvatar name={m.fullName} selected={isSelected && !m.isFull} />
                 <div className="min-w-0 flex-1">
                   <p className={`font-semibold text-sm truncate ${m.isFull ? 'text-gray-400' : 'text-white'}`}>{m.fullName}</p>
-                  {m.isFull ? (
-                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-red-400">
-                      <Lock size={10} className="shrink-0" />
-                      Mentor capacity exceeded
-                    </span>
-                  ) : m.isNearingCapacity ? (
-                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-amber-400">
-                      <AlertTriangle size={10} className="shrink-0" />
-                      Nearing capacity
-                    </span>
-                  ) : (
-                    <span
-                      className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-medium truncate max-w-full ${
-                        isSelected ? 'bg-gold/15 text-gold' : 'bg-zinc-800 text-gray-400'
-                      }`}
-                    >
-                      {m.organization || (m.isExternal ? 'External' : 'Internal')}
-                    </span>
-                  )}
+                  {/* Where a mentor comes from and how full they are are two
+                      independent facts, so they share a wrapping row rather
+                      than one replacing the other — a mentor at capacity is
+                      still an industry mentor, and used to lose that label. */}
+                  <div className="flex flex-wrap items-center gap-1 mt-1">
+                    {m.isExternal && <IndustryMentorBadge />}
+                    {m.isFull ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-400">
+                        <Lock size={10} className="shrink-0" />
+                        Mentor capacity exceeded
+                      </span>
+                    ) : m.isNearingCapacity ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400">
+                        <AlertTriangle size={10} className="shrink-0" />
+                        Nearing capacity
+                      </span>
+                    ) : provenanceLabel ? (
+                      <span
+                        className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-medium truncate max-w-full ${
+                          isSelected ? 'bg-gold/15 text-gold' : 'bg-zinc-800 text-gray-400'
+                        }`}
+                      >
+                        {provenanceLabel}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 {m.isFull ? (
                   <Lock size={14} className="absolute top-2.5 right-2.5 text-red-400/70 shrink-0" />
@@ -1243,6 +1253,20 @@ function MentorAvatar({ name, selected }: { name: string; selected: boolean }) {
     >
       {initials || '?'}
     </div>
+  );
+}
+
+// An external mentor comes from a partner company rather than the university,
+// and a student choosing one should be able to see that at a glance. The
+// organization pill alone can't say it: a company name reads the same as any
+// other label, and an external mentor with no organization on record showed
+// nothing distinguishing at all.
+function IndustryMentorBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/30 whitespace-nowrap">
+      <Building2 size={9} className="shrink-0" />
+      Industry mentor
+    </span>
   );
 }
 
@@ -1413,6 +1437,9 @@ function ProjectCatalogBrowser({
                 <div className="min-w-0">
                   <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Mentor</p>
                   <p className="text-white font-semibold text-sm truncate">{selectedMentor.fullName}</p>
+                  {selectedMentor.isExternal && (
+                    <div className="mt-1"><IndustryMentorBadge /></div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -1793,6 +1820,9 @@ function SelfProjectProposer({
                   <div className="min-w-0">
                     <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Mentor</p>
                     <p className="text-white font-semibold text-sm truncate">{selectedMentor.fullName}</p>
+                    {selectedMentor.isExternal && (
+                      <div className="mt-1"><IndustryMentorBadge /></div>
+                    )}
                   </div>
                 </div>
               ) : (
