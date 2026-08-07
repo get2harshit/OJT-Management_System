@@ -68,11 +68,15 @@ export interface ApiEligibleStudent {
 // track-config callers don't need to reach into the types module.
 export type { TrackSubmissionMode } from '../types';
 
+// Admin-facing names for the same four modes the student picker shows, kept
+// in the same vocabulary as that screen ("PST recommended" / "self assign") so
+// an admin configuring a track and a student reading it are talking about the
+// same thing. Display only — the keys are what is stored and validated.
 export const SUBMISSION_MODE_LABELS: Record<TrackSubmissionMode, string> = {
-  '1_own': 'Their own project',
-  '1_recommended': 'One recommended project',
-  '2_recommended': 'Two recommended projects',
-  '1_own_1_recommended': 'Their own project + one recommended',
+  '1_own': 'Self assign project',
+  '1_recommended': 'One PST recommended project',
+  '2_recommended': 'Two PST recommended projects',
+  '1_own_1_recommended': 'Self assign + one PST recommended',
 };
 
 // A mentor staffing this track in this OJT.

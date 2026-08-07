@@ -802,24 +802,27 @@ const MODE_SLOT_1_IS_OWN: Record<SelectionMode, boolean> = {
   '1_own_1_recommended': true,
 };
 
+// Display names only. The keys are the stored values (ojt_cohort_track_config
+// .allowed_submission_modes) and the backend validates against them, so the
+// wording here is free to change and the mode identifiers are not.
 const MODE_CARDS: Record<SelectionMode, { title: string; description: string; icon: typeof Sparkles }> = {
   '1_own': {
-    title: 'Your Own Project',
+    title: 'Self Assign Project',
     description: 'Propose your own project idea. Your mentor reviews it before it goes to allocation.',
     icon: Sparkles,
   },
   '1_recommended': {
-    title: 'One Recommended Project',
+    title: 'One PST Recommended Project',
     description: 'Pick a single project from the catalog.',
     icon: Briefcase,
   },
   '2_recommended': {
-    title: 'Two Recommended Projects',
+    title: 'Two PST Recommended Projects',
     description: 'Pick two different projects from the catalog as your 1st and 2nd preference.',
     icon: Briefcase,
   },
   '1_own_1_recommended': {
-    title: 'Own Project + Recommended Project',
+    title: 'Self Assign + PST Recommended Project',
     description: 'Propose your own project as your 1st preference, and pick one from the catalog as your 2nd.',
     icon: Sparkles,
   },
@@ -1413,7 +1416,7 @@ function ProjectCatalogBrowser({
           <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
             <Briefcase size={18} className="text-gold" />
           </div>
-          Recommended Project
+          PST Recommended Project
         </h2>
         <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4 space-y-1">
           <div className="flex items-center justify-between gap-3">
@@ -1463,7 +1466,7 @@ function ProjectCatalogBrowser({
       <div className="shrink-0 flex items-center gap-4 flex-wrap">
         <h2 className="text-white font-semibold flex items-center gap-3 shrink-0">
           <Briefcase size={18} className="text-gold" />
-          {label ? `${label} — Recommended Projects` : 'Recommended Projects'}
+          {label ? `${label} — PST Recommended Projects` : 'PST Recommended Projects'}
         </h2>
 
         {browsingAfterSelect && (
@@ -1798,7 +1801,7 @@ function SelfProjectProposer({
         <div className="p-2 rounded-lg bg-zinc-750 group-hover:bg-gold/10 transition-colors">
           <Sparkles size={18} className="text-gold" />
         </div>
-        Self Project
+        Self Assign Project
       </h2>
 
       {selfProject ? (
@@ -1901,7 +1904,7 @@ function SelfProjectProposer({
             className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100"
           >
             <Plus size={16} />
-            {proposing ? 'Creating...' : 'Create Self Project'}
+            {proposing ? 'Creating...' : 'Create Self Assign Project'}
           </button>
         </form>
       )}
@@ -1960,7 +1963,7 @@ function ResubmitPreference1Panel({
     setSubmitting(true);
     try {
       await apiResubmitPreference1(cohortId, projectId);
-      showSuccess('Recommended project selected.');
+      showSuccess('PST recommended project selected.');
       onResubmitted();
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to select this project');
@@ -2117,7 +2120,7 @@ function SummaryScreen({
           <h1 className="text-xl font-bold text-white">Submit a new preference 1</h1>
           <p className="text-gray-400 text-sm mt-1">
             {resubmissionMode === 'catalog_only'
-              ? 'Your mentor returned this to catalog selection — pick a recommended project below. Your mentor stays the same.'
+              ? 'Your mentor returned this to catalog selection — pick a PST recommended project below. Your mentor stays the same.'
               : 'Your mentor asked for a revised self-proposal — submit an updated version below. Your mentor stays the same.'}
           </p>
         </div>
@@ -2198,7 +2201,7 @@ function SummaryScreen({
           <>
             <div>
               <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">
-                {selfProject?.projectBy === 'STUDENT' ? 'Self Project' : 'Recommended Project'} (Preference 1)
+                {selfProject?.projectBy === 'STUDENT' ? 'Self Assign Project' : 'PST Recommended Project'} (Preference 1)
               </p>
               <div className="flex items-center gap-2">
                 <p className="text-white font-semibold">{selfProject?.title}</p>
@@ -2226,7 +2229,7 @@ function SummaryScreen({
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 mt-2 bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold rounded-lg hover:bg-amber-500/20 transition-colors"
                 >
                   <RotateCcw size={13} />
-                  {resubmissionMode === 'catalog_only' ? 'Pick a recommended project' : 'Review and resubmit'}
+                  {resubmissionMode === 'catalog_only' ? 'Pick a PST recommended project' : 'Review and resubmit'}
                 </button>
               )}
             </div>
@@ -2234,7 +2237,7 @@ function SummaryScreen({
             {preferences.preference2Id && (
               <div>
                 <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">
-                  {existingProject?.projectBy === 'STUDENT' ? 'Self Project' : 'Recommended Project'} (Preference 2)
+                  {existingProject?.projectBy === 'STUDENT' ? 'Self Assign Project' : 'PST Recommended Project'} (Preference 2)
                 </p>
                 <p className="text-white font-semibold">{existingProject?.title}</p>
               </div>
