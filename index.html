@@ -2,7 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!--
+      Polaris mark, served from public/ rather than linked at the Classplus CDN
+      it came from. Self-hosted because Safari does not reliably render a webp
+      favicon (the CDN copy is webp), and because a tab icon should not depend
+      on another host staying up and keeping a URL — it would break silently.
+      Source: Polaris/PAT_2026_Resources, converted to png at each size.
+    -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title data-default>OJT Management</title>
   </head>
