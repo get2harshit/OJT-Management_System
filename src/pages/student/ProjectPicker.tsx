@@ -39,7 +39,15 @@ export default function ProjectPicker() {
   const [availableMentors, setAvailableMentors] = useState<TeamAvailableMentor[]>([]);
   const [mentorsLoading, setMentorsLoading] = useState(true);
 
+  // Every action that changes what this page shows (forming a team, submitting
+  // preferences, resubmitting) ends by re-reading status, and that read is not
+  // instant. Without a marker the screen sits on the now-stale previous step
+  // looking like the click did nothing — so the transition gets its own
+  // overlay rather than leaving the wait invisible.
+  const [statusRefreshing, setStatusRefreshing] = useState(false);
+
   const refreshStatus = useCallback(async (cid: string) => {
+    setStatusRefreshing(true);
     try {
       const res = await apiGetMyTeamStatus(cid);
       setStatus(res);
@@ -47,6 +55,8 @@ export default function ProjectPicker() {
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load your status');
       return null;
+    } finally {
+      setStatusRefreshing(false);
     }
   }, [showError]);
 
@@ -170,7 +180,18 @@ export default function ProjectPicker() {
         )}
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col relative">
+        {/* Covers the step being replaced while the new status loads. Only for
+            a refresh of an already-rendered page — the very first load is
+            handled by the full-page spinner above, which returns early. */}
+        {statusRefreshing && (
+          <div className="absolute inset-0 z-20 bg-zinc-900/60 backdrop-blur-[1px] flex items-center justify-center rounded-xl">
+            <div className="flex flex-col items-center gap-3">
+              <SpinnerSquare size={40} />
+              <p className="text-xs text-gray-400 font-medium">Updating your status...</p>
+            </div>
+          </div>
+        )}
         {status?.team ? (
           status.projectPreferences ? (
             <SummaryScreen
