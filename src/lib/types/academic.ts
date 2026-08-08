@@ -346,14 +346,26 @@ export interface MentorCapacityListRow {
   effectiveCapacity: number;
 }
 
-// One row per mentor with allocated count vs. their flat capacity
+// One row per mentor with their load vs. their flat capacity
 // (GET /api/v1/teams/cohort/:cohortId/mentor-load-summary).
 export interface MentorLoadSummaryRow {
   mentorId: string;
   mentorName: string | null;
   tracks: string[];
+  /** Teams the allocation run has already placed with this mentor. */
   allocatedCount: number;
+  /**
+   * Teams holding this mentor in a submitted-but-unallocated preference.
+   * allocatedCount is zero for everybody until a run has happened, so it says
+   * nothing about whether students can still pick this mentor — this is the
+   * number that does.
+   */
+  pendingCount: number;
   threshold: number;
+  /** At the soft cap — the student picker will not let a team select them. */
+  isFull: boolean;
+  /** At nominal capacity but still selectable. */
+  isNearingCapacity: boolean;
 }
 
 // Full per-team preference detail for the admin allocation panel
