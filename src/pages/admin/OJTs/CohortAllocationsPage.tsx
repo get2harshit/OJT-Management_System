@@ -1,7 +1,7 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
-import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, ArrowLeft, UserCog, UserPlus, Gauge, RotateCcw, AlertTriangle } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, ArrowLeft, UserCog, UserPlus, Gauge, RotateCcw, AlertTriangle, ClipboardList } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
@@ -65,6 +65,7 @@ const RUN_STATUS_LABELS: Record<CohortAllocationRunStatus, string> = {
 
 export default function CohortAllocationsPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const confirm = useConfirm();
   const { tracks, options: trackOptions } = useTracks();
@@ -603,6 +604,16 @@ export default function CohortAllocationsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* Its own page rather than another modal: this is the one view that
+              is read across every track at once, and a modal cannot be sized,
+              searched or exported the way that needs. */}
+          <button
+            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/breakdown`)}
+            title="Allocation breakdown — by team, mentor or project"
+            className="flex items-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+          >
+            <ClipboardList size={14} />
+          </button>
           <button
             onClick={() => { setShowLoadSummary(true); loadMentorPickerData(); }}
             disabled={loading}
@@ -1623,22 +1634,54 @@ export default function CohortAllocationsPage() {
           ) : mentorLoadSummary.length === 0 ? (
             <p className="text-gray-400 text-sm">No mentor capacity configured for this cohort yet.</p>
           ) : (
+            // Ordered by how close to closed they are, not alphabetically: the
+            // mentors students can no longer pick are the reason to open this,
+            // and they were previously buried in a 60-row alphabetical list.
             [...mentorLoadSummary]
-              .sort((a, b) => (a.mentorName || '').localeCompare(b.mentorName || ''))
+              .sort((a, b) => {
+                const rank = (r: MentorLoadSummaryRow) => (r.isFull ? 0 : r.isNearingCapacity ? 1 : 2);
+                return rank(a) - rank(b)
+                  || b.pendingCount - a.pendingCount
+                  || (a.mentorName || '').localeCompare(b.mentorName || '');
+              })
               .map((row) => {
                 const overCapacity = row.allocatedCount > row.threshold;
                 return (
                   <div
                     key={row.mentorId}
-                    className="flex items-center justify-between gap-3 bg-zinc-800/50 border border-zinc-750 rounded-lg px-3 py-2"
+                    className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 border ${
+                      row.isFull
+                        ? 'bg-red-500/5 border-red-500/25'
+                        : row.isNearingCapacity
+                          ? 'bg-amber-500/5 border-amber-500/25'
+                          : 'bg-zinc-800/50 border-zinc-750'
+                    }`}
                   >
-                    <div>
-                      <p className="text-white text-sm font-medium">{row.mentorName || '—'}</p>
-                      <p className="text-gray-500 text-xs">{(row.tracks ?? []).join(', ') || 'No tracks assigned'}</p>
+                    <div className="min-w-0">
+                      <p className="text-white text-sm font-medium truncate">{row.mentorName || '—'}</p>
+                      <p className="text-gray-500 text-xs truncate">{(row.tracks ?? []).join(', ') || 'No tracks assigned'}</p>
                     </div>
-                    <span className={`text-sm font-bold ${overCapacity ? 'text-red-400' : 'text-gray-300'}`}>
-                      {row.allocatedCount}/{row.threshold}
-                    </span>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {/* Pending is what closes a mentor off before allocation
+                          has run, so it is shown even at zero — an empty column
+                          reads as "nobody has picked them", which is the useful
+                          fact, where a missing one reads as no data. */}
+                      <span
+                        className={`text-xs font-semibold ${
+                          row.isFull ? 'text-red-400' : row.isNearingCapacity ? 'text-amber-400' : 'text-gray-500'
+                        }`}
+                        title="Teams holding this mentor in a submitted preference, not yet allocated"
+                      >
+                        {row.isFull ? 'FULL · ' : row.isNearingCapacity ? 'Nearing · ' : ''}
+                        {row.pendingCount} pending
+                      </span>
+                      <span
+                        className={`text-sm font-bold tabular-nums ${overCapacity ? 'text-red-400' : 'text-gray-300'}`}
+                        title="Allocated teams / capacity"
+                      >
+                        {row.allocatedCount}/{row.threshold}
+                      </span>
+                    </div>
                   </div>
                 );
               })
