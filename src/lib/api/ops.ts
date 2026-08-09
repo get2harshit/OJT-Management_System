@@ -109,6 +109,101 @@ export interface OpsFilterOptions {
   batches: string[];
 }
 
+// ── Overview (analytics) ─────────────────────────────────────────────────────
+
+export interface OpsProgress {
+  students: number;
+  studentsOnTeam: number;
+  /** No team and no request sent — nothing done at all. */
+  studentsNotStarted: number;
+  teamsFormed: number;
+  teamsSubmitted: number;
+  teamsAllocated: number;
+  teamsNeedingReview: number;
+  proposalsPendingReview: number;
+}
+
+/** Running totals per day, for the progress line. */
+export interface OpsTimelinePoint {
+  date: string;
+  teamsFormed: number;
+  teamsSubmitted: number;
+  teamsAllocated: number;
+}
+
+export interface OpsTrackAnalytics {
+  trackId: string;
+  trackName: string;
+  teamsFormed: number;
+  teamsSubmitted: number;
+  teamsAllocated: number;
+  catalogProjects: number;
+  projectsSelected: number;
+  mentorsStaffed: number;
+  /** Selections this track's own teams made. */
+  mentorPicksHere: number;
+  /**
+   * Selections this track's mentors carry for other tracks. Capacity is one
+   * number per mentor for the whole OJT, so a track can find its mentors full
+   * from load it never generated.
+   */
+  mentorPicksElsewhere: number;
+  mentorsFull: number;
+  mentorsIdle: number;
+}
+
+export interface OpsYearAnalytics {
+  year: string;
+  students: number;
+  teamsFormed: number;
+  individualTeams: number;
+  teamsSubmitted: number;
+  byTrack: { trackName: string; teams: number }[];
+}
+
+export interface OpsMentorAnalytics {
+  mentorId: string;
+  fullName: string;
+  isExternal: boolean;
+  preference1Count: number;
+  preference2Count: number;
+  pendingCount: number;
+  allocatedCount: number;
+  capacity: number;
+  hasCapacityOverride: boolean;
+  isFull: boolean;
+  isNearingCapacity: boolean;
+  /**
+   * Every track this mentor is staffed on, with how often teams there picked
+   * them — zero included. Built from the staffing roster, so a mentor assigned
+   * four tracks reports four even if only two were ever chosen.
+   */
+  tracks: { trackId: string; trackName: string; picks: number }[];
+}
+
+export interface OpsAnalytics {
+  progress: OpsProgress;
+  timeline: OpsTimelinePoint[];
+  tracks: OpsTrackAnalytics[];
+  years: OpsYearAnalytics[];
+  mentors: {
+    rows: OpsMentorAnalytics[];
+    totalCapacity: number;
+    totalPending: number;
+    fullMentors: number;
+    nearingMentors: number;
+    /** Staffed, but never picked anywhere. */
+    idleMentors: number;
+  };
+}
+
+// One call for the whole tab: these are read together, and splitting them would
+// let the screen show two different moments of the same OJT side by side.
+export async function apiGetOpsAnalytics(cohortId: string): Promise<OpsAnalytics> {
+  const res = await apiFetch<{ data: OpsAnalytics }>(`/api/v1/cohorts/${cohortId}/ops/analytics`);
+  return res.data;
+}
+
 function query(params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
