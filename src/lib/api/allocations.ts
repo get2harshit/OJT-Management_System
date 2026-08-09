@@ -184,6 +184,9 @@ export interface AllocationBlueprintStudent {
   rollNumber: string | null;
   batch: string | null;
   teamName: string | null;
+  // Everyone on the student's team, themselves included. Empty until they join
+  // one. Shown together with teamName, which is the group number ("G62").
+  teamMembers: { fullName: string | null; batch: string | null }[];
   stage: AllocationBlueprintStage;
   // Only populated once the student's team has submitted preferences —
   // null before that.
@@ -211,19 +214,35 @@ export async function apiGetAllocationBlueprint(cohortId: string): Promise<Alloc
   return res.data;
 }
 
-// Admin — paginated student list for this OJT. stage/search/batch are each
-// optional filters: stage narrows to one lifecycle stage (drill-down from a
-// summary count), search matches name/roll number, batch matches exactly.
+// Admin — paginated student list for this OJT. Every filter is optional: stage
+// narrows to one lifecycle stage (drill-down from a summary count), search
+// matches name/roll number, batches matches any of the given batches, and
+// trackId matches the student's team's track.
+//
+// Several batches travel as one comma-separated `batch` param, which the server
+// splits — batch values never contain a comma, and a single value is still a
+// valid one-entry list, so the older single-batch shape stays on the wire.
+//
+// trackId excludes students without a team, which is what asking for a track
+// means: a student who has not joined one has no track to match.
 export async function apiGetAllocationBlueprintStudents(
   cohortId: string,
-  params: { stage?: AllocationBlueprintStage; page: number; limit: number; search?: string; batch?: string }
+  params: {
+    stage?: AllocationBlueprintStage;
+    page: number;
+    limit: number;
+    search?: string;
+    batches?: string[];
+    trackId?: string;
+  }
 ): Promise<AllocationBlueprintStudentsPage> {
   const query = new URLSearchParams();
   query.set('page', String(params.page));
   query.set('limit', String(params.limit));
   if (params.stage) query.set('stage', params.stage);
   if (params.search) query.set('search', params.search);
-  if (params.batch) query.set('batch', params.batch);
+  if (params.batches?.length) query.set('batch', params.batches.join(','));
+  if (params.trackId) query.set('trackId', params.trackId);
   return apiFetch<AllocationBlueprintStudentsPage>(
     `/api/v1/cohorts/${cohortId}/allocation-blueprint/students?${query.toString()}`
   );

@@ -8,8 +8,9 @@ import Drawer from '../../../components/Drawer';
 import DataTable from '../../../components/DataTable';
 import CohortPageHeader from './CohortPageHeader';
 import type { AllocationBlueprintCounts, AllocationBlueprintStage, AllocationBlueprintStudent, AllocationBlueprintSummary } from '../../../lib/api/allocations';
-import { apiGetCohort, apiGetAllocationBlueprint, apiGetAllocationBlueprintStudents } from '../../../lib/api';
+import { apiGetCohort, apiGetAllocationBlueprint, apiGetAllocationBlueprintStudents, apiGetOpsFilterOptions } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
+import { formatTeamMembers } from '../../../lib/teamLabel';
 import { exportToCSV } from '../../../lib/csvExport';
 import { useToast } from '../../../toast';
 import { usePageRefresh } from '../../../context/RefreshContext';
@@ -84,7 +85,17 @@ interface OptionalColumn {
 
 const AVAILABLE_COLUMNS: OptionalColumn[] = [
   { key: 'rollNumber', label: 'Roll Number', value: s => s.rollNumber || '—' },
-  { key: 'team', label: 'Team', value: s => s.teamName || '—' },
+  // "G62 · Rahul_2025 A, Priya_2025 B" — the group number and who is in it.
+  //
+  // It used to be the group number alone. Both halves earn their place:
+  // production names every team (G1…G85) and that is how mentors and ops refer
+  // to them, but the number says nothing about who is in the group, which is
+  // what someone chasing a student is actually after.
+  {
+    key: 'team',
+    label: 'Team',
+    value: s => [s.teamName, formatTeamMembers(s.teamMembers)].filter(Boolean).join(' · ') || '—',
+  },
   { key: 'track', label: 'Track', value: s => s.track || '—' },
   { key: 'pref1Project', label: 'Preference 1 (Project)', value: s => s.pref1Project || '—' },
   { key: 'pref2Project', label: 'Preference 2 (Project)', value: s => s.pref2Project || '—' },
@@ -105,7 +116,12 @@ export default function AllocationBlueprintPage() {
   const [summary, setSummary] = useState<AllocationBlueprintSummary | null>(null);
 
   const [stageFilter, setStageFilter] = useState<AllocationBlueprintStage | ''>('');
-  const [batchFilter, setBatchFilter] = useState('');
+  // Several batches at once: "who in 2025 A and 2025 B still has no team" is a
+  // question about one group, and running it a batch at a time hides how the
+  // group compares.
+  const [batchFilter, setBatchFilter] = useState<string[]>([]);
+  const [trackFilter, setTrackFilter] = useState('');
+  const [trackOptions, setTrackOptions] = useState<{ id: string; name: string }[]>([]);
   // The search box belongs to DataTable now, so only the debounced value that
   // the fetch actually runs on is held here.
   const [search, setSearch] = useState('');
@@ -131,12 +147,16 @@ export default function AllocationBlueprintPage() {
     if (!cohortId) return;
     setLoading(true);
     try {
-      const [cohort, data] = await Promise.all([
+      // Track options come from the OJT's own filter endpoint rather than the
+      // cohort record, which carries batches but not tracks.
+      const [cohort, data, filterOptions] = await Promise.all([
         apiGetCohort(cohortId),
         apiGetAllocationBlueprint(cohortId),
+        apiGetOpsFilterOptions(cohortId),
       ]);
       setCohortLabel(getCohortLabel(cohort));
       setAllowedBatches(cohort.allowedBatches ?? []);
+      setTrackOptions(filterOptions.tracks);
       setCounts(data.stages);
       setSummary(data.summary);
     } catch (err) {
@@ -156,7 +176,8 @@ export default function AllocationBlueprintPage() {
     try {
       const res = await apiGetAllocationBlueprintStudents(cohortId, {
         stage: stageFilter || undefined,
-        batch: batchFilter || undefined,
+        batches: batchFilter.length > 0 ? batchFilter : undefined,
+        trackId: trackFilter || undefined,
         search: search || undefined,
         page,
         limit,
@@ -168,7 +189,7 @@ export default function AllocationBlueprintPage() {
     } finally {
       setStudentsLoading(false);
     }
-  }, [cohortId, stageFilter, batchFilter, search, page, limit, showError]);
+  }, [cohortId, stageFilter, batchFilter, trackFilter, search, page, limit, showError]);
 
   useEffect(() => {
     fetchStudents();
@@ -191,8 +212,13 @@ export default function AllocationBlueprintPage() {
     setPage(1);
   };
 
-  const handleBatchFilterChange = (value: string) => {
+  const handleBatchFilterChange = (value: string[]) => {
     setBatchFilter(value);
+    setPage(1);
+  };
+
+  const handleTrackFilterChange = (value: string) => {
+    setTrackFilter(value);
     setPage(1);
   };
 
@@ -211,7 +237,8 @@ export default function AllocationBlueprintPage() {
       // currently matching the filters, not just what's visible on screen.
       const res = await apiGetAllocationBlueprintStudents(cohortId, {
         stage: stageFilter || undefined,
-        batch: batchFilter || undefined,
+        batches: batchFilter.length > 0 ? batchFilter : undefined,
+        trackId: trackFilter || undefined,
         search: search || undefined,
         page: 1,
         limit: Math.max(pagination.total, 1),
@@ -287,20 +314,33 @@ export default function AllocationBlueprintPage() {
         subtitle={cohortLabel || undefined}
         icon={LayoutGrid}
         trailing={
-          summary ? (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 ml-1">
-              {SUMMARY_ITEMS.map(item => (
-                <span key={item.key} className="flex items-baseline gap-1.5">
-                  {/* The number is the thing being scanned, so it carries the
-                      size and the colour; the label stays quiet behind it. */}
-                  <span className={`text-base font-semibold tabular-nums leading-none ${item.tone}`}>
-                    {summary[item.key]}
+          <>
+            {summary && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 ml-1">
+                {SUMMARY_ITEMS.map(item => (
+                  <span key={item.key} className="flex items-baseline gap-1.5">
+                    {/* The number is the thing being scanned, so it carries the
+                        size and the colour; the label stays quiet behind it. */}
+                    <span className={`text-base font-semibold tabular-nums leading-none ${item.tone}`}>
+                      {summary[item.key]}
+                    </span>
+                    <span className="text-xs text-gray-500 leading-none">{item.label}</span>
                   </span>
-                  <span className="text-xs text-gray-500 leading-none">{item.label}</span>
-                </span>
-              ))}
-            </div>
-          ) : null
+                ))}
+              </div>
+            )}
+            {/* Up here rather than in the table's filter bar: this changes the
+                table's shape, it isn't another way to narrow the rows, and
+                sitting among the filters it read as one. `ml-auto` claims the
+                right edge of the header row. */}
+            <button
+              onClick={() => setColumnsDrawerOpen(true)}
+              className="ml-auto flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-zinc-850 border border-zinc-750 rounded-lg text-gray-300 hover:text-white hover:border-gold/40 transition-colors shrink-0"
+            >
+              <Plus size={13} />
+              Customize Columns
+            </button>
+          </>
         }
       />
 
@@ -331,16 +371,36 @@ export default function AllocationBlueprintPage() {
               />
               {allowedBatches.length > 0 && (
                 <Select
+                  isMulti
                   variant="filter"
                   value={batchFilter}
-                  onChange={v => handleBatchFilterChange(v as string)}
+                  onChange={handleBatchFilterChange}
                   options={allowedBatches.map(b => ({ value: b, label: b }))}
                   placeholder="All Batches"
-                  className="min-w-[120px] !text-xs !py-1.5"
+                  className="min-w-[140px] !text-xs !py-1.5"
+                />
+              )}
+              {trackOptions.length > 0 && (
+                <Select
+                  variant="filter"
+                  value={trackFilter}
+                  onChange={v => handleTrackFilterChange(v as string)}
+                  options={trackOptions.map(t => ({ value: t.id, label: t.name }))}
+                  placeholder="All Tracks"
+                  className="min-w-[150px] !text-xs !py-1.5"
                 />
               )}
               {counts && (
                 <span className="text-xs text-gray-500 shrink-0">{total} student{total === 1 ? '' : 's'}</span>
+              )}
+              {/* A track belongs to a team, so filtering by one drops everybody
+                  who hasn't joined a team — which is the whole "No team yet"
+                  stage. Said out loud, because the alternative is an empty
+                  table that reads as a bug. */}
+              {trackFilter && (
+                <span className="text-xs text-amber-400/80 shrink-0">
+                  Track filter excludes students with no team
+                </span>
               )}
               <button
                 onClick={handleExportCSV}
@@ -349,13 +409,6 @@ export default function AllocationBlueprintPage() {
               >
                 <Download size={13} />
                 {exportingCsv ? 'Exporting...' : 'Export CSV'}
-              </button>
-              <button
-                onClick={() => setColumnsDrawerOpen(true)}
-                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-zinc-850 border border-zinc-750 rounded-lg text-gray-300 hover:text-white hover:border-gold/40 transition-colors shrink-0"
-              >
-                <Plus size={13} />
-                Customize Columns
               </button>
             </>
           }
