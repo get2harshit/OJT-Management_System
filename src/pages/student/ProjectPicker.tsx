@@ -1036,6 +1036,29 @@ function ProjectSelectionScreen({
             )}
           </div>
 
+          {/* Says the two things this screen otherwise lets a student assume,
+              both of which cost them real work when they turn out to be wrong.
+              Nothing here is saved until the whole submission goes through —
+              closing the tab loses the selection, including a mentor already
+              chosen — and a selection is not a hold: projects cap at two teams
+              and mentors at their capacity, and both are claimed at submit, by
+              whoever gets there first. Red rather than amber because neither is
+              a nicety; a student who learns them late has already lost the
+              slot. */}
+          <div className="shrink-0 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
+            <AlertTriangle size={14} className="text-red-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300 leading-relaxed">
+              {slotCount === 2
+                ? 'You must choose both preferences — a project and a mentor for each — and then submit. Nothing is saved until you submit.'
+                : 'You must choose your project and mentor and then submit. Nothing is saved until you submit.'}{' '}
+              <span className="text-red-200 font-semibold">
+                Selecting a project or mentor does not reserve it.
+              </span>{' '}
+              Projects and mentors have limited seats, and they are taken when a team submits — not when you pick.
+              Finish and submit as early as you can.
+            </p>
+          </div>
+
           {step === 1 ? (
             slot1IsOwn ? (
               <div className="flex-1 min-h-0 overflow-y-auto space-y-2">
