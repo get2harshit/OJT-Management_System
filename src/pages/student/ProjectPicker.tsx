@@ -1048,7 +1048,7 @@ function ProjectSelectionScreen({
           <div className="shrink-0 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
             <AlertTriangle size={14} className="text-red-400 shrink-0 mt-0.5" />
             <p className="text-xs text-red-300 leading-relaxed">
-              <span className="text-red-200 font-semibold">Picking is not booking.</span> Nothing is saved until you
+              <span className="text-red-200 font-semibold">Selecting is not booking.</span> Nothing is saved until you
               press Submit, and seats go to whoever submits first — so{' '}
               {slotCount === 2 ? 'choose both preferences' : 'choose your project and mentor'} and submit now, not
               later.
