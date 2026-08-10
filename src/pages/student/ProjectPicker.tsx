@@ -633,6 +633,18 @@ function TrackAndTeammateScreen({
               ? `${trackName} is an individual-only track for this OJT — you'll work on it solo.`
               : "Students in your batch complete this OJT individually and can't invite a teammate."}
           </p>
+          {/* The last moment this is still reversible. "Change track" above
+              works right up until this button, and stops existing the instant
+              it is pressed: the team is created here, and nothing student-side
+              undoes that — breakTeam is admin-only. Said before the click, not
+              after, because after is too late. */}
+          <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-left">
+            <AlertTriangle size={14} className="text-red-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300 leading-relaxed">
+              <span className="text-red-200 font-semibold">This cannot be undone.</span> Once you continue you are on{' '}
+              {trackName} for this OJT — you cannot switch tracks afterwards.
+            </p>
+          </div>
           <button
             onClick={handleCreateIndividualTeam}
             disabled={creatingIndividual}
