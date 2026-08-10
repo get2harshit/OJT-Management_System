@@ -378,6 +378,17 @@ export interface ApiAvailableTrack {
    * creation.
    */
   catalogExhausted: boolean;
+  /** Mentors staffed on the configuration this student is eligible for. */
+  totalMentors: number;
+  /** Of those, how many are still under their capacity soft cap. */
+  availableMentors: number;
+  /**
+   * True when too few mentors are left open to complete any of this track's
+   * submission modes — a two-slot mode needs two, since the slots must name
+   * different mentors. Unlike catalogExhausted, self-proposal is no escape:
+   * every mode requires a mentor. Advisory, re-checked at team creation.
+   */
+  mentorsExhausted: boolean;
 }
 
 export async function apiGetAvailableTracks(cohortId: string): Promise<ApiAvailableTrack[]> {
