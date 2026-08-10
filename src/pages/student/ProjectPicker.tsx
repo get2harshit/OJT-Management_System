@@ -508,22 +508,29 @@ function TrackAndTeammateScreen({
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {availableTracks.map(t => {
-              // Two hard blocks, checked in this order: team-capacity full
-              // (assertTrackHasRoom) and catalog-exhausted (assertCatalogHasRoom
+              // Three hard blocks, checked in this order: team-capacity full
+              // (assertTrackHasRoom), catalog-exhausted (assertCatalogHasRoom
               // — none of the track's allowed submission modes can currently be
               // completed, e.g. a catalog-only track with nothing left, or a
-              // '2_recommended' track down to its last one). Both are re-checked
-              // server-side under the same advisory lock at team creation; this
-              // is just the advisory front door. Below both, the catalog merely
-              // getting thin (but a self-proposal escape hatch still exists) is
-              // informative, not blocking — it only tints the card. Ratio-based
-              // rather than a flat "under N" cutoff: a track with a 3-project
-              // catalog and all 3 open is healthy, not "low", the way a flat
-              // threshold tuned for a 50-project catalog would call it.
-              const locked = t.isFull || t.catalogExhausted;
+              // '2_recommended' track down to its last one), and mentors
+              // exhausted (assertMentorsAvailable — too few mentors under their
+              // cap to fill the mode's slots, which must name different people).
+              // All three are re-checked server-side under the same advisory
+              // lock at team creation; this is just the advisory front door.
+              // Below them, supply merely getting thin is informative, not
+              // blocking — it only tints the card. Ratio-based rather than a
+              // flat "under N" cutoff: a track with a 3-project catalog and all
+              // 3 open is healthy, not "low", the way a flat threshold tuned
+              // for a 50-project catalog would call it.
+              const locked = t.isFull || t.catalogExhausted || t.mentorsExhausted;
               const projectsCritical = !locked && t.totalProjects > 0 && t.availableProjects === 0;
               const projectsLow =
                 !locked && !projectsCritical && t.totalProjects > 0 && t.availableProjects / t.totalProjects <= 0.25;
+              // Mentors get the same treatment, one step earlier: a roster down
+              // to its last open mentor still lets a team form, and the student
+              // should know before they commit to the track rather than after.
+              const mentorsLow =
+                !locked && t.totalMentors > 0 && t.availableMentors / t.totalMentors <= 0.25;
               return (
                 // A locked track stays on screen rather than disappearing. A
                 // student who was told to pick this track needs to see why they
@@ -537,7 +544,7 @@ function TrackAndTeammateScreen({
                       ? 'bg-zinc-850/60 border-red-500/30 cursor-not-allowed'
                       : projectsCritical
                         ? 'bg-zinc-850 border-red-500/20 hover:border-red-500/40 hover:-translate-y-0.5'
-                        : projectsLow
+                        : projectsLow || mentorsLow
                           ? 'bg-zinc-850 border-amber-500/25 hover:border-amber-500/50 hover:-translate-y-0.5'
                           : 'bg-zinc-850 border-zinc-750 hover:border-gold/40 hover:-translate-y-0.5'
                   }`}
@@ -562,6 +569,11 @@ function TrackAndTeammateScreen({
                       <AlertTriangle size={12} className="shrink-0" />
                       No projects left to pick on this track
                     </span>
+                  ) : t.mentorsExhausted ? (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-400">
+                      <AlertTriangle size={12} className="shrink-0" />
+                      No mentors available for this track
+                    </span>
                   ) : (
                     <>
                       <span className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide">
@@ -577,6 +589,15 @@ function TrackAndTeammateScreen({
                         >
                           {(projectsCritical || projectsLow) && <AlertTriangle size={12} className="shrink-0" />}
                           {t.availableProjects} of {t.totalProjects} projects available
+                        </span>
+                      )}
+                      {/* Only worth saying while it's getting tight. A fully
+                          staffed roster is the normal case and adding a line
+                          for it would bury the one line that matters. */}
+                      {mentorsLow && (
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-400">
+                          <AlertTriangle size={12} className="shrink-0" />
+                          {t.availableMentors} of {t.totalMentors} mentors available
                         </span>
                       )}
                     </>
@@ -612,6 +633,18 @@ function TrackAndTeammateScreen({
               ? `${trackName} is an individual-only track for this OJT — you'll work on it solo.`
               : "Students in your batch complete this OJT individually and can't invite a teammate."}
           </p>
+          {/* The last moment this is still reversible. "Change track" above
+              works right up until this button, and stops existing the instant
+              it is pressed: the team is created here, and nothing student-side
+              undoes that — breakTeam is admin-only. Said before the click, not
+              after, because after is too late. */}
+          <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-left">
+            <AlertTriangle size={14} className="text-red-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300 leading-relaxed">
+              <span className="text-red-200 font-semibold">This cannot be undone.</span> Once you continue you are on{' '}
+              {trackName} for this OJT — you cannot switch tracks afterwards.
+            </p>
+          </div>
           <button
             onClick={handleCreateIndividualTeam}
             disabled={creatingIndividual}
@@ -1013,6 +1046,25 @@ function ProjectSelectionScreen({
                 </div>
               </>
             )}
+          </div>
+
+          {/* Says the two things this screen otherwise lets a student assume,
+              both of which cost them real work when they turn out to be wrong.
+              Nothing here is saved until the whole submission goes through —
+              closing the tab loses the selection, including a mentor already
+              chosen — and a selection is not a hold: projects cap at two teams
+              and mentors at their capacity, and both are claimed at submit, by
+              whoever gets there first. Red rather than amber because neither is
+              a nicety; a student who learns them late has already lost the
+              slot. */}
+          <div className="shrink-0 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
+            <AlertTriangle size={14} className="text-red-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300 leading-relaxed">
+              <span className="text-red-200 font-semibold">Selecting is not booking.</span> Nothing is saved until you
+              press Submit, and seats go to whoever submits first — so{' '}
+              {slotCount === 2 ? 'choose both preferences' : 'choose your project and mentor'} and submit now, not
+              later.
+            </p>
           </div>
 
           {step === 1 ? (
