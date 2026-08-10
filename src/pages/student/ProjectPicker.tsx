@@ -1048,14 +1048,10 @@ function ProjectSelectionScreen({
           <div className="shrink-0 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
             <AlertTriangle size={14} className="text-red-400 shrink-0 mt-0.5" />
             <p className="text-xs text-red-300 leading-relaxed">
-              {slotCount === 2
-                ? 'You must choose both preferences — a project and a mentor for each — and then submit. Nothing is saved until you submit.'
-                : 'You must choose your project and mentor and then submit. Nothing is saved until you submit.'}{' '}
-              <span className="text-red-200 font-semibold">
-                Selecting a project or mentor does not reserve it.
-              </span>{' '}
-              Projects and mentors have limited seats, and they are taken when a team submits — not when you pick.
-              Finish and submit as early as you can.
+              <span className="text-red-200 font-semibold">Picking is not booking.</span> Nothing is saved until you
+              press Submit, and seats go to whoever submits first — so{' '}
+              {slotCount === 2 ? 'choose both preferences' : 'choose your project and mentor'} and submit now, not
+              later.
             </p>
           </div>
 
