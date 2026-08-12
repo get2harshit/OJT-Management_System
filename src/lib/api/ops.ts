@@ -118,6 +118,12 @@ export interface OpsProgress {
   studentsNotStarted: number;
   teamsFormed: number;
   teamsSubmitted: number;
+  /**
+   * Students on a team that has submitted. A team of four submitting counts
+   * once in teamsSubmitted and four times here, so the two move at different
+   * rates — this is the one that says what share of the cohort is through.
+   */
+  studentsSubmitted: number;
   teamsAllocated: number;
   teamsNeedingReview: number;
   proposalsPendingReview: number;
@@ -131,12 +137,25 @@ export interface OpsTimelinePoint {
   teamsAllocated: number;
 }
 
+/** One submission shape a track's teams used, counted in both units. */
+export interface OpsTrackSubmissionShape {
+  mode: TrackSubmissionMode;
+  teams: number;
+  students: number;
+}
+
 export interface OpsTrackAnalytics {
   trackId: string;
   trackName: string;
   teamsFormed: number;
   teamsSubmitted: number;
   teamsAllocated: number;
+  /**
+   * What this track's submitted teams actually chose, busiest first. Modes
+   * nobody used are absent — what the track *allows* is configuration and
+   * lives on the track-config screen.
+   */
+  submissionShapes: OpsTrackSubmissionShape[];
   catalogProjects: number;
   projectsSelected: number;
   mentorsStaffed: number;
