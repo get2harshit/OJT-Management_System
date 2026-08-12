@@ -79,6 +79,26 @@ export const SUBMISSION_MODE_LABELS: Record<TrackSubmissionMode, string> = {
   '1_own_1_recommended': 'Self assign + one PST recommended',
 };
 
+// The same four modes as column headings. A table needs a heading that fits the
+// column, and the long labels above wrap to three lines at that width — so this
+// is the same vocabulary abbreviated, not a second naming scheme. Anywhere a
+// mode is read on its own (a row, a form, a filter) still uses the long label.
+export const SUBMISSION_MODE_SHORT_LABELS: Record<TrackSubmissionMode, string> = {
+  '1_own': 'Self assign',
+  '1_recommended': '1 PST',
+  '2_recommended': '2 PST',
+  '1_own_1_recommended': 'Self + 1 PST',
+};
+
+// Canonical column order for the modes — fewest slots first, self-proposed
+// before catalog, so a table reads left to right in increasing commitment.
+export const SUBMISSION_MODE_ORDER: TrackSubmissionMode[] = [
+  '1_own',
+  '1_recommended',
+  '1_own_1_recommended',
+  '2_recommended',
+];
+
 // A mentor staffing this track in this OJT.
 export interface ApiTrackMentor {
   mentorId: string;

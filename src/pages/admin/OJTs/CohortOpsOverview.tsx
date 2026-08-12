@@ -3,7 +3,13 @@ import { AlertTriangle } from 'lucide-react';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import { apiGetOpsAnalytics } from '../../../lib/api';
-import type { OpsAnalytics, OpsTimelinePoint } from '../../../lib/api/ops';
+import type { OpsAnalytics, OpsTimelinePoint, OpsTrackAnalytics } from '../../../lib/api/ops';
+import {
+  SUBMISSION_MODE_LABELS,
+  SUBMISSION_MODE_ORDER,
+  SUBMISSION_MODE_SHORT_LABELS,
+  type TrackSubmissionMode,
+} from '../../../lib/api/tracks';
 import { useToast } from '../../../toast';
 import { usePageRefresh } from '../../../context/RefreshContext';
 
@@ -231,6 +237,132 @@ function ProgressLine({ points }: { points: OpsTimelinePoint[] }) {
   );
 }
 
+/** One cell of the submission-shape table: teams, then students behind it. */
+function ShapeCell({ teams, students }: { teams: number; students: number }) {
+  if (teams === 0) return <span className="text-gray-600">—</span>;
+  return (
+    <span className="whitespace-nowrap tabular-nums">
+      <span className="text-white font-semibold">{teams}</span>
+      <span className="text-gray-600"> / </span>
+      <span className="text-gray-400">{students}</span>
+    </span>
+  );
+}
+
+/**
+ * What each track's teams actually submitted — self-proposed, catalog, or both.
+ *
+ * Track coverage above says how many submitted; this says what they submitted,
+ * which is the question behind mentor review load (only a self-proposed slot 1
+ * needs a mentor's sign-off) and behind whether a catalog is being used at all.
+ *
+ * Counted both ways because the two answer different questions: teams is the
+ * unit work happens in, students is the unit a cohort is chased in, and on a
+ * team track they are not proportional to each other.
+ *
+ * Only tracks with a submission appear, and only modes somebody used get a
+ * column — a mode a track allows and nobody chose is configuration, and the
+ * track-config screen already shows it. Rendering it here as a column of
+ * dashes would bury the two columns that carry the answer.
+ */
+function SubmissionShapes({ tracks }: { tracks: OpsTrackAnalytics[] }) {
+  const shapeOf = (track: OpsTrackAnalytics, mode: TrackSubmissionMode) =>
+    track.submissionShapes.find((shape) => shape.mode === mode);
+
+  const modes = SUBMISSION_MODE_ORDER.filter((mode) =>
+    tracks.some((track) => (shapeOf(track, mode)?.teams ?? 0) > 0)
+  );
+
+  const rows = tracks
+    .map((track) => ({
+      track,
+      teams: track.submissionShapes.reduce((sum, shape) => sum + shape.teams, 0),
+      students: track.submissionShapes.reduce((sum, shape) => sum + shape.students, 0),
+    }))
+    .filter((row) => row.teams > 0)
+    .sort((a, b) => b.teams - a.teams || a.track.trackName.localeCompare(b.track.trackName));
+
+  const columnTotals = modes.map((mode) => ({
+    mode,
+    teams: rows.reduce((sum, row) => sum + (shapeOf(row.track, mode)?.teams ?? 0), 0),
+    students: rows.reduce((sum, row) => sum + (shapeOf(row.track, mode)?.students ?? 0), 0),
+  }));
+  const grandTotal = {
+    teams: rows.reduce((sum, row) => sum + row.teams, 0),
+    students: rows.reduce((sum, row) => sum + row.students, 0),
+  };
+
+  return (
+    <Panel
+      title="What teams submitted, per track"
+      note="Every cell is teams / students — a team of four counts once on the left and four times on the right."
+    >
+      {rows.length === 0 ? (
+        <p className="text-sm text-gray-500">No team has submitted its preferences yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-separate border-spacing-y-1">
+            <thead>
+              <tr className="text-gray-400">
+                <th className="text-left font-semibold pb-1 pr-3">Track</th>
+                {modes.map((mode) => (
+                  <th
+                    key={mode}
+                    className="text-right font-semibold pb-1 px-2 whitespace-nowrap"
+                    title={SUBMISSION_MODE_LABELS[mode]}
+                  >
+                    {SUBMISSION_MODE_SHORT_LABELS[mode]}
+                  </th>
+                ))}
+                <th className="text-right font-semibold pb-1 pl-2 whitespace-nowrap">Submitted</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.track.trackId} className="bg-zinc-900/60">
+                  <td
+                    className="py-2 pr-3 pl-2 rounded-l-lg text-white truncate max-w-[220px]"
+                    title={row.track.trackName}
+                  >
+                    {row.track.trackName}
+                  </td>
+                  {modes.map((mode) => {
+                    const shape = shapeOf(row.track, mode);
+                    return (
+                      <td key={mode} className="py-2 px-2 text-right">
+                        <ShapeCell teams={shape?.teams ?? 0} students={shape?.students ?? 0} />
+                      </td>
+                    );
+                  })}
+                  <td className="py-2 pl-2 pr-2 rounded-r-lg text-right">
+                    <ShapeCell teams={row.teams} students={row.students} />
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td className="pt-2 pr-3 pl-2 text-xs font-semibold text-gray-400">All tracks</td>
+                {columnTotals.map((total) => (
+                  <td key={total.mode} className="pt-2 px-2 text-right">
+                    <ShapeCell teams={total.teams} students={total.students} />
+                  </td>
+                ))}
+                <td className="pt-2 pl-2 pr-2 text-right">
+                  <ShapeCell teams={grandTotal.teams} students={grandTotal.students} />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="text-[11px] text-gray-500 mt-3">
+        A mode a track allows but nobody chose has no column here — the allowed modes live on the track's
+        configuration. Only a self-proposed slot 1 needs a mentor's approval, so the self-assign columns are the
+        review workload.
+      </p>
+    </Panel>
+  );
+}
+
 function Stat({ value, label, tone = 'text-white' }: { value: number | string; label: string; tone?: string }) {
   return (
     <div className="min-w-0">
@@ -297,12 +429,16 @@ export default function CohortOpsOverview({ cohortId }: { cohortId: string }) {
   return (
     <div className="space-y-3 overflow-y-auto pb-2">
       <div className="bg-zinc-850 border border-zinc-750 rounded-2xl p-5">
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
           <Stat value={progress.students} label="students" />
           <Stat value={progress.studentsOnTeam} label="on a team" />
           <Stat value={progress.studentsNotStarted} label="not started" tone="text-red-400" />
           <Stat value={progress.teamsFormed} label="teams formed" />
-          <Stat value={progress.teamsSubmitted} label="submitted" tone="text-yellow-500" />
+          {/* Teams and students side by side on purpose: a team of four
+              submitting moves one by 1 and the other by 4, and "115 submitted"
+              on its own has always been read as students. */}
+          <Stat value={progress.teamsSubmitted} label="teams submitted" tone="text-yellow-500" />
+          <Stat value={progress.studentsSubmitted} label="students submitted" tone="text-yellow-500" />
           <Stat value={progress.teamsAllocated} label="allocated" tone="text-green-500" />
           <Stat
             value={progress.proposalsPendingReview}
@@ -379,6 +515,10 @@ export default function CohortOpsOverview({ cohortId }: { cohortId: string }) {
           generated — adding more mentors there will not help.
         </p>
       </Panel>
+
+      {/* Sits directly under Track coverage: same grain, and it answers the
+          question that one raises — those teams submitted, but submitted what. */}
+      <SubmissionShapes tracks={tracks} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <BarPanel
