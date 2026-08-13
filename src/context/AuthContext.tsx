@@ -43,14 +43,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     apiGetMe()
       .then((me) => {
-        setUser({
-          ...me,
-          role: me.role ? (me.role.toLowerCase() as ApiUserRole) : 'student'
-        });
+        // No role is not a session. The server sends back the role it will
+        // actually authorise this token as, so a missing one means the account
+        // resolves to nothing in the role tables and every request behind this
+        // would be refused. This used to fall back to 'student', which opened
+        // the student panel to somebody the server would not authorise as
+        // anything — a screen that loads and then fails on every call, with
+        // nothing on it explaining why. Falling into the catch below signs
+        // them out instead, which is the truth and is actionable.
+        if (!me.role) throw new Error('This account has no role in the OJT system.');
+        setUser({ ...me, role: me.role.toLowerCase() as ApiUserRole });
         setToken(storedToken);
       })
       .catch(() => {
-        // Token is invalid/expired — clear it
+        // Token is invalid/expired, or carries no usable role — clear it
         clearStoredToken();
         setUser(null);
         setToken(null);
@@ -76,9 +82,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Kept in one place so a new sign-in method can't quietly skip the role
   // check or forget to store the token.
   const applySession = useCallback((result: AuthResult, allowedRoles?: ApiUserRole[]) => {
+    // Same rule as the session restore above: a sign-in that came back without
+    // a role is not a usable session, and quietly calling it a student hands
+    // out a panel the server will refuse every request for.
+    if (!result.user.role) {
+      throw new Error('This account is not registered in the OJT system. Ask an admin to add you.');
+    }
     const normalizedUser = {
       ...result.user,
-      role: result.user.role ? (result.user.role.toLowerCase() as ApiUserRole) : 'student'
+      role: result.user.role.toLowerCase() as ApiUserRole
     };
     if (allowedRoles && !allowedRoles.includes(normalizedUser.role)) {
       throw new Error(`Access denied: You do not have permission to access the selected panel.`);
