@@ -102,7 +102,24 @@ export interface OpsProject {
   preference1Count: number;
   preference2Count: number;
   allocatedCount: number;
+  /**
+   * Distinct teams in this OJT holding it in either preference slot — the
+   * number the two-teams-per-project ceiling is about, which the two slot
+   * counts above cannot answer between them.
+   */
+  teamsPickedCount: number;
 }
+
+/**
+ * Which half of the catalog to list.
+ *
+ * 'catalog' — imported projects mapped to this OJT. 'proposed' — projects teams
+ * wrote for themselves. Omitted means both.
+ *
+ * The manual-allocation picker asks for 'catalog': a self-proposed project
+ * belongs to the team that wrote it, and the create endpoint refuses one.
+ */
+export type OpsProjectSource = 'catalog' | 'proposed';
 
 export interface OpsFilterOptions {
   tracks: { id: string; name: string }[];
@@ -247,7 +264,7 @@ export async function apiGetOpsMentors(
 
 export async function apiGetOpsProjects(
   cohortId: string,
-  params: { page: number; limit: number; search?: string; trackId?: string }
+  params: { page: number; limit: number; search?: string; trackId?: string; source?: OpsProjectSource }
 ): Promise<OpsPage<OpsProject>> {
   return apiFetch<OpsPage<OpsProject>>(`/api/v1/cohorts/${cohortId}/ops/projects?${query(params)}`);
 }

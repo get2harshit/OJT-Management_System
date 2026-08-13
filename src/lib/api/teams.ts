@@ -29,7 +29,11 @@ const TEAMS_TTL = 15_000;
 // changed — team formation is a multi-step, race-condition-sensitive flow
 // (see the memory notes on it), so a few extra refetches is the safer
 // trade-off over a stale-state bug.
-function invalidateTeamCaches(): void {
+//
+// Exported because the manual-allocation page creates teams through its own
+// module, and a team it built leaves exactly the same caches stale as one built
+// anywhere else here.
+export function invalidateTeamCaches(): void {
   invalidateCached('teams:mystatus');
   invalidateCached('teams:mine');
   invalidateCached('teams:mycohort');
