@@ -64,6 +64,12 @@ export interface OpsTeam {
   preference1: OpsPreferenceSlot | null;
   preference2: OpsPreferenceSlot | null;
   preference1ReviewStatus: string | null;
+  /**
+   * An admin built this team and named its project outright. Such a team has no
+   * submissionMode — it did not submit — so that field is null here for the
+   * same reason it is null before anyone submits at all.
+   */
+  isAdminPlaced: boolean;
   allocatedProjectTitle: string | null;
   allocatedMentorName: string | null;
   submittedAt: string | null;
@@ -173,6 +179,15 @@ export interface OpsTrackAnalytics {
    * lives on the track-config screen.
    */
   submissionShapes: OpsTrackSubmissionShape[];
+  /**
+   * Teams an admin built and assigned outright, and the students on them.
+   *
+   * Not one of the shapes: these teams chose nothing. Counted separately so a
+   * track whose teams were placed by hand doesn't read as empty — and so the
+   * shapes never claim catalog picks nobody made.
+   */
+  adminPlacedTeams: number;
+  adminPlacedStudents: number;
   catalogProjects: number;
   projectsSelected: number;
   mentorsStaffed: number;
