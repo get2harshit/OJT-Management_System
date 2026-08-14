@@ -14,3 +14,5 @@ export * from './tracks';
 export * from './ops';
 export * from './manualAllocation';
 export * from './eligibility';
+export * from './sessions';
+export * from './schedulingConfig';

@@ -12,6 +12,8 @@ import CreateTaskPage from './CreateTaskPage';
 import Submissions from './Submissions';
 import Credits from './Credits';
 import Attendance from './Attendance';
+import Sessions from './Sessions';
+import SchedulingConfig from './SchedulingConfig';
 import EvaluationTracker from './EvaluationTracker';
 import EligibilityStatusPage from './EligibilityStatus';
 import ViewCohortPage from './OJTs/ViewCohortPage';
@@ -132,6 +134,8 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         />
         <Route path="credits" element={<Credits />} />
         <Route path="attendance" element={<Attendance />} />
+        <Route path="sessions" element={<Sessions />} />
+        <Route path="sessions/config" element={<SchedulingConfig />} />
         <Route path="evaluation" element={<EvaluationTracker />} />
         <Route path="eligibility" element={<EligibilityStatusPage />} />
 

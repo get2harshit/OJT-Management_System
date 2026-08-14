@@ -18,6 +18,7 @@ import {
   X,
   Pin,
   PinOff,
+  CalendarClock,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
 
@@ -44,6 +45,7 @@ const adminTabs = [
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
   { id: 'credits', label: 'Cloud Credits', icon: Cloud },
+  { id: 'sessions', label: 'Sessions', icon: CalendarClock },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
   { id: 'eligibility', label: 'Eligibility Status', icon: ShieldCheck },
@@ -56,6 +58,7 @@ const mentorTabs = [
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
   { id: 'credits', label: 'Credit Requests', icon: Cloud },
+  { id: 'sessions', label: 'Sessions', icon: CalendarClock },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
 ];
@@ -66,6 +69,7 @@ const studentTabs = [
   { id: 'tasks', label: 'My Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'My Submissions', icon: Upload },
   { id: 'credits', label: 'Cloud Credits', icon: CreditCard },
+  { id: 'sessions', label: 'Sessions', icon: CalendarClock },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
 ];
 

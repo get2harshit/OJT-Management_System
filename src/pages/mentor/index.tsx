@@ -8,6 +8,7 @@ import ProjectProposals from './ProjectProposals';
 import Tasks from './Tasks';
 import Submissions from './Submissions';
 import Attendance from './Attendance';
+import Sessions from './Sessions';
 import EvaluationTracker from './EvaluationTracker';
 import Credits from './Credits';
 import { useAuth } from '../../context/useAuth';
@@ -103,6 +104,7 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
           }
         />
         <Route path="credits" element={<Credits mentorId={mentorId} />} />
+        <Route path="sessions" element={<Sessions />} />
         <Route path="attendance" element={<Attendance />} />
         <Route path="evaluation" element={<EvaluationTracker />} />
         {/* An unknown section is a bad link, not a blank screen — send it to
