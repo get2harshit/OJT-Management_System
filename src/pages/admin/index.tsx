@@ -24,6 +24,7 @@ import CohortProjectsPage from './OJTs/CohortProjectsPage';
 import ProjectInsightsPage from './OJTs/ProjectInsightsPage';
 import CohortMentorsPage from './OJTs/CohortMentorsPage';
 import CohortTeamsPage from './OJTs/CohortTeamsPage';
+import CohortRosterPage from './OJTs/CohortRosterPage';
 import CohortAllocationsPage from './OJTs/CohortAllocationsPage';
 import ManualAllocationPage from './OJTs/ManualAllocationPage';
 import CohortTrackConfigPage from './OJTs/CohortTrackConfigPage';
@@ -153,6 +154,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route path="ojts/:cohortId/track-config/:trackSlug/projects" element={<CohortProjectsPage />} />
         <Route path="ojts/:cohortId/mentors" element={<CohortMentorsPage />} />
         <Route path="ojts/:cohortId/teams" element={<CohortTeamsPage />} />
+        <Route path="ojts/:cohortId/roster" element={<CohortRosterPage />} />
         <Route path="ojts/:cohortId/allocations" element={<CohortAllocationsPage />} />
         <Route path="ojts/:cohortId/manual-allocation" element={<ManualAllocationPage />} />
         <Route path="ojts/:cohortId/breakdown" element={<CohortOpsPage />} />

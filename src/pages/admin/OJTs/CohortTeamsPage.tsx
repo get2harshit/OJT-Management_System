@@ -1,7 +1,7 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
-import { Users2, Trash2 } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Users2, Trash2, Settings2 } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
 import SpinnerSquare from '../../../components/SpinnerSquare';
@@ -17,6 +17,7 @@ import { usePageRefresh } from '../../../context/RefreshContext';
 // used to reset test accounts without a manual DB query.
 export default function CohortTeamsPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const confirm = useConfirm();
 
@@ -80,7 +81,19 @@ export default function CohortTeamsPage() {
 
   return (
     <PageLayout className="space-y-6">
-      <CohortPageHeader title="Teams" subtitle={cohortLabel} />
+      <CohortPageHeader
+        title="Teams"
+        subtitle={cohortLabel}
+        trailing={
+          <button
+            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/roster`)}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-750 text-gold font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+          >
+            <Settings2 size={13} />
+            Roster &amp; Mentors
+          </button>
+        }
+      />
 
       {loading ? (
         <div className="min-h-[50vh] flex items-center justify-center">

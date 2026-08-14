@@ -4,6 +4,8 @@ import { apiFetch, invalidateCached } from './client';
 
 export interface ApiSchedulingConfig {
   cohort_id: string;
+  /** null on the cohort's own default row; set on a mentor's override. */
+  mentor_id?: string | null;
   working_days: number[];
   day_start_minute: number;
   day_end_minute: number;
@@ -14,6 +16,8 @@ export interface ApiSchedulingConfig {
   updated_at?: string;
   /** Only set when the cohort has never had a config saved — these are hand-fed defaults, not a real row. */
   is_default?: boolean;
+  /** True when this came from the mentor's own override rather than the cohort default. */
+  is_mentor_override?: boolean;
 }
 
 export interface UpdateSchedulingConfigBody {
@@ -35,6 +39,41 @@ export async function apiUpdateSchedulingConfig(cohortId: string, body: UpdateSc
     body: JSON.stringify(body),
   });
   invalidateCached('scheduling-config');
+  return res.data;
+}
+
+// ── Per-mentor overrides ──────────────────────────────────────────────────
+// A mentor without an override follows the cohort default; one with an
+// override is bound by it no matter who schedules on their behalf.
+
+/** The config that actually governs this mentor — their override if set, otherwise the cohort default. */
+export async function apiGetMentorSchedulingConfig(cohortId: string, mentorId: string): Promise<ApiSchedulingConfig> {
+  const res = await apiFetch<{ data: ApiSchedulingConfig }>(`/api/v1/cohorts/${cohortId}/mentors/${mentorId}/scheduling-config`);
+  return res.data;
+}
+
+export async function apiSetMentorSchedulingConfig(
+  cohortId: string,
+  mentorId: string,
+  body: UpdateSchedulingConfigBody
+): Promise<ApiSchedulingConfig> {
+  const res = await apiFetch<{ data: ApiSchedulingConfig }>(`/api/v1/cohorts/${cohortId}/mentors/${mentorId}/scheduling-config`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+  invalidateCached('scheduling-config');
+  return res.data;
+}
+
+export async function apiClearMentorSchedulingConfig(cohortId: string, mentorId: string): Promise<void> {
+  await apiFetch<void>(`/api/v1/cohorts/${cohortId}/mentors/${mentorId}/scheduling-config`, { method: 'DELETE' });
+  invalidateCached('scheduling-config');
+}
+
+// One request for the whole roster's overrides instead of one per mentor —
+// same reasoning as apiGetSelfSchedulePermissionsForCohort below.
+export async function apiGetSchedulingOverridesForCohort(cohortId: string): Promise<Record<string, ApiSchedulingConfig>> {
+  const res = await apiFetch<{ data: Record<string, ApiSchedulingConfig> }>(`/api/v1/cohorts/${cohortId}/scheduling-overrides`);
   return res.data;
 }
 

@@ -1,21 +1,29 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Wallet, Check, DollarSign, PackagePlus, Download } from 'lucide-react';
+import { Wallet, Check, DollarSign, PackagePlus, Download, Tag } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
-import type { Cohort } from '../../lib/types';
+import type { Cohort, ApiMentor } from '../../lib/types';
 import {
   apiListCohorts,
+  apiListMentorsPage,
   apiListPayouts,
   apiApprovePayout,
   apiMarkPayoutPaid,
   apiListBatches,
   apiGenerateBatch,
   apiDownloadBatchExport,
+  apiGetCurrentRatesForMentors,
+  apiListMentorRates,
+  apiSetMentorRate,
+  RATE_TYPE_LABELS,
+  RATE_TYPE_UNITS,
   type ApiSessionPayout,
   type ApiPayoutStatus,
   type ApiPayoutBatchSummary,
+  type ApiMentorRate,
+  type ApiRateType,
 } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
@@ -52,9 +60,23 @@ function formatDuration(session: ApiSessionPayout['session']): string {
   return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m}m`;
 }
 
+const RATE_TYPE_OPTIONS = (Object.keys(RATE_TYPE_LABELS) as ApiRateType[]).map((value) => ({
+  value,
+  label: RATE_TYPE_LABELS[value],
+}));
+
+const CURRENCY_OPTIONS = [
+  { value: 'INR', label: 'INR' },
+  { value: 'USD', label: 'USD' },
+];
+
+function describeRate(rate: ApiMentorRate): string {
+  return `${rate.currency} ${rate.rate_amount}${RATE_TYPE_UNITS[rate.rate_type]}`;
+}
+
 export default function AdminPayouts() {
   const { showSuccess, showError } = useToast();
-  const [activeTab, setActiveTab] = useState<'payouts' | 'batches'>('payouts');
+  const [activeTab, setActiveTab] = useState<'payouts' | 'batches' | 'rates'>('payouts');
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [cohortId, setCohortId] = useState('');
@@ -67,6 +89,19 @@ export default function AdminPayouts() {
 
   const [batches, setBatches] = useState<ApiPayoutBatchSummary[]>([]);
   const [batchesLoading, setBatchesLoading] = useState(false);
+
+  const [mentors, setMentors] = useState<ApiMentor[]>([]);
+  const [currentRates, setCurrentRates] = useState<Record<string, ApiMentorRate>>({});
+  const [ratesLoading, setRatesLoading] = useState(false);
+
+  // The mentor whose rate is being set, that form's state, and their history.
+  const [rateTarget, setRateTarget] = useState<ApiMentor | null>(null);
+  const [rateAmount, setRateAmount] = useState('');
+  const [rateType, setRateType] = useState<ApiRateType>('per_hour');
+  const [rateCurrency, setRateCurrency] = useState('INR');
+  const [rateNote, setRateNote] = useState('');
+  const [rateHistory, setRateHistory] = useState<ApiMentorRate[]>([]);
+  const [savingRate, setSavingRate] = useState(false);
 
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [periodStart, setPeriodStart] = useState('');
@@ -127,6 +162,67 @@ export default function AdminPayouts() {
     if (activeTab === 'batches') loadBatches();
   }, [activeTab, loadBatches]);
 
+  const loadRates = useCallback(async () => {
+    setRatesLoading(true);
+    try {
+      const mentorsRes = await apiListMentorsPage({ page: 1, limit: 200, cohortId: cohortId || undefined });
+      setMentors(mentorsRes.data);
+      // One request for the whole visible roster rather than one per mentor.
+      setCurrentRates(await apiGetCurrentRatesForMentors(mentorsRes.data.map((m) => m.id)));
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load mentor rates');
+    } finally {
+      setRatesLoading(false);
+    }
+  }, [cohortId, showError]);
+
+  useEffect(() => {
+    if (activeTab === 'rates') loadRates();
+  }, [activeTab, loadRates]);
+
+  const openRateModal = async (mentor: ApiMentor) => {
+    const existing = currentRates[mentor.id];
+    setRateTarget(mentor);
+    // Seeded from their current rate so "bump this mentor's rate" starts from
+    // what they're actually on, not from an empty form.
+    setRateAmount(existing ? String(Number(existing.rate_amount)) : '');
+    setRateType(existing?.rate_type ?? 'per_hour');
+    setRateCurrency(existing?.currency ?? 'INR');
+    setRateNote('');
+    setRateHistory([]);
+    try {
+      setRateHistory(await apiListMentorRates(mentor.id));
+    } catch {
+      // History is context, not the point of the screen — a failure here
+      // shouldn't stop the admin setting a rate.
+    }
+  };
+
+  const saveRate = async () => {
+    if (!rateTarget) return;
+    const amount = Number(rateAmount);
+    if (!(amount > 0)) {
+      showError('Enter a rate amount greater than zero');
+      return;
+    }
+    setSavingRate(true);
+    try {
+      const saved = await apiSetMentorRate(rateTarget.id, {
+        rateAmount: amount,
+        rateType,
+        currency: rateCurrency as 'INR' | 'USD',
+        note: rateNote.trim() || undefined,
+      });
+      setCurrentRates((prev) => ({ ...prev, [rateTarget.id]: saved }));
+      showSuccess(`Rate set for ${rateTarget.fullName ?? rateTarget.email}`);
+      setRateTarget(null);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to set rate');
+    } finally {
+      setSavingRate(false);
+    }
+  };
+
   // A decided row that no longer matches the active status filter must leave
   // the list rather than sit there updated-but-stale — otherwise it's still
   // clickable under e.g. a "Pending" filter after it stopped being pending,
@@ -181,8 +277,11 @@ export default function AdminPayouts() {
 
   const cohortOptions = useMemo(() => cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) })), [cohorts]);
 
+  // Batches is the only tab that stacks content below its table, so it's the
+  // only one that scrolls as a whole; the others hand their leftover height
+  // to a single filling table.
   return (
-    <PageLayout mode={activeTab === 'payouts' ? 'fill' : 'scroll'} className="space-y-6">
+    <PageLayout mode={activeTab === 'batches' ? 'scroll' : 'fill'} className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -216,6 +315,14 @@ export default function AdminPayouts() {
           }`}
         >
           Batches
+        </button>
+        <button
+          onClick={() => setActiveTab('rates')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all ${
+            activeTab === 'rates' ? 'border-gold text-gold' : 'border-transparent text-gray-400 hover:text-white'
+          }`}
+        >
+          Mentor Rates
         </button>
       </div>
 
@@ -281,6 +388,47 @@ export default function AdminPayouts() {
             </>
           )}
         />
+      ) : activeTab === 'rates' ? (
+        <DataTable
+          columns={[
+            { key: 'mentorName', header: 'Mentor', render: (row) => (
+              <span>
+                {row.fullName ?? row.email}
+                {row.isExternal && <span className="text-[10px] text-gray-500 ml-1">(External)</span>}
+              </span>
+            ) },
+            { key: 'rateModel', header: 'Rate Model', render: (row) => {
+              const rate = currentRates[row.id];
+              return rate ? RATE_TYPE_LABELS[rate.rate_type] : <span className="text-gray-500">—</span>;
+            } },
+            { key: 'currentRate', header: 'Current Rate', render: (row) => {
+              const rate = currentRates[row.id];
+              return rate ? (
+                <span className="text-white font-medium">{describeRate(rate)}</span>
+              ) : (
+                <span className="text-amber-400/80 text-xs">Not set — sessions won’t generate a payout</span>
+              );
+            } },
+            { key: 'effectiveFrom', header: 'Effective From', render: (row) => {
+              const rate = currentRates[row.id];
+              return rate ? new Date(rate.effective_from).toLocaleDateString() : '—';
+            } },
+          ]}
+          data={mentors.map((m) => ({ ...m, mentorName: m.fullName ?? m.email ?? '' }))}
+          searchKeys={['mentorName']}
+          searchPlaceholder="Search mentors..."
+          loading={ratesLoading}
+          hideExport
+          actions={(row) => (
+            <button
+              onClick={() => openRateModal(row)}
+              className="p-1 px-2.5 bg-zinc-750 hover:bg-zinc-700 text-gold text-xs font-semibold rounded transition-all flex items-center gap-1"
+            >
+              <Tag size={14} />
+              {currentRates[row.id] ? 'Change Rate' : 'Set Rate'}
+            </button>
+          )}
+        />
       ) : (
         <DataTable
           fill={false}
@@ -333,6 +481,82 @@ export default function AdminPayouts() {
             {generating ? 'Generating...' : 'Generate Batch'}
           </button>
         </div>
+      </Modal>
+
+      <Modal
+        open={!!rateTarget}
+        onClose={() => setRateTarget(null)}
+        title={rateTarget ? `Rate for ${rateTarget.fullName ?? rateTarget.email}` : 'Mentor rate'}
+      >
+        {rateTarget && (
+          <div className="space-y-4">
+            <p className="text-gray-400 text-xs">
+              Rates are append-only: saving records a new rate from now on and leaves every session already scheduled on the rate
+              it was booked under. Final amounts are worked out from the CSV export, not here.
+            </p>
+
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Rate Model</label>
+              <Select value={rateType} onChange={(v) => setRateType(v as ApiRateType)} options={RATE_TYPE_OPTIONS} />
+              <p className="text-[11px] text-gray-500 mt-1">
+                {rateType === 'per_hour' && 'Paid per hour of the session’s actual length.'}
+                {rateType === 'per_session' && 'A flat fee per session, however long it runs.'}
+                {rateType === 'per_team' && 'Paid per team the session covers — a combined session pays more.'}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <label className="text-xs text-gray-400 mb-1 block">Amount{RATE_TYPE_UNITS[rateType]}</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={rateAmount}
+                  onChange={(e) => setRateAmount(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Currency</label>
+                <Select value={rateCurrency} onChange={setRateCurrency} options={CURRENCY_OPTIONS} />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Note (optional)</label>
+              <input
+                value={rateNote}
+                onChange={(e) => setRateNote(e.target.value)}
+                placeholder="Why this rate changed"
+                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+              />
+            </div>
+
+            {rateHistory.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-400 mb-1.5">Rate history</p>
+                <div className="space-y-1 max-h-[140px] overflow-y-auto scrollbar-thin">
+                  {rateHistory.map((r) => (
+                    <div key={r.id} className="flex items-center justify-between bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-1.5">
+                      <span className="text-gray-300 text-xs">
+                        {describeRate(r)} <span className="text-gray-500">({RATE_TYPE_LABELS[r.rate_type]})</span>
+                      </span>
+                      <span className="text-gray-500 text-[11px]">{new Date(r.effective_from).toLocaleDateString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={saveRate}
+              disabled={savingRate}
+              className="w-full text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+            >
+              {savingRate ? 'Saving...' : 'Save Rate'}
+            </button>
+          </div>
+        )}
       </Modal>
     </PageLayout>
   );

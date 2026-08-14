@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Settings, ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { Settings, ArrowLeft, Plus, Trash2, CalendarRange, RotateCcw } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Select from '../../components/Select';
+import Modal from '../../components/Modal';
 import type { Cohort, ApiMentor } from '../../lib/types';
 import {
   apiListCohorts,
@@ -15,7 +16,11 @@ import {
   apiDeleteHoliday,
   apiGetSelfSchedulePermissionsForCohort,
   apiSetSelfSchedulePermission,
+  apiGetSchedulingOverridesForCohort,
+  apiSetMentorSchedulingConfig,
+  apiClearMentorSchedulingConfig,
   type ApiHoliday,
+  type ApiSchedulingConfig,
 } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
@@ -55,6 +60,16 @@ export default function SchedulingConfig() {
 
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
+  const [overrides, setOverrides] = useState<Record<string, ApiSchedulingConfig>>({});
+
+  // The mentor whose override is being edited, plus that form's own state —
+  // separate from the cohort-level fields above so opening the modal can't
+  // disturb unsaved cohort edits.
+  const [overrideTarget, setOverrideTarget] = useState<ApiMentor | null>(null);
+  const [overrideDays, setOverrideDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [overrideStart, setOverrideStart] = useState('09:00');
+  const [overrideEnd, setOverrideEnd] = useState('18:00');
+  const [savingOverride, setSavingOverride] = useState(false);
 
   useEffect(() => {
     apiListCohorts()
@@ -69,11 +84,12 @@ export default function SchedulingConfig() {
     }
     setLoading(true);
     try {
-      const [config, holidaysRes, mentorsRes, permsRes] = await Promise.all([
+      const [config, holidaysRes, mentorsRes, permsRes, overridesRes] = await Promise.all([
         apiGetSchedulingConfig(cohortId),
         apiListHolidays(cohortId),
         apiListMentorsPage({ page: 1, limit: 200, cohortId }),
         apiGetSelfSchedulePermissionsForCohort(cohortId),
+        apiGetSchedulingOverridesForCohort(cohortId),
       ]);
       setWorkingDays(config.working_days);
       setDayStart(minutesToTime(config.day_start_minute));
@@ -83,6 +99,7 @@ export default function SchedulingConfig() {
       setHolidays(holidaysRes);
       setMentors(mentorsRes.data);
       setPermissions(permsRes);
+      setOverrides(overridesRes);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load scheduling config');
     } finally {
@@ -148,6 +165,71 @@ export default function SchedulingConfig() {
       setPermissions((prev) => ({ ...prev, [mentorId]: !next }));
       showError(err instanceof Error ? err.message : 'Failed to update permission');
     }
+  };
+
+  // Opening seeds the form from the mentor's existing override, or — when
+  // they don't have one — from the cohort's current values, so "give this
+  // mentor a narrower window" starts from the window they're actually on
+  // rather than from an arbitrary default.
+  const openOverride = (mentor: ApiMentor) => {
+    const existing = overrides[mentor.id];
+    setOverrideTarget(mentor);
+    setOverrideDays(existing ? existing.working_days : workingDays);
+    setOverrideStart(existing ? minutesToTime(existing.day_start_minute) : dayStart);
+    setOverrideEnd(existing ? minutesToTime(existing.day_end_minute) : dayEnd);
+  };
+
+  const toggleOverrideDay = (day: number) => {
+    setOverrideDays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()));
+  };
+
+  const saveOverride = async () => {
+    if (!overrideTarget || !cohortId) return;
+    if (overrideDays.length === 0) {
+      showError('Pick at least one working day, or clear the override entirely');
+      return;
+    }
+    setSavingOverride(true);
+    try {
+      const saved = await apiSetMentorSchedulingConfig(cohortId, overrideTarget.id, {
+        workingDays: overrideDays,
+        dayStartMinute: timeToMinutes(overrideStart),
+        dayEndMinute: timeToMinutes(overrideEnd),
+        // The cohort's duration/gap settings are not per-mentor concepts, so
+        // the override carries the cohort's current values rather than
+        // inventing its own.
+        defaultSessionDurationMinutes: defaultDuration,
+        minGapMinutes: minGap,
+      });
+      setOverrides((prev) => ({ ...prev, [overrideTarget.id]: saved }));
+      showSuccess(`${overrideTarget.fullName ?? overrideTarget.email} now has their own schedule`);
+      setOverrideTarget(null);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to save override');
+    } finally {
+      setSavingOverride(false);
+    }
+  };
+
+  const clearOverride = async (mentor: ApiMentor) => {
+    if (!cohortId) return;
+    try {
+      await apiClearMentorSchedulingConfig(cohortId, mentor.id);
+      setOverrides((prev) => {
+        const next = { ...prev };
+        delete next[mentor.id];
+        return next;
+      });
+      showSuccess(`${mentor.fullName ?? mentor.email} follows the cohort schedule again`);
+      setOverrideTarget(null);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to clear override');
+    }
+  };
+
+  const describeOverride = (config: ApiSchedulingConfig): string => {
+    const days = config.working_days.map((d) => DAY_LABELS[d]).join(', ');
+    return `${days} · ${minutesToTime(config.day_start_minute)}-${minutesToTime(config.day_end_minute)}`;
   };
 
   const cohortOptions = useMemo(() => cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) })), [cohorts]);
@@ -255,28 +337,132 @@ export default function SchedulingConfig() {
           </div>
 
           <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5 space-y-4">
-            <p className="text-xs text-gold uppercase font-bold tracking-wider">Self-Schedule Permission</p>
-            <p className="text-gray-500 text-xs">Mentors allowed here can schedule their own sessions in this cohort without an admin.</p>
-            <div className="space-y-1.5 max-h-[400px] overflow-y-auto scrollbar-thin">
-              {mentors.map((m) => (
-                <div key={m.id} className="flex items-center justify-between bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2">
-                  <span className="text-gray-300 text-sm">
-                    {m.fullName ?? m.email} {m.isExternal && <span className="text-[10px] text-gray-500 ml-1">(External)</span>}
-                  </span>
-                  <button
-                    onClick={() => togglePermission(m.id)}
-                    className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border transition-colors ${
-                      permissions[m.id] ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-zinc-750 text-gray-400 border-zinc-750'
-                    }`}
-                  >
-                    {permissions[m.id] ? 'Allowed' : 'Not Allowed'}
-                  </button>
-                </div>
-              ))}
+            <p className="text-xs text-gold uppercase font-bold tracking-wider">Mentors</p>
+            <p className="text-gray-500 text-xs">
+              Allowed mentors can schedule their own sessions without an admin. A mentor given their own schedule is held to it
+              whoever books the session — including an admin booking on their behalf.
+            </p>
+            <div className="space-y-1.5 max-h-[420px] overflow-y-auto scrollbar-thin">
+              {mentors.map((m) => {
+                const override = overrides[m.id];
+                return (
+                  <div key={m.id} className="flex items-center justify-between gap-3 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-gray-300 text-sm truncate">
+                        {m.fullName ?? m.email} {m.isExternal && <span className="text-[10px] text-gray-500 ml-1">(External)</span>}
+                      </p>
+                      <p className="text-[11px] text-gray-500 truncate">
+                        {override ? (
+                          <span className="text-gold">Own schedule: {describeOverride(override)}</span>
+                        ) : (
+                          'Follows the cohort schedule'
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => openOverride(m)}
+                        title={override ? 'Edit this mentor’s own schedule' : 'Give this mentor their own schedule'}
+                        className={`flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border transition-colors ${
+                          override
+                            ? 'bg-gold/10 text-gold border-gold/30'
+                            : 'bg-zinc-750 text-gray-400 border-zinc-750 hover:text-white'
+                        }`}
+                      >
+                        <CalendarRange size={11} />
+                        {override ? 'Custom' : 'Schedule'}
+                      </button>
+                      <button
+                        onClick={() => togglePermission(m.id)}
+                        className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border transition-colors ${
+                          permissions[m.id] ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-zinc-750 text-gray-400 border-zinc-750'
+                        }`}
+                      >
+                        {permissions[m.id] ? 'Allowed' : 'Not Allowed'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
       )}
+
+      <Modal
+        open={!!overrideTarget}
+        onClose={() => setOverrideTarget(null)}
+        title={overrideTarget ? `Schedule for ${overrideTarget.fullName ?? overrideTarget.email}` : 'Mentor schedule'}
+      >
+        {overrideTarget && (
+          <div className="space-y-4">
+            <p className="text-gray-400 text-xs">
+              Sessions for this mentor must fall inside this window. Anything outside it is refused — for the mentor and for an
+              admin scheduling on their behalf alike. Leave it matching the cohort and it simply behaves as before.
+            </p>
+
+            <div>
+              <label className="text-xs text-gray-400 mb-2 block">Working Days</label>
+              <div className="flex gap-2 flex-wrap">
+                {DAY_LABELS.map((label, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => toggleOverrideDay(idx)}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-semibold border transition-colors ${
+                      overrideDays.includes(idx)
+                        ? 'bg-gold text-black border-gold'
+                        : 'bg-zinc-900 text-gray-400 border-zinc-750 hover:border-gold/50'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Day Start</label>
+                <input
+                  type="time"
+                  value={overrideStart}
+                  onChange={(e) => setOverrideStart(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Day End</label>
+                <input
+                  type="time"
+                  value={overrideEnd}
+                  onChange={(e) => setOverrideEnd(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 border-t border-zinc-800 pt-4 flex-wrap">
+              <button
+                onClick={saveOverride}
+                disabled={savingOverride}
+                className="text-xs px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+              >
+                {savingOverride ? 'Saving...' : 'Save Schedule'}
+              </button>
+              {overrides[overrideTarget.id] && (
+                <button
+                  onClick={() => clearOverride(overrideTarget)}
+                  disabled={savingOverride}
+                  className="flex items-center gap-1.5 text-xs px-4 py-2 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                >
+                  <RotateCcw size={13} />
+                  Use Cohort Schedule
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </PageLayout>
   );
 }
