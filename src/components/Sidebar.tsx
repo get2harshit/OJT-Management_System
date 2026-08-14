@@ -21,6 +21,7 @@ import {
   CalendarClock,
   Wallet,
   Inbox,
+  Clock,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
 
@@ -64,6 +65,7 @@ const mentorTabs = [
   { id: 'credits', label: 'Credit Requests', icon: Cloud },
   { id: 'sessions', label: 'Sessions', icon: CalendarClock },
   { id: 'session-requests', label: 'Session Requests', icon: Inbox },
+  { id: 'availability', label: 'My Availability', icon: Clock },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   { id: 'payouts', label: 'Payouts', icon: Wallet },
   { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },

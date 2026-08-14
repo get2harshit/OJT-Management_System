@@ -11,6 +11,7 @@ import Attendance from './Attendance';
 import Sessions from './Sessions';
 import Payouts from './Payouts';
 import SessionRequests from './SessionRequests';
+import Availability from './Availability';
 import EvaluationTracker from './EvaluationTracker';
 import Credits from './Credits';
 import { useAuth } from '../../context/useAuth';
@@ -110,6 +111,7 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
         <Route path="attendance" element={<Attendance />} />
         <Route path="payouts" element={<Payouts />} />
         <Route path="session-requests" element={<SessionRequests />} />
+        <Route path="availability" element={<Availability />} />
         <Route path="evaluation" element={<EvaluationTracker />} />
         {/* An unknown section is a bad link, not a blank screen — send it to
             the panel's own front page rather than rendering nothing. */}
