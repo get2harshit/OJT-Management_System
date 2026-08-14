@@ -1,9 +1,8 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Table2, Plus, Download } from 'lucide-react';
+import { Plus, Download } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
-import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import Drawer from '../../../components/Drawer';
@@ -197,7 +196,6 @@ export default function CohortEvaluationSummaryPage() {
 
   return (
     <PageLayout className="space-y-3">
-      <CohortPageHeader title="Evaluation Summary" subtitle={cohortLabel || undefined} icon={Table2} />
 
       {loading ? (
         <div className="min-h-[40vh] flex items-center justify-center">

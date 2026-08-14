@@ -2,8 +2,7 @@ import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import DataTable from '../../../components/DataTable';
-import { Settings2, Plus, Pencil, Trash2, Users, X, UserPlus, ArrowRight, FileSpreadsheet, Percent, UserCog } from 'lucide-react';
-import CohortPageHeader from './CohortPageHeader';
+import { Plus, Pencil, Trash2, Users, X, UserPlus, ArrowRight, FileSpreadsheet, Percent, UserCog } from 'lucide-react';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import Modal from '../../../components/Modal';
@@ -28,7 +27,6 @@ import {
 } from '../../../lib/api';
 import type { ApiStudent } from '../../../lib/types';
 import { useTracks } from '../../../hooks/useTracks';
-import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
@@ -67,7 +65,6 @@ export default function CohortTrackConfigPage() {
   const confirm = useConfirm();
   const { tracks: allTracks, refetch: refetchTracks } = useTracks();
 
-  const [cohortLabel, setCohortLabel] = useState('');
   const [allowedBatches, setAllowedBatches] = useState<string[]>([]);
   const [configs, setConfigs] = useState<ApiCohortTrackConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,7 +127,6 @@ export default function CohortTrackConfigPage() {
         apiGetCohort(cohortId),
         apiGetCohortTrackConfig(cohortId),
       ]);
-      setCohortLabel(getCohortLabel(cohort));
       setAllowedBatches(cohort.allowedBatches ?? []);
       setConfigs(cfg);
     } catch (err) {
@@ -463,12 +459,6 @@ export default function CohortTrackConfigPage() {
 
   return (
     <PageLayout className="space-y-6">
-      <CohortPageHeader
-        title="Track Configuration"
-        subtitle={cohortLabel ? `${cohortLabel} — who can pick which track` : undefined}
-        icon={Settings2}
-      />
-
       {loading ? (
         <div className="min-h-[40vh] flex items-center justify-center">
           <SpinnerSquare size={48} />

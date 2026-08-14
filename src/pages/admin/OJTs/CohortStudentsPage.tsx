@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import CohortPageHeader from './CohortPageHeader';
 import SelectEntityGrid from './SelectEntityGrid';
 import type { ApiStudent } from '../../../lib/types';
 import { apiListStudents, apiGetCohort, apiAddStudentsToCohort } from '../../../lib/api';
-import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import { usePageRefresh } from '../../../context/RefreshContext';
 
@@ -13,7 +11,6 @@ export default function CohortStudentsPage() {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
 
-  const [cohortLabel, setCohortLabel] = useState('');
   const [eligibleStudents, setEligibleStudents] = useState<ApiStudent[]>([]);
   const [mappedStudentIds, setMappedStudentIds] = useState<string[]>([]);
   const [originalMappedStudentIds, setOriginalMappedStudentIds] = useState<string[]>([]);
@@ -30,7 +27,6 @@ export default function CohortStudentsPage() {
         apiGetCohort(cohortId, true),
       ]);
       setEligibleStudents(students);
-      setCohortLabel(getCohortLabel(details));
       const currentlyMapped = details.students.map(s => s.id);
       setMappedStudentIds(currentlyMapped);
       setOriginalMappedStudentIds(currentlyMapped);
@@ -95,7 +91,6 @@ export default function CohortStudentsPage() {
 
   return (
     <div className="space-y-6">
-      <CohortPageHeader title="Select Students" subtitle={cohortLabel} />
       <SelectEntityGrid<ApiStudent>
         description="Select one or more students to add to this cohort. Only students in this cohort's allowed batches are shown."
         searchQuery={searchQuery}

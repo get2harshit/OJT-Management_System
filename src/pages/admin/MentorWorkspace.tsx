@@ -57,15 +57,17 @@ const CADENCE_BADGE: Record<ApiMentorWorkspaceTeam['cadenceStatus'], string> = {
  * this screen's job is the mentor-centric overview, not a second roster editor.
  */
 export default function MentorWorkspace() {
-  const { mentorId } = useParams<{ mentorId: string }>();
+  const { cohortId, mentorId } = useParams<{ cohortId: string; mentorId: string }>();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const { busy: cascadeBusy, withCascadeConfirm } = useCascadeConfirm();
   const [busyOther, setBusyOther] = useState(false);
   const busy = cascadeBusy || busyOther;
 
+  // Only for populating the "switch cohort" dropdown's options — the
+  // selection itself lives in the URL (`cohortId` above), not here, so a
+  // reload or a shared link always lands on the same cohort.
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [cohortId, setCohortId] = useState('');
   const [workspace, setWorkspace] = useState<ApiMentorWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [otherMentors, setOtherMentors] = useState<ApiMentor[]>([]);
@@ -91,11 +93,6 @@ export default function MentorWorkspace() {
       .then(setCohorts)
       .catch(() => setCohorts([]));
   }, []);
-
-  useEffect(() => {
-    if (cohorts.length === 0) return;
-    setCohortId((prev) => prev || cohorts.find((c) => c.isActive)?.id || cohorts[0]?.id || prev);
-  }, [cohorts]);
 
   const load = useCallback(async () => {
     if (!mentorId || !cohortId) return;
@@ -305,7 +302,13 @@ export default function MentorWorkspace() {
             <p className="text-sm text-gray-400">{workspace?.mentor.email}</p>
           </div>
           <div className="w-64">
-            <Select value={cohortId} onChange={setCohortId} options={cohortOptions} placeholder="Select cohort" isSearchable />
+            <Select
+              value={cohortId ?? ''}
+              onChange={(newCohortId) => navigate(`/admin/dashboard/ojts/${newCohortId}/mentors/${mentorId}`, { replace: true })}
+              options={cohortOptions}
+              placeholder="Select cohort"
+              isSearchable
+            />
           </div>
         </div>
       </div>

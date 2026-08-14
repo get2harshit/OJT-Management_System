@@ -2,7 +2,6 @@ import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, Megaphone, X, type LucideIcon } from 'lucide-react';
-import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import DataTable from '../../../components/DataTable';
@@ -10,7 +9,7 @@ import type { CohortDetails, Project, ApiStudent, ApiMentor, TeamAllocationDetai
 import { apiGetCohort, apiGetProjectsForCohortPage, apiListStudentsPage, apiListMentorsPage, apiGetStudent, apiGetMentorById, apiGetProject } from '../../../lib/api';
 import { apiGetTeamsForCohortDetailed } from '../../../lib/api/allocations';
 import { getDurationString, formatDateDisplay } from '../../../lib/utils';
-import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
+import { getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import { apiCreateAnnouncement } from '../../../lib/api/notifications';
 import { usePageRefresh } from '../../../context/RefreshContext';
@@ -745,11 +744,8 @@ export default function ViewCohortPage() {
 
   if (loading || !cohort) {
     return (
-      <div className="space-y-6">
-        <CohortPageHeader title="View OJT Cohort" />
-        <div className="min-h-[50vh] flex items-center justify-center">
-          <SpinnerSquare size={48} />
-        </div>
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <SpinnerSquare size={48} />
       </div>
     );
   }
@@ -801,8 +797,6 @@ export default function ViewCohortPage() {
 
   return (
     <PageLayout className="space-y-6">
-      <CohortPageHeader title={getCohortLabel(cohort)} subtitle="OJT cohort details" />
-
       {/* Filter Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
