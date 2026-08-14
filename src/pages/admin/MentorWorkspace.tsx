@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Users2,
+  UserPlus,
   FolderTree,
   ArrowLeftRight,
   Plus,
@@ -17,7 +18,7 @@ import SpinnerSquare from '../../components/SpinnerSquare';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
 import { useCascadeConfirm } from '../../hooks/useCascadeConfirm';
-import type { Cohort, ApiMentor } from '../../lib/types';
+import type { Cohort, ApiMentor, TeamAllocationDetail } from '../../lib/types';
 import { RATE_TYPE_UNITS } from '../../lib/api/mentorRates';
 import {
   apiListCohorts,
@@ -27,6 +28,7 @@ import {
   apiReassignTeamMentor,
   apiMoveTeamToGroup,
   apiCreateMentorGroup,
+  apiGetTeamsForCohortDetailed,
   type ApiMentorWorkspace,
   type ApiMentorWorkspaceTeam,
 } from '../../lib/api';
@@ -73,6 +75,16 @@ export default function MentorWorkspace() {
   const [reassignTo, setReassignTo] = useState('');
   const [reassignReason, setReassignReason] = useState('');
   const [newGroupName, setNewGroupName] = useState('');
+
+  // "Add a team" is a reassign initiated from the destination side: pick any
+  // team in this cohort not already reporting to this mentor, and pull it in
+  // (optionally straight into one of this mentor's groups). Same backend
+  // call as the outgoing Reassign button, just the direction is reversed.
+  const [addTeamOpen, setAddTeamOpen] = useState(false);
+  const [candidateTeams, setCandidateTeams] = useState<TeamAllocationDetail[] | null>(null);
+  const [addTeamId, setAddTeamId] = useState('');
+  const [addTeamGroupId, setAddTeamGroupId] = useState('');
+  const [addTeamReason, setAddTeamReason] = useState('');
 
   useEffect(() => {
     apiListCohorts()
@@ -121,6 +133,17 @@ export default function MentorWorkspace() {
   const groupOptions = useMemo(
     () => [{ value: '', label: 'Ungrouped' }, ...(workspace?.groups.map((g) => ({ value: g.id, label: g.name })) ?? [])],
     [workspace]
+  );
+  const currentTeamIds = useMemo(() => new Set(workspace?.teams.map((t) => t.id) ?? []), [workspace]);
+  const candidateTeamOptions = useMemo(
+    () =>
+      (candidateTeams ?? [])
+        .filter((t) => !currentTeamIds.has(t.teamId))
+        .map((t) => ({
+          value: t.teamId,
+          label: `${t.teamName || 'Team'}${t.allocatedMentorName ? ` — currently ${t.allocatedMentorName}` : ''}`,
+        })),
+    [candidateTeams, currentTeamIds]
   );
 
   const saveCadence = async (teamId: string) => {
@@ -171,6 +194,51 @@ export default function MentorWorkspace() {
           count === 1 ? 'it' : 'them'
         } to ${mentorName} too. Completed sessions and their payouts are untouched.`,
         confirmLabel: 'Reassign & Move Sessions',
+      })
+    );
+  };
+
+  const openAddTeam = async () => {
+    setAddTeamOpen(true);
+    setAddTeamId('');
+    setAddTeamGroupId('');
+    setAddTeamReason('');
+    if (!cohortId) return;
+    try {
+      const res = await apiGetTeamsForCohortDetailed(cohortId, { page: 1, limit: 200 });
+      setCandidateTeams(res.data);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load teams');
+      setCandidateTeams([]);
+    }
+  };
+
+  const submitAddTeam = async () => {
+    if (!mentorId || !addTeamId) return;
+    const teamName = candidateTeams?.find((t) => t.teamId === addTeamId)?.teamName ?? 'The team';
+    await withCascadeConfirm(
+      async (cascade) => {
+        const result = await apiReassignTeamMentor(addTeamId, mentorId, {
+          reason: addTeamReason.trim() || undefined,
+          cascadeFutureSessions: cascade,
+        });
+        if (addTeamGroupId) {
+          await apiMoveTeamToGroup(addTeamId, addTeamGroupId);
+        }
+        showSuccess(
+          result.movedSessions > 0
+            ? `${teamName} added — ${result.movedSessions} upcoming session${result.movedSessions === 1 ? '' : 's'} moved too`
+            : `${teamName} added`
+        );
+        setAddTeamOpen(false);
+        await load();
+      },
+      (count) => ({
+        title: 'This team has upcoming sessions',
+        message: `${count} upcoming session${count === 1 ? ' is' : 's are'} still booked with its current mentor. Continuing moves ${
+          count === 1 ? 'it' : 'them'
+        } here too. Completed sessions and their payouts are untouched.`,
+        confirmLabel: 'Add & Move Sessions',
       })
     );
   };
@@ -383,7 +451,7 @@ export default function MentorWorkspace() {
               );
             })}
 
-            <div className="flex items-center gap-2 border-t border-zinc-800 pt-4">
+            <div className="flex items-center gap-2 border-t border-zinc-800 pt-4 flex-wrap">
               <input
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
@@ -398,9 +466,68 @@ export default function MentorWorkspace() {
                 <Plus size={14} />
                 New Group
               </button>
+              <button
+                onClick={openAddTeam}
+                disabled={busy}
+                className="flex items-center gap-1.5 text-xs px-3 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+              >
+                <UserPlus size={14} />
+                Add Team
+              </button>
             </div>
           </div>
         </>
+      )}
+
+      {addTeamOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setAddTeamOpen(false)}>
+          <div
+            className="bg-zinc-900 border border-zinc-750 rounded-xl p-5 w-full max-w-sm space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-white font-semibold text-sm">Add a Team</h3>
+            <p className="text-xs text-gray-500">
+              Pick any team in this OJT — this moves it (and its mentor) here, same as Reassign, just started from this side.
+            </p>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Team</label>
+              <Select
+                value={addTeamId}
+                onChange={setAddTeamId}
+                options={candidateTeamOptions}
+                placeholder={candidateTeams === null ? 'Loading teams…' : 'Select team'}
+                isSearchable
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Group (optional)</label>
+              <Select value={addTeamGroupId} onChange={setAddTeamGroupId} options={groupOptions} placeholder="Ungrouped" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Reason (optional)</label>
+              <input
+                value={addTeamReason}
+                onChange={(e) => setAddTeamReason(e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setAddTeamOpen(false)}
+                className="text-xs px-3 py-2 text-gray-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitAddTeam}
+                disabled={busy || !addTeamId}
+                className="text-xs px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+              >
+                Add Team
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {reassignTeamId && (
