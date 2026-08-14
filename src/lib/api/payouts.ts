@@ -85,10 +85,6 @@ export async function apiGetMyPayouts(filter: PayoutListFilter): Promise<Payouts
   return fetchPayoutsPage(`/api/v1/mentors/me/payouts?${toPayoutQuery(filter)}`);
 }
 
-export async function apiGetMentorPayouts(mentorId: string, filter: PayoutListFilter): Promise<PayoutsPage> {
-  return fetchPayoutsPage(`/api/v1/mentors/${mentorId}/payouts?${toPayoutQuery(filter)}`);
-}
-
 export async function apiApprovePayout(id: string): Promise<ApiSessionPayout> {
   const res = await apiFetch<{ data: ApiSessionPayout }>(`/api/v1/payouts/${id}/approve`, { method: 'PATCH' });
   invalidateCached('payouts');

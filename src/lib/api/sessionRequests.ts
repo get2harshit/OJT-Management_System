@@ -83,11 +83,6 @@ export async function apiGetMySessionRequests(filter: SessionRequestListFilter):
   return fetchRequestsPage(`/api/v1/mentors/me/session-requests?${toQuery(filter)}`);
 }
 
-export async function apiGetSessionRequestById(id: string): Promise<ApiSessionRequest> {
-  const res = await apiFetch<{ data: ApiSessionRequest }>(`/api/v1/session-requests/${id}`);
-  return res.data;
-}
-
 export async function apiApproveSessionRequest(id: string, decisionNote?: string): Promise<ApiSessionRequest> {
   const res = await apiFetch<{ data: ApiSessionRequest }>(`/api/v1/session-requests/${id}/approve`, {
     method: 'POST',

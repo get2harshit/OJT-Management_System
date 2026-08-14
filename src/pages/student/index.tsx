@@ -61,6 +61,9 @@ function StudentPanelContent({ studentId, onLogout }: { studentId: string; onLog
       case 'allocation':
         goToSection('projects');
         break;
+      case 'session':
+        goToSection('sessions');
+        break;
       default:
         // team_invite / announcement have no dedicated section of their own —
         // the notification itself (Accept/Reject for an invite) is the

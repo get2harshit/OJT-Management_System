@@ -100,6 +100,12 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
       case 'allocation':
         goToSection('allocations');
         break;
+      case 'session':
+        goToSection('sessions');
+        break;
+      case 'payout':
+        goToSection('payouts');
+        break;
       default:
         break;
     }

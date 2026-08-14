@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Wallet, Check, DollarSign, PackagePlus, Download, Tag } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Wallet, Check, DollarSign, PackagePlus, Download, Tag, X, Eye } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
@@ -13,6 +14,7 @@ import {
   apiMarkPayoutPaid,
   apiListBatches,
   apiGenerateBatch,
+  apiGetBatchById,
   apiDownloadBatchExport,
   apiGetCurrentRatesForMentors,
   apiListMentorRates,
@@ -22,6 +24,7 @@ import {
   type ApiSessionPayout,
   type ApiPayoutStatus,
   type ApiPayoutBatchSummary,
+  type ApiPayoutBatch,
   type ApiMentorRate,
   type ApiRateType,
 } from '../../lib/api';
@@ -76,18 +79,26 @@ function describeRate(rate: ApiMentorRate): string {
 
 export default function AdminPayouts() {
   const { showSuccess, showError } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<'payouts' | 'batches' | 'rates'>('payouts');
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [cohortId, setCohortId] = useState('');
   const [status, setStatus] = useState('');
   const [mentorType, setMentorType] = useState('');
+  // Set only via a ?mentorId= link in (e.g. the Mentor Workspace's "this
+  // mentor's payouts" link) — no picker in this UI for it, since the point is
+  // a scoped deep link, not a filter someone hand-picks from a mentor list.
+  const [mentorId, setMentorId] = useState(searchParams.get('mentorId') || '');
+  const [mentorFilterName, setMentorFilterName] = useState('');
 
   const [payouts, setPayouts] = useState<ApiSessionPayout[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(true);
 
   const [batches, setBatches] = useState<ApiPayoutBatchSummary[]>([]);
+  const [batchDetail, setBatchDetail] = useState<ApiPayoutBatch | null>(null);
+  const [batchDetailLoading, setBatchDetailLoading] = useState(false);
   const [batchesLoading, setBatchesLoading] = useState(false);
 
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
@@ -123,11 +134,15 @@ export default function AdminPayouts() {
           cohortId: cohortId || undefined,
           status: (status as ApiPayoutStatus) || undefined,
           mentorType: (mentorType as 'internal' | 'external') || undefined,
+          mentorId: mentorId || undefined,
           page,
           limit,
         });
         setPayouts(res.data);
         setPagination({ page: res.pagination.page, limit: res.pagination.limit, total: res.pagination.total, totalPages: res.pagination.totalPages });
+        // Every row shares the same mentor while this filter is active, so
+        // the first row's name is enough — no separate mentor fetch needed.
+        setMentorFilterName(mentorId ? res.data[0]?.mentor.full_name ?? '' : '');
       } catch (err) {
         showError(err instanceof Error ? err.message : 'Failed to load payouts');
       } finally {
@@ -138,13 +153,21 @@ export default function AdminPayouts() {
     // filters change; page/limit changes are driven explicitly by DataTable's
     // callbacks below, which pass the target page/limit directly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cohortId, status, mentorType, showError]
+    [cohortId, status, mentorType, mentorId, showError]
   );
 
   useEffect(() => {
     loadPayouts(1, pagination.limit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cohortId, status, mentorType]);
+  }, [cohortId, status, mentorType, mentorId]);
+
+  const clearMentorFilter = () => {
+    setMentorId('');
+    setMentorFilterName('');
+    const next = new URLSearchParams(searchParams);
+    next.delete('mentorId');
+    setSearchParams(next, { replace: true });
+  };
 
   const loadBatches = useCallback(async () => {
     setBatchesLoading(true);
@@ -275,6 +298,21 @@ export default function AdminPayouts() {
     }
   };
 
+  // The batches list only ever carries the summary (period/total/status) —
+  // this is the only way to see which specific payouts a given batch bundled,
+  // which matters for the same reason CSV export does: proving to an
+  // external mentor exactly what they were paid for.
+  const viewBatch = async (id: string) => {
+    setBatchDetailLoading(true);
+    try {
+      setBatchDetail(await apiGetBatchById(id));
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load batch detail');
+    } finally {
+      setBatchDetailLoading(false);
+    }
+  };
+
   const cohortOptions = useMemo(() => cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) })), [cohorts]);
 
   // Batches is the only tab that stacks content below its table, so it's the
@@ -325,6 +363,15 @@ export default function AdminPayouts() {
           Mentor Rates
         </button>
       </div>
+
+      {activeTab === 'payouts' && mentorId && (
+        <div className="flex items-center gap-2 text-xs bg-gold/10 border border-gold/20 text-gold rounded-lg px-3 py-2 w-fit">
+          <span>Showing only {mentorFilterName || 'this mentor'}&apos;s payouts</span>
+          <button onClick={clearMentorFilter} className="hover:text-white transition-colors" aria-label="Clear mentor filter">
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-3">
         <Select value={cohortId} onChange={setCohortId} variant="filter" placeholder="All cohorts" className="w-[200px]" options={cohortOptions} />
@@ -443,16 +490,56 @@ export default function AdminPayouts() {
           loading={batchesLoading}
           hideExport
           actions={(row) => (
-            <button
-              onClick={() => apiDownloadBatchExport(row.id).catch((err) => showError(err instanceof Error ? err.message : 'Export failed'))}
-              className="p-1 px-2.5 bg-zinc-750 hover:bg-zinc-700 text-gold text-xs font-semibold rounded transition-all flex items-center gap-1"
-            >
-              <Download size={14} />
-              Export CSV
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => viewBatch(row.id)}
+                className="p-1 px-2.5 bg-zinc-750 hover:bg-zinc-700 text-gold text-xs font-semibold rounded transition-all flex items-center gap-1"
+              >
+                <Eye size={14} />
+                View
+              </button>
+              <button
+                onClick={() => apiDownloadBatchExport(row.id).catch((err) => showError(err instanceof Error ? err.message : 'Export failed'))}
+                className="p-1 px-2.5 bg-zinc-750 hover:bg-zinc-700 text-gold text-xs font-semibold rounded transition-all flex items-center gap-1"
+              >
+                <Download size={14} />
+                Export CSV
+              </button>
+            </div>
           )}
         />
       )}
+
+      <Modal open={!!batchDetail || batchDetailLoading} onClose={() => setBatchDetail(null)} title="Batch Detail" size="lg">
+        {batchDetailLoading ? (
+          <div className="py-8 flex justify-center">
+            <span className="text-gray-500 text-sm">Loading…</span>
+          </div>
+        ) : batchDetail ? (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-400">
+              {new Date(batchDetail.period_start).toLocaleDateString()} – {new Date(batchDetail.period_end).toLocaleDateString()} ·{' '}
+              {batchDetail.entries.length} session{batchDetail.entries.length === 1 ? '' : 's'} · {batchDetail.status}
+            </p>
+            <div className="max-h-[60vh] overflow-y-auto space-y-1.5">
+              {batchDetail.entries.map((e) => (
+                <div key={e.id} className="flex items-center justify-between bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-xs">
+                  <div>
+                    <p className="text-white">{e.mentor.full_name}</p>
+                    <p className="text-gray-500">{new Date(e.session.scheduled_date).toLocaleDateString()}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-gray-300">
+                      {e.payable_hours}h · {e.currency_snapshot} {e.gross_amount}
+                    </p>
+                    <p className={`${STATUS_STYLES[e.status]} inline-block px-1.5 py-0.5 rounded mt-0.5`}>{e.status}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal open={batchModalOpen} onClose={() => setBatchModalOpen(false)} title="Generate Payout Batch">
         <div className="space-y-4">

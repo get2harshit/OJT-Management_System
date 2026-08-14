@@ -48,12 +48,6 @@ export async function apiListMentorRates(mentorId: string): Promise<ApiMentorRat
   return res.data;
 }
 
-/** The rate in force right now — null if this mentor has never had one set. */
-export async function apiGetCurrentMentorRate(mentorId: string): Promise<ApiMentorRate | null> {
-  const res = await apiFetch<{ data: ApiMentorRate | null }>(`/api/v1/mentors/${mentorId}/rates/current`);
-  return res.data;
-}
-
 /**
  * Current rate for a set of mentors in one request, keyed by mentor id.
  * Used by the rates roster — asking per mentor is the N+1 that made the

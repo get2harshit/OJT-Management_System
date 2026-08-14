@@ -329,10 +329,10 @@ export default function MentorWorkspace() {
                     : 'Not set'}
                 </p>
                 <button
-                  onClick={() => navigate('/admin/dashboard/payouts')}
+                  onClick={() => navigate(`/admin/dashboard/payouts?mentorId=${mentorId}`)}
                   className="flex items-center gap-1 text-[11px] text-gold hover:underline mt-1"
                 >
-                  Manage on Payouts <ExternalLink size={11} />
+                  View this mentor's payouts <ExternalLink size={11} />
                 </button>
               </div>
             </div>

@@ -72,6 +72,12 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
       case 'allocation':
         goToSection('ojts');
         break;
+      case 'session':
+        goToSection('sessions');
+        break;
+      case 'payout':
+        goToSection('payouts');
+        break;
       default:
         break;
     }

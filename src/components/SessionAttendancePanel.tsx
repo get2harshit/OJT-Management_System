@@ -1,17 +1,27 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Check, X, Clock, Users, CheckCircle, XCircle, MinusCircle } from 'lucide-react';
+import { Check, X, Clock, Users, CheckCircle, XCircle, MinusCircle, History } from 'lucide-react';
 import DataTable from './DataTable';
 import Select from './Select';
 import SpinnerSquare from './SpinnerSquare';
+import Modal from './Modal';
 import {
   apiGetSessionAttendance,
   apiMarkAttendance,
   apiBulkMarkAttendance,
+  apiGetAttendanceHistory,
   type ApiSession,
   type ApiSessionAttendance,
   type ApiAttendanceStatus,
+  type ApiSessionAttendanceHistory,
 } from '../lib/api';
 import { useToast } from '../toast';
+
+const STATUS_TEXT_STYLES: Record<ApiAttendanceStatus, string> = {
+  not_marked: 'text-gray-400',
+  present: 'text-green-400',
+  absent: 'text-red-400',
+  excused: 'text-amber-400',
+};
 
 interface SessionAttendancePanelProps {
   /**
@@ -45,6 +55,9 @@ export default function SessionAttendancePanel({ loadSessionsForDate }: SessionA
   const [rows, setRows] = useState<ApiSessionAttendance[]>([]);
   const [loadingRows, setLoadingRows] = useState(false);
   const [marking, setMarking] = useState(false);
+  const [historyFor, setHistoryFor] = useState<ApiSessionAttendance | null>(null);
+  const [history, setHistory] = useState<ApiSessionAttendanceHistory[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     setLoadingSessions(true);
@@ -104,6 +117,15 @@ export default function SessionAttendancePanel({ loadSessionsForDate }: SessionA
     } finally {
       setMarking(false);
     }
+  };
+
+  const openHistory = (row: ApiSessionAttendance) => {
+    setHistoryFor(row);
+    setLoadingHistory(true);
+    apiGetAttendanceHistory(row.session_id, row.student_id)
+      .then(setHistory)
+      .catch((err) => showError(err instanceof Error ? err.message : 'Failed to load attendance history'))
+      .finally(() => setLoadingHistory(false));
   };
 
   // DataTable's default search stringifies whatever field searchKeys points
@@ -248,11 +270,41 @@ export default function SessionAttendancePanel({ loadSessionsForDate }: SessionA
                   <MinusCircle size={12} />
                   Excused
                 </button>
+                <button
+                  onClick={() => openHistory(row)}
+                  className="px-2.5 py-1.5 text-xs font-semibold rounded-md transition-all text-gray-400 hover:text-white hover:bg-zinc-850"
+                  title="View status history"
+                >
+                  <History size={12} />
+                </button>
               </div>
             )}
           />
         )}
       </div>
+
+      <Modal open={!!historyFor} onClose={() => setHistoryFor(null)} title={historyFor ? `${historyFor.student.full_name}'s Attendance History` : 'History'}>
+        {loadingHistory ? (
+          <div className="py-8 flex justify-center">
+            <SpinnerSquare size={32} />
+          </div>
+        ) : history.length === 0 ? (
+          <p className="text-gray-500 text-sm">No changes recorded yet — still at the status it was seeded with.</p>
+        ) : (
+          <div className="space-y-1.5 max-h-[50vh] overflow-y-auto">
+            {history.map((h) => (
+              <div key={h.id} className="flex items-center justify-between bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-xs">
+                <span>
+                  <span className={STATUS_TEXT_STYLES[h.from_status]}>{h.from_status}</span>
+                  {' → '}
+                  <span className={`font-semibold ${STATUS_TEXT_STYLES[h.to_status]}`}>{h.to_status}</span>
+                </span>
+                <span className="text-gray-500">{new Date(h.changed_at).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -46,12 +46,6 @@ export async function apiUpdateSchedulingConfig(cohortId: string, body: UpdateSc
 // A mentor without an override follows the cohort default; one with an
 // override is bound by it no matter who schedules on their behalf.
 
-/** The config that actually governs this mentor — their override if set, otherwise the cohort default. */
-export async function apiGetMentorSchedulingConfig(cohortId: string, mentorId: string): Promise<ApiSchedulingConfig> {
-  const res = await apiFetch<{ data: ApiSchedulingConfig }>(`/api/v1/cohorts/${cohortId}/mentors/${mentorId}/scheduling-config`);
-  return res.data;
-}
-
 export async function apiSetMentorSchedulingConfig(
   cohortId: string,
   mentorId: string,

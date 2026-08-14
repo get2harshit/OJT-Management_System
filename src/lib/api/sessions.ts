@@ -132,11 +132,6 @@ export async function apiGetMyUpcomingSessions(filter: SessionListFilter): Promi
   return fetchSessionsPage(`/api/v1/students/me/sessions?${toQuery(filter)}`);
 }
 
-export async function apiGetSessionById(id: string): Promise<ApiSession> {
-  const res = await apiFetch<{ data: ApiSession }>(`/api/v1/sessions/${id}`);
-  return res.data;
-}
-
 export interface RescheduleSessionBody {
   scheduledDate: string;
   startTime: string;
