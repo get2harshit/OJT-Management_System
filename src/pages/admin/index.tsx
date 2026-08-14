@@ -15,6 +15,7 @@ import Attendance from './Attendance';
 import Sessions from './Sessions';
 import SchedulingConfig from './SchedulingConfig';
 import Payouts from './Payouts';
+import SessionRequests from './SessionRequests';
 import EvaluationTracker from './EvaluationTracker';
 import EligibilityStatusPage from './EligibilityStatus';
 import ViewCohortPage from './OJTs/ViewCohortPage';
@@ -138,6 +139,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route path="sessions" element={<Sessions />} />
         <Route path="sessions/config" element={<SchedulingConfig />} />
         <Route path="payouts" element={<Payouts />} />
+        <Route path="session-requests" element={<SessionRequests />} />
         <Route path="evaluation" element={<EvaluationTracker />} />
         <Route path="eligibility" element={<EligibilityStatusPage />} />
 

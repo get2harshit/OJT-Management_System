@@ -17,3 +17,4 @@ export * from './eligibility';
 export * from './sessions';
 export * from './schedulingConfig';
 export * from './payouts';
+export * from './sessionRequests';

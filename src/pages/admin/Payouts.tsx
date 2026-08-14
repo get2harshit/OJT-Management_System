@@ -120,10 +120,18 @@ export default function AdminPayouts() {
     if (activeTab === 'batches') loadBatches();
   }, [activeTab, loadBatches]);
 
+  // A decided row that no longer matches the active status filter must leave
+  // the list rather than sit there updated-but-stale — otherwise it's still
+  // clickable under e.g. a "Pending" filter after it stopped being pending,
+  // which is how a second Approve/Mark Paid on the same row would end up
+  // hitting the backend's "wrong state" 409 instead of just not being possible.
+  const reconcileAfterDecision = (prev: ApiSessionPayout[], updated: ApiSessionPayout) =>
+    status && updated.status !== status ? prev.filter((p) => p.id !== updated.id) : prev.map((p) => (p.id === updated.id ? updated : p));
+
   const approve = async (id: string) => {
     try {
       const updated = await apiApprovePayout(id);
-      setPayouts((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      setPayouts((prev) => reconcileAfterDecision(prev, updated));
       showSuccess('Payout approved');
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to approve payout');
@@ -133,7 +141,7 @@ export default function AdminPayouts() {
   const markPaid = async (id: string) => {
     try {
       const updated = await apiMarkPayoutPaid(id);
-      setPayouts((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      setPayouts((prev) => reconcileAfterDecision(prev, updated));
       showSuccess('Payout marked paid');
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to mark payout paid');

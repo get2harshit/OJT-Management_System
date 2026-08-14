@@ -20,6 +20,7 @@ import {
   PinOff,
   CalendarClock,
   Wallet,
+  Inbox,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
 
@@ -47,6 +48,7 @@ const adminTabs = [
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
   { id: 'credits', label: 'Cloud Credits', icon: Cloud },
   { id: 'sessions', label: 'Sessions', icon: CalendarClock },
+  { id: 'session-requests', label: 'Session Requests', icon: Inbox },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   { id: 'payouts', label: 'Payouts', icon: Wallet },
   { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
@@ -61,6 +63,7 @@ const mentorTabs = [
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
   { id: 'credits', label: 'Credit Requests', icon: Cloud },
   { id: 'sessions', label: 'Sessions', icon: CalendarClock },
+  { id: 'session-requests', label: 'Session Requests', icon: Inbox },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   { id: 'payouts', label: 'Payouts', icon: Wallet },
   { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
