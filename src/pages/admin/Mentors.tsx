@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import SpinnerSquare from '../../components/SpinnerSquare';
@@ -16,6 +17,7 @@ const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
 export default function AdminMentors() {
+  const navigate = useNavigate();
   const { tracks } = useTracks();
   const trackNameBySlug = new Map(tracks.map(t => [t.slug, t.name]));
   const [mentors, setMentors] = useState<MentorRow[]>([]);
@@ -78,7 +80,8 @@ export default function AdminMentors() {
         <h1 className="text-2xl font-bold text-white">Mentors</h1>
         <p className="text-sm text-gray-400">
           Expertise is what a mentor can teach in general. To put a mentor on an OJT&apos;s track — which is
-          what decides who teams can pick — use that OJT&apos;s Track Config.
+          what decides who teams can pick — use that OJT&apos;s Track Config. Click a mentor to open their
+          workspace — the teams reporting to them, meeting cadence, rate, and schedule for a chosen OJT.
         </p>
       </div>
 
@@ -131,6 +134,7 @@ export default function AdminMentors() {
             },
           ]}
           data={tableData}
+          onRowClick={(row) => navigate(`/admin/dashboard/mentors/${row.id}`)}
           searchPlaceholder="Search mentors..."
           onSearchChange={handleSearchChange}
           serverPagination={{

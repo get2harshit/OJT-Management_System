@@ -19,14 +19,13 @@ import {
   apiListMentorGroups,
   apiCreateMentorGroup,
   apiGetTeamRosterMentor,
-  FutureSessionsConflictError,
   type ApiMentorGroup,
   type ApiTeamRosterMentor,
 } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
-import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
+import { useCascadeConfirm } from '../../../hooks/useCascadeConfirm';
 
 type ManageTab = 'members' | 'mentor' | 'group';
 
@@ -46,7 +45,12 @@ type ManageTab = 'members' | 'mentor' | 'group';
 export default function CohortRosterPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const { showSuccess, showError } = useToast();
-  const confirm = useConfirm();
+  const { busy: cascadeBusy, withCascadeConfirm } = useCascadeConfirm();
+  // Separate from the cascade-confirm hook's busy flag — these three actions
+  // (add member, move group, create group) never hit a 409 conflict, so they
+  // never go through that hook at all.
+  const [busyOther, setBusyOther] = useState(false);
+  const busy = cascadeBusy || busyOther;
 
   const [cohortLabel, setCohortLabel] = useState('');
   const [teams, setTeams] = useState<TeamAllocationDetail[]>([]);
@@ -59,7 +63,6 @@ export default function CohortRosterPage() {
 
   const [manageTeam, setManageTeam] = useState<TeamAllocationDetail | null>(null);
   const [manageTab, setManageTab] = useState<ManageTab>('members');
-  const [busy, setBusy] = useState(false);
 
   const [addStudentId, setAddStudentId] = useState('');
   const [newMentorId, setNewMentorId] = useState('');
@@ -136,46 +139,9 @@ export default function CohortRosterPage() {
     setManageTeam(null);
   };
 
-  /**
-   * Runs a roster action, and if the backend refuses because upcoming
-   * sessions would be affected, asks the admin whether to go ahead — then
-   * retries with the cascade flag. The count comes from the backend's own
-   * refusal, so the question names a real number instead of a vague warning.
-   */
-  const withCascadeConfirm = async (
-    run: (cascade: boolean) => Promise<void>,
-    prompt: (count: number) => { title: string; message: string; confirmLabel: string }
-  ) => {
-    setBusy(true);
-    try {
-      await run(false);
-    } catch (err) {
-      if (err instanceof FutureSessionsConflictError) {
-        const { title, message, confirmLabel } = prompt(err.futureSessionCount);
-        const proceed = await confirm({ title, message, confirmLabel, variant: 'danger' });
-        if (!proceed) {
-          setBusy(false);
-          return;
-        }
-        try {
-          await run(true);
-        } catch (retryErr) {
-          showError(retryErr instanceof Error ? retryErr.message : 'Action failed');
-          setBusy(false);
-          return;
-        }
-      } else {
-        showError(err instanceof Error ? err.message : 'Action failed');
-        setBusy(false);
-        return;
-      }
-    }
-    setBusy(false);
-  };
-
   const addMember = async () => {
     if (!manageTeam || !addStudentId) return;
-    setBusy(true);
+    setBusyOther(true);
     try {
       await apiAddTeamMember(manageTeam.teamId, addStudentId);
       showSuccess('Student added to the team');
@@ -183,7 +149,7 @@ export default function CohortRosterPage() {
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to add student');
     } finally {
-      setBusy(false);
+      setBusyOther(false);
     }
   };
 
@@ -236,7 +202,7 @@ export default function CohortRosterPage() {
 
   const moveToGroup = async (groupId: string | null) => {
     if (!manageTeam) return;
-    setBusy(true);
+    setBusyOther(true);
     try {
       await apiMoveTeamToGroup(manageTeam.teamId, groupId, changeReason.trim() || undefined);
       showSuccess(groupId ? 'Team moved to the group' : 'Team ungrouped');
@@ -244,13 +210,13 @@ export default function CohortRosterPage() {
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to move team');
     } finally {
-      setBusy(false);
+      setBusyOther(false);
     }
   };
 
   const createGroup = async () => {
     if (!cohortId || !rosterMentor?.mentorId || !newGroupName.trim()) return;
-    setBusy(true);
+    setBusyOther(true);
     try {
       const group = await apiCreateMentorGroup(cohortId, rosterMentor.mentorId, newGroupName.trim());
       setGroups((prev) => [...prev, group]);
@@ -259,7 +225,7 @@ export default function CohortRosterPage() {
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to create group');
     } finally {
-      setBusy(false);
+      setBusyOther(false);
     }
   };
 

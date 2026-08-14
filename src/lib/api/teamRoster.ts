@@ -149,3 +149,49 @@ export async function apiCreateMentorGroup(cohortId: string, mentorId: string, n
   invalidateCached('mentor-groups');
   return res.data;
 }
+
+export type CadenceStatus = 'met' | 'behind' | 'no_target';
+
+export interface ApiMentorWorkspaceTeam {
+  id: string;
+  name: string | null;
+  memberCount: number;
+  groupId: string | null;
+  groupName: string | null;
+  weeklySessionTarget: number | null;
+  sessionsThisWeek: number;
+  cadenceStatus: CadenceStatus;
+}
+
+export interface ApiMentorWorkspace {
+  mentor: { id: string; full_name: string; email: string; is_external: boolean };
+  groups: ApiMentorGroup[];
+  teams: ApiMentorWorkspaceTeam[];
+  rate: { amount: string; type: string; currency: string } | null;
+  selfScheduleAllowed: boolean;
+  scheduleOverride: { workingDays: number[]; dayStartMinute: number; dayEndMinute: number } | null;
+}
+
+/**
+ * The "mentor = manager" overview for one mentor in one cohort — their
+ * groups, every team under them with this week's cadence status, rate, and
+ * schedule, in one call. Bounded query count on the backend regardless of
+ * team count, so this is safe to call whenever the workspace screen mounts
+ * or a mutation on it settles, no separate per-team fetches needed.
+ */
+export async function apiGetMentorWorkspace(cohortId: string, mentorId: string): Promise<ApiMentorWorkspace> {
+  const res = await apiFetch<{ data: ApiMentorWorkspace }>(`/api/v1/cohorts/${cohortId}/mentors/${mentorId}/workspace`);
+  return res.data;
+}
+
+/**
+ * Sets (or clears, with null) how many sessions a week this team's mentor
+ * should meet them. A soft target only — nothing gets auto-scheduled, the
+ * workspace screen just tracks the actual count against it.
+ */
+export async function apiSetTeamCadence(teamId: string, weeklySessionTarget: number | null): Promise<void> {
+  await apiFetch<void>(`/api/v1/teams/${teamId}/cadence`, {
+    method: 'PATCH',
+    body: JSON.stringify({ weeklySessionTarget }),
+  });
+}

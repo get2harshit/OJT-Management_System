@@ -5,6 +5,7 @@ import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import Students from './Students';
 import Mentors from './Mentors';
+import MentorWorkspace from './MentorWorkspace';
 import Allocations from './Allocations';
 import OJTs from './OJTs';
 import Tasks from './Tasks';
@@ -111,6 +112,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route index element={<Dashboard onNavigateToSection={goToSection} />} />
         <Route path="students" element={<Students />} />
         <Route path="mentors" element={<Mentors />} />
+        <Route path="mentors/:mentorId" element={<MentorWorkspace />} />
         <Route path="allocations" element={<Allocations />} />
         <Route path="ojts" element={<OJTs />} />
         <Route
