@@ -91,7 +91,7 @@ function StudentPanelContent({ studentId, onLogout }: { studentId: string; onLog
         />
         <Route path="credits" element={<Credits studentId={studentId} />} />
         <Route path="sessions" element={<Sessions />} />
-        <Route path="attendance" element={<Attendance studentId={studentId} />} />
+        <Route path="attendance" element={<Attendance />} />
         {/* An unknown section is a bad link, not a blank screen — send it to
             the panel's own front page rather than rendering nothing. */}
         <Route path="*" element={<Navigate to={BASE_PATH} replace />} />
