@@ -26,6 +26,13 @@ function formatSessionWhen(session: ApiSessionPayout['session']): string {
   return `${date}, ${start}`;
 }
 
+function formatDuration(session: ApiSessionPayout['session']): string {
+  const minutes = session.actual_duration_minutes ?? Math.round((new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 60_000);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m}m`;
+}
+
 export default function MentorPayouts() {
   const { showError } = useToast();
   const [status, setStatus] = useState('');
@@ -55,9 +62,10 @@ export default function MentorPayouts() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  const totalPaid = payouts.filter((p) => p.status === 'paid').reduce((sum, p) => sum + Number(p.gross_amount), 0);
-  const totalPending = payouts.filter((p) => p.status !== 'paid' && p.status !== 'void').reduce((sum, p) => sum + Number(p.gross_amount), 0);
-  const currency = payouts[0]?.currency_snapshot ?? 'INR';
+  const paidCount = payouts.filter((p) => p.status === 'paid').length;
+  const pendingCount = payouts.filter((p) => p.status !== 'paid' && p.status !== 'void').length;
+  const paidHours = payouts.filter((p) => p.status === 'paid').reduce((sum, p) => sum + Number(p.payable_hours), 0);
+  const pendingHours = payouts.filter((p) => p.status !== 'paid' && p.status !== 'void').reduce((sum, p) => sum + Number(p.payable_hours), 0);
 
   return (
     <PageLayout mode="fill" className="space-y-6">
@@ -72,11 +80,13 @@ export default function MentorPayouts() {
       <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
         <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wider">Paid (this page)</p>
-          <p className="text-2xl font-bold text-green-400 mt-1">{currency} {totalPaid.toFixed(2)}</p>
+          <p className="text-2xl font-bold text-green-400 mt-1">{paidCount} session{paidCount === 1 ? '' : 's'}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{paidHours.toFixed(1)} hrs</p>
         </div>
         <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wider">Pending / Approved (this page)</p>
-          <p className="text-2xl font-bold text-gold mt-1">{currency} {totalPending.toFixed(2)}</p>
+          <p className="text-2xl font-bold text-gold mt-1">{pendingCount} session{pendingCount === 1 ? '' : 's'}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{pendingHours.toFixed(1)} hrs</p>
         </div>
       </div>
 
@@ -87,9 +97,8 @@ export default function MentorPayouts() {
       <DataTable
         columns={[
           { key: 'sessionWhen', header: 'Session', render: (row) => formatSessionWhen(row.session) },
-          { key: 'payable_hours', header: 'Hours' },
-          { key: 'rate', header: 'Rate', render: (row) => `${row.currency_snapshot} ${row.hourly_rate_snapshot}` },
-          { key: 'gross_amount', header: 'Amount', render: (row) => `${row.currency_snapshot} ${row.gross_amount}` },
+          { key: 'duration', header: 'Duration', render: (row) => formatDuration(row.session) },
+          { key: 'payable_hours', header: 'Payable Hours' },
           { key: 'status', header: 'Status', render: (row) => (
             <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${STATUS_STYLES[row.status]}`}>{row.status}</span>
           ) },

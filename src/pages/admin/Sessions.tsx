@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
-import interactionPlugin from '@fullcalendar/interaction';
-import type { EventClickArg, DateSelectArg } from '@fullcalendar/core';
+import listPlugin from '@fullcalendar/list';
+import interactionPlugin, { type EventDropArg } from '@fullcalendar/interaction';
+import type { EventClickArg, DateSelectArg, EventContentArg, EventResizeDoneArg } from '@fullcalendar/core';
 import { CalendarClock, Settings, Plus, MapPin, Users2, XCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
@@ -63,6 +64,7 @@ export default function AdminSessions() {
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [selectedCohortId, setSelectedCohortId] = useState('');
+  const [mentorFilterId, setMentorFilterId] = useState('');
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
   const [teams, setTeams] = useState<AdminTeam[]>([]);
   const [sessions, setSessions] = useState<ApiSession[]>([]);
@@ -126,15 +128,26 @@ export default function AdminSessions() {
 
   useEffect(() => {
     if (!selectedCohortId) return;
+    setMentorFilterId('');
     loadRoster(selectedCohortId);
     loadSessions();
   }, [selectedCohortId, loadRoster, loadSessions]);
 
   usePageRefresh(loadSessions);
 
+  // A session is only draggable/resizable on the calendar while it's still in
+  // a state a reschedule can apply to — completed/cancelled sessions are
+  // rendered but locked, same restriction the backend itself enforces.
+  const isEditable = (status: ApiSessionStatus) => status === 'scheduled' || status === 'rescheduled';
+
+  const filteredSessions = useMemo(
+    () => (mentorFilterId ? sessions.filter((s) => s.mentor_id === mentorFilterId) : sessions),
+    [sessions, mentorFilterId]
+  );
+
   const events = useMemo(
     () =>
-      sessions.map((s) => ({
+      filteredSessions.map((s) => ({
         id: s.id,
         title: s.title || `${s.mentor.full_name} · ${s.teams.map((t) => t.team.name).join(', ')}`,
         start: s.start_time,
@@ -142,13 +155,72 @@ export default function AdminSessions() {
         backgroundColor: STATUS_COLORS[s.status],
         borderColor: STATUS_COLORS[s.status],
         textColor: '#000000',
+        startEditable: isEditable(s.status),
+        durationEditable: isEditable(s.status),
         extendedProps: { session: s },
       })),
-    [sessions]
+    [filteredSessions]
   );
 
   const mentorOptions = useMemo(() => mentors.map((m) => ({ value: m.id, label: m.fullName ?? m.email ?? m.id })), [mentors]);
   const teamOptions = useMemo(() => teams.map((t) => ({ value: t.id, label: teamLabel(t) })), [teams]);
+
+  // Renders a compact event card — time, mentor, team names — instead of
+  // FullCalendar's default single-line title, since squeezing "Mentor ·
+  // Team A, Team B" into one line was the main reason the calendar read as
+  // cramped in a week/day view with several sessions stacked.
+  const renderEventContent = useCallback((arg: EventContentArg) => {
+    const session = arg.event.extendedProps.session as ApiSession;
+    const teamNames = session.teams.map((t) => t.team.name).join(', ') || '—';
+    return (
+      <div className="px-1 py-0.5 overflow-hidden leading-tight">
+        {arg.timeText && <div className="text-[10px] font-bold truncate">{arg.timeText}</div>}
+        <div className="text-[11px] font-semibold truncate">{session.title || session.mentor.full_name}</div>
+        <div className="text-[10px] truncate opacity-75 flex items-center gap-1">
+          <Users2 size={9} className="shrink-0" />
+          {teamNames}
+        </div>
+      </div>
+    );
+  }, []);
+
+  const applyReschedule = useCallback(
+    async (session: ApiSession, start: Date, end: Date, revert: () => void) => {
+      try {
+        await apiRescheduleSession(session.id, {
+          scheduledDate: start.toISOString().slice(0, 10),
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          title: session.title ?? undefined,
+          locationOrLink: session.location_or_link ?? undefined,
+        });
+        showSuccess('Session rescheduled');
+        loadSessions();
+      } catch (err) {
+        showError(err instanceof Error ? err.message : 'Failed to reschedule session');
+        revert();
+      }
+    },
+    [showSuccess, showError, loadSessions]
+  );
+
+  const handleEventDrop = useCallback(
+    (arg: EventDropArg) => {
+      const session = arg.event.extendedProps.session as ApiSession;
+      if (!arg.event.start || !arg.event.end) return;
+      applyReschedule(session, arg.event.start, arg.event.end, arg.revert);
+    },
+    [applyReschedule]
+  );
+
+  const handleEventResize = useCallback(
+    (arg: EventResizeDoneArg) => {
+      const session = arg.event.extendedProps.session as ApiSession;
+      if (!arg.event.start || !arg.event.end) return;
+      applyReschedule(session, arg.event.start, arg.event.end, arg.revert);
+    },
+    [applyReschedule]
+  );
 
   const handleDatesSet = useCallback(
     (arg: { startStr: string; endStr: string }) => {
@@ -341,6 +413,15 @@ export default function AdminSessions() {
             className="w-[200px]"
             options={cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }))}
           />
+          <Select
+            value={mentorFilterId}
+            onChange={setMentorFilterId}
+            variant="filter"
+            placeholder="All mentors"
+            className="w-[200px]"
+            options={mentorOptions}
+            isSearchable
+          />
           <button
             onClick={() => navigate(`/admin/dashboard/sessions/config?cohortId=${selectedCohortId}`)}
             className="flex items-center gap-1.5 text-xs px-3 py-2 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
@@ -359,6 +440,16 @@ export default function AdminSessions() {
         </div>
       </div>
 
+      <div className="flex items-center gap-4 flex-wrap px-1">
+        {(Object.entries(STATUS_COLORS) as [ApiSessionStatus, string][]).map(([status, color]) => (
+          <div key={status} className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+            <span className="text-xs text-gray-400 capitalize">{status}</span>
+          </div>
+        ))}
+        <span className="text-xs text-gray-500 ml-auto">Drag to move · drag an edge to resize · click for details</span>
+      </div>
+
       <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-3 relative flex-1 min-h-0 overflow-auto">
         {loading && (
           <div className="absolute inset-0 bg-black/40 z-10 flex items-center justify-center rounded-xl">
@@ -366,17 +457,27 @@ export default function AdminSessions() {
           </div>
         )}
         <FullCalendar
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+          plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
           initialView="timeGridWeek"
-          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'timeGridDay,timeGridWeek,dayGridMonth' }}
+          headerToolbar={{ left: 'prev,next today', center: 'title', right: 'timeGridDay,timeGridWeek,dayGridMonth,listWeek' }}
           height="auto"
           selectable
+          editable
+          eventDurationEditable
+          eventStartEditable
           select={handleSelect}
           eventClick={handleEventClick}
+          eventDrop={handleEventDrop}
+          eventResize={handleEventResize}
+          eventContent={renderEventContent}
           events={events}
           datesSet={handleDatesSet}
           slotMinTime="06:00:00"
           slotMaxTime="22:00:00"
+          nowIndicator
+          dayMaxEvents={3}
+          eventDisplay="block"
+          eventTimeFormat={{ hour: '2-digit', minute: '2-digit', meridiem: 'short' }}
         />
       </div>
 

@@ -45,6 +45,13 @@ function formatSessionWhen(session: ApiSessionPayout['session']): string {
   return `${date}, ${start}`;
 }
 
+function formatDuration(session: ApiSessionPayout['session']): string {
+  const minutes = session.actual_duration_minutes ?? Math.round((new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 60_000);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m}m`;
+}
+
 export default function AdminPayouts() {
   const { showSuccess, showError } = useToast();
   const [activeTab, setActiveTab] = useState<'payouts' | 'batches'>('payouts');
@@ -158,7 +165,7 @@ export default function AdminPayouts() {
         periodEnd,
         mentorTypeFilter: (batchMentorType as 'internal' | 'external') || undefined,
       });
-      showSuccess(`Batch generated — ${batch.entries.length} payouts, total ${batch.entries[0]?.currency_snapshot ?? ''} ${batch.total_amount}`);
+      showSuccess(`Batch generated — ${batch.entries.length} session${batch.entries.length === 1 ? '' : 's'}. Export the batch as CSV to get the payable amounts.`);
       setBatchModalOpen(false);
       setPeriodStart('');
       setPeriodEnd('');
@@ -232,9 +239,8 @@ export default function AdminPayouts() {
               </span>
             ) },
             { key: 'sessionWhen', header: 'Session', render: (row) => formatSessionWhen(row.session) },
-            { key: 'payable_hours', header: 'Hours' },
-            { key: 'rate', header: 'Rate', render: (row) => `${row.currency_snapshot} ${row.hourly_rate_snapshot}` },
-            { key: 'gross_amount', header: 'Amount', render: (row) => `${row.currency_snapshot} ${row.gross_amount}` },
+            { key: 'duration', header: 'Duration', render: (row) => formatDuration(row.session) },
+            { key: 'payable_hours', header: 'Payable Hours' },
             { key: 'status', header: 'Status', render: (row) => (
               <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${STATUS_STYLES[row.status]}`}>{row.status}</span>
             ) },
@@ -281,7 +287,6 @@ export default function AdminPayouts() {
           columns={[
             { key: 'period', header: 'Period', render: (row) => `${new Date(row.period_start).toLocaleDateString()} – ${new Date(row.period_end).toLocaleDateString()}` },
             { key: 'mentor_type_filter', header: 'Mentor Type', render: (row) => row.mentor_type_filter ?? 'All' },
-            { key: 'total_amount', header: 'Total Amount' },
             { key: 'status', header: 'Status' },
             { key: 'generated_at', header: 'Generated At', render: (row) => new Date(row.generated_at).toLocaleString() },
           ]}
