@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -62,6 +63,7 @@ interface SessionFormState {
 const EMPTY_FORM: SessionFormState = { teamIds: [], title: '', locationOrLink: '', startLocal: '', endLocal: '' };
 
 export default function MentorSessions() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
 
@@ -315,10 +317,21 @@ export default function MentorSessions() {
   const startLive = async (session: ApiSession) => {
     setLiveBusy(true);
     try {
-      const updated = await apiStartLiveSession(session.id);
+      const { session: updated, authToken } = await apiStartLiveSession(session.id);
       setSelected(updated);
-      showSuccess('Session is live — students can join now.');
       loadSessions();
+      // Straight into the room. Starting a session and then having to find the
+      // Join button is a step that exists for no reason — the room is open and
+      // the host is the one who opened it.
+      navigate('/live-session', {
+        state: {
+          authToken,
+          userName: updated.mentor.full_name,
+          sessionId: updated.id,
+          sessionTitle: updated.title ?? undefined,
+          isHost: true,
+        },
+      });
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to start the live session');
     } finally {
@@ -544,7 +557,7 @@ export default function MentorSessions() {
               <p><span className="text-gray-500">When:</span> {new Date(selected.start_time).toLocaleString()} — {new Date(selected.end_time).toLocaleTimeString()}</p>
               {selected.location_or_link && (
                 <div className="flex items-center gap-1.5">
-                  <SessionJoinLink session={selected} allowInteractive />
+                  <SessionJoinLink session={selected} isHost userName={user?.fullName ?? user?.email} />
                 </div>
               )}
               {selected.cancellation_reason && <p className="text-red-400">Cancelled: {selected.cancellation_reason}</p>}

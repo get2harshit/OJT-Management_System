@@ -3,6 +3,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ToastProvider } from './toast';
+import { HMSRoomProvider } from '@100mslive/react-sdk';
+import LiveSessionRoom from './pages/LiveSessionRoom';
 import { ConfirmProvider } from './confirm';
 import Login from './pages/auth/Login';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -36,6 +38,10 @@ export default function App() {
           <DataProvider>
             <RefreshProvider>
             <NotificationNavigateProvider>
+            {/* Wraps the whole app rather than just the room: the SDK's store
+                has to exist before the room mounts, and the room is reached by
+                navigation from inside these routes. */}
+            <HMSRoomProvider>
             <ErrorBoundary>
               <Suspense fallback={<PanelLoader />}>
                 <Routes>
@@ -68,10 +74,17 @@ export default function App() {
                     }
                   />
 
+                  {/* Outside the role panels on purpose: a live session is
+                      full-screen and the same room for whoever is in it, so it
+                      does not belong inside one role's shell. Reached only by
+                      navigating with a token in router state. */}
+                  <Route path="/live-session" element={<LiveSessionRoom />} />
+
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Suspense>
             </ErrorBoundary>
+            </HMSRoomProvider>
             </NotificationNavigateProvider>
             </RefreshProvider>
           </DataProvider>

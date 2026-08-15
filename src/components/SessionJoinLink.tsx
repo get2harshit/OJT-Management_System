@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { MapPin, Video, Mic } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { MapPin, Video } from 'lucide-react';
 import type { ApiSession } from '../lib/api/sessions';
 import { apiGetSessionJoinToken } from '../lib/api/sessions';
 import { classifySessionLocation, isJoinable, isWithinJoinWindow } from '../lib/sessionLocation';
@@ -13,12 +14,10 @@ interface SessionJoinLinkProps {
    * differently depending on where you happen to be looking at it.
    */
   variant?: 'cell' | 'detail';
-  /**
-   * Offer the mic/camera token as well as the watch-only one. For a mentor or
-   * an admin on their own session; a student gets it only where the faculty
-   * has opened the session up, which the server decides.
-   */
-  allowInteractive?: boolean;
+  /** Shows "End for everyone" once inside. The server still decides the role. */
+  isHost?: boolean;
+  /** Name to appear under this person's tile in the room. */
+  userName?: string;
 }
 
 /**
@@ -37,9 +36,10 @@ interface SessionJoinLinkProps {
  * copying it into the address bar — and on a phone that is close to not being
  * able to join at all.
  */
-export default function SessionJoinLink({ session, variant = 'detail', allowInteractive = false }: SessionJoinLinkProps) {
+export default function SessionJoinLink({ session, variant = 'detail', isHost = false, userName }: SessionJoinLinkProps) {
   const { showError } = useToast();
-  const [joining, setJoining] = useState('');
+  const navigate = useNavigate();
+  const [joining, setJoining] = useState(false);
   const compact = variant === 'cell';
   const iconSize = compact ? 12 : 14;
   const buttonBase = `inline-flex items-center gap-1.5 font-semibold rounded-lg transition-colors ${compact ? 'text-xs px-2.5 py-1' : 'text-xs px-3 py-1.5'}`;
@@ -47,47 +47,47 @@ export default function SessionJoinLink({ session, variant = 'detail', allowInte
   // Started on the multimedia service and not yet ended.
   const hostedLive = session.live_session_id !== null && !session.live_ended_at;
 
-  const join = async (interactive: boolean) => {
-    setJoining(interactive ? 'interactive' : 'viewer');
+  const join = async () => {
+    setJoining(true);
     try {
       // Fetched at the moment of joining and never held: the token is
       // short-lived and issued for this person, so a cached one would be
       // expired when it mattered and a shared one would let somebody in as
       // someone else.
-      const { joinUrl } = await apiGetSessionJoinToken(session.id, { interactive });
-      const opened = window.open(joinUrl, '_blank', 'noopener,noreferrer');
-      if (!opened) showError('Your browser blocked the popup — allow popups for this site and try again.');
+      //
+      // What this person may do in the room — speak, share, end it — rides on
+      // the role baked into the token, which the server decides. There is
+      // nothing to ask for from here.
+      const { authToken } = await apiGetSessionJoinToken(session.id);
+      // Router state, not the URL: a token in a URL ends up in history, logs
+      // and pasted messages.
+      navigate('/live-session', {
+        state: {
+          authToken,
+          userName: userName || 'Guest',
+          sessionId: session.id,
+          sessionTitle: session.title ?? undefined,
+          isHost,
+        },
+      });
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Could not get you into this session');
     } finally {
-      setJoining('');
+      setJoining(false);
     }
   };
 
   if (hostedLive) {
     return (
-      <span className="inline-flex items-center gap-2">
-        <button
-          onClick={() => join(false)}
-          disabled={!!joining}
-          title="Join this session"
-          className={`${buttonBase} bg-gold text-black hover:bg-gold-hover disabled:opacity-50`}
-        >
-          <Video size={iconSize} className="shrink-0" />
-          {joining === 'viewer' ? 'Joining…' : 'Join now'}
-        </button>
-        {allowInteractive && (
-          <button
-            onClick={() => join(true)}
-            disabled={!!joining}
-            title="Join with your mic and camera"
-            className={`${buttonBase} bg-zinc-750 text-gray-300 hover:bg-zinc-700 hover:text-white disabled:opacity-50`}
-          >
-            <Mic size={iconSize} className="shrink-0" />
-            {joining === 'interactive' ? 'Joining…' : 'Speak'}
-          </button>
-        )}
-      </span>
+      <button
+        onClick={join}
+        disabled={joining}
+        title="Join this session"
+        className={`${buttonBase} bg-gold text-black hover:bg-gold-hover disabled:opacity-50`}
+      >
+        <Video size={iconSize} className="shrink-0" />
+        {joining ? 'Joining…' : 'Join now'}
+      </button>
     );
   }
 

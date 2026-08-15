@@ -296,9 +296,20 @@ export async function apiGetMyAttendance(params: { cohortId?: string; status?: A
 // not in. Our server ignores any identity the client offers and uses the
 // caller's own — which is why none of these send an id of their own.
 
-/** Starts this session on the multimedia service. Mentor (its own) or admin. */
-export async function apiStartLiveSession(sessionId: string): Promise<ApiSession> {
-  const res = await apiFetch<{ data: ApiSession }>(`/api/v1/sessions/${sessionId}/live/start`, { method: 'POST' });
+/**
+ * Starts this session's room and returns a token to walk straight into it.
+ *
+ * The host gets their token from this call rather than having to ask for one
+ * separately — starting a session and not being in it is not a thing anyone
+ * wants, and the room exists from this moment.
+ */
+export interface LiveStartResult {
+  session: ApiSession;
+  authToken: string;
+}
+
+export async function apiStartLiveSession(sessionId: string): Promise<LiveStartResult> {
+  const res = await apiFetch<{ data: LiveStartResult }>(`/api/v1/sessions/${sessionId}/live/start`, { method: 'POST' });
   invalidateCached('sessions');
   return res.data;
 }
@@ -310,28 +321,25 @@ export async function apiEndLiveSession(sessionId: string): Promise<ApiSession> 
 }
 
 /**
- * A token to join with, and where to use it.
+ * A token for this person to join this session's room with.
  *
- * `interactive` asks for the audio/video/screen-share token rather than the
- * viewer one. It is a request, not a guarantee — whether this person may speak
- * is the server's decision, and `mode` is what was actually granted.
+ * There is no "viewer" and "interactive" call. What someone may do in the room
+ * — speak, share a screen, end it for everyone — is carried by the role baked
+ * into the token, and the server decides that role from who is asking. Asking
+ * for extra permissions from the client is not a thing the protocol offers,
+ * which is the right answer anyway.
+ *
+ * Short-lived, so it is fetched at the moment of joining and never cached.
  */
 export interface SessionJoinToken {
-  token: string;
-  /** The multimedia service's room URL. */
-  joinUrl: string;
-  mode: 'viewer' | 'interactive';
-  /** Unix seconds. Short-lived: fetched at the moment of joining, never cached. */
-  expiresAt: number;
+  authToken: string;
+  role: 'mentor' | 'student';
 }
 
-export async function apiGetSessionJoinToken(
-  sessionId: string,
-  options: { interactive?: boolean; deviceType?: string } = {}
-): Promise<SessionJoinToken> {
+export async function apiGetSessionJoinToken(sessionId: string): Promise<SessionJoinToken> {
   const res = await apiFetch<{ data: SessionJoinToken }>(`/api/v1/sessions/${sessionId}/live/join-token`, {
     method: 'POST',
-    body: JSON.stringify({ interactive: options.interactive ?? false, deviceType: options.deviceType }),
+    body: JSON.stringify({}),
   });
   return res.data;
 }

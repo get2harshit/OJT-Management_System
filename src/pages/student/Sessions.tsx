@@ -7,6 +7,7 @@ import { apiGetMyUpcomingSessions, type ApiSession, type ApiSessionStatus } from
 import { useToast } from '../../toast';
 import { formatInIST } from '../../lib/utils';
 import { usePageRefresh } from '../../context/RefreshContext';
+import { useAuth } from '../../context/useAuth';
 
 const STATUS_STYLES: Record<ApiSessionStatus, string> = {
   scheduled: 'bg-gold/10 text-gold border-gold/20',
@@ -16,6 +17,7 @@ const STATUS_STYLES: Record<ApiSessionStatus, string> = {
 };
 
 export default function StudentSessions() {
+  const { user } = useAuth();
   const { showError } = useToast();
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,7 +75,7 @@ export default function StudentSessions() {
             key: 'location_or_link',
             header: 'Location',
             render: (row) => (
-              <SessionJoinLink session={row} variant="cell" />
+              <SessionJoinLink session={row} variant="cell" userName={user?.fullName ?? user?.email ?? undefined} />
             ),
           },
           {
