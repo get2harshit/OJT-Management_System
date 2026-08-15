@@ -59,6 +59,11 @@ export default function StudentSessions() {
           { key: 'mentor', header: 'Mentor', render: (row) => row.mentor.full_name },
           { key: 'title', header: 'Title', render: (row) => row.title || row.teams.map((t) => t.team.name).join(', ') || '—' },
           {
+            key: 'kind',
+            header: 'Kind',
+            render: (row) => <span className="text-xs text-gray-400">{row.kind_label}</span>,
+          },
+          {
             key: 'start_time',
             header: 'When',
             // Always IST — a student's own local browser zone is irrelevant here.

@@ -6,7 +6,16 @@
 // tasks.ts keeps its own types local.
 import { apiFetch, invalidateCached } from './client';
 
+// How the session came about: booked directly, or approved from a combined /
+// on-demand request. Provenance, not audience — what kind of sitting it is
+// (1:1 / Group / Common) is ApiSessionKind below, derived from its teams.
 export type ApiSessionType = 'individual' | 'combined' | 'on_demand';
+
+// What kind of sitting it is, derived server-side from the teams on it and
+// which of the mentor's groups they belong to. One team is a 1:1; two or more
+// spanning two or more of the mentor's groups is a Common session — the case
+// where a group whose slot was missed gets merged into another group's.
+export type ApiSessionKind = 'one_on_one' | 'group' | 'common';
 export type ApiSessionStatus = 'scheduled' | 'rescheduled' | 'completed' | 'cancelled';
 export type ApiAttendanceStatus = 'not_marked' | 'present' | 'absent' | 'excused';
 
@@ -21,7 +30,7 @@ export interface ApiSessionTeamRef {
   id: string;
   session_id: string;
   team_id: string;
-  team: { id: string; name: string };
+  team: { id: string; name: string; group_id: string | null; group: { id: string; name: string } | null };
 }
 
 export interface ApiSessionCoMentor {
@@ -38,6 +47,11 @@ export interface ApiSession {
   cohort_id: string;
   track_id: string | null;
   session_type: ApiSessionType;
+  // Computed by the backend and sent with the session, so the rule deciding
+  // what a session is called lives in one place rather than in every screen
+  // that shows one.
+  kind: ApiSessionKind;
+  kind_label: string;
   title: string | null;
   scheduled_date: string;
   start_time: string;

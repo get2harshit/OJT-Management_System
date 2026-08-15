@@ -186,10 +186,23 @@ export default function AdminSessions() {
       const workspace = await apiGetMentorWorkspace(selectedCohortId, mentorId);
       setTeamsByMentor((current) => ({
         ...current,
-        [mentorId]: workspace.teams.map((t) => ({
-          value: t.id,
-          label: t.name ?? `Team (${t.memberCount})`,
-        })),
+        // Group name in the label, because picking teams is how a common
+        // session gets booked — a mentor merging a missed group's slot into
+        // another group's has to see which group each team is in to do it.
+        // Grouped teams sort together so the two being merged sit next to each
+        // other instead of scattered through the list.
+        [mentorId]: [...workspace.teams]
+          .sort(
+            (a, b) =>
+              (a.groupName ?? '￿').localeCompare(b.groupName ?? '￿') ||
+              (a.name ?? '').localeCompare(b.name ?? '')
+          )
+          .map((t) => ({
+            value: t.id,
+            label: t.groupName
+              ? `${t.name ?? `Team (${t.memberCount})`} · ${t.groupName}`
+              : t.name ?? `Team (${t.memberCount})`,
+          })),
       }));
     } catch {
       // A failed lookup leaves the picker empty rather than falling back to
@@ -595,7 +608,13 @@ export default function AdminSessions() {
 
             <div className="space-y-2 text-sm text-gray-300">
               <p><span className="text-gray-500">Mentor:</span> {selected.mentor.full_name}</p>
-              <p className="flex items-center gap-1.5"><Users2 size={14} className="text-gold" /> {selected.teams.map((t) => t.team.name).join(', ') || '—'}</p>
+              <p className="flex items-center gap-1.5">
+                <Users2 size={14} className="text-gold" />
+                {selected.teams.map((t) => t.team.name).join(', ') || '—'}
+                {/* Says what kind of sitting this is in the same line as who is
+                    in it, since the label is entirely a statement about that. */}
+                <span className="text-xs text-gray-500">· {selected.kind_label}</span>
+              </p>
               <p><span className="text-gray-500">When:</span> {new Date(selected.start_time).toLocaleString()} — {new Date(selected.end_time).toLocaleTimeString()}</p>
               {selected.location_or_link && (
                 <div className="flex items-center gap-1.5">

@@ -498,7 +498,13 @@ export default function MentorSessions() {
               </span>
             </div>
             <div className="space-y-2 text-sm text-gray-300">
-              <p className="flex items-center gap-1.5"><Users2 size={14} className="text-gold" /> {selected.teams.map((t) => t.team.name).join(', ') || '—'}</p>
+              <p className="flex items-center gap-1.5">
+                <Users2 size={14} className="text-gold" />
+                {selected.teams.map((t) => t.team.name).join(', ') || '—'}
+                {/* Says what kind of sitting this is in the same line as who is
+                    in it, since the label is entirely a statement about that. */}
+                <span className="text-xs text-gray-500">· {selected.kind_label}</span>
+              </p>
               <p><span className="text-gray-500">When:</span> {new Date(selected.start_time).toLocaleString()} — {new Date(selected.end_time).toLocaleTimeString()}</p>
               {selected.location_or_link && (
                 <div className="flex items-center gap-1.5">
