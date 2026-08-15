@@ -239,3 +239,38 @@ html.light textarea::placeholder {
 .rdp-chevron {
   fill: rgb(var(--color-gold));
 }
+
+/* FullCalendar (Sessions calendar) ships its own light-themed CSS variables
+   (white page background, #ddd borders) that were never pointed at this
+   app's palette — the header row rendered white-on-white in dark mode.
+   Reusing the same --color-* tokens as the rest of the app so this tracks
+   both themes automatically instead of a second hardcoded palette. */
+.fc {
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: rgb(var(--color-zinc-750) / 0.5);
+  --fc-border-color: rgb(var(--color-zinc-750));
+  --fc-today-bg-color: rgb(var(--color-gold) / 0.12);
+  --fc-now-indicator-color: rgb(var(--color-gold));
+  --fc-highlight-color: rgb(var(--color-gold) / 0.15);
+  --fc-list-event-hover-bg-color: rgb(var(--color-zinc-750));
+}
+
+.fc .fc-col-header-cell-cushion,
+.fc .fc-daygrid-day-number,
+.fc .fc-list-day-text,
+.fc .fc-list-day-side-text,
+.fc .fc-list-empty {
+  color: rgb(var(--color-fg));
+}
+
+.fc .fc-timegrid-slot-label-cushion,
+.fc .fc-timegrid-axis-cushion,
+.fc .fc-list-table thead {
+  color: rgb(var(--color-fg) / 0.6);
+}
+
+.fc-theme-standard td,
+.fc-theme-standard th,
+.fc-theme-standard .fc-scrollgrid {
+  border-color: rgb(var(--color-zinc-750));
+}
