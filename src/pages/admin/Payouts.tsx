@@ -83,7 +83,10 @@ export default function AdminPayouts() {
   const [activeTab, setActiveTab] = useState<'payouts' | 'batches' | 'rates'>('payouts');
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [cohortId, setCohortId] = useState('');
+  // Seeded from a ?cohortId= link (e.g. the OJT Setup Payouts tab) so
+  // arriving from a specific cohort pre-filters to it — the filter itself
+  // stays free-standing so "all cohorts" is still one click away.
+  const [cohortId, setCohortId] = useState(searchParams.get('cohortId') || '');
   const [status, setStatus] = useState('');
   const [mentorType, setMentorType] = useState('');
   // Set only via a ?mentorId= link in (e.g. the Mentor Workspace's "this

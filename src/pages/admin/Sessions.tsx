@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -16,9 +16,8 @@ import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
 import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
-import type { Cohort, ApiMentor, AdminTeam } from '../../lib/types';
+import type { ApiMentor, AdminTeam } from '../../lib/types';
 import {
-  apiListCohorts,
   apiListMentorsPage,
   apiListTeamsForCohort,
   apiListSessions,
@@ -29,7 +28,6 @@ import {
   type ApiSession,
   type ApiSessionStatus,
 } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 
@@ -65,10 +63,9 @@ const EMPTY_FORM: SessionFormState = { mentorId: '', teamIds: [], title: '', loc
 
 export default function AdminSessions() {
   const navigate = useNavigate();
+  const { cohortId: selectedCohortId = '' } = useParams<{ cohortId: string }>();
   const { showSuccess, showError } = useToast();
 
-  const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [selectedCohortId, setSelectedCohortId] = useState('');
   const [mentorFilterId, setMentorFilterId] = useState('');
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
   const [teams, setTeams] = useState<AdminTeam[]>([]);
@@ -106,21 +103,6 @@ export default function AdminSessions() {
     (span: { start: Date }) => span.start.getTime() >= Date.now() && !holidayDateKeys.has(localDateKey(span.start)),
     [holidayDateKeys]
   );
-
-  const loadCohorts = useCallback(() => {
-    return apiListCohorts()
-      .then(setCohorts)
-      .catch(() => setCohorts([]));
-  }, []);
-
-  useEffect(() => {
-    loadCohorts();
-  }, [loadCohorts]);
-
-  useEffect(() => {
-    if (cohorts.length === 0) return;
-    setSelectedCohortId((prev) => prev || cohorts.find((c) => c.isActive)?.id || cohorts[0]?.id || prev);
-  }, [cohorts]);
 
   const loadRoster = useCallback(async (cohortId: string) => {
     if (!cohortId) return;
@@ -445,14 +427,6 @@ export default function AdminSessions() {
           <p className="text-gray-400 text-sm mt-1">Schedule, reschedule, cancel and complete mentor sessions.</p>
         </div>
         <div className="flex items-center gap-2.5">
-          <Select
-            value={selectedCohortId}
-            onChange={setSelectedCohortId}
-            variant="filter"
-            placeholder="Select cohort"
-            className="w-[200px]"
-            options={cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }))}
-          />
           <Select
             value={mentorFilterId}
             onChange={setMentorFilterId}

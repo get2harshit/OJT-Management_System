@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Inbox, Check, X, Users2 } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import DataTable from '../../components/DataTable';
@@ -45,9 +46,13 @@ function formatWhen(request: ApiSessionRequest): string {
 
 export default function AdminSessionRequests() {
   const { showSuccess, showError } = useToast();
+  const [searchParams] = useSearchParams();
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [cohortId, setCohortId] = useState('');
+  // Seeded from a ?cohortId= link (e.g. the OJT Setup Session Requests tab)
+  // — the filter itself stays free-standing so "all cohorts" is still one
+  // click away, matching Payouts' own pattern.
+  const [cohortId, setCohortId] = useState(searchParams.get('cohortId') || '');
   const [status, setStatus] = useState('pending');
   const [requestType, setRequestType] = useState('');
 
