@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Edit2, UserCheck, UserX, History, LogIn, LogOut, ArrowLeftRight } from 'lucide-react';
+import { Edit2, UserCheck, UserX, History, LogIn, LogOut, ArrowLeftRight, Briefcase } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import SpinnerSquare from '../../components/SpinnerSquare';
@@ -177,6 +177,24 @@ export default function AdminStudents() {
           iconClass: 'text-gold',
           text: `Mentor changed on ${team}: ${event.fromMentorName ?? 'unassigned'} → ${event.toMentorName ?? 'unassigned'}`,
         };
+      case 'project_changed': {
+        // The first allocation reads as "Project allocated", not as a change
+        // from "unallocated" — nothing was taken away, and phrasing it as a
+        // change would make every student's history open with a non-event.
+        const from = event.fromProjectTitle;
+        const to = event.toProjectTitle;
+        if (!from && to) {
+          return { icon: Briefcase, iconClass: 'text-sky-400', text: `Project allocated on ${team}: ${to}` };
+        }
+        if (from && !to) {
+          return { icon: Briefcase, iconClass: 'text-red-400', text: `Project removed from ${team} (was ${from})` };
+        }
+        return {
+          icon: Briefcase,
+          iconClass: 'text-sky-400',
+          text: `Project changed on ${team}: ${from ?? 'none'} → ${to ?? 'none'}`,
+        };
+      }
     }
   };
 

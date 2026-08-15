@@ -222,13 +222,32 @@ export type StudentActivityEvent =
       toMentorName: string | null;
       changedById: string;
       reason: string | null;
+    }
+  | {
+      type: 'project_changed';
+      at: string;
+      teamId: string;
+      teamName: string | null;
+      // Both ends are nullable: a first allocation comes from no project, and
+      // reversing one goes back to no project.
+      fromProjectId: string | null;
+      fromProjectTitle: string | null;
+      toProjectId: string | null;
+      toProjectTitle: string | null;
+      changedById: string;
+      reason: string | null;
     };
 
 /**
- * This student's team-join/leave and mentor-change history, most recent
- * first. Built from ojt_team_membership_events and
- * ojt_mentor_reassignment_history — a mentor change only appears here if it
- * happened while this student was actually on that team.
+ * This student's team-join/leave, mentor-change and project-change history,
+ * most recent first. Built from ojt_team_membership_events,
+ * ojt_mentor_reassignment_history and ojt_team_project_history — a mentor or
+ * project change only appears here if it happened while this student was
+ * actually on that team.
+ *
+ * Track changes are deliberately absent rather than missing: a team's track is
+ * set when the team forms and no code path ever updates it, so there is no
+ * such event for this to show.
  */
 export async function apiGetStudentActivityHistory(studentId: string): Promise<StudentActivityEvent[]> {
   const res = await apiFetch<{ data: StudentActivityEvent[] }>(`/api/v1/teams/students/${studentId}/activity`);
