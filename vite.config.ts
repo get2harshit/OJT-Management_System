@@ -8,11 +8,13 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   // Pinned so the dev URL is stable and matches the backend's CORS
-  // allowlist — Vite's default 5173 falls through to another local
-  // project's dev server on this machine, silently shifting the port
-  // (and breaking CORS) on every restart otherwise.
+  // allowlist. strictPort is the important half: without it Vite answers a
+  // busy port by quietly taking the next free one, and the dev server then
+  // comes up on an origin the API does not allow — which shows up only as a
+  // CORS error naming neither the port nor the cause. Failing to start is
+  // the better answer, because it says which port is taken.
   server: {
-    port: 5175,
+    port: 5173,
     strictPort: true,
   },
 });
