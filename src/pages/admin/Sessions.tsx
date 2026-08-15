@@ -14,6 +14,8 @@ import SpinnerSquare from '../../components/SpinnerSquare';
 import SessionHoverPreview from '../../components/SessionHoverPreview';
 import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
+import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
+import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
 import type { Cohort, ApiMentor, AdminTeam } from '../../lib/types';
 import {
   apiListCohorts,
@@ -97,6 +99,11 @@ export default function AdminSessions() {
 
   const businessHours = useCalendarBusinessHours(selectedCohortId, mentorFilterId || undefined);
 
+  const holidays = useCalendarHolidays(selectedCohortId);
+  const holidayEvents = useMemo(() => computeHolidayBackgroundEvents(holidays), [holidays]);
+  const holidayDateKeys = useMemo(() => new Set(holidays.map((h) => h.holiday_date.slice(0, 10))), [holidays]);
+  const handleSelectAllow = useCallback((span: { start: Date }) => !holidayDateKeys.has(localDateKey(span.start)), [holidayDateKeys]);
+
   const loadCohorts = useCallback(() => {
     return apiListCohorts()
       .then(setCohorts)
@@ -160,8 +167,8 @@ export default function AdminSessions() {
   );
 
   const events = useMemo(
-    () =>
-      filteredSessions.map((s) => ({
+    () => [
+      ...filteredSessions.map((s) => ({
         id: s.id,
         title: s.title || `${s.mentor.full_name} · ${s.teams.map((t) => t.team.name).join(', ')}`,
         start: s.start_time,
@@ -173,7 +180,9 @@ export default function AdminSessions() {
         durationEditable: isEditable(s.status),
         extendedProps: { session: s },
       })),
-    [filteredSessions]
+      ...holidayEvents,
+    ],
+    [filteredSessions, holidayEvents]
   );
 
   const mentorOptions = useMemo(() => mentors.map((m) => ({ value: m.id, label: m.fullName ?? m.email ?? m.id })), [mentors]);
@@ -184,7 +193,8 @@ export default function AdminSessions() {
   // Team A, Team B" into one line was the main reason the calendar read as
   // cramped in a week/day view with several sessions stacked.
   const renderEventContent = useCallback((arg: EventContentArg) => {
-    const session = arg.event.extendedProps.session as ApiSession;
+    const session = arg.event.extendedProps.session as ApiSession | undefined;
+    if (!session) return null;
     const teamNames = session.teams.map((t) => t.team.name).join(', ') || '—';
     return (
       <div className="px-1 py-0.5 overflow-hidden leading-tight">
@@ -249,14 +259,17 @@ export default function AdminSessions() {
   }, []);
 
   const handleEventClick = useCallback((arg: EventClickArg) => {
-    const session = arg.event.extendedProps.session as ApiSession;
+    const session = arg.event.extendedProps.session as ApiSession | undefined;
+    if (!session) return;
     setSelected(session);
     setHoverSession(null);
   }, []);
 
   const handleEventMouseEnter = useCallback((arg: EventHoveringArg) => {
+    const session = arg.event.extendedProps.session as ApiSession | undefined;
+    if (!session) return;
     hoverAnchorRef.current = arg.el;
-    setHoverSession(arg.event.extendedProps.session as ApiSession);
+    setHoverSession(session);
   }, []);
 
   const handleEventMouseLeave = useCallback(() => {
@@ -471,6 +484,10 @@ export default function AdminSessions() {
             <span className="text-xs text-gray-400 capitalize">{status}</span>
           </div>
         ))}
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-sm shrink-0 bg-red-500/40" />
+          <span className="text-xs text-gray-400">Holiday</span>
+        </div>
         <span className="text-xs text-gray-500 ml-auto">Drag to move · drag an edge to resize · click for details</span>
       </div>
 
@@ -486,6 +503,7 @@ export default function AdminSessions() {
           headerToolbar={{ left: 'prev,next today', center: 'title', right: 'timeGridDay,timeGridWeek,dayGridMonth,listWeek' }}
           height="auto"
           selectable
+          selectAllow={handleSelectAllow}
           editable
           eventDurationEditable
           eventStartEditable
