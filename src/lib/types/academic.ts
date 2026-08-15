@@ -174,6 +174,12 @@ export interface ApiMentor {
   tracks?: string[];      // backend track enum values, e.g. 'product_development'
   capacity?: number;      // max concurrent students
   currentLoad?: number;   // present only when requested with ?withLoad=true
+  /**
+   * Teams reporting to this mentor in one cohort — present only when the
+   * request named that cohort via teamCountsCohortId. Undefined means the
+   * question wasn't asked, which is not the same as zero.
+   */
+  teamsReporting?: number;
 }
 
 // The active cohort a student belongs to (GET /api/v1/teams/my-cohort).

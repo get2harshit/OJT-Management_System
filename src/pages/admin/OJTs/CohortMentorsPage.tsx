@@ -77,6 +77,10 @@ export default function CohortMentorsPage() {
         page,
         limit,
         search: search || undefined,
+        // Counts teams for this OJT without scoping the list to it — the roster
+        // shown here has to include mentors not on the OJT yet, because adding
+        // them is what this screen does.
+        teamCountsCohortId: cohortId,
         type: typeFilter === 'internal' || typeFilter === 'external' ? typeFilter : undefined,
       });
       setRows(res.data as MentorRow[]);
@@ -86,7 +90,7 @@ export default function CohortMentorsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, search, typeFilter, showError]);
+  }, [cohortId, page, limit, search, typeFilter, showError]);
 
   // Runs once — the mapped set is the save's baseline, so re-reading it on
   // every filter change would discard ticks made in the meantime.
@@ -303,6 +307,26 @@ export default function CohortMentorsPage() {
                 {row.isExternal ? 'External' : 'Internal'}
               </span>
             ),
+          },
+          {
+            // How loaded this mentor already is on this OJT — the number that
+            // decides whether adding them is useful, shown where the decision
+            // is made instead of on the Allocations screen it used to live on.
+            //
+            // A mentor with none reads as a dash rather than 0: on this page
+            // most rows are people not on the OJT at all, and a column of
+            // zeroes would say "nobody mentors anything here" when it means
+            // "nothing has been allocated to them yet".
+            key: 'teamsReporting',
+            header: 'Teams',
+            render: (row) =>
+              row.teamsReporting ? (
+                <span className="text-gray-200 tabular-nums" title={`${row.teamsReporting} team${row.teamsReporting === 1 ? '' : 's'} report to this mentor in this OJT`}>
+                  {row.teamsReporting}
+                </span>
+              ) : (
+                <span className="text-gray-600">—</span>
+              ),
           },
         ]}
         data={rows}

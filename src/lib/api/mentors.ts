@@ -25,6 +25,13 @@ interface GetMentorsPageParams {
   track?: string;
   /** Scope to mentors actually mapped to a specific cohort. */
   cohortId?: string;
+  /**
+   * Adds `teamsReporting` to each row, counted in this cohort. Separate from
+   * cohortId because it does not narrow the list — the cohort's Mentors tab
+   * has to keep showing mentors who are not on the OJT yet, since adding them
+   * is what that screen is for.
+   */
+  teamCountsCohortId?: string;
   /** Internal vs external — maps to ojt_mentors.is_external server-side. */
   type?: 'internal' | 'external';
 }
@@ -38,6 +45,7 @@ export async function apiListMentorsPage(params: GetMentorsPageParams): Promise<
   if (params.search) query.set('search', params.search);
   if (params.track) query.set('track', params.track);
   if (params.cohortId) query.set('cohortId', params.cohortId);
+  if (params.teamCountsCohortId) query.set('teamCountsCohortId', params.teamCountsCohortId);
   if (params.type) query.set('type', params.type);
   return apiFetch<MentorsPage>(`/api/v1/mentors?${query.toString()}`);
 }
