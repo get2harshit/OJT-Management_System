@@ -18,10 +18,10 @@ import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
 import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
-import type { ApiMentor, AdminTeam } from '../../lib/types';
+import type { ApiMentor } from '../../lib/types';
 import {
   apiListMentorsPage,
-  apiListTeamsForCohort,
+  apiGetMentorWorkspace,
   apiListSessions,
   apiCreateSession,
   apiRescheduleSession,
@@ -39,11 +39,6 @@ const STATUS_COLORS: Record<ApiSessionStatus, string> = {
   completed: '#22c55e',
   cancelled: '#ef4444',
 };
-
-function teamLabel(team: AdminTeam): string {
-  const names = team.members.map((m) => m.fullName ?? m.studentId).join(', ');
-  return names ? `${team.name ?? 'Team'} (${names})` : team.name ?? 'Team';
-}
 
 // YYYY-MM-DDTHH:mm, for a native <input type="datetime-local">, from an ISO string or Date.
 function toLocalInputValue(iso: string | Date): string {
@@ -70,7 +65,6 @@ export default function AdminSessions() {
 
   const [mentorFilterId, setMentorFilterId] = useState('');
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
-  const [teams, setTeams] = useState<AdminTeam[]>([]);
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -106,14 +100,13 @@ export default function AdminSessions() {
     [holidayDateKeys]
   );
 
+  // Only the mentor roster now — teams are fetched per mentor once one is
+  // chosen, since a session can only hold that mentor's own teams.
   const loadRoster = useCallback(async (cohortId: string) => {
     if (!cohortId) return;
-    const [mentorsRes, teamsRes] = await Promise.all([
-      apiListMentorsPage({ page: 1, limit: 200, cohortId }).catch(() => ({ data: [], pagination: { page: 1, limit: 200, total: 0, totalPages: 0 } })),
-      apiListTeamsForCohort(cohortId).catch(() => []),
-    ]);
+    const mentorsRes = await apiListMentorsPage({ page: 1, limit: 200, cohortId })
+      .catch(() => ({ data: [], pagination: { page: 1, limit: 200, total: 0, totalPages: 0 } }));
     setMentors(mentorsRes.data);
-    setTeams(teamsRes);
   }, []);
 
   const loadSessions = useCallback(async () => {
@@ -173,7 +166,39 @@ export default function AdminSessions() {
   );
 
   const mentorOptions = useMemo(() => mentors.map((m) => ({ value: m.id, label: m.fullName ?? m.email ?? m.id })), [mentors]);
-  const teamOptions = useMemo(() => teams.map((t) => ({ value: t.id, label: teamLabel(t) })), [teams]);
+
+  /**
+   * Teams offered for the mentor the form currently names, not every team in
+   * the OJT.
+   *
+   * A session may only hold teams its own mentor works with — the create
+   * endpoint refuses the rest — so offering the whole cohort was offering
+   * choices that could only come back as an error. Fetched per mentor and
+   * cached, because the picker is reopened far more often than staffing
+   * changes; the workspace call is a single bounded request whatever the team
+   * count.
+   */
+  const [teamsByMentor, setTeamsByMentor] = useState<Record<string, { value: string; label: string }[]>>({});
+  const loadTeamsForMentor = useCallback(async (mentorId: string) => {
+    if (!selectedCohortId || !mentorId || teamsByMentor[mentorId]) return;
+    try {
+      const workspace = await apiGetMentorWorkspace(selectedCohortId, mentorId);
+      setTeamsByMentor((current) => ({
+        ...current,
+        [mentorId]: workspace.teams.map((t) => ({
+          value: t.id,
+          label: t.name ?? `Team (${t.memberCount})`,
+        })),
+      }));
+    } catch {
+      // A failed lookup leaves the picker empty rather than falling back to
+      // every team — the fallback is exactly the state this fixes.
+      setTeamsByMentor((current) => ({ ...current, [mentorId]: [] }));
+    }
+  }, [selectedCohortId, teamsByMentor]);
+
+  // Staffing can change under a cached list; drop it when the cohort does.
+  useEffect(() => { setTeamsByMentor({}); }, [selectedCohortId]);
 
   // Renders a compact event card — time, mentor, team names — instead of
   // FullCalendar's default single-line title, since squeezing "Mentor ·
@@ -306,6 +331,10 @@ export default function AdminSessions() {
 
   const beginReschedule = () => {
     if (!selected) return;
+    // The form opens with a mentor already chosen, so their teams have to be
+    // in hand before the picker renders — otherwise it would show empty over
+    // teams the session already holds.
+    loadTeamsForMentor(selected.mentor_id);
     setRescheduleForm({
       mentorId: selected.mentor_id,
       teamIds: selected.teams.map((t) => t.team_id),
@@ -373,11 +402,31 @@ export default function AdminSessions() {
     <div className="space-y-3">
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Mentor</label>
-        <Select value={form.mentorId} onChange={(v) => setForm({ ...form, mentorId: v })} options={mentorOptions} placeholder="Select mentor" isSearchable />
+        <Select
+          value={form.mentorId}
+          onChange={(v) => {
+            // Teams already picked belonged to the previous mentor, so they go
+            // with them — keeping them would submit exactly what the rule
+            // refuses.
+            setForm({ ...form, mentorId: v, teamIds: [] });
+            loadTeamsForMentor(v);
+          }}
+          options={mentorOptions}
+          placeholder="Select mentor"
+          isSearchable
+        />
       </div>
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Team(s)</label>
-        <Select isMulti value={form.teamIds} onChange={(v) => setForm({ ...form, teamIds: v })} options={teamOptions} placeholder="Select team(s)" isSearchable />
+        <Select
+          isMulti
+          value={form.teamIds}
+          onChange={(v) => setForm({ ...form, teamIds: v })}
+          options={teamsByMentor[form.mentorId] ?? []}
+          disabled={!form.mentorId}
+          placeholder={form.mentorId ? 'Select team(s)' : 'Pick a mentor first'}
+          isSearchable
+        />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
