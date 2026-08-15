@@ -4,6 +4,7 @@ import PageLayout from '../../components/PageLayout';
 import DataTable from '../../components/DataTable';
 import { apiGetMyUpcomingSessions, type ApiSession, type ApiSessionStatus } from '../../lib/api';
 import { useToast } from '../../toast';
+import { formatInIST } from '../../lib/utils';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 const STATUS_STYLES: Record<ApiSessionStatus, string> = {
@@ -59,7 +60,8 @@ export default function StudentSessions() {
           {
             key: 'start_time',
             header: 'When',
-            render: (row) => `${new Date(row.start_time).toLocaleString()} — ${new Date(row.end_time).toLocaleTimeString()}`,
+            // Always IST — a student's own local browser zone is irrelevant here.
+            render: (row) => `${formatInIST(row.start_time)} — ${formatInIST(row.end_time, { hour: '2-digit', minute: '2-digit' })}`,
           },
           {
             key: 'location_or_link',

@@ -4,6 +4,7 @@ import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import { apiGetMyAttendance, type ApiMyAttendanceRow, type ApiAttendanceStatus } from '../../lib/api';
 import { useToast } from '../../toast';
+import { formatInIST } from '../../lib/utils';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 const STATUS_STYLES: Record<ApiAttendanceStatus, string> = {
@@ -63,7 +64,8 @@ export default function StudentAttendance() {
           {
             key: 'scheduled_date',
             header: 'When',
-            render: (row) => `${new Date(row.session.start_time).toLocaleString()} — ${new Date(row.session.end_time).toLocaleTimeString()}`,
+            // Always IST — a student's own local browser zone is irrelevant here.
+            render: (row) => `${formatInIST(row.session.start_time)} — ${formatInIST(row.session.end_time, { hour: '2-digit', minute: '2-digit' })}`,
           },
           {
             key: 'status',

@@ -11,6 +11,8 @@ export interface ApiSchedulingConfig {
   day_end_minute: number;
   default_session_duration_minutes: number;
   min_gap_minutes: number;
+  /** IANA zone the two minute fields above are meant in — a cohort default is always 'Asia/Kolkata'; a mentor override can carry a different zone. */
+  timezone: string;
   updated_by_id?: string;
   created_at?: string;
   updated_at?: string;
@@ -26,6 +28,8 @@ export interface UpdateSchedulingConfigBody {
   dayEndMinute: number;
   defaultSessionDurationMinutes: number;
   minGapMinutes: number;
+  /** Only sent by the mentor-override form — the cohort default stays fixed at Asia/Kolkata. */
+  timezone?: string;
 }
 
 export async function apiGetSchedulingConfig(cohortId: string): Promise<ApiSchedulingConfig> {

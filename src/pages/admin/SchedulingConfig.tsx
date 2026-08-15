@@ -69,6 +69,12 @@ export default function SchedulingConfig() {
   const [overrideDays, setOverrideDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [overrideStart, setOverrideStart] = useState('09:00');
   const [overrideEnd, setOverrideEnd] = useState('18:00');
+  // The cohort default is always Asia/Kolkata (never exposed as editable —
+  // it's the one thing students can always assume). This only matters for an
+  // override: an international mentor's own hours are in their own zone, not
+  // whoever's admin happened to be filling in this form — so it's a manual
+  // pick, not detected from the browser filling it in.
+  const [overrideTimezone, setOverrideTimezone] = useState('Asia/Kolkata');
   const [savingOverride, setSavingOverride] = useState(false);
 
   useEffect(() => {
@@ -177,6 +183,7 @@ export default function SchedulingConfig() {
     setOverrideDays(existing ? existing.working_days : workingDays);
     setOverrideStart(existing ? minutesToTime(existing.day_start_minute) : dayStart);
     setOverrideEnd(existing ? minutesToTime(existing.day_end_minute) : dayEnd);
+    setOverrideTimezone(existing ? existing.timezone : 'Asia/Kolkata');
   };
 
   const toggleOverrideDay = (day: number) => {
@@ -200,6 +207,7 @@ export default function SchedulingConfig() {
         // inventing its own.
         defaultSessionDurationMinutes: defaultDuration,
         minGapMinutes: minGap,
+        timezone: overrideTimezone,
       });
       setOverrides((prev) => ({ ...prev, [overrideTarget.id]: saved }));
       showSuccess(`${overrideTarget.fullName ?? overrideTarget.email} now has their own schedule`);
@@ -229,10 +237,16 @@ export default function SchedulingConfig() {
 
   const describeOverride = (config: ApiSchedulingConfig): string => {
     const days = config.working_days.map((d) => DAY_LABELS[d]).join(', ');
-    return `${days} · ${minutesToTime(config.day_start_minute)}-${minutesToTime(config.day_end_minute)}`;
+    return `${days} · ${minutesToTime(config.day_start_minute)}-${minutesToTime(config.day_end_minute)} ${config.timezone}`;
   };
 
   const cohortOptions = useMemo(() => cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) })), [cohorts]);
+  // Intl.supportedValuesOf ships with Node 18+ and every modern browser —
+  // no need to hand-maintain a zone list.
+  const timezoneOptions = useMemo(
+    () => Intl.supportedValuesOf('timeZone').map((tz) => ({ value: tz, label: tz.replace(/_/g, ' ') })),
+    []
+  );
 
   return (
     <PageLayout mode="scroll" className="space-y-6">
@@ -439,6 +453,15 @@ export default function SchedulingConfig() {
                   className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Timezone</label>
+              <Select value={overrideTimezone} onChange={setOverrideTimezone} options={timezoneOptions} isSearchable />
+              <p className="text-[11px] text-gray-500 mt-1">
+                Day Start/End above are read in this zone — e.g. an external mentor in New York picks their own zone here, and
+                "09:00" means 9 AM for them, not IST. Students always see session times in IST regardless.
+              </p>
             </div>
 
             <div className="flex items-center gap-2 border-t border-zinc-800 pt-4 flex-wrap">
