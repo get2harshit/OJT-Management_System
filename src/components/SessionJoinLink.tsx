@@ -45,7 +45,14 @@ export default function SessionJoinLink({ session, variant = 'detail', isHost = 
   const buttonBase = `inline-flex items-center gap-1.5 font-semibold rounded-lg transition-colors ${compact ? 'text-xs px-2.5 py-1' : 'text-xs px-3 py-1.5'}`;
 
   // Started on the multimedia service and not yet ended.
-  const hostedLive = session.live_session_id !== null && !session.live_ended_at;
+  //
+  // Truthy rather than `!== null`, because a session that has never been
+  // started arrives two different ways: null from a backend that knows about
+  // hosting, and undefined from one that does not — an older deploy, or a
+  // response shaped before this field existed. `undefined !== null` is true,
+  // so the strict form offered Join on every session in the list and 404'd on
+  // click. Not hosted is not hosted, however it is spelled.
+  const hostedLive = !!session.live_session_id && !session.live_ended_at;
 
   const join = async () => {
     setJoining(true);
