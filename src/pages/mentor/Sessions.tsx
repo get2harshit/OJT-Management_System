@@ -94,7 +94,10 @@ export default function MentorSessions() {
   const holidays = useCalendarHolidays(selectedCohortId);
   const holidayEvents = useMemo(() => computeHolidayBackgroundEvents(holidays), [holidays]);
   const holidayDateKeys = useMemo(() => new Set(holidays.map((h) => h.holiday_date.slice(0, 10))), [holidays]);
-  const handleSelectAllow = useCallback((span: { start: Date }) => !holidayDateKeys.has(localDateKey(span.start)), [holidayDateKeys]);
+  const handleSelectAllow = useCallback(
+    (span: { start: Date }) => span.start.getTime() >= Date.now() && !holidayDateKeys.has(localDateKey(span.start)),
+    [holidayDateKeys]
+  );
 
   useEffect(() => {
     apiListMyCohorts()
