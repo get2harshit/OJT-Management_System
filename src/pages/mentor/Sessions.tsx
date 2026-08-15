@@ -10,6 +10,7 @@ import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import type { Cohort, TeamWithProject } from '../../lib/types';
 import {
   apiListMyCohorts,
@@ -74,6 +75,8 @@ export default function MentorSessions() {
   const [actualMinutes, setActualMinutes] = useState('');
   const [showCompletePrompt, setShowCompletePrompt] = useState(false);
   const [deciding, setDeciding] = useState(false);
+
+  const businessHours = useCalendarBusinessHours(selectedCohortId, user?.id);
 
   useEffect(() => {
     apiListMyCohorts()
@@ -408,6 +411,7 @@ export default function MentorSessions() {
           eventResize={handleEventResize}
           eventContent={renderEventContent}
           events={events}
+          businessHours={businessHours}
           datesSet={handleDatesSet}
           slotMinTime="06:00:00"
           slotMaxTime="22:00:00"

@@ -37,6 +37,12 @@ export async function apiGetSchedulingConfig(cohortId: string): Promise<ApiSched
   return res.data;
 }
 
+/** The resolved config a given mentor is actually bound by — their own override if one exists, else the cohort default. */
+export async function apiGetMentorSchedulingConfig(cohortId: string, mentorId: string): Promise<ApiSchedulingConfig> {
+  const res = await apiFetch<{ data: ApiSchedulingConfig }>(`/api/v1/cohorts/${cohortId}/mentors/${mentorId}/scheduling-config`);
+  return res.data;
+}
+
 export async function apiUpdateSchedulingConfig(cohortId: string, body: UpdateSchedulingConfigBody): Promise<ApiSchedulingConfig> {
   const res = await apiFetch<{ data: ApiSchedulingConfig }>(`/api/v1/cohorts/${cohortId}/scheduling-config`, {
     method: 'PUT',

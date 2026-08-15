@@ -253,6 +253,10 @@ html.light textarea::placeholder {
   --fc-now-indicator-color: rgb(var(--color-gold));
   --fc-highlight-color: rgb(var(--color-gold) / 0.15);
   --fc-list-event-hover-bg-color: rgb(var(--color-zinc-750));
+  /* Shades hours outside the resolved working-hours config once a
+     `businessHours` prop is set on the Sessions calendar — a visual hint,
+     not a hard constraint (the create/reschedule calls still validate). */
+  --fc-non-business-color: rgb(var(--color-zinc-750) / 0.65);
 }
 
 .fc .fc-col-header-cell-cushion,

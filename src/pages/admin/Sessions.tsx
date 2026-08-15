@@ -11,6 +11,7 @@ import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import type { Cohort, ApiMentor, AdminTeam } from '../../lib/types';
 import {
   apiListCohorts,
@@ -82,6 +83,8 @@ export default function AdminSessions() {
   const [actualMinutes, setActualMinutes] = useState('');
   const [showCompletePrompt, setShowCompletePrompt] = useState(false);
   const [deciding, setDeciding] = useState(false);
+
+  const businessHours = useCalendarBusinessHours(selectedCohortId, mentorFilterId || undefined);
 
   const loadCohorts = useCallback(() => {
     return apiListCohorts()
@@ -471,6 +474,7 @@ export default function AdminSessions() {
           eventResize={handleEventResize}
           eventContent={renderEventContent}
           events={events}
+          businessHours={businessHours}
           datesSet={handleDatesSet}
           slotMinTime="06:00:00"
           slotMaxTime="22:00:00"
