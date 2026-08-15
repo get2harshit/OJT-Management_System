@@ -38,10 +38,6 @@ export default function App() {
           <DataProvider>
             <RefreshProvider>
             <NotificationNavigateProvider>
-            {/* Wraps the whole app rather than just the room: the SDK's store
-                has to exist before the room mounts, and the room is reached by
-                navigation from inside these routes. */}
-            <HMSRoomProvider>
             <ErrorBoundary>
               <Suspense fallback={<PanelLoader />}>
                 <Routes>
@@ -78,13 +74,24 @@ export default function App() {
                       full-screen and the same room for whoever is in it, so it
                       does not belong inside one role's shell. Reached only by
                       navigating with a token in router state. */}
-                  <Route path="/live-session" element={<LiveSessionRoom />} />
+                  <Route
+                    path="/live-session"
+                    element={
+                      /* Wrapped here rather than around the app. A third-party
+                         provider at the root can take everything down with it —
+                         this one did, throwing on mount and blanking the login
+                         page. Scoped to the one route that needs it, the worst
+                         it can do is break itself. */
+                      <HMSRoomProvider>
+                        <LiveSessionRoom />
+                      </HMSRoomProvider>
+                    }
+                  />
 
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Suspense>
             </ErrorBoundary>
-            </HMSRoomProvider>
             </NotificationNavigateProvider>
             </RefreshProvider>
           </DataProvider>
