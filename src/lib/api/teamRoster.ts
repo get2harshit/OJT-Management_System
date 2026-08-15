@@ -195,3 +195,42 @@ export async function apiSetTeamCadence(teamId: string, weeklySessionTarget: num
     body: JSON.stringify({ weeklySessionTarget }),
   });
 }
+
+/**
+ * How many teams in one cohort currently report to each of the given
+ * mentors — one call for a whole directory page, not one per mentor.
+ * Mentors with no teams are still present in the result, at 0.
+ */
+export async function apiGetTeamCountsForMentors(cohortId: string, mentorIds: string[]): Promise<Record<string, number>> {
+  if (mentorIds.length === 0) return {};
+  const res = await apiFetch<{ data: Record<string, number> }>(
+    `/api/v1/teams/mentor-team-counts?cohortId=${cohortId}&mentorIds=${mentorIds.join(',')}`
+  );
+  return res.data;
+}
+
+export type StudentActivityEvent =
+  | { type: 'team_joined' | 'team_left'; at: string; teamId: string; teamName: string | null; changedById: string; reason: string | null }
+  | {
+      type: 'mentor_changed';
+      at: string;
+      teamId: string;
+      teamName: string | null;
+      fromMentorId: string | null;
+      fromMentorName: string | null;
+      toMentorId: string;
+      toMentorName: string | null;
+      changedById: string;
+      reason: string | null;
+    };
+
+/**
+ * This student's team-join/leave and mentor-change history, most recent
+ * first. Built from ojt_team_membership_events and
+ * ojt_mentor_reassignment_history — a mentor change only appears here if it
+ * happened while this student was actually on that team.
+ */
+export async function apiGetStudentActivityHistory(studentId: string): Promise<StudentActivityEvent[]> {
+  const res = await apiFetch<{ data: StudentActivityEvent[] }>(`/api/v1/teams/students/${studentId}/activity`);
+  return res.data;
+}
