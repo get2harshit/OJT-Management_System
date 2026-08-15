@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import PageLayout from '../../../components/PageLayout';
-import { apiGetCohort } from '../../../lib/api';
+import { apiGetCohort, apiGetCohortTabCounts, type ApiCohortTabCounts } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 
 // `external: true` entries leave the shell entirely — Payouts and Session
@@ -11,19 +11,22 @@ import { getCohortLabel } from '../../../lib/cohortLabel';
 // they stay standalone pages; this just hands off to them with the current
 // cohort pre-filled via ?cohortId= rather than forcing them to live inside
 // the shell's own route tree.
-const SECTIONS: { path: string; label: string; external?: boolean }[] = [
+//
+// `countKey` is omitted for Overview (the hub, not a collection) and
+// Attendance (a date-scoped view with no single meaningful "total").
+const SECTIONS: { path: string; label: string; external?: boolean; countKey?: keyof ApiCohortTabCounts }[] = [
   { path: 'view', label: 'Overview' },
-  { path: 'students', label: 'Students' },
-  { path: 'mentors', label: 'Mentors' },
-  { path: 'track-config', label: 'Tracks' },
-  { path: 'projects', label: 'Projects' },
-  { path: 'teams', label: 'Teams & Roster' },
-  { path: 'allocations', label: 'Allocations' },
-  { path: 'sessions', label: 'Sessions' },
-  { path: 'session-requests', label: 'Session Requests', external: true },
+  { path: 'students', label: 'Students', countKey: 'students' },
+  { path: 'mentors', label: 'Mentors', countKey: 'mentors' },
+  { path: 'track-config', label: 'Tracks', countKey: 'tracks' },
+  { path: 'projects', label: 'Projects', countKey: 'projects' },
+  { path: 'teams', label: 'Teams & Roster', countKey: 'teams' },
+  { path: 'allocations', label: 'Allocations', countKey: 'allocations' },
+  { path: 'sessions', label: 'Sessions', countKey: 'sessions' },
+  { path: 'session-requests', label: 'Session Requests', external: true, countKey: 'sessionRequests' },
   { path: 'attendance', label: 'Attendance' },
-  { path: 'payouts', label: 'Payouts', external: true },
-  { path: 'evaluation-summary', label: 'Evaluation' },
+  { path: 'payouts', label: 'Payouts', external: true, countKey: 'payouts' },
+  { path: 'evaluation-summary', label: 'Evaluation', countKey: 'evaluationConfigs' },
 ];
 
 /**
@@ -44,12 +47,16 @@ export default function CohortDetailLayout() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
   const [cohortLabel, setCohortLabel] = useState('');
+  const [tabCounts, setTabCounts] = useState<ApiCohortTabCounts | null>(null);
 
   useEffect(() => {
     if (!cohortId) return;
     apiGetCohort(cohortId)
       .then((cohort) => setCohortLabel(getCohortLabel(cohort)))
       .catch(() => setCohortLabel(''));
+    apiGetCohortTabCounts(cohortId)
+      .then(setTabCounts)
+      .catch(() => setTabCounts(null));
   }, [cohortId]);
 
   return (
@@ -67,31 +74,40 @@ export default function CohortDetailLayout() {
         </div>
 
         <nav className="flex items-center gap-1 overflow-x-auto scrollbar-thin border-b border-zinc-750">
-          {SECTIONS.map((section) =>
-            section.external ? (
+          {SECTIONS.map((section) => {
+            const count = section.countKey && tabCounts ? tabCounts[section.countKey] : undefined;
+            const content = (
+              <>
+                {section.label}
+                {count !== undefined && (
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-zinc-750 text-[10px] font-semibold text-gray-400">{count}</span>
+                )}
+              </>
+            );
+            return section.external ? (
               <Link
                 key={section.path}
                 to={`/admin/dashboard/${section.path}?cohortId=${cohortId}`}
-                className="px-3.5 py-2 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-400 hover:text-white hover:border-zinc-700 transition-colors"
+                className="flex items-center px-3.5 py-2 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-400 hover:text-white hover:border-zinc-700 transition-colors"
               >
-                {section.label}
+                {content}
               </Link>
             ) : (
               <NavLink
                 key={section.path}
                 to={`/admin/dashboard/ojts/${cohortId}/${section.path}`}
                 className={({ isActive }) =>
-                  `px-3.5 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                  `flex items-center px-3.5 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
                     isActive
                       ? 'text-gold border-gold'
                       : 'text-gray-400 border-transparent hover:text-white hover:border-zinc-700'
                   }`
                 }
               >
-                {section.label}
+                {content}
               </NavLink>
-            )
-          )}
+            );
+          })}
         </nav>
       </div>
 
