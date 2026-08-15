@@ -4,12 +4,14 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
 import interactionPlugin, { type EventDropArg } from '@fullcalendar/interaction';
-import type { EventClickArg, DateSelectArg, EventContentArg, EventResizeDoneArg } from '@fullcalendar/core';
+import type { EventClickArg, DateSelectArg, EventContentArg, EventResizeDoneArg, EventHoveringArg } from '@fullcalendar/core';
 import { CalendarClock, Plus, MapPin, Users2, XCircle, CheckCircle2, RefreshCw, Lock } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import SessionHoverPreview from '../../components/SessionHoverPreview';
+import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import type { Cohort, TeamWithProject } from '../../lib/types';
 import {
@@ -75,6 +77,15 @@ export default function MentorSessions() {
   const [actualMinutes, setActualMinutes] = useState('');
   const [showCompletePrompt, setShowCompletePrompt] = useState(false);
   const [deciding, setDeciding] = useState(false);
+
+  const [hoverSession, setHoverSession] = useState<ApiSession | null>(null);
+  const hoverAnchorRef = useRef<HTMLElement | null>(null);
+  const hoverPosition = useAnchoredPosition(
+    hoverAnchorRef,
+    !!hoverSession,
+    (rect) => ({ left: Math.min(rect.right + 8, window.innerWidth - 272), top: Math.min(rect.top, window.innerHeight - 180) }),
+    { left: 0, top: 0 }
+  );
 
   const businessHours = useCalendarBusinessHours(selectedCohortId, user?.id);
 
@@ -220,6 +231,16 @@ export default function MentorSessions() {
 
   const handleEventClick = useCallback((arg: EventClickArg) => {
     setSelected(arg.event.extendedProps.session as ApiSession);
+    setHoverSession(null);
+  }, []);
+
+  const handleEventMouseEnter = useCallback((arg: EventHoveringArg) => {
+    hoverAnchorRef.current = arg.el;
+    setHoverSession(arg.event.extendedProps.session as ApiSession);
+  }, []);
+
+  const handleEventMouseLeave = useCallback(() => {
+    setHoverSession(null);
   }, []);
 
   const closeCreate = () => setCreateForm(null);
@@ -409,6 +430,8 @@ export default function MentorSessions() {
           eventClick={handleEventClick}
           eventDrop={handleEventDrop}
           eventResize={handleEventResize}
+          eventMouseEnter={handleEventMouseEnter}
+          eventMouseLeave={handleEventMouseLeave}
           eventContent={renderEventContent}
           events={events}
           businessHours={businessHours}
@@ -420,6 +443,9 @@ export default function MentorSessions() {
           eventDisplay="block"
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', meridiem: 'short' }}
         />
+        {hoverSession && (
+          <SessionHoverPreview session={hoverSession} left={hoverPosition.left} top={hoverPosition.top} statusColor={STATUS_COLORS[hoverSession.status]} />
+        )}
       </div>
 
       <Modal open={!!createForm} onClose={closeCreate} title="Schedule a Session" size="lg">
