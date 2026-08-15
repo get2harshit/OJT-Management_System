@@ -15,12 +15,12 @@ import type {
   ProposeProjectInput,
   SemesterSession,
   TeamWithProject,
-  StudentWithoutTeam,
   TrackSubmissionMode,
   RecommendedMentor,
   ProjectPartner,
 } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
+import { asConflict } from './teamRoster';
 
 const TEAMS_TTL = 15_000;
 
@@ -706,39 +706,25 @@ export async function apiListMyTeamsDetailed(withPendingReviewCounts = false): P
 }
 
 // Admin — disbands a team, dropping its members back to the teammate-invite
-// step. Used to reset test accounts without a manual DB query.
-export async function apiBreakTeam(teamId: string): Promise<void> {
-  await apiFetch<void>(`/api/v1/teams/${teamId}`, { method: 'DELETE' });
-  invalidateTeamCaches();
+// step. Refused with a 409 if the team has upcoming sessions unless
+// cascadeFutureSessions is set, in which case a session belonging only to
+// this team is cancelled outright and one shared with another team just has
+// this team's own students' attendance excused — same contract as
+// apiRemoveTeamMember/apiReassignTeamMentor above.
+export async function apiBreakTeam(
+  teamId: string,
+  options: { reason?: string; cascadeFutureSessions?: boolean } = {}
+): Promise<{ cancelledSessions: number; affectedSessions: number }> {
+  try {
+    const res = await apiFetch<{ cancelledSessions: number; affectedSessions: number }>(`/api/v1/teams/${teamId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason: options.reason, cascadeFutureSessions: options.cascadeFutureSessions ?? false }),
+    });
+    invalidateTeamCaches();
+    invalidateCached('sessions');
+    return res;
+  } catch (error) {
+    asConflict(error);
+  }
 }
 
-interface RawStudentWithoutTeam {
-  id: string;
-  full_name: string | null;
-  roll_number: string | null;
-  batch: string | null;
-}
-
-// Admin — cohort students not yet in any team, for the manual-team-creation modal.
-export async function apiGetStudentsWithoutTeam(cohortId: string, search?: string): Promise<StudentWithoutTeam[]> {
-  const query = search ? `?search=${encodeURIComponent(search)}` : '';
-  const res = await apiFetch<RawStudentWithoutTeam[]>(`/api/v1/teams/cohort/${cohortId}/students-without-team${query}`);
-  return res.map((s) => ({ id: s.id, fullName: s.full_name, rollNumber: s.roll_number, batch: s.batch }));
-}
-
-// Admin — builds a team for 1-2 students who never went through self-service
-// team formation, locking it in as already-allocated + overridden. Allowed
-// even after the cohort has been published.
-export async function apiCreateManualTeam(
-  cohortId: string,
-  studentIds: string[],
-  track: string,
-  projectId: string,
-  mentorId: string
-): Promise<void> {
-  await apiFetch<void>(`/api/v1/teams/cohort/${cohortId}/manual-team`, {
-    method: 'POST',
-    body: JSON.stringify({ studentIds, track, projectId, mentorId }),
-  });
-  invalidateTeamCaches();
-}

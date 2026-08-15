@@ -2,7 +2,6 @@ import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, ArrowLeft, UserCog, UserPlus, Gauge, RotateCcw, AlertTriangle, ClipboardList } from 'lucide-react';
-import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
@@ -23,7 +22,6 @@ import {
   apiGetProjectsForCohortPage,
   apiGetCohortPendingProposals,
 } from '../../../lib/api';
-import { getCohortLabel } from '../../../lib/cohortLabel';
 import { formatDateDisplay } from '../../../lib/utils';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
@@ -69,7 +67,6 @@ export default function CohortAllocationsPage() {
   const { tracks, options: trackOptions } = useTracks();
   const trackNameBySlug = new Map(tracks.map(t => [t.slug, t.name]));
 
-  const [cohortLabel, setCohortLabel] = useState('');
   const [teams, setTeams] = useState<TeamAllocationDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [tableLoading, setTableLoading] = useState(false);
@@ -162,7 +159,6 @@ export default function CohortAllocationsPage() {
         apiGetCohortPendingProposals(cohortId),
       ]);
       setPendingProposals(proposals);
-      setCohortLabel(getCohortLabel(cohort));
       setCohortBatches(cohort.allowedBatches ?? []);
       // Falls back to 'pending' if talking to a backend deployment that
       // doesn't have the publish-gate feature yet (allocationRunStatus
@@ -496,7 +492,6 @@ export default function CohortAllocationsPage() {
     <PageLayout className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="space-y-1.5">
-          <CohortPageHeader title="Project Allocations" subtitle={cohortLabel} icon={Shuffle} />
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${(RUN_STATUS_DOT[runStatus] ?? RUN_STATUS_DOT.pending).text}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${(RUN_STATUS_DOT[runStatus] ?? RUN_STATUS_DOT.pending).dot}`} />

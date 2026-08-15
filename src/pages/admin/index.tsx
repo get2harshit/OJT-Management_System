@@ -5,21 +5,28 @@ import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import Students from './Students';
 import Mentors from './Mentors';
-import Allocations from './Allocations';
+import MentorWorkspace from './MentorWorkspace';
+import MentorWorkspaceRedirect from './MentorWorkspaceRedirect';
+import CohortSectionRedirect from './CohortSectionRedirect';
 import OJTs from './OJTs';
 import Tasks from './Tasks';
 import CreateTaskPage from './CreateTaskPage';
 import Submissions from './Submissions';
 import Credits from './Credits';
 import Attendance from './Attendance';
-import EvaluationTracker from './EvaluationTracker';
+import Sessions from './Sessions';
+import SchedulingConfig from './SchedulingConfig';
+import Payouts from './Payouts';
+import SessionRequests from './SessionRequests';
 import EligibilityStatusPage from './EligibilityStatus';
+import CohortDetailLayout from './OJTs/CohortDetailLayout';
 import ViewCohortPage from './OJTs/ViewCohortPage';
 import CohortStudentsPage from './OJTs/CohortStudentsPage';
 import CohortProjectsPage from './OJTs/CohortProjectsPage';
 import ProjectInsightsPage from './OJTs/ProjectInsightsPage';
 import CohortMentorsPage from './OJTs/CohortMentorsPage';
 import CohortTeamsPage from './OJTs/CohortTeamsPage';
+import CohortRosterPage from './OJTs/CohortRosterPage';
 import CohortAllocationsPage from './OJTs/CohortAllocationsPage';
 import ManualAllocationPage from './OJTs/ManualAllocationPage';
 import CohortTrackConfigPage from './OJTs/CohortTrackConfigPage';
@@ -94,6 +101,12 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
       case 'allocation':
         goToSection('allocations');
         break;
+      case 'session':
+        goToSection('sessions');
+        break;
+      case 'payout':
+        goToSection('payouts');
+        break;
       default:
         break;
     }
@@ -106,7 +119,17 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route index element={<Dashboard onNavigateToSection={goToSection} />} />
         <Route path="students" element={<Students />} />
         <Route path="mentors" element={<Mentors />} />
-        <Route path="allocations" element={<Allocations />} />
+        {/* Cohort-less entry point (global Mentors list has no cohort in
+            scope at click time) — resolves a default cohort, then hands off
+            to the cohort-nested Workspace route below via a replace-redirect
+            so the URL always ends up carrying its cohort. */}
+        <Route path="mentors/:mentorId" element={<MentorWorkspaceRedirect />} />
+        {/* The standalone global Allocations page was removed — it did
+            nothing but pick a cohort and land here anyway. Kept as a
+            redirector, not a bare delete, since a stray bookmark or an
+            'allocation' notification click (below) still points at this
+            flat URL. */}
+        <Route path="allocations" element={<CohortSectionRedirect section="allocations" />} />
         <Route path="ojts" element={<OJTs />} />
         <Route
           path="tasks"
@@ -131,24 +154,51 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
           }
         />
         <Route path="credits" element={<Credits />} />
-        <Route path="attendance" element={<Attendance />} />
-        <Route path="evaluation" element={<EvaluationTracker />} />
+        {/* Attendance and Sessions are always for exactly one cohort (unlike
+            Payouts/Session Requests below, which have a real "all cohorts"
+            view) — moved inside OJT Setup, URL-nested, same treatment as
+            Mentor Workspace. Old flat URLs redirect so bookmarks and the
+            'session' notification click-handler (below) keep working. */}
+        <Route path="attendance" element={<CohortSectionRedirect section="attendance" />} />
+        <Route path="sessions" element={<CohortSectionRedirect section="sessions" />} />
+        <Route path="sessions/config" element={<SchedulingConfig />} />
+        <Route path="payouts" element={<Payouts />} />
+        <Route path="session-requests" element={<SessionRequests />} />
+        {/* The standalone global Evaluation Tracker was folded into the
+            Evaluation tab's config-setup section (same capability, one
+            door) — kept as a redirector for the same bookmark/notification
+            reasons as the other sections above. */}
+        <Route path="evaluation" element={<CohortSectionRedirect section="evaluation-summary" />} />
         <Route path="eligibility" element={<EligibilityStatusPage />} />
 
-        {/* Pages reached from within a section. They sit under the same path
-            as the section they belong to, so the sidebar keeps that section
-            lit while you are inside one. */}
-        <Route path="ojts/:cohortId/view" element={<ViewCohortPage />} />
-        <Route path="ojts/:cohortId/students" element={<CohortStudentsPage />} />
-        <Route path="ojts/:cohortId/projects" element={<CohortProjectsPage />} />
+        {/* Cohort detail — one persistent tab-bar shell around a cohort's
+            top-level sections, so the same chrome and the same tabs are
+            there regardless of which one a link drops you into. Keeps the
+            sidebar lit on "OJT Setup" the same way the flat routes used to. */}
+        <Route path="ojts/:cohortId" element={<CohortDetailLayout />}>
+          <Route index element={<Navigate to="view" replace />} />
+          <Route path="view" element={<ViewCohortPage />} />
+          <Route path="students" element={<CohortStudentsPage />} />
+          <Route path="projects" element={<CohortProjectsPage />} />
+          <Route path="mentors" element={<CohortMentorsPage />} />
+          <Route path="track-config" element={<CohortTrackConfigPage />} />
+          <Route path="teams" element={<CohortTeamsPage />} />
+          <Route path="allocations" element={<CohortAllocationsPage />} />
+          <Route path="sessions" element={<Sessions />} />
+          <Route path="attendance" element={<Attendance />} />
+          <Route path="evaluation-summary" element={<CohortEvaluationSummaryPage />} />
+        </Route>
+
+        {/* Drill-downs reached from within a section above — full-page,
+            their own Back button, deliberately outside the tab-bar shell so
+            a screen whose job is one table doesn't compete with it for
+            height. */}
+        <Route path="ojts/:cohortId/mentors/:mentorId" element={<MentorWorkspace />} />
         <Route path="ojts/:cohortId/projects/insights" element={<ProjectInsightsPage />} />
         <Route path="ojts/:cohortId/track-config/:trackSlug/projects" element={<CohortProjectsPage />} />
-        <Route path="ojts/:cohortId/mentors" element={<CohortMentorsPage />} />
-        <Route path="ojts/:cohortId/teams" element={<CohortTeamsPage />} />
-        <Route path="ojts/:cohortId/allocations" element={<CohortAllocationsPage />} />
+        <Route path="ojts/:cohortId/roster" element={<CohortRosterPage />} />
         <Route path="ojts/:cohortId/manual-allocation" element={<ManualAllocationPage />} />
         <Route path="ojts/:cohortId/breakdown" element={<CohortOpsPage />} />
-        <Route path="ojts/:cohortId/track-config" element={<CohortTrackConfigPage />} />
         <Route path="ojts/:cohortId/track-config/:trackSlug/students" element={<TrackEligibleStudentsPage />} />
         <Route path="ojts/:cohortId/track-config/:trackSlug/mentors" element={<TrackMentorsPage />} />
         {/* Registered before the :trackSlug routes above would ever match it —
@@ -156,7 +206,6 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route path="ojts/:cohortId/track-config-from-catalog" element={<CatalogProposalPage />} />
         <Route path="ojts/:cohortId/blueprint" element={<AllocationBlueprintPage />} />
         <Route path="ojts/:cohortId/evaluation/:configId" element={<EvaluationBlueprintPage />} />
-        <Route path="ojts/:cohortId/evaluation-summary" element={<CohortEvaluationSummaryPage />} />
         <Route path="tasks/create" element={<CreateTaskPage />} />
 
         {/* An unknown path is a bad link, not a blank screen. This used to

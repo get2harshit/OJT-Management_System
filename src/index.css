@@ -89,6 +89,34 @@ html.light .text-amber-300 {
   color: #d97706;
 }
 
+/* Base neutral text scale — these were never remapped for light mode, so
+   they stayed near-white on the new near-white background (invisible/low
+   contrast on tables, listings, headings across the app). Graduated to
+   preserve the same emphasis hierarchy the dark palette had. */
+html.light .text-white {
+  color: #0f172a !important;
+}
+
+html.light .text-gray-200 {
+  color: #1e293b !important;
+}
+
+html.light .text-gray-300 {
+  color: #334155 !important;
+}
+
+html.light .text-gray-400 {
+  color: #64748b !important;
+}
+
+/* Exceptions: white text sitting on its own colored/dark button background,
+   not on the page's card surface — must stay white in both themes. */
+html.light .bg-green-600.text-white,
+html.light .bg-red-500.text-white,
+html.light .bg-black\/60.text-white {
+  color: #ffffff !important;
+}
+
 /* Custom thin scrollbar utility */
 .custom-scrollbar::-webkit-scrollbar,
 .scrollbar-thin::-webkit-scrollbar {
@@ -210,4 +238,43 @@ html.light textarea::placeholder {
 }
 .rdp-chevron {
   fill: rgb(var(--color-gold));
+}
+
+/* FullCalendar (Sessions calendar) ships its own light-themed CSS variables
+   (white page background, #ddd borders) that were never pointed at this
+   app's palette — the header row rendered white-on-white in dark mode.
+   Reusing the same --color-* tokens as the rest of the app so this tracks
+   both themes automatically instead of a second hardcoded palette. */
+.fc {
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: rgb(var(--color-zinc-750) / 0.5);
+  --fc-border-color: rgb(var(--color-zinc-750));
+  --fc-today-bg-color: rgb(var(--color-gold) / 0.12);
+  --fc-now-indicator-color: rgb(var(--color-gold));
+  --fc-highlight-color: rgb(var(--color-gold) / 0.15);
+  --fc-list-event-hover-bg-color: rgb(var(--color-zinc-750));
+  /* Shades hours outside the resolved working-hours config once a
+     `businessHours` prop is set on the Sessions calendar — a visual hint,
+     not a hard constraint (the create/reschedule calls still validate). */
+  --fc-non-business-color: rgb(var(--color-zinc-750) / 0.65);
+}
+
+.fc .fc-col-header-cell-cushion,
+.fc .fc-daygrid-day-number,
+.fc .fc-list-day-text,
+.fc .fc-list-day-side-text,
+.fc .fc-list-empty {
+  color: rgb(var(--color-fg));
+}
+
+.fc .fc-timegrid-slot-label-cushion,
+.fc .fc-timegrid-axis-cushion,
+.fc .fc-list-table thead {
+  color: rgb(var(--color-fg) / 0.6);
+}
+
+.fc-theme-standard td,
+.fc-theme-standard th,
+.fc-theme-standard .fc-scrollgrid {
+  border-color: rgb(var(--color-zinc-750));
 }

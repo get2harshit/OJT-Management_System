@@ -1,14 +1,12 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Users, Save, Check, AlertTriangle } from 'lucide-react';
-import CohortPageHeader from './CohortPageHeader';
+import { Save, Check, AlertTriangle } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import type { ApiMentor } from '../../../lib/types';
 import { apiListMentorsPage, apiListMentorIds, apiGetCohort, apiAddMentorsToCohort } from '../../../lib/api';
-import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import { usePageRefresh } from '../../../context/RefreshContext';
 
@@ -42,7 +40,6 @@ export default function CohortMentorsPage() {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
 
-  const [cohortLabel, setCohortLabel] = useState('');
   const [rows, setRows] = useState<MentorRow[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
@@ -66,7 +63,6 @@ export default function CohortMentorsPage() {
     if (!cohortId) return;
     try {
       const details = await apiGetCohort(cohortId, true);
-      setCohortLabel(getCohortLabel(details));
       setAlreadyMapped(new Set(details.mentors.map((m) => m.id)));
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load this OJT');
@@ -186,12 +182,6 @@ export default function CohortMentorsPage() {
 
   return (
     <PageLayout className="space-y-4">
-      <CohortPageHeader
-        title="Add Mentors"
-        subtitle={cohortLabel ? `${cohortLabel} · who can be staffed on this OJT's tracks` : undefined}
-        icon={Users}
-      />
-
       {/* Status, warning and actions on one row, so the table gets the height. */}
       <div className="flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
         <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">

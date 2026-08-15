@@ -1,26 +1,26 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
-import { Users2, Trash2 } from 'lucide-react';
-import CohortPageHeader from './CohortPageHeader';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Users2, Trash2, Settings2 } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import type { AdminTeam } from '../../../lib/types';
-import { apiListTeamsForCohort, apiBreakTeam, apiGetCohort } from '../../../lib/api';
-import { getCohortLabel } from '../../../lib/cohortLabel';
+import { apiListTeamsForCohort, apiBreakTeam } from '../../../lib/api';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
+import { useCascadeConfirm } from '../../../hooks/useCascadeConfirm';
 
 // Admin view of every team formed within a cohort, with a Break action that
 // disbands a team so its members drop back to the teammate-invite step —
 // used to reset test accounts without a manual DB query.
 export default function CohortTeamsPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const confirm = useConfirm();
+  const { withCascadeConfirm } = useCascadeConfirm();
 
-  const [cohortLabel, setCohortLabel] = useState('');
   const [teams, setTeams] = useState<AdminTeam[]>([]);
   const [loading, setLoading] = useState(true);
   const [breakingTeamId, setBreakingTeamId] = useState<string | null>(null);
@@ -29,12 +29,8 @@ export default function CohortTeamsPage() {
     if (!cohortId) return;
     setLoading(true);
     try {
-      const [teamList, cohort] = await Promise.all([
-        apiListTeamsForCohort(cohortId),
-        apiGetCohort(cohortId),
-      ]);
+      const teamList = await apiListTeamsForCohort(cohortId);
       setTeams(teamList);
-      setCohortLabel(getCohortLabel(cohort));
     } catch (err: unknown) {
       showError(err instanceof Error ? err.message : 'Failed to load teams');
     } finally {
@@ -59,15 +55,19 @@ export default function CohortTeamsPage() {
     if (!confirmBreak) return;
 
     setBreakingTeamId(team.id);
-    try {
-      await apiBreakTeam(team.id);
-      showSuccess('Team disbanded successfully!');
-      await fetchData();
-    } catch (err: unknown) {
-      showError(err instanceof Error ? err.message : 'Failed to break team');
-    } finally {
-      setBreakingTeamId(null);
-    }
+    await withCascadeConfirm(
+      async (cascade) => {
+        await apiBreakTeam(team.id, { cascadeFutureSessions: cascade });
+        showSuccess('Team disbanded successfully!');
+        await fetchData();
+      },
+      (count) => ({
+        title: 'Team has upcoming sessions',
+        message: `This team has ${count} upcoming session(s). Breaking it will cancel any session scheduled only for this team, and drop this team from any session it shares with another team. Continue?`,
+        confirmLabel: 'Break Team Anyway',
+      })
+    );
+    setBreakingTeamId(null);
   };
 
   const data = teams.map(t => ({
@@ -80,7 +80,15 @@ export default function CohortTeamsPage() {
 
   return (
     <PageLayout className="space-y-6">
-      <CohortPageHeader title="Teams" subtitle={cohortLabel} />
+      <div className="flex justify-end">
+        <button
+          onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/roster`)}
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-750 text-gold font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+        >
+          <Settings2 size={13} />
+          Roster &amp; Mentors
+        </button>
+      </div>
 
       {loading ? (
         <div className="min-h-[50vh] flex items-center justify-center">
