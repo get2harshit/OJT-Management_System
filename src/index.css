@@ -89,6 +89,34 @@ html.light .text-amber-300 {
   color: #d97706;
 }
 
+/* Base neutral text scale — these were never remapped for light mode, so
+   they stayed near-white on the new near-white background (invisible/low
+   contrast on tables, listings, headings across the app). Graduated to
+   preserve the same emphasis hierarchy the dark palette had. */
+html.light .text-white {
+  color: #0f172a !important;
+}
+
+html.light .text-gray-200 {
+  color: #1e293b !important;
+}
+
+html.light .text-gray-300 {
+  color: #334155 !important;
+}
+
+html.light .text-gray-400 {
+  color: #64748b !important;
+}
+
+/* Exceptions: white text sitting on its own colored/dark button background,
+   not on the page's card surface — must stay white in both themes. */
+html.light .bg-green-600.text-white,
+html.light .bg-red-500.text-white,
+html.light .bg-black\/60.text-white {
+  color: #ffffff !important;
+}
+
 /* Custom thin scrollbar utility */
 .custom-scrollbar::-webkit-scrollbar,
 .scrollbar-thin::-webkit-scrollbar {
