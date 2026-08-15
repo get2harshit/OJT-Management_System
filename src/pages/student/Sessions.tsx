@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { CalendarClock, MapPin } from 'lucide-react';
+import { CalendarClock } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import DataTable from '../../components/DataTable';
+import SessionJoinLink from '../../components/SessionJoinLink';
 import { apiGetMyUpcomingSessions, type ApiSession, type ApiSessionStatus } from '../../lib/api';
 import { useToast } from '../../toast';
 import { formatInIST } from '../../lib/utils';
@@ -66,7 +67,15 @@ export default function StudentSessions() {
           {
             key: 'location_or_link',
             header: 'Location',
-            render: (row) => (row.location_or_link ? <span className="flex items-center gap-1"><MapPin size={12} className="text-gold" />{row.location_or_link}</span> : '—'),
+            render: (row) => (
+              <SessionJoinLink
+                locationOrLink={row.location_or_link}
+                startTime={row.start_time}
+                endTime={row.end_time}
+                status={row.status}
+                variant="cell"
+              />
+            ),
           },
           {
             key: 'status',

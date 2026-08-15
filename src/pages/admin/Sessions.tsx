@@ -8,12 +8,13 @@ import listPlugin from '@fullcalendar/list';
 // the two were imported from each other's package.
 import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction';
 import type { EventClickArg, DateSelectArg, EventContentArg, EventDropArg, EventHoveringArg } from '@fullcalendar/core';
-import { CalendarClock, Settings, Plus, MapPin, Users2, XCircle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { CalendarClock, Settings, Plus, Users2, XCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import SessionHoverPreview from '../../components/SessionHoverPreview';
+import SessionJoinLink from '../../components/SessionJoinLink';
 import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
@@ -597,7 +598,14 @@ export default function AdminSessions() {
               <p className="flex items-center gap-1.5"><Users2 size={14} className="text-gold" /> {selected.teams.map((t) => t.team.name).join(', ') || '—'}</p>
               <p><span className="text-gray-500">When:</span> {new Date(selected.start_time).toLocaleString()} — {new Date(selected.end_time).toLocaleTimeString()}</p>
               {selected.location_or_link && (
-                <p className="flex items-center gap-1.5"><MapPin size={14} className="text-gold" /> {selected.location_or_link}</p>
+                <div className="flex items-center gap-1.5">
+                  <SessionJoinLink
+                    locationOrLink={selected.location_or_link}
+                    startTime={selected.start_time}
+                    endTime={selected.end_time}
+                    status={selected.status}
+                  />
+                </div>
               )}
               {selected.cancellation_reason && <p className="text-red-400">Cancelled: {selected.cancellation_reason}</p>}
             </div>
