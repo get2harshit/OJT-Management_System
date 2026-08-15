@@ -37,7 +37,7 @@ export class FutureSessionsConflictError extends Error {
  * recognised by its message shape here. The backend's wording ("This team
  * has N upcoming session(s)...") is the contract being read.
  */
-function asConflict(error: unknown): never {
+export function asConflict(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   const match = /has (\d+) upcoming session/i.exec(message);
   if (match) {

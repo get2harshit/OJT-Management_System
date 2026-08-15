@@ -9,6 +9,7 @@ import { apiListTeamsForCohort, apiBreakTeam } from '../../../lib/api';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
+import { useCascadeConfirm } from '../../../hooks/useCascadeConfirm';
 
 // Admin view of every team formed within a cohort, with a Break action that
 // disbands a team so its members drop back to the teammate-invite step —
@@ -18,6 +19,7 @@ export default function CohortTeamsPage() {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const confirm = useConfirm();
+  const { withCascadeConfirm } = useCascadeConfirm();
 
   const [teams, setTeams] = useState<AdminTeam[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,15 +55,19 @@ export default function CohortTeamsPage() {
     if (!confirmBreak) return;
 
     setBreakingTeamId(team.id);
-    try {
-      await apiBreakTeam(team.id);
-      showSuccess('Team disbanded successfully!');
-      await fetchData();
-    } catch (err: unknown) {
-      showError(err instanceof Error ? err.message : 'Failed to break team');
-    } finally {
-      setBreakingTeamId(null);
-    }
+    await withCascadeConfirm(
+      async (cascade) => {
+        await apiBreakTeam(team.id, { cascadeFutureSessions: cascade });
+        showSuccess('Team disbanded successfully!');
+        await fetchData();
+      },
+      (count) => ({
+        title: 'Team has upcoming sessions',
+        message: `This team has ${count} upcoming session(s). Breaking it will cancel any session scheduled only for this team, and drop this team from any session it shares with another team. Continue?`,
+        confirmLabel: 'Break Team Anyway',
+      })
+    );
+    setBreakingTeamId(null);
   };
 
   const data = teams.map(t => ({
