@@ -1,6 +1,18 @@
 import { apiFetch } from './client';
 
-export type NotificationType = 'announcement' | 'allocation' | 'submission' | 'task' | 'evaluation' | 'team_invite';
+// Mirrors the ojt_notification_type enum. 'session' and 'payout' arrived with
+// session scheduling and were already being switched on by all three panels'
+// click handlers — the type is what had not caught up, so those branches were
+// unreachable as far as TypeScript was concerned.
+export type NotificationType =
+  | 'announcement'
+  | 'allocation'
+  | 'submission'
+  | 'task'
+  | 'evaluation'
+  | 'team_invite'
+  | 'session'
+  | 'payout';
 export type NotificationPriority = 'normal' | 'important' | 'urgent';
 
 export interface AppNotification {

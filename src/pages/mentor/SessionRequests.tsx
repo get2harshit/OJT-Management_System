@@ -114,7 +114,14 @@ export default function MentorSessionRequests() {
     () => cohortTeams.map((t) => ({ value: t.teamId, label: t.members.map((m) => m.fullName ?? m.studentId).join(', ') || t.name || 'Team' })),
     [cohortTeams]
   );
-  const mentorOptions = useMemo(() => mentors.map((m) => ({ value: m.id, label: m.fullName ?? m.email })), [mentors]);
+  // Both fullName and email are optional on ApiMentor, so the id is the last
+  // resort — same fallback teamOptions above uses. An option with no label at
+  // all renders as a blank row you can still select, which is worse than a
+  // readable-but-ugly one.
+  const mentorOptions = useMemo(
+    () => mentors.map((m) => ({ value: m.id, label: m.fullName ?? m.email ?? m.id })),
+    [mentors]
+  );
 
   const submitRequest = async () => {
     if (!form || !cohortId) return;

@@ -3,8 +3,10 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
-import interactionPlugin, { type EventDropArg } from '@fullcalendar/interaction';
-import type { EventClickArg, DateSelectArg, EventContentArg, EventResizeDoneArg, EventHoveringArg } from '@fullcalendar/core';
+// EventDropArg is a core export and EventResizeDoneArg an interaction one —
+// the two were imported from each other's package.
+import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction';
+import type { EventClickArg, DateSelectArg, EventContentArg, EventDropArg, EventHoveringArg } from '@fullcalendar/core';
 import { CalendarClock, Plus, MapPin, Users2, XCircle, CheckCircle2, RefreshCw, Lock } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
