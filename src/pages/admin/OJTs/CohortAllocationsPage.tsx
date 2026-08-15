@@ -1,7 +1,7 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, ArrowLeft, UserCog, UserPlus, Gauge, RotateCcw, AlertTriangle, ClipboardList } from 'lucide-react';
+import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, ArrowLeft, UserCog, UserPlus, Gauge, RotateCcw, AlertTriangle, ClipboardList, LayoutGrid } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
@@ -513,6 +513,20 @@ export default function CohortAllocationsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* Breakdown answers "where did allocation land"; this answers "who
+              hasn't got there yet" — the per-student lifecycle, which is the
+              view an admin needs precisely when the table below is still
+              half-empty. It used to hang off the old global Allocations page,
+              which was removed as a duplicate of this very tab; the page and
+              its API survived that, only the way in did. Rebuilt here because
+              this is the tab that owns the rest of the allocation drill-downs. */}
+          <button
+            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/blueprint`)}
+            title="Allocation blueprint — every student's stage, from no team to published"
+            className="flex items-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+          >
+            <LayoutGrid size={14} />
+          </button>
           {/* Its own page rather than another modal: this is the one view that
               is read across every track at once, and a modal cannot be sized,
               searched or exported the way that needs. */}
