@@ -7,7 +7,7 @@ import listPlugin from '@fullcalendar/list';
 // the two were imported from each other's package.
 import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction';
 import type { EventClickArg, DateSelectArg, EventContentArg, EventDropArg, EventHoveringArg } from '@fullcalendar/core';
-import { CalendarClock, Plus, Users2, XCircle, CheckCircle2, RefreshCw, Lock } from 'lucide-react';
+import { CalendarClock, Plus, Users2, XCircle, CheckCircle2, RefreshCw, Lock, Radio, Square } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
@@ -27,6 +27,8 @@ import {
   apiRescheduleSession,
   apiCancelSession,
   apiCompleteSession,
+  apiStartLiveSession,
+  apiEndLiveSession,
   apiGetSelfSchedulePermission,
   type ApiSession,
   type ApiSessionStatus,
@@ -304,6 +306,40 @@ export default function MentorSessions() {
     setActualMinutes('');
   };
 
+
+  // Hosting a session on the multimedia service. The ids it needs — who the
+  // faculty is, which session — are the server's to supply from the token and
+  // the row; nothing about them is sent from here.
+  const [liveBusy, setLiveBusy] = useState(false);
+
+  const startLive = async (session: ApiSession) => {
+    setLiveBusy(true);
+    try {
+      const updated = await apiStartLiveSession(session.id);
+      setSelected(updated);
+      showSuccess('Session is live — students can join now.');
+      loadSessions();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to start the live session');
+    } finally {
+      setLiveBusy(false);
+    }
+  };
+
+  const endLive = async (session: ApiSession) => {
+    setLiveBusy(true);
+    try {
+      const updated = await apiEndLiveSession(session.id);
+      setSelected(updated);
+      showSuccess('Live session ended.');
+      loadSessions();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to end the live session');
+    } finally {
+      setLiveBusy(false);
+    }
+  };
+
   const beginReschedule = () => {
     if (!selected) return;
     setRescheduleForm({
@@ -508,12 +544,7 @@ export default function MentorSessions() {
               <p><span className="text-gray-500">When:</span> {new Date(selected.start_time).toLocaleString()} — {new Date(selected.end_time).toLocaleTimeString()}</p>
               {selected.location_or_link && (
                 <div className="flex items-center gap-1.5">
-                  <SessionJoinLink
-                    locationOrLink={selected.location_or_link}
-                    startTime={selected.start_time}
-                    endTime={selected.end_time}
-                    status={selected.status}
-                  />
+                  <SessionJoinLink session={selected} allowInteractive />
                 </div>
               )}
               {selected.cancellation_reason && <p className="text-red-400">Cancelled: {selected.cancellation_reason}</p>}
@@ -521,6 +552,32 @@ export default function MentorSessions() {
 
             {(selected.status === 'scheduled' || selected.status === 'rescheduled') && !rescheduleForm && !showCancelPrompt && !showCompletePrompt && (
               <div className="flex items-center gap-2 border-t border-zinc-800 pt-4 flex-wrap">
+                {/* Hosting the session here, rather than on a pasted link.
+                    Start is what creates the room; until it is pressed there is
+                    nothing for anyone to join, which is why students see no
+                    Join button before it. */}
+                {!selected.live_session_id && (
+                  <button
+                    onClick={() => startLive(selected)}
+                    disabled={liveBusy}
+                    title="Start this session — students can join once it is live"
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+                  >
+                    <Radio size={14} />
+                    {liveBusy ? 'Starting…' : 'Start live'}
+                  </button>
+                )}
+                {selected.live_session_id && !selected.live_ended_at && (
+                  <button
+                    onClick={() => endLive(selected)}
+                    disabled={liveBusy}
+                    title="End the live session"
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50"
+                  >
+                    <Square size={14} />
+                    {liveBusy ? 'Ending…' : 'End live'}
+                  </button>
+                )}
                 <button onClick={beginReschedule} className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors">
                   <RefreshCw size={14} />
                   Reschedule

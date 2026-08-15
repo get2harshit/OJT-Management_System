@@ -59,6 +59,18 @@ export interface ApiSession {
   duration_minutes: number;
   actual_duration_minutes: number | null;
   location_or_link: string | null;
+  /**
+   * The multimedia service's own numeric id for this session, set once it has
+   * been started there. Null means it has not been started — either because it
+   * has not happened yet, or because this session is run somewhere else
+   * entirely and location_or_link is a pasted Meet link or a room name.
+   *
+   * The two ways of running a session coexist deliberately: hosting one here
+   * is what Start does, and nothing forces an existing pasted link to move.
+   */
+  live_session_id: number | null;
+  live_started_at: string | null;
+  live_ended_at: string | null;
   status: ApiSessionStatus;
   cancellation_reason: string | null;
   mentor_id: string;
@@ -268,4 +280,58 @@ export async function apiGetMyAttendance(params: { cohortId?: string; status?: A
     `/api/v1/students/me/attendance?${query.toString()}`
   );
   return { data: body.data, pagination: { ...body.pagination, totalPages: body.pagination.pages } };
+}
+
+
+// ── Running a session on the multimedia service ──────────────────────────────
+//
+// Starting, ending and joining are handled by the multimedia service under
+// /mm/v3/liveclass/* — their path and their word, not renamed to ours, since
+// it is their contract. Nothing here calls it: all three go to our own backend,
+// which holds the credential and works out who is asking from their JWT.
+//
+// That is a security boundary rather than tidiness. The multimedia contract
+// takes facultyId and studentId in the request body, so a page calling it
+// directly could ask for a join token as somebody else, for a session they are
+// not in. Our server ignores any identity the client offers and uses the
+// caller's own — which is why none of these send an id of their own.
+
+/** Starts this session on the multimedia service. Mentor (its own) or admin. */
+export async function apiStartLiveSession(sessionId: string): Promise<ApiSession> {
+  const res = await apiFetch<{ data: ApiSession }>(`/api/v1/sessions/${sessionId}/live/start`, { method: 'POST' });
+  invalidateCached('sessions');
+  return res.data;
+}
+
+export async function apiEndLiveSession(sessionId: string): Promise<ApiSession> {
+  const res = await apiFetch<{ data: ApiSession }>(`/api/v1/sessions/${sessionId}/live/end`, { method: 'POST' });
+  invalidateCached('sessions');
+  return res.data;
+}
+
+/**
+ * A token to join with, and where to use it.
+ *
+ * `interactive` asks for the audio/video/screen-share token rather than the
+ * viewer one. It is a request, not a guarantee — whether this person may speak
+ * is the server's decision, and `mode` is what was actually granted.
+ */
+export interface SessionJoinToken {
+  token: string;
+  /** The multimedia service's room URL. */
+  joinUrl: string;
+  mode: 'viewer' | 'interactive';
+  /** Unix seconds. Short-lived: fetched at the moment of joining, never cached. */
+  expiresAt: number;
+}
+
+export async function apiGetSessionJoinToken(
+  sessionId: string,
+  options: { interactive?: boolean; deviceType?: string } = {}
+): Promise<SessionJoinToken> {
+  const res = await apiFetch<{ data: SessionJoinToken }>(`/api/v1/sessions/${sessionId}/live/join-token`, {
+    method: 'POST',
+    body: JSON.stringify({ interactive: options.interactive ?? false, deviceType: options.deviceType }),
+  });
+  return res.data;
 }

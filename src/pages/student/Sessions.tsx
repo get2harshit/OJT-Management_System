@@ -73,13 +73,7 @@ export default function StudentSessions() {
             key: 'location_or_link',
             header: 'Location',
             render: (row) => (
-              <SessionJoinLink
-                locationOrLink={row.location_or_link}
-                startTime={row.start_time}
-                endTime={row.end_time}
-                status={row.status}
-                variant="cell"
-              />
+              <SessionJoinLink session={row} variant="cell" />
             ),
           },
           {
