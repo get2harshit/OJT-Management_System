@@ -12,6 +12,7 @@ import { getDurationString, formatDateDisplay } from '../../../lib/utils';
 import { getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import { apiCreateAnnouncement } from '../../../lib/api/notifications';
+import PastAnnouncements from '../../../components/PastAnnouncements';
 import { usePageRefresh } from '../../../context/RefreshContext';
 import { useTracks } from '../../../hooks/useTracks';
 
@@ -546,6 +547,9 @@ export default function ViewCohortPage() {
 
   // Announcement modal state
   const [showAnnModal, setShowAnnModal] = useState(false);
+  // Bumped after a publish so the list below reloads — the announcement that
+  // was just sent should be the first thing visible after the modal closes.
+  const [annRefreshKey, setAnnRefreshKey] = useState(0);
   const [annTitle, setAnnTitle] = useState('');
   const [annContent, setAnnContent] = useState('');
   const [annTargetBatch, setAnnTargetBatch] = useState('All Batches');
@@ -1046,6 +1050,15 @@ export default function ViewCohortPage() {
         </div>
       )}
 
+      {/* On the same screen as the button that publishes them: what has already
+          been said is the context for writing the next one, and being able to
+          correct or withdraw an announcement is no use if you cannot find it. */}
+      {cohortId && (
+        <div className="border-t border-zinc-800 pt-5">
+          <PastAnnouncements cohortId={cohortId} refreshKey={annRefreshKey} />
+        </div>
+      )}
+
       {/* Announcement creation modal */}
       {showAnnModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
@@ -1157,6 +1170,7 @@ export default function ViewCohortPage() {
                     setAnnTargetTrack('');
                     setAnnPriority('normal');
                     setShowAnnModal(false);
+                    setAnnRefreshKey((k) => k + 1);
                     showSuccess(
                       recipientCount > 0
                         ? `Announcement published to ${recipientCount} student${recipientCount !== 1 ? 's' : ''}.`
