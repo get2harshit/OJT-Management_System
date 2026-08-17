@@ -12,6 +12,7 @@ import {
   apiUpdateEligibilityStatus,
   apiDeleteEligibilityStatus,
 } from '../../lib/api';
+import type { EligibilityBulkFlag } from '../../lib/api';
 import { useToast } from '../../toast';
 import { useConfirm } from '../../confirm';
 import { usePageRefresh } from '../../context/RefreshContext';
@@ -45,7 +46,9 @@ export default function EligibilityStatusPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<EligibilityStatusInput>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [csvModalOpen, setCsvModalOpen] = useState(false);
+  // Which bulk upload is open, or null for none — one piece of state rather
+  // than a boolean per flag, so two can never be open at once.
+  const [csvModalFlag, setCsvModalFlag] = useState<EligibilityBulkFlag | null>(null);
 
   const fetchRows = useCallback(async () => {
     try {
@@ -164,18 +167,28 @@ export default function EligibilityStatusPage() {
             OJT Eligibility Status
           </h1>
           <p className="text-sm text-gray-400 max-w-2xl">
-            Only Fee Pending is enforced right now — a student marked Fee Pending is refused at sign-in,
-            before they can reach any cohort. An address with no row here is not blocked. Open Source and
-            Intern are recorded but nothing currently reads them.
+            Fee Pending and Intern both refuse a student at sign-in, before they can reach any cohort, and
+            keep them off teams. An intern is told to contact a coordinator if they want to switch to OJT; a
+            fee-pending student is told to contact their administrator. An address with no row here is not
+            blocked. Open Source is recorded but nothing currently reads it.
           </p>
         </div>
-        <button
-          onClick={() => setCsvModalOpen(true)}
-          className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-gold text-black rounded-lg hover:bg-gold-hover transition-colors shadow-sm shrink-0"
-        >
-          <Upload size={15} />
-          Bulk Update Fee Pending
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setCsvModalFlag('feePending')}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-gold text-black rounded-lg hover:bg-gold-hover transition-colors shadow-sm"
+          >
+            <Upload size={15} />
+            Bulk Update Fee Pending
+          </button>
+          <button
+            onClick={() => setCsvModalFlag('isIntern')}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-zinc-800 text-white border border-zinc-700 rounded-lg hover:bg-zinc-750 transition-colors shadow-sm"
+          >
+            <Upload size={15} />
+            Bulk Mark Interns
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -207,9 +220,12 @@ export default function EligibilityStatusPage() {
               render: (row: EligibilityStatus) => <StatusPill ok={row.isOpenSource} label={row.isOpenSource ? 'Yes' : 'No'} />,
             },
             {
+              // Inverted like Fee Status, not like Open Source: Intern now
+              // blocks sign-in, so green has to mean "can get in". A green
+              // "Yes" here would read as the opposite of what it does.
               key: 'isIntern',
               header: 'Intern',
-              render: (row: EligibilityStatus) => <StatusPill ok={row.isIntern} label={row.isIntern ? 'Yes' : 'No'} />,
+              render: (row: EligibilityStatus) => <StatusPill ok={!row.isIntern} label={row.isIntern ? 'Yes' : 'No'} />,
             },
           ]}
           data={rows}
@@ -288,7 +304,7 @@ export default function EligibilityStatusPage() {
                 className="rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold"
               />
               Intern
-              <span className="text-xs text-gray-500">— not enforced yet</span>
+              <span className="text-xs text-gray-500">— checking this blocks sign-in immediately</span>
             </label>
           </div>
 
@@ -302,11 +318,14 @@ export default function EligibilityStatusPage() {
         </div>
       </Modal>
 
-      <EligibilityCsvImportModal
-        open={csvModalOpen}
-        onClose={() => setCsvModalOpen(false)}
-        onImportSuccess={fetchRows}
-      />
+      {csvModalFlag && (
+        <EligibilityCsvImportModal
+          open
+          flag={csvModalFlag}
+          onClose={() => setCsvModalFlag(null)}
+          onImportSuccess={fetchRows}
+        />
+      )}
     </PageLayout>
   );
 }
