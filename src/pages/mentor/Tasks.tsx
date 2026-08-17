@@ -74,7 +74,6 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [myTeams, setMyTeams] = useState<Team[]>([]);
   const [myCohorts, setMyCohorts] = useState<Cohort[]>([]);
-  const [publishedCohortIds, setPublishedCohortIds] = useState<Set<string>>(new Set());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [bucket, setBucket] = useState<TaskBucket>('to-me');
@@ -117,12 +116,6 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
         setTasks(tasksRes.data || []);
         setMyTeams(teamsRes);
         setMyCohorts(cohortsRes);
-        // Checked against the sticky allocationPublishedAt rather than the
-        // live allocationRunStatus enum — that enum legitimately drops back
-        // to 'draft'/'review' whenever a later batch of teams gets run in
-        // the same cohort, which must not re-hide an already-published
-        // team from this picker.
-        setPublishedCohortIds(new Set(cohortsRes.filter(c => !!c.allocationPublishedAt).map(c => c.id)));
       })
       .catch(console.error);
   };
@@ -141,12 +134,12 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   // a picker for a choice that never actually has more than one valid answer.
   const activeCohortId = myCohorts.find(c => c.isActive)?.id;
 
-  // A student can't be assigned a task before their team's project
-  // allocation is published — same rule the backend now enforces, applied
-  // here too so the picker doesn't offer a team/student who'd just be
-  // silently dropped on save.
-  const publishedTeams = myTeams.filter(team => !!team.cohortId && publishedCohortIds.has(team.cohortId));
-  const unpublishedTeamCount = myTeams.length - publishedTeams.length;
+  // Unpublished teams used to be filtered out here, from a cohort-level
+  // allocationPublishedAt. /teams/my-teams now excludes them outright — and
+  // does it properly, comparing each team's own allocation_resolved_at, which
+  // the cohort-level check could not do: a team drafted after an earlier
+  // publish passed it. Nothing to filter here any more.
+  const publishedTeams = myTeams;
 
   // A task's track is a hard requirement (see canSave below), so once the
   // mentor picks one, only teams/students actually on that track should be
@@ -428,9 +421,9 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
                 options={teamOptions}
                 className="w-full"
               />
-              {unpublishedTeamCount > 0 && (
+              {myTeams.length === 0 && (
                 <p className="text-[11px] text-gray-500 mt-1.5">
-                  {unpublishedTeamCount} team{unpublishedTeamCount !== 1 ? 's' : ''} hidden — allocation not published yet.
+                  No teams yet — a team appears here once its allocation is published.
                 </p>
               )}
             </div>
@@ -446,9 +439,9 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
                 options={studentOptions}
                 className="w-full"
               />
-              {unpublishedTeamCount > 0 && (
+              {myTeams.length === 0 && (
                 <p className="text-[11px] text-gray-500 mt-1.5">
-                  Students from {unpublishedTeamCount} unpublished team{unpublishedTeamCount !== 1 ? 's' : ''} are hidden.
+                  No students yet — they appear here once their team&apos;s allocation is published.
                 </p>
               )}
             </div>
