@@ -264,6 +264,12 @@ function ShapeCell({ teams, students }: { teams: number; students: number }) {
  * column — a mode a track allows and nobody chose is configuration, and the
  * track-config screen already shows it. Rendering it here as a column of
  * dashes would bury the two columns that carry the answer.
+ *
+ * "Admin placed" is its own column rather than a shape. A team an admin built
+ * carries one project in both preference slots, which read as a submission
+ * would say "2 recommended" — a track credited with catalog picks nobody made,
+ * and most so on the tracks an admin had to step in on. It appears only once
+ * there is one.
  */
 function SubmissionShapes({ tracks }: { tracks: OpsTrackAnalytics[] }) {
   const shapeOf = (track: OpsTrackAnalytics, mode: TrackSubmissionMode) =>
@@ -279,14 +285,25 @@ function SubmissionShapes({ tracks }: { tracks: OpsTrackAnalytics[] }) {
       teams: track.submissionShapes.reduce((sum, shape) => sum + shape.teams, 0),
       students: track.submissionShapes.reduce((sum, shape) => sum + shape.students, 0),
     }))
-    .filter((row) => row.teams > 0)
+    // A track whose teams were every one of them placed by an admin has no
+    // shapes at all, and would drop out of a table that is partly about it.
+    .filter((row) => row.teams > 0 || row.track.adminPlacedTeams > 0)
     .sort((a, b) => b.teams - a.teams || a.track.trackName.localeCompare(b.track.trackName));
+
+  // Only shown once it has happened. On an OJT where every team formed itself
+  // this column is a column of zeroes, and the two that carry the answer are
+  // the ones that should have the width.
+  const hasAdminPlaced = rows.some((row) => row.track.adminPlacedTeams > 0);
 
   const columnTotals = modes.map((mode) => ({
     mode,
     teams: rows.reduce((sum, row) => sum + (shapeOf(row.track, mode)?.teams ?? 0), 0),
     students: rows.reduce((sum, row) => sum + (shapeOf(row.track, mode)?.students ?? 0), 0),
   }));
+  const adminPlacedTotal = {
+    teams: rows.reduce((sum, row) => sum + row.track.adminPlacedTeams, 0),
+    students: rows.reduce((sum, row) => sum + row.track.adminPlacedStudents, 0),
+  };
   const grandTotal = {
     teams: rows.reduce((sum, row) => sum + row.teams, 0),
     students: rows.reduce((sum, row) => sum + row.students, 0),
@@ -314,6 +331,14 @@ function SubmissionShapes({ tracks }: { tracks: OpsTrackAnalytics[] }) {
                     {SUBMISSION_MODE_SHORT_LABELS[mode]}
                   </th>
                 ))}
+                {hasAdminPlaced && (
+                  <th
+                    className="text-right font-semibold pb-1 px-2 whitespace-nowrap"
+                    title="Teams an admin built and assigned outright. They chose nothing, so they are not counted as a submission."
+                  >
+                    Admin placed
+                  </th>
+                )}
                 <th className="text-right font-semibold pb-1 pl-2 whitespace-nowrap">Submitted</th>
               </tr>
             </thead>
@@ -334,6 +359,11 @@ function SubmissionShapes({ tracks }: { tracks: OpsTrackAnalytics[] }) {
                       </td>
                     );
                   })}
+                  {hasAdminPlaced && (
+                    <td className="py-2 px-2 text-right">
+                      <ShapeCell teams={row.track.adminPlacedTeams} students={row.track.adminPlacedStudents} />
+                    </td>
+                  )}
                   <td className="py-2 pl-2 pr-2 rounded-r-lg text-right">
                     <ShapeCell teams={row.teams} students={row.students} />
                   </td>
@@ -346,6 +376,11 @@ function SubmissionShapes({ tracks }: { tracks: OpsTrackAnalytics[] }) {
                     <ShapeCell teams={total.teams} students={total.students} />
                   </td>
                 ))}
+                {hasAdminPlaced && (
+                  <td className="pt-2 px-2 text-right">
+                    <ShapeCell teams={adminPlacedTotal.teams} students={adminPlacedTotal.students} />
+                  </td>
+                )}
                 <td className="pt-2 pl-2 pr-2 text-right">
                   <ShapeCell teams={grandTotal.teams} students={grandTotal.students} />
                 </td>

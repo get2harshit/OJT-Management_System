@@ -12,4 +12,5 @@ export * from './evaluations';
 export * from './notifications';
 export * from './tracks';
 export * from './ops';
+export * from './manualAllocation';
 export * from './eligibility';

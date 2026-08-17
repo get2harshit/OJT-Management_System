@@ -7,7 +7,7 @@ import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
-import type { TeamAllocationDetail, MentorLoadSummaryRow, CohortAllocationRunStatus, Project, StudentWithoutTeam, AllocationPreviewEntry, CohortPendingProposal } from '../../../lib/types';
+import type { TeamAllocationDetail, MentorLoadSummaryRow, CohortAllocationRunStatus, Project, AllocationPreviewEntry, CohortPendingProposal } from '../../../lib/types';
 import { useTracks } from '../../../hooks/useTracks';
 import {
   apiGetTeamsForCohortDetailed,
@@ -20,8 +20,6 @@ import {
   apiReverseAllocation,
   apiPublishAllocation,
   apiGetCohort,
-  apiGetStudentsWithoutTeam,
-  apiCreateManualTeam,
   apiGetProjectsForCohortPage,
   apiGetCohortPendingProposals,
 } from '../../../lib/api';
@@ -121,21 +119,6 @@ export default function CohortAllocationsPage() {
   const [manualAllocateSelectedProjectTitle, setManualAllocateSelectedProjectTitle] = useState<string | null>(null);
   const [manualAllocateMentorSearch, setManualAllocateMentorSearch] = useState('');
   const [loadingManualAllocateProjects, setLoadingManualAllocateProjects] = useState(false);
-
-  // Manual team creation — admin builds a team for 1-2 students who never
-  // went through self-service team formation.
-  const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
-  const [loadingStudentsWithoutTeam, setLoadingStudentsWithoutTeam] = useState(false);
-  const [studentsWithoutTeam, setStudentsWithoutTeam] = useState<StudentWithoutTeam[]>([]);
-  const [createTeamTrack, setCreateTeamTrack] = useState('');
-  const [createTeamStudentSearch, setCreateTeamStudentSearch] = useState('');
-  const [createTeamSelectedStudentIds, setCreateTeamSelectedStudentIds] = useState<string[]>([]);
-  const [createTeamProjects, setCreateTeamProjects] = useState<Project[]>([]);
-  const [createTeamProjectSearch, setCreateTeamProjectSearch] = useState('');
-  const [createTeamSelectedProjectId, setCreateTeamSelectedProjectId] = useState<string | null>(null);
-  const [createTeamMentorSearch, setCreateTeamMentorSearch] = useState('');
-  const [createTeamSelectedMentorId, setCreateTeamSelectedMentorId] = useState<string | null>(null);
-  const [savingCreateTeam, setSavingCreateTeam] = useState(false);
 
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -463,75 +446,6 @@ export default function CohortAllocationsPage() {
     }
   };
 
-  const openCreateTeamModal = async () => {
-    setShowCreateTeamModal(true);
-    setCreateTeamTrack('');
-    setCreateTeamStudentSearch('');
-    setCreateTeamSelectedStudentIds([]);
-    setCreateTeamProjects([]);
-    setCreateTeamProjectSearch('');
-    setCreateTeamSelectedProjectId(null);
-    setCreateTeamMentorSearch('');
-    setCreateTeamSelectedMentorId(null);
-    if (!cohortId) return;
-    loadMentorPickerData();
-    setLoadingStudentsWithoutTeam(true);
-    try {
-      const students = await apiGetStudentsWithoutTeam(cohortId);
-      setStudentsWithoutTeam(students);
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to load students without a team');
-    } finally {
-      setLoadingStudentsWithoutTeam(false);
-    }
-  };
-
-  const handleCreateTeamTrackChange = (value: string) => {
-    setCreateTeamTrack(value);
-    setCreateTeamSelectedProjectId(null);
-    setCreateTeamProjects([]);
-    if (!cohortId || !value) return;
-    (async () => {
-      try {
-        const res = await apiGetProjectsForCohortPage(cohortId, { track: value, page: 1, limit: 50 });
-        setCreateTeamProjects(res.data);
-      } catch (err) {
-        showError(err instanceof Error ? err.message : 'Failed to load projects for this track');
-      }
-    })();
-  };
-
-  const toggleCreateTeamStudent = (id: string) => {
-    setCreateTeamSelectedStudentIds((prev) => {
-      if (prev.includes(id)) return prev.filter((s) => s !== id);
-      if (prev.length >= 2) return prev;
-      return [...prev, id];
-    });
-  };
-
-  const handleCreateTeam = async () => {
-    if (!cohortId || !createTeamTrack || createTeamSelectedStudentIds.length === 0 || !createTeamSelectedProjectId || !createTeamSelectedMentorId) {
-      return;
-    }
-    setSavingCreateTeam(true);
-    try {
-      await apiCreateManualTeam(
-        cohortId,
-        createTeamSelectedStudentIds,
-        createTeamTrack,
-        createTeamSelectedProjectId,
-        createTeamSelectedMentorId
-      );
-      showSuccess('Team created and allocated.');
-      setShowCreateTeamModal(false);
-      await refreshAfterMutation();
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to create team');
-    } finally {
-      setSavingCreateTeam(false);
-    }
-  };
-
   const data = teams.map((t) => ({
     id: t.teamId,
     teamName: t.teamName,
@@ -622,10 +536,15 @@ export default function CohortAllocationsPage() {
           >
             <Gauge size={14} />
           </button>
+          {/* Its own page, not a modal any more. Building teams for the
+              students who never formed one is a batch of work — several teams
+              drafted, reviewed together, submitted at once — and the modal
+              could only ever do one team at a time, off a student list it
+              filtered in the browser. */}
           <button
-            onClick={openCreateTeamModal}
+            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/manual-allocation`)}
             disabled={loading || previewMode}
-            title="Manually create a team"
+            title="Manual allocation — build teams for students who never formed one"
             className="flex items-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
           >
             <UserPlus size={14} />
@@ -1455,176 +1374,6 @@ export default function CohortAllocationsPage() {
             )}
           </div>
         )}
-      </Modal>
-
-      <Modal
-        open={showCreateTeamModal}
-        onClose={() => setShowCreateTeamModal(false)}
-        title="Create Team"
-        size="xl"
-      >
-        <div className="space-y-4">
-          <p className="text-gray-400 text-sm">
-            For students who never went through self-service team formation. Pick a track, 1-2 students without a
-            team, a project, and a mentor — the team is created already allocated and marked as overridden.
-          </p>
-
-          <div>
-            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">1. Track</p>
-            <Select
-              variant="filter"
-              className="w-full"
-              value={createTeamTrack}
-              onChange={handleCreateTeamTrackChange}
-              placeholder="Select a track"
-              options={trackOptions}
-            />
-          </div>
-
-          <div>
-            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">
-              2. Student(s) <span className="normal-case text-gray-500">(pick 1 or 2)</span>
-            </p>
-            <input
-              type="text"
-              value={createTeamStudentSearch}
-              onChange={(e) => setCreateTeamStudentSearch(e.target.value)}
-              placeholder="Search students..."
-              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold mb-2"
-            />
-            {loadingStudentsWithoutTeam ? (
-              <div className="py-4 flex justify-center"><SpinnerSquare size={28} /></div>
-            ) : (
-              <div className="max-h-48 overflow-y-auto space-y-2">
-                {studentsWithoutTeam.length === 0 && (
-                  <p className="text-gray-500 text-xs">Every student in this cohort already has a team.</p>
-                )}
-                {studentsWithoutTeam
-                  .filter((s) =>
-                    (s.fullName || '').toLowerCase().includes(createTeamStudentSearch.toLowerCase()) ||
-                    (s.rollNumber || '').toLowerCase().includes(createTeamStudentSearch.toLowerCase())
-                  )
-                  .map((student) => {
-                    const selected = createTeamSelectedStudentIds.includes(student.id);
-                    const disabled = !selected && createTeamSelectedStudentIds.length >= 2;
-                    return (
-                      <button
-                        key={student.id}
-                        onClick={() => toggleCreateTeamStudent(student.id)}
-                        disabled={disabled}
-                        className={`w-full text-left rounded-lg p-3 border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${
-                          selected ? 'bg-gold/10 border-gold' : 'bg-zinc-900 border-zinc-750 hover:border-zinc-600'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <p className="text-white font-semibold text-sm">{student.fullName || '—'}</p>
-                            <p className="text-gray-500 text-xs">{student.rollNumber} · {student.batch}</p>
-                          </div>
-                          {selected && <CheckCircle2 size={16} className="text-gold shrink-0" />}
-                        </div>
-                      </button>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">3. Project</p>
-            {!createTeamTrack && <p className="text-gray-500 text-xs mb-2">Pick a track first.</p>}
-            <input
-              type="text"
-              value={createTeamProjectSearch}
-              onChange={(e) => setCreateTeamProjectSearch(e.target.value)}
-              placeholder="Search projects..."
-              disabled={!createTeamTrack}
-              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold disabled:opacity-50 mb-2"
-            />
-            <div className="max-h-48 overflow-y-auto space-y-2">
-              {createTeamProjects
-                .filter((p) => p.title.toLowerCase().includes(createTeamProjectSearch.toLowerCase()))
-                .map((project) => {
-                  const selected = createTeamSelectedProjectId === project.id;
-                  return (
-                    <button
-                      key={project.id}
-                      onClick={() => setCreateTeamSelectedProjectId(project.id)}
-                      className={`w-full text-left rounded-lg p-3 border transition-all duration-200 ${
-                        selected ? 'bg-gold/10 border-gold' : 'bg-zinc-900 border-zinc-750 hover:border-zinc-600'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-white font-semibold text-sm">{project.title}</p>
-                        {selected && <CheckCircle2 size={16} className="text-gold shrink-0" />}
-                      </div>
-                    </button>
-                  );
-                })}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">4. Mentor</p>
-            {!createTeamSelectedProjectId && <p className="text-gray-500 text-xs mb-2">Pick a project first.</p>}
-            <input
-              type="text"
-              value={createTeamMentorSearch}
-              onChange={(e) => setCreateTeamMentorSearch(e.target.value)}
-              placeholder="Search mentors..."
-              disabled={!createTeamSelectedProjectId}
-              className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold disabled:opacity-50 mb-2"
-            />
-            <div className="max-h-48 overflow-y-auto space-y-2">
-              {mentorLoadSummary
-                .filter((m) => (m.mentorName || '').toLowerCase().includes(createTeamMentorSearch.toLowerCase()))
-                .map((mentor) => {
-                  const overCapacity = mentor.allocatedCount >= mentor.threshold;
-                  const selected = createTeamSelectedMentorId === mentor.mentorId;
-                  return (
-                    <button
-                      key={mentor.mentorId}
-                      onClick={() => setCreateTeamSelectedMentorId(mentor.mentorId)}
-                      disabled={!createTeamSelectedProjectId}
-                      className={`w-full text-left rounded-lg p-3 border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${
-                        selected ? 'bg-gold/10 border-gold' : 'bg-zinc-900 border-zinc-750 hover:border-zinc-600'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <p className="text-white font-semibold text-sm">{mentor.mentorName || '—'}</p>
-                          <p className="text-gray-500 text-xs">{(mentor.tracks ?? []).map(s => trackNameBySlug.get(s) ?? s).join(', ') || 'No tracks assigned'}</p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className={`text-xs font-bold ${overCapacity ? 'text-red-400' : 'text-gray-400'}`}>
-                            {mentor.allocatedCount}/{mentor.threshold}
-                          </span>
-                          {selected && <CheckCircle2 size={16} className="text-gold shrink-0" />}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <button
-              onClick={handleCreateTeam}
-              disabled={
-                savingCreateTeam ||
-                !createTeamTrack ||
-                createTeamSelectedStudentIds.length === 0 ||
-                !createTeamSelectedProjectId ||
-                !createTeamSelectedMentorId
-              }
-              className="flex items-center gap-1.5 text-sm px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
-            >
-              <UserPlus size={14} />
-              {savingCreateTeam ? 'Creating...' : 'Lock Team'}
-            </button>
-          </div>
-        </div>
       </Modal>
 
       <Modal open={showLoadSummary} onClose={() => setShowLoadSummary(false)} title="Mentor Load Summary">
