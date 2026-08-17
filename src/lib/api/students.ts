@@ -35,7 +35,7 @@ export interface StudentsPage {
 interface GetStudentsPageParams {
   page: number;
   limit: number;
-  batch?: string;
+  batch?: string[];
   search?: string;
   /** Scope to a specific cohort's mapped students instead of the whole roster. */
   cohortId?: string;
@@ -52,7 +52,7 @@ export async function apiListStudentsPage(params: GetStudentsPageParams): Promis
   const query = new URLSearchParams();
   query.set('page', String(params.page));
   query.set('limit', String(params.limit));
-  if (params.batch) query.set('batch', params.batch);
+  if (params.batch && params.batch.length > 0) query.set('batch', params.batch.join(','));
   if (params.search) query.set('search', params.search);
   if (params.cohortId) query.set('cohortId', params.cohortId);
   if (params.track) query.set('track', params.track);
