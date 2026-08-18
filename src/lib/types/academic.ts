@@ -277,13 +277,6 @@ export interface PendingReceivedRequest {
   expiresAt: string;
 }
 
-// Admin-only view of a team (GET /api/v1/teams/cohort/:cohortId) — same
-// shape as the student-facing Team, plus fields only the admin panel needs.
-export interface AdminTeam extends Team {
-  createdAt: string;
-  hasSubmittedProjectPreferences: boolean;
-}
-
 // A team's submitted project slots (POST /api/v1/teams/projects/preferences).
 // preference1 is the team's own proposed project, preference2 is a catalog pick.
 // Each preference carries its own mentor pick — the two must be different mentors.
@@ -379,6 +372,12 @@ export interface MentorLoadSummaryRow {
 export interface TeamAllocationDetail {
   teamId: string;
   teamName: string | null;
+  // Whether this is a solo team of one — set once at formation.
+  isIndividual: boolean;
+  // Which of the mentor's own named groups/batches this team is filed
+  // under. Null if ungrouped.
+  groupId: string | null;
+  groupName: string | null;
   track: string;
   members: { studentId: string; fullName: string | null; batch: string | null; email: string | null; rollNumber: string | null; pendingReviewCount?: number }[];
   tier: string;
@@ -389,6 +388,7 @@ export interface TeamAllocationDetail {
   preference1ReviewNote: string | null;
   allocationStatus: TeamAllocationStatus;
   allocatedProjectId: string | null;
+  allocatedProjectTitle: string | null;
   // The team's real mentor for allocatedProjectId — an admin's mentor
   // override wins if set, else whichever preference matches. Null until allocated.
   allocatedMentorId: string | null;

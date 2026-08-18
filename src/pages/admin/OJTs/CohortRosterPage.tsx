@@ -1,15 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Users2, UserPlus, UserMinus, ArrowLeftRight, FolderTree, Plus, AlertTriangle } from 'lucide-react';
+import { Users2, UserPlus, UserMinus, ArrowLeftRight, FolderTree, Plus, AlertTriangle, Trash2 } from 'lucide-react';
 import PageLayout from '../../../components/PageLayout';
-import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
 import type { TeamAllocationDetail, ApiMentor, ApiStudent } from '../../../lib/types';
 import {
   apiGetTeamsForCohortDetailed,
-  apiGetCohort,
   apiListMentorsPage,
   apiListStudentsPage,
   apiAddTeamMember,
@@ -19,32 +17,41 @@ import {
   apiListMentorGroups,
   apiCreateMentorGroup,
   apiGetTeamRosterMentor,
+  apiBreakTeam,
   type ApiMentorGroup,
   type ApiTeamRosterMentor,
 } from '../../../lib/api';
-import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
+import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
 import { useCascadeConfirm } from '../../../hooks/useCascadeConfirm';
 
-type ManageTab = 'members' | 'mentor' | 'group';
+type ManageTab = 'members' | 'mentor' | 'group' | 'break';
 
 /**
- * Admin roster management for a cohort's teams: who is on a team, which
- * mentor owns it, and which of that mentor's groups it's filed under.
+ * Admin's single home for a cohort's teams: the full picture (mentor,
+ * project, allocation, group, track) plus every action on a team — who's on
+ * it, which mentor owns it, which of that mentor's groups it's filed under,
+ * and breaking it entirely. Used to be two pages (a view-only Teams tab and
+ * a separate Roster & Mentors screen reached from a button on it) — merged
+ * here since almost every real visit needed both.
  *
- * The three operations differ in how dangerous they are, and the UI keeps
+ * The four operations differ in how dangerous they are, and the UI keeps
  * that distinction visible rather than flattening it:
  *   - moving a team between groups is purely organisational and just happens;
  *   - removing a student, or changing a team's mentor, can disturb sessions
  *     already on the calendar. The backend refuses those with a 409 listing
  *     how many upcoming sessions are affected, and this page turns that
- *     refusal into an explicit confirmation rather than retrying silently.
+ *     refusal into an explicit confirmation rather than retrying silently;
+ *   - breaking the team is the most destructive of all (every member drops
+ *     back to the teammate-invite step) and gets its own tab rather than
+ *     living beside the view-only list, so it's never one misclick away.
  * Sessions already completed are never touched by any of it.
  */
 export default function CohortRosterPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const { showSuccess, showError } = useToast();
+  const confirm = useConfirm();
   const { busy: cascadeBusy, withCascadeConfirm } = useCascadeConfirm();
   // Separate from the cascade-confirm hook's busy flag — these three actions
   // (add member, move group, create group) never hit a 409 conflict, so they
@@ -52,7 +59,6 @@ export default function CohortRosterPage() {
   const [busyOther, setBusyOther] = useState(false);
   const busy = cascadeBusy || busyOther;
 
-  const [cohortLabel, setCohortLabel] = useState('');
   const [teams, setTeams] = useState<TeamAllocationDetail[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
   const [search, setSearch] = useState('');
@@ -63,6 +69,7 @@ export default function CohortRosterPage() {
 
   const [manageTeam, setManageTeam] = useState<TeamAllocationDetail | null>(null);
   const [manageTab, setManageTab] = useState<ManageTab>('members');
+  const [breakingTeamId, setBreakingTeamId] = useState<string | null>(null);
 
   const [addStudentId, setAddStudentId] = useState('');
   const [newMentorId, setNewMentorId] = useState('');
@@ -95,9 +102,6 @@ export default function CohortRosterPage() {
   useEffect(() => {
     if (!cohortId) return;
     load(1, pagination.limit, '');
-    apiGetCohort(cohortId)
-      .then((c) => setCohortLabel(getCohortLabel(c)))
-      .catch(() => setCohortLabel(''));
     apiListMentorsPage({ page: 1, limit: 200, cohortId })
       .then((res) => setMentors(res.data))
       .catch(() => setMentors([]));
@@ -229,6 +233,33 @@ export default function CohortRosterPage() {
     }
   };
 
+  const breakTeam = async () => {
+    if (!manageTeam) return;
+    const memberNames = manageTeam.members.map((m) => m.fullName || m.studentId).join(', ');
+    const confirmBreak = await confirm({
+      title: 'Break team',
+      message: `Break this team (${memberNames})? Members will drop back to the teammate-invite step. This cannot be undone.`,
+      confirmLabel: 'Break Team',
+      variant: 'danger',
+    });
+    if (!confirmBreak) return;
+
+    setBreakingTeamId(manageTeam.teamId);
+    await withCascadeConfirm(
+      async (cascade) => {
+        await apiBreakTeam(manageTeam.teamId, { reason: changeReason.trim() || undefined, cascadeFutureSessions: cascade });
+        showSuccess('Team disbanded successfully!');
+        await refreshAfterChange();
+      },
+      (count) => ({
+        title: 'Team has upcoming sessions',
+        message: `This team has ${count} upcoming session(s). Breaking it will cancel any session scheduled only for this team, and drop this team from any session it shares with another team. Continue?`,
+        confirmLabel: 'Break Team Anyway',
+      })
+    );
+    setBreakingTeamId(null);
+  };
+
   // Students already on any team in the loaded page are filtered out — the
   // backend rejects a double-membership anyway, so offering it is a trap.
   const takenStudentIds = useMemo(
@@ -259,21 +290,83 @@ export default function CohortRosterPage() {
 
   return (
     <PageLayout className="space-y-6">
-      <CohortPageHeader title="Roster & Mentors" subtitle={cohortLabel} />
-
       <DataTable
         columns={[
           {
             key: 'memberNames',
             header: 'Members',
             render: (row) => (
-              <span className="flex items-center gap-2">
-                <Users2 size={14} className="text-gold shrink-0" />
-                {row.memberNames || '—'}
+              <div className="flex items-start gap-2">
+                <Users2 size={14} className="text-gold shrink-0 mt-0.5" />
+                <div>
+                  <div>{row.memberNames || '—'}</div>
+                  <div className="text-[11px] text-gray-500">{row.members.map((m) => m.rollNumber ?? '—').join(' · ')}</div>
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: 'isIndividual',
+            header: 'Type',
+            render: (row) => (
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                row.isIndividual ? 'bg-blue-400/10 text-blue-400' : 'bg-purple-400/10 text-purple-400'
+              }`}>
+                {row.isIndividual ? 'Individual' : 'Paired'}
               </span>
             ),
           },
           { key: 'mentorName', header: 'Mentor', render: (row) => row.allocatedMentorName ?? <span className="text-gray-500">Not allocated</span> },
+          {
+            key: 'allocatedProjectTitle',
+            header: 'Project',
+            render: (row) => row.allocatedProjectTitle ?? <span className="text-gray-500">—</span>,
+          },
+          {
+            key: 'preferences',
+            header: 'Preferences',
+            render: (row) => (
+              <div className="text-xs space-y-0.5 max-w-[220px]">
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="text-gray-500 shrink-0">P1</span>
+                  <span className="truncate">{row.preference1?.projectTitle ?? '—'}</span>
+                  {row.preference1ReviewStatus === 'pending_review' && (
+                    <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-amber-400/10 text-amber-400 text-[10px] font-semibold">Pending review</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 truncate text-gray-400">
+                  <span className="text-gray-500 shrink-0">P2</span>
+                  <span className="truncate">{row.preference2?.projectTitle ?? '—'}</span>
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: 'allocationStatus',
+            header: 'Allocation',
+            render: (row) => {
+              const styles: Record<string, string> = {
+                allocated: 'bg-green-400/10 text-green-400',
+                needs_review: 'bg-amber-400/10 text-amber-400',
+                pending: 'bg-gray-400/10 text-gray-400',
+              };
+              return (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${styles[row.allocationStatus] ?? styles.pending}`}>
+                  {row.allocationStatus.replace('_', ' ')}
+                </span>
+              );
+            },
+          },
+          {
+            key: 'groupName',
+            header: 'Group',
+            render: (row) =>
+              row.groupName ? (
+                <span className="inline-flex items-center gap-1 text-xs text-gray-300 bg-zinc-800 border border-zinc-750 px-2 py-0.5 rounded-md">{row.groupName}</span>
+              ) : (
+                <span className="text-gray-500 text-xs">Ungrouped</span>
+              ),
+          },
           { key: 'track', header: 'Track' },
         ]}
         data={tableRows}
@@ -311,15 +404,19 @@ export default function CohortRosterPage() {
                   { id: 'members' as const, label: 'Members', icon: Users2 },
                   { id: 'mentor' as const, label: 'Mentor', icon: ArrowLeftRight },
                   { id: 'group' as const, label: 'Group', icon: FolderTree },
+                  { id: 'break' as const, label: 'Break Team', icon: Trash2, danger: true },
                 ]
               ).map((tab) => {
                 const Icon = tab.icon;
+                const active = manageTab === tab.id;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setManageTab(tab.id)}
                     className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border-b-2 transition-all ${
-                      manageTab === tab.id ? 'border-gold text-gold' : 'border-transparent text-gray-400 hover:text-white'
+                      active
+                        ? tab.danger ? 'border-red-400 text-red-400' : 'border-gold text-gold'
+                        : 'border-transparent text-gray-400 hover:text-white'
                     }`}
                   >
                     <Icon size={13} />
@@ -451,7 +548,35 @@ export default function CohortRosterPage() {
               </div>
             )}
 
-            {manageTab !== 'group' && (
+            {manageTab === 'break' && (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-4">
+                  <p className="text-xs text-red-300 leading-relaxed mb-3">
+                    Breaking this team drops <span className="font-semibold text-red-200">
+                      {manageTeam.members.map((m) => m.fullName ?? m.studentId).join(', ')}
+                    </span> back to the teammate-invite step. This cannot be undone from here.
+                  </p>
+                  <button
+                    onClick={breakTeam}
+                    disabled={breakingTeamId === manageTeam.teamId}
+                    className="w-full flex items-center justify-center gap-1.5 text-xs px-4 py-2 border border-red-400 text-red-400 font-semibold rounded-lg hover:bg-red-400/10 transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 size={14} />
+                    {breakingTeamId === manageTeam.teamId ? 'Breaking…' : 'Break This Team'}
+                  </button>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Reason (optional — recorded in the audit trail)</label>
+                  <input
+                    value={changeReason}
+                    onChange={(e) => setChangeReason(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+                  />
+                </div>
+              </div>
+            )}
+
+            {(manageTab === 'members' || manageTab === 'mentor') && (
               <div className="border-t border-zinc-800 pt-3">
                 <label className="text-xs text-gray-400 mb-1 block">Reason (optional — recorded in the audit trail)</label>
                 <input

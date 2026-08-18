@@ -2,7 +2,6 @@ import type {
   MyCohort,
   MyTeamStatus,
   Team,
-  AdminTeam,
   PendingSentRequest,
   PendingReceivedRequest,
   TeamProjectPreferences,
@@ -58,11 +57,6 @@ interface RawTeam {
   isIndividual: boolean;
   members?: RawTeamMember[];
   cohortId?: string;
-}
-
-interface RawAdminTeam extends RawTeam {
-  createdAt: string;
-  hasSubmittedProjectPreferences?: boolean;
 }
 
 interface RawSentRequest {
@@ -224,14 +218,6 @@ function mapTeam(t: RawTeam): Team {
       fullName: m.fullName ?? null,
     })),
     cohortId: t.cohortId,
-  };
-}
-
-function mapAdminTeam(t: RawAdminTeam): AdminTeam {
-  return {
-    ...mapTeam(t),
-    createdAt: t.createdAt,
-    hasSubmittedProjectPreferences: !!t.hasSubmittedProjectPreferences,
   };
 }
 
@@ -654,14 +640,6 @@ export async function apiDecideOnProposal(
   });
   invalidateTeamCaches();
   return result;
-}
-
-// Admin — lists every team formed within a cohort.
-export async function apiListTeamsForCohort(cohortId: string): Promise<AdminTeam[]> {
-  return cachedFetch(`teams:cohort:${cohortId}`, TEAMS_TTL, async () => {
-    const res = await apiFetch<RawAdminTeam[]>(`/api/v1/teams/cohort/${cohortId}`);
-    return res.map(mapAdminTeam);
-  });
 }
 
 // Mentor — lists the teams this mentor is currently allocated to, used by
