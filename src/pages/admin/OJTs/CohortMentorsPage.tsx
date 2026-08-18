@@ -1,12 +1,17 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Save, Check, AlertTriangle } from 'lucide-react';
+import { Save, Check, AlertTriangle, Eye } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
-import type { ApiMentor } from '../../../lib/types';
-import { apiListMentorsPage, apiListMentorIds, apiGetCohort, apiAddMentorsToCohort } from '../../../lib/api';
+import Modal from '../../../components/Modal';
+import MentorRoster from './MentorRoster';
+import { EMPTY_PROJECTS_MAP } from './StudentDetailCard';
+import type { ApiMentor, ApiStudent, TeamAllocationDetail } from '../../../lib/types';
+import { apiListMentorsPage, apiListMentorIds, apiGetCohort, apiAddMentorsToCohort, apiGetMentorById } from '../../../lib/api';
+import { apiGetTeamsForCohortDetailed, apiGetMentorLoadSummary } from '../../../lib/api/allocations';
+import type { MentorLoadSummaryRow } from '../../../lib/types';
 import { useToast } from '../../../toast';
 import { usePageRefresh } from '../../../context/RefreshContext';
 
@@ -56,6 +61,50 @@ export default function CohortMentorsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectingAll, setSelectingAll] = useState(false);
+
+  // Detail view — opened via the row's "view details" icon, kept separate
+  // from the checkbox toggle so browsing a mentor's roster never disturbs
+  // the in-progress cohort-mapping selection underneath it.
+  const [detailMentorId, setDetailMentorId] = useState<string | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailMentor, setDetailMentor] = useState<ApiMentor | null>(null);
+  const [detailTeams, setDetailTeams] = useState<TeamAllocationDetail[]>([]);
+  // Cohort-wide, fetched once and looked up per mentor rather than re-fetched
+  // on every open — allocatedCount/threshold are the same "how loaded is
+  // everyone" numbers the admin allocation panel already computes.
+  const [loadByMentor, setLoadByMentor] = useState<Map<string, MentorLoadSummaryRow>>(new Map());
+
+  useEffect(() => {
+    if (!cohortId) return;
+    apiGetMentorLoadSummary(cohortId)
+      .then((rows) => setLoadByMentor(new Map(rows.map((r) => [r.mentorId, r]))))
+      .catch(() => setLoadByMentor(new Map()));
+  }, [cohortId]);
+
+  const openDetail = useCallback(async (mentorId: string) => {
+    setDetailMentorId(mentorId);
+    if (!cohortId) return;
+    setDetailLoading(true);
+    try {
+      const [mentor, teamsRes] = await Promise.all([
+        apiGetMentorById(mentorId),
+        apiGetTeamsForCohortDetailed(cohortId, { mentorId, limit: 50 }),
+      ]);
+      setDetailMentor(mentor);
+      setDetailTeams(teamsRes.data);
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to load mentor detail');
+      setDetailMentor(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [cohortId, showError]);
+
+  const closeDetail = () => {
+    setDetailMentorId(null);
+    setDetailMentor(null);
+    setDetailTeams([]);
+  };
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -357,7 +406,44 @@ export default function CohortMentorsPage() {
             className="w-40"
           />
         }
+        actions={(row) => (
+          <button
+            type="button"
+            title="View mentor details"
+            onClick={(e) => {
+              e.stopPropagation();
+              openDetail(row.id);
+            }}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gold hover:bg-zinc-750 transition-colors"
+          >
+            <Eye size={14} />
+          </button>
+        )}
       />
+
+      <Modal open={!!detailMentorId} onClose={closeDetail} title="Mentor Details" size="xl">
+        {detailLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <SpinnerSquare size={40} />
+          </div>
+        ) : !detailMentor ? (
+          <p className="p-4 text-gray-500 text-xs">Mentor not found.</p>
+        ) : (
+          <MentorRoster
+            mentor={detailMentor}
+            teams={detailTeams}
+            studentsById={new Map(
+              detailTeams.flatMap(t => t.members).map(m => [
+                m.studentId,
+                { id: m.studentId, fullName: m.fullName, batch: m.batch ?? undefined, email: m.email ?? undefined } as ApiStudent,
+              ])
+            )}
+            projectsById={EMPTY_PROJECTS_MAP}
+            onBack={closeDetail}
+            load={loadByMentor.get(detailMentor.id)}
+          />
+        )}
+      </Modal>
     </PageLayout>
   );
 }

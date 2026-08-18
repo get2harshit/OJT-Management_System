@@ -388,7 +388,7 @@ export default function CohortTrackConfigPage() {
         limit: 20,
         cohortId,
         search: studentSearch || undefined,
-        batch: studentBatchFilter || undefined,
+        batch: studentBatchFilter ? [studentBatchFilter] : undefined,
       });
       setSearchResults(res.data);
     } catch (err) {

@@ -48,7 +48,7 @@ export default function AdminStudents() {
       const res = await apiListStudentsPage({
         page,
         limit,
-        batch: selectedBatch || undefined,
+        batch: selectedBatch ? [selectedBatch] : undefined,
         search: search || undefined,
       });
       setStudents(res.data);
