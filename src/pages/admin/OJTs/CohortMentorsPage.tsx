@@ -1,7 +1,7 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Save, Check, AlertTriangle } from 'lucide-react';
+import { Save, Check, AlertTriangle, ChevronRight } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
@@ -122,6 +122,17 @@ export default function CohortMentorsPage() {
       else next.add(row.id);
       return next;
     });
+  };
+
+  // A mentor already on this OJT has nothing left for this screen to do to
+  // them — their row becomes a door into their Workspace for this cohort
+  // instead of a dead click. A mentor not yet on the OJT still just toggles.
+  const handleRowClick = (row: MentorRow) => {
+    if (alreadyMapped.has(row.id)) {
+      if (cohortId) navigate(`/admin/dashboard/ojts/${cohortId}/mentors/${row.id}`);
+      return;
+    }
+    toggleOne(row);
   };
 
   // The header checkbox acts on the current page, which is what a checkbox in a
@@ -265,8 +276,8 @@ export default function CohortMentorsPage() {
               alreadyMapped.has(row.id) ? (
                 // Locked rather than pre-ticked: there is no unmap endpoint, so
                 // an editable checkbox here would offer a removal that silently
-                // never happens.
-                <span title="Already on this OJT" className="text-emerald-400 flex">
+                // never happens. Click the row itself to open their Workspace.
+                <span title="Already on this OJT — click row to open their Workspace" className="text-emerald-400 flex">
                   <Check size={15} />
                 </span>
               ) : (
@@ -328,6 +339,14 @@ export default function CohortMentorsPage() {
                 <span className="text-gray-600">—</span>
               ),
           },
+          {
+            key: 'workspaceLink',
+            header: '',
+            render: (row) =>
+              alreadyMapped.has(row.id) ? (
+                <ChevronRight size={14} className="text-gray-600" />
+              ) : null,
+          },
         ]}
         data={rows}
         loading={loading}
@@ -343,7 +362,7 @@ export default function CohortMentorsPage() {
           },
         }}
         onSearchChange={handleSearch}
-        onRowClick={toggleOne}
+        onRowClick={handleRowClick}
         searchPlaceholder="Search name, email or organization..."
         hideExport
         leftHeaderContent={

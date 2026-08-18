@@ -161,6 +161,7 @@ export interface ApiMentorWorkspaceTeam {
   weeklySessionTarget: number | null;
   sessionsThisWeek: number;
   cadenceStatus: CadenceStatus;
+  allocatedProjectTitle: string | null;
 }
 
 export interface ApiMentorWorkspace {
@@ -168,6 +169,12 @@ export interface ApiMentorWorkspace {
   groups: ApiMentorGroup[];
   teams: ApiMentorWorkspaceTeam[];
   rate: { amount: string; type: string; currency: string } | null;
+  // Across every student in this mentor's teams for this cohort — pending
+  // (submitted/under_review) vs reviewed (approved/changes_requested).
+  submissions: { pending: number; reviewed: number };
+  // Tasks this mentor has personally created/assigned in this cohort, not
+  // tasks assigned to her teams — see MentorWorkspace.tsx's Tasks card.
+  tasksAssignedCount: number;
   selfScheduleAllowed: boolean;
   scheduleOverride: { workingDays: number[]; dayStartMinute: number; dayEndMinute: number } | null;
 }

@@ -11,6 +11,9 @@ import {
   Wallet,
   Settings,
   ExternalLink,
+  Briefcase,
+  ClipboardList,
+  ListChecks,
 } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import Select from '../../components/Select';
@@ -132,6 +135,14 @@ export default function MentorWorkspace() {
     [workspace]
   );
   const currentTeamIds = useMemo(() => new Set(workspace?.teams.map((t) => t.id) ?? []), [workspace]);
+  // "N of M teams allocated" plus up to two project titles — derived here
+  // rather than sent pre-computed from the backend, since the raw
+  // allocatedProjectTitle per team is already needed for the team cards below.
+  const projectTitles = useMemo(
+    () => [...new Set((workspace?.teams ?? []).map((t) => t.allocatedProjectTitle).filter((t): t is string => !!t))],
+    [workspace]
+  );
+  const teamsWithProject = useMemo(() => (workspace?.teams ?? []).filter((t) => t.allocatedProjectTitle).length, [workspace]);
   const candidateTeamOptions = useMemo(
     () =>
       (candidateTeams ?? [])
@@ -367,6 +378,59 @@ export default function MentorWorkspace() {
             </div>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4 flex items-start gap-3">
+              <Briefcase size={16} className="text-gold shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-gray-500">Projects</p>
+                <p className="text-sm text-white">
+                  {teamsWithProject} of {workspace.teams.length} team{workspace.teams.length === 1 ? '' : 's'} allocated
+                </p>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  {projectTitles.length > 0
+                    ? `${projectTitles.slice(0, 2).join(' · ')}${projectTitles.length > 2 ? ` · +${projectTitles.length - 2} more` : ''}`
+                    : 'No projects allocated yet'}
+                </p>
+              </div>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4 flex items-start gap-3">
+              <ClipboardList size={16} className="text-gold shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-gray-500">Submissions</p>
+                <p className="text-sm text-white">
+                  {workspace.submissions.pending > 0 ? (
+                    <span className="text-amber-400">{workspace.submissions.pending} pending review</span>
+                  ) : (
+                    'Nothing pending'
+                  )}
+                  {' · '}
+                  {workspace.submissions.reviewed} reviewed
+                </p>
+                <button
+                  onClick={() => navigate(`/admin/dashboard/submissions?cohortId=${cohortId}&mentorId=${mentorId}`)}
+                  className="flex items-center gap-1 text-[11px] text-gold hover:underline mt-1"
+                >
+                  Open in Submissions <ExternalLink size={11} />
+                </button>
+              </div>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4 flex items-start gap-3">
+              <ListChecks size={16} className="text-gold shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-gray-500">Tasks</p>
+                <p className="text-sm text-white">
+                  {workspace.tasksAssignedCount} created by this mentor
+                </p>
+                <button
+                  onClick={() => navigate(`/admin/dashboard/tasks?cohortId=${cohortId}&assignedById=${mentorId}`)}
+                  className="flex items-center gap-1 text-[11px] text-gold hover:underline mt-1"
+                >
+                  Open in Tasks <ExternalLink size={11} />
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-5">
             {[...teamsByGroup.entries()].map(([groupKey, teams]) => {
               const group = workspace.groups.find((g) => g.id === groupKey);
@@ -394,6 +458,7 @@ export default function MentorWorkspace() {
                             <p className="text-sm text-white">{t.name || 'Team'}</p>
                             <p className="text-[11px] text-gray-500">
                               {t.memberCount} member{t.memberCount === 1 ? '' : 's'}
+                              {t.allocatedProjectTitle ? ` · ${t.allocatedProjectTitle}` : ''}
                             </p>
                           </div>
                         </div>
@@ -440,7 +505,7 @@ export default function MentorWorkspace() {
                             Reassign
                           </button>
                           <button
-                            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/roster`)}
+                            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/teams`)}
                             className="text-[11px] text-gray-400 hover:text-white transition-colors"
                           >
                             Manage members →

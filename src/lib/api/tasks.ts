@@ -193,6 +193,11 @@ export interface ApiTaskListFilter {
   batch?: string;
   track?: string;
   assignee?: string;
+  // Scopes to tasks a specific person created — set only via a deep link
+  // (e.g. the Mentor Workspace's "this mentor's tasks" link), not a picker
+  // in this UI. Distinct from assignedByFilter's 'me'/'mentor' role split,
+  // which only ever filters the currently-loaded page client-side.
+  assigned_by_id?: string;
   search?: string;
   sort?: 'deadline' | 'created_at' | 'week' | 'status';
   // Admins have no ojt_cohort_members row of their own, so the backend

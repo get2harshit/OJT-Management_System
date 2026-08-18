@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, Loader2, Eye } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, Loader2, Eye, X } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import { apiListTasks, apiGetTask, apiDeleteTask, apiUpdateTask, apiGetAssigneeProgress, apiApproveTask, apiRequestResubmit } from '../../lib/api/tasks';
@@ -60,6 +60,15 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
   // mentor (mentors can create tasks for their own students too) — same
   // client-side-over-current-page approach as roleFilter/statusFilter above.
   const [assignedByFilter, setAssignedByFilter] = useState('all');
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Set only via a ?assignedById= link (e.g. the Mentor Workspace's "tasks
+  // created by this mentor" link) — no picker in this UI for it, since the
+  // point is a scoped deep link, not a filter someone hand-picks. Unlike
+  // assignedByFilter above, this is a real server-side filter (see
+  // apiListTasks below), so it stays correct across every page, not just
+  // whatever happens to be currently loaded.
+  const [assignedById, setAssignedById] = useState(searchParams.get('assignedById') || '');
+  const [assignedByName, setAssignedByName] = useState('');
   const [editingTask, setEditingTask] = useState<ApiTask | null>(null);
   // The list response only carries assignmentsSummary (a capped preview),
   // never the full per-assignee list — reviewTaskId drives the modal's
@@ -97,7 +106,7 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
   // CreateTaskPage.tsx uses), but — unlike before — the admin can now
   // switch to any other cohort via the selector below instead of being
   // silently locked to whichever one auto-detected as "active".
-  const [selectedCohortId, setSelectedCohortId] = useState('');
+  const [selectedCohortId, setSelectedCohortId] = useState(searchParams.get('cohortId') || '');
   useEffect(() => {
     if (selectedCohortId || cohorts.length === 0) return;
     const active = cohorts.find(c => c.isActive) || cohorts[0];
@@ -113,13 +122,30 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
 
   const fetchTasksOnly = useCallback(async () => {
     try {
-      const res = await apiListTasks({ page, limit, search: search || undefined, cohort_id: activeCohort?.id });
+      const res = await apiListTasks({
+        page,
+        limit,
+        search: search || undefined,
+        cohort_id: activeCohort?.id,
+        assigned_by_id: assignedById || undefined,
+      });
       setTasks(res.data || []);
       setPagination(res.pagination);
+      // Every row shares the same creator while this filter is active, so
+      // the first row's name is enough — no separate mentor fetch needed.
+      setAssignedByName(assignedById ? res.data[0]?.assigner?.full_name ?? '' : '');
     } catch (e) {
       console.error(e);
     }
-  }, [page, limit, search, activeCohort]);
+  }, [page, limit, search, activeCohort, assignedById]);
+
+  const clearAssignedByFilter = () => {
+    setAssignedById('');
+    setAssignedByName('');
+    const next = new URLSearchParams(searchParams);
+    next.delete('assignedById');
+    setSearchParams(next, { replace: true });
+  };
 
   useEffect(() => {
     if (!activeCohort) return;
@@ -273,6 +299,14 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
         <div>
           <h1 className="text-2xl font-bold text-white">Week-wise Goals & Tasks</h1>
           <p className="text-gray-400 text-sm mt-1">Map out structured goals, viva checkpoints, and sub-tasks for each tech stack track</p>
+          {assignedById && (
+            <div className="flex items-center gap-2 text-xs bg-gold/10 border border-gold/20 text-gold rounded-lg px-3 py-2 w-fit mt-2">
+              <span>Showing only tasks created by {assignedByName || 'this mentor'}</span>
+              <button onClick={clearAssignedByFilter} className="hover:text-white transition-colors" aria-label="Clear this filter">
+                <X size={13} />
+              </button>
+            </div>
+          )}
         </div>
         {/* Fixed-width filters so selecting a longer option (e.g. "In
             Progress") doesn't resize the control and shove the whole row
