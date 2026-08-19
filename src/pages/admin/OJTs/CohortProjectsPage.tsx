@@ -187,10 +187,12 @@ export default function CohortProjectsPage() {
 
   return (
     <PageLayout className="space-y-6">
-      <CohortPageHeader
-        title={trackName ? `${trackName} Projects` : 'Projects'}
-        subtitle={trackName ? `${cohortLabel} · ${trackName} track only` : cohortLabel}
-      />
+      {/* Only the track-scoped drill-down (reached via Track Config, outside
+          the cohort tab-bar shell) needs its own header — the plain cohort
+          "Projects" tab already has the shell's header right above it. */}
+      {trackSlug && (
+        <CohortPageHeader title={`${trackName} Projects`} subtitle={`${cohortLabel} · ${trackName} track only`} />
+      )}
 
       <div className="space-y-4 flex-1 min-h-0 flex flex-col">
         <div className="flex flex-wrap justify-between items-center gap-3">

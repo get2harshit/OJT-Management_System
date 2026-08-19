@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Users, CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, UserCog, Briefcase, Download } from 'lucide-react';
+import { Users, CheckSquare, FolderOpen, Cloud, UserCog, Briefcase, Download } from 'lucide-react';
 import { exportToCSV } from '../../lib/csvExport';
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
-import type { Submission, Attendance, DashboardMetrics, Cohort } from '../../lib/types';
+import CohortProgressPanel from '../../components/CohortProgressPanel';
+import type { DashboardMetrics, Cohort } from '../../lib/types';
 import {
   apiGetDashboardMetrics,
   apiListCohorts,
@@ -12,27 +13,18 @@ import {
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { usePageRefresh } from '../../context/RefreshContext';
 
-import { useSubmissions } from '../../hooks/useSubmissions';
-import { useAttendance } from '../../hooks/useAttendance';
 import { useTracks } from '../../hooks/useTracks';
 
+// The submissions/attendance props and their DataContext hooks are gone with
+// the two panels that used them: both were localStorage mock data, and nothing
+// ever passed the props — the route renders this with onNavigateToSection
+// alone. Every number on this page now comes from the backend.
 interface Props {
-  submissions: Submission[];
-  attendance: Attendance[];
   onNavigateToSection: (tab: string) => void;
 }
 
-export default function AdminDashboard({
-  submissions: propSubmissions,
-  attendance: propAttendance,
-  onNavigateToSection,
-}: Partial<Props> & Pick<Props, 'onNavigateToSection'>) {
-  const { submissions: hookSubmissions } = useSubmissions();
-  const { attendance: hookAttendance } = useAttendance();
+export default function AdminDashboard({ onNavigateToSection }: Props) {
   const { options: trackOptions } = useTracks();
-
-  const submissions = propSubmissions ?? hookSubmissions;
-  const attendance = propAttendance ?? hookAttendance;
   const [semFilter, setSemFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
   const [trackFilter, setTrackFilter] = useState('');
@@ -40,10 +32,8 @@ export default function AdminDashboard({
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loadingReal, setLoadingReal] = useState(true);
 
-  // Real backend counts (students/mentors/batch managers/projects/credits) —
-  // everything else on this page (submission breakdown, activity feed) is
-  // mock data (see DataContext's defaultSubmissions/defaultAttendance —
-  // never wired to a real backend endpoint), not derived from any roster.
+  // Every stat card is a real backend count, server-filtered by the cohort/
+  // batch/track selection above.
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
 
   const loadCohorts = useCallback(() => {
@@ -83,13 +73,6 @@ export default function AdminDashboard({
     const all = cohorts.flatMap(c => c.allowedBatches || []);
     return Array.from(new Set(all)).sort().map(b => ({ value: b, label: b }));
   }, [semFilter, cohorts]);
-
-  // attendance is still mock/localStorage data with no real student linkage
-  // worth scoping (see the state-declaration comment above) — shown as-is
-  // rather than filtered by a roster fetched just for this. Submissions used
-  // to be counted the same mock way; see showPendingSubmissionsCount below,
-  // which now comes from the real endpoint instead.
-  const attendanceCount = attendance.length;
 
   // Stat-card counts — always straight from /dashboard/metrics, which is
   // re-fetched with the current cohort/batch/track filters above. No client
@@ -176,56 +159,21 @@ export default function AdminDashboard({
         <StatCard title="Cloud Credits" value={metrics ? `$${metrics.totalCreditsAvailable}` : '—'} icon={Cloud} onClick={() => onNavigateToSection('credits')} />
         <StatCard title="Tasks" value={showTasksCount} icon={CheckSquare} onClick={() => onNavigateToSection('tasks')} />
         <StatCard title="Pending Submissions" value={showPendingSubmissionsCount} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToSection('submissions')} />
-        <StatCard title="Attendance Records" value={attendanceCount} icon={CalendarCheck} onClick={() => onNavigateToSection('attendance')} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Submission Status</h3>
-            <TrendingUp size={18} className="text-gold" />
-          </div>
-          <div className="space-y-3">
-            {(['PENDING', 'ACCEPTED', 'RETURNED'] as const).map((status) => {
-              const count = submissions.filter(s => s.status === status).length;
-              const pct = submissions.length ? Math.round((count / submissions.length) * 100) : 0;
-              return (
-                <div key={status}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-300 font-medium">{status}</span>
-                    <span className="text-gray-400">{count} ({pct}%)</span>
-                  </div>
-                  <div className="h-2 bg-zinc-750 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        status === 'PENDING' ? 'bg-gold' : status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
-                      }`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+      {/* Was two panels drawn from mock data in localStorage — a submission
+          breakdown and an "activity feed" that were never wired to a backend
+          and so showed the same invented rows for every cohort. Replaced with
+          real progress, which needs one OJT to be about: a funnel summed
+          across cohorts describes nothing. */}
+      {semFilter ? (
+        <CohortProgressPanel cohortId={semFilter} />
+      ) : (
+        <div className="border border-dashed border-zinc-800 rounded-xl py-16 flex flex-col items-center justify-center gap-2 px-4 text-center">
+          <p className="text-gray-400 text-sm">Pick an OJT above to see how it is moving.</p>
+          <p className="text-gray-600 text-xs">Where its students are, what is blocking them, and this week's sessions.</p>
         </div>
-
-        <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Recent Activity</h3>
-          </div>
-          <div className="space-y-3">
-            {submissions.slice(-5).reverse().map(sub => (
-              <div key={sub.id} className="flex items-center gap-3 text-sm">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${
-                  sub.status === 'PENDING' ? 'bg-gold' : sub.status === 'ACCEPTED' ? 'bg-green-500' : 'bg-red-500'
-                }`} />
-                <span className="text-gray-300 flex-1 truncate">{sub.file_name}</span>
-                <span className="text-gray-500 text-xs shrink-0">{sub.submitted_at}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

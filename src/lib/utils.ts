@@ -71,6 +71,22 @@ export const getDurationString = (startDate: string, endDate: string): string =>
   return parts.join(', ') || '0 Days';
 };
 
+const IST_ZONE = 'Asia/Kolkata';
+
+/**
+ * Formats an ISO datetime in IST (Asia/Kolkata) regardless of the viewer's
+ * own browser timezone, or which zone the session itself was scheduled
+ * under — a student must always see session times in IST. Same options
+ * shape as `Date#toLocaleString`, with `timeZone` always forced to IST so a
+ * caller can't accidentally drop it.
+ */
+export const formatInIST = (iso: string, opts?: Intl.DateTimeFormatOptions): string => {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-IN', { ...opts, timeZone: IST_ZONE });
+};
+
 /**
  * Serializes rows into CSV text and triggers a browser download. Values are
  * quoted and escaped so commas, quotes, and newlines inside a cell can't

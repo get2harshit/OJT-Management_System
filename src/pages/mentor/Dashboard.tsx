@@ -1,19 +1,17 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Users, CheckSquare, FolderOpen, CalendarCheck, TrendingUp } from 'lucide-react';
+import { Users, CheckSquare, FolderOpen, CalendarClock, ClipboardList, TrendingUp } from 'lucide-react';
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
-import type { Attendance, ApiStudent, Team, PrdSubmission, PrdStatus } from '../../lib/types';
-import { apiListMyTeams, apiListStudents, apiGetAllPrdSubmissions } from '../../lib/api';
+import type { ApiStudent, Team, PrdSubmission, PrdStatus } from '../../lib/types';
+import { apiListMyTeams, apiListStudents, apiGetAllPrdSubmissions, apiGetMySessions } from '../../lib/api';
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask } from '../../lib/api/tasks';
 
-import { useAttendance } from '../../hooks/useAttendance';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 interface Props {
   mentorId: string;
-  attendance: Attendance[];
   onNavigateToSection: (tab: string) => void;
 }
 
@@ -34,15 +32,12 @@ const SUBMISSION_STATUS_BUCKETS: { label: string; statuses: PrdStatus[]; barClas
 ];
 
 export default function MentorDashboard({
-  attendance: propAttendance,
   onNavigateToSection,
 }: Partial<Props> & Pick<Props, 'mentorId' | 'onNavigateToSection'>) {
   // mentorId is no longer needed here — GET /tasks and the submissions list
   // both scope to the authenticated caller server-side, not a passed id.
   // Attendance has no real backend endpoint anywhere in this app yet — still
   // the localStorage/DataContext mock until that module exists for real.
-  const { attendance: hookAttendance } = useAttendance();
-  const attendance = propAttendance ?? hookAttendance ?? [];
 
   // Real roster: teams this mentor is actually allocated to (primary or
   // secondary), joined against the student profile list for batch/roll
@@ -57,6 +52,10 @@ export default function MentorDashboard({
   // fetch-all-then-filter-by-mentee pattern mentor/Submissions.tsx already
   // uses) — filtered below via studentIds once the roster is known.
   const [submissions, setSubmissions] = useState<PrdSubmission[]>([]);
+  // Real session counts, replacing a card that counted localStorage mock rows
+  // and another that was the literal string "72%".
+  const [upcomingSessions, setUpcomingSessions] = useState(0);
+  const [sessionsHeld, setSessionsHeld] = useState(0);
   const [loadingRoster, setLoadingRoster] = useState(true);
 
   const loadDashboardData = useCallback(() => {
@@ -73,6 +72,21 @@ export default function MentorDashboard({
 
   useEffect(() => {
     loadDashboardData();
+    // from/to are date-only (YYYY-MM-DD) — they filter scheduled_date, not the
+    // start instant, so passing a full ISO string here would be comparing a
+    // timestamp against a date column.
+    const dateKey = (d: Date) => d.toISOString().slice(0, 10);
+    const now = new Date();
+    const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60_000);
+    // Counted server-side — limit 1, and the pagination total is what's read,
+    // rather than pulling every session down to measure the array's length.
+    apiGetMySessions({ from: dateKey(now), to: dateKey(weekAhead), status: 'scheduled', page: 1, limit: 1 })
+      .then((res) => setUpcomingSessions(res.pagination.total))
+      .catch(() => setUpcomingSessions(0));
+    // Completed sessions are past by definition, so no date bound is needed.
+    apiGetMySessions({ status: 'completed', page: 1, limit: 1 })
+      .then((res) => setSessionsHeld(res.pagination.total))
+      .catch(() => setSessionsHeld(0));
   }, [loadDashboardData]);
 
   usePageRefresh(loadDashboardData);
@@ -120,7 +134,6 @@ export default function MentorDashboard({
 
   const mySubmissions = submissions.filter(s => s.studentId && studentIds.has(s.studentId));
   const pendingSubmissions = mySubmissions.filter(s => s.status === 'submitted' || s.status === 'under_review').length;
-  const filteredAttendance = attendance.filter(a => studentIds.has(a.student_id));
 
   if (loadingRoster) {
     return (
@@ -161,8 +174,8 @@ export default function MentorDashboard({
         <StatCard title="My Teams" value={myTeams.length} icon={Users} onClick={() => onNavigateToSection('ojts')} />
         <StatCard title="My Tasks" value={tasks.length} icon={CheckSquare} onClick={() => onNavigateToSection('tasks')} />
         <StatCard title="Pending Reviews" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToSection('submissions')} />
-        <StatCard title="Attendance Records" value={filteredAttendance.length} icon={CalendarCheck} />
-        <StatCard title="Avg Progress" value="72%" icon={TrendingUp} trend="+5%" />
+        <StatCard title="Sessions This Week" value={upcomingSessions} icon={CalendarClock} onClick={() => onNavigateToSection('sessions')} />
+        <StatCard title="Sessions Held" value={sessionsHeld} icon={ClipboardList} onClick={() => onNavigateToSection('attendance')} />
       </div>
 
       <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">

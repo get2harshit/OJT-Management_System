@@ -1,8 +1,7 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, ArrowLeft, UserCog, UserPlus, Gauge, RotateCcw, AlertTriangle, ClipboardList } from 'lucide-react';
-import CohortPageHeader from './CohortPageHeader';
+import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, ArrowLeft, UserCog, UserPlus, Gauge, RotateCcw, AlertTriangle, ClipboardList, LayoutGrid } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
@@ -23,7 +22,6 @@ import {
   apiGetProjectsForCohortPage,
   apiGetCohortPendingProposals,
 } from '../../../lib/api';
-import { getCohortLabel } from '../../../lib/cohortLabel';
 import { formatDateDisplay } from '../../../lib/utils';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
@@ -69,7 +67,6 @@ export default function CohortAllocationsPage() {
   const { tracks, options: trackOptions } = useTracks();
   const trackNameBySlug = new Map(tracks.map(t => [t.slug, t.name]));
 
-  const [cohortLabel, setCohortLabel] = useState('');
   const [teams, setTeams] = useState<TeamAllocationDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [tableLoading, setTableLoading] = useState(false);
@@ -162,7 +159,6 @@ export default function CohortAllocationsPage() {
         apiGetCohortPendingProposals(cohortId),
       ]);
       setPendingProposals(proposals);
-      setCohortLabel(getCohortLabel(cohort));
       setCohortBatches(cohort.allowedBatches ?? []);
       // Falls back to 'pending' if talking to a backend deployment that
       // doesn't have the publish-gate feature yet (allocationRunStatus
@@ -496,7 +492,6 @@ export default function CohortAllocationsPage() {
     <PageLayout className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="space-y-1.5">
-          <CohortPageHeader title="Project Allocations" subtitle={cohortLabel} icon={Shuffle} />
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${(RUN_STATUS_DOT[runStatus] ?? RUN_STATUS_DOT.pending).text}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${(RUN_STATUS_DOT[runStatus] ?? RUN_STATUS_DOT.pending).dot}`} />
@@ -518,6 +513,20 @@ export default function CohortAllocationsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* Breakdown answers "where did allocation land"; this answers "who
+              hasn't got there yet" — the per-student lifecycle, which is the
+              view an admin needs precisely when the table below is still
+              half-empty. It used to hang off the old global Allocations page,
+              which was removed as a duplicate of this very tab; the page and
+              its API survived that, only the way in did. Rebuilt here because
+              this is the tab that owns the rest of the allocation drill-downs. */}
+          <button
+            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/blueprint`)}
+            title="Allocation blueprint — every student's stage, from no team to published"
+            className="flex items-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+          >
+            <LayoutGrid size={14} />
+          </button>
           {/* Its own page rather than another modal: this is the one view that
               is read across every track at once, and a modal cannot be sized,
               searched or exported the way that needs. */}

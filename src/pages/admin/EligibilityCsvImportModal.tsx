@@ -2,8 +2,8 @@ import { useRef, useState, useMemo } from 'react';
 import { FileText, AlertTriangle, CheckCircle2, Upload, FileSpreadsheet, Trash2, ArrowRight, RefreshCw, Loader2 } from 'lucide-react';
 import Modal from '../../components/Modal';
 import { parseCSV, isExcelBinaryFile, EXCEL_FILE_WARNING } from '../../lib/csv';
-import { apiBulkMarkFeePending } from '../../lib/api';
-import type { EligibilityBulkFeePendingResult, EligibilityBulkFeePendingRow } from '../../lib/api';
+import { apiBulkMarkEligibility } from '../../lib/api';
+import type { EligibilityBulkFlag, EligibilityBulkMarkResult, EligibilityBulkMarkRow } from '../../lib/api';
 import { useToast } from '../../toast';
 
 // Header patterns matched loosely (substring, case-insensitive) — the sheet
@@ -13,11 +13,29 @@ const COLUMN_PATTERNS = {
   registrationNumber: ['registration', 'reg no', 'reg_no', 'regno'],
 } as const;
 
+// The two uploads differ only in wording — same file format, same matching,
+// same partial-success reporting. Keeping the copy in one table means the flow
+// below never branches on which flag it is running.
+const FLAG_COPY: Record<EligibilityBulkFlag, { title: string; effect: string; action: string; marked: string }> = {
+  feePending: {
+    title: 'Bulk Update Fee Pending via CSV',
+    effect: "a match sets that student's Fee Status to Pending",
+    action: 'Mark Fee Pending',
+    marked: 'marked fee pending',
+  },
+  isIntern: {
+    title: 'Bulk Mark Interns via CSV',
+    effect: 'a match marks that student as an intern',
+    action: 'Mark as Intern',
+    marked: 'marked as intern',
+  },
+};
+
 function findColumn(headers: string[], patterns: readonly string[]): number {
   return headers.findIndex(h => patterns.some(p => h.includes(p)));
 }
 
-function parseRows(parsed: string[][]): { rowNumber: number; row: EligibilityBulkFeePendingRow }[] {
+function parseRows(parsed: string[][]): { rowNumber: number; row: EligibilityBulkMarkRow }[] {
   const headers = parsed[0].map(h => h.toLowerCase().trim());
   const emailIdx = findColumn(headers, COLUMN_PATTERNS.email);
   const regIdx = findColumn(headers, COLUMN_PATTERNS.registrationNumber);
@@ -40,17 +58,20 @@ function parseRows(parsed: string[][]): { rowNumber: number; row: EligibilityBul
 
 interface EligibilityCsvImportModalProps {
   open: boolean;
+  /** Which flag this upload sets. Both refuse the student at sign-in, with different messages. */
+  flag: EligibilityBulkFlag;
   onClose: () => void;
   onImportSuccess: () => void;
 }
 
-export default function EligibilityCsvImportModal({ open, onClose, onImportSuccess }: EligibilityCsvImportModalProps) {
+export default function EligibilityCsvImportModal({ open, flag, onClose, onImportSuccess }: EligibilityCsvImportModalProps) {
+  const copy = FLAG_COPY[flag];
   const [csvText, setCsvText] = useState('');
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [selectedFileSize, setSelectedFileSize] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<EligibilityBulkFeePendingResult | null>(null);
+  const [result, setResult] = useState<EligibilityBulkMarkResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { showSuccess, showError } = useToast();
@@ -131,11 +152,11 @@ export default function EligibilityCsvImportModal({ open, onClose, onImportSucce
     setErrorMessage(null);
 
     try {
-      const importResult = await apiBulkMarkFeePending(rows);
+      const importResult = await apiBulkMarkEligibility(flag, rows);
       setResult(importResult);
       if (importResult.matched > 0) {
         showSuccess(
-          `${importResult.matched} student(s) marked fee pending (${importResult.created} new, ${importResult.updated} updated).`
+          `${importResult.matched} student(s) ${copy.marked} (${importResult.created} new, ${importResult.updated} updated).`
         );
         onImportSuccess();
       }
@@ -147,15 +168,15 @@ export default function EligibilityCsvImportModal({ open, onClose, onImportSucce
   };
 
   return (
-    <Modal open={open} onClose={handleClose} title="Bulk Update Fee Pending via CSV">
+    <Modal open={open} onClose={handleClose} title={copy.title}>
       <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
         <div className="text-sm text-gold bg-gold/10 border border-gold/25 rounded-xl p-3 flex items-start gap-2.5 shadow-sm">
           <span className="w-2 h-2 rounded-full bg-gold shrink-0 mt-1.5" />
           <p>
             Upload a CSV with an <span className="font-semibold text-white">Email</span> and/or{' '}
             <span className="font-semibold text-white">Registration Number</span> column. Every row is matched
-            against the student roster — a match sets that student&apos;s Fee Status to Pending, which blocks
-            their sign-in immediately. Rows that match nobody are reported, never created as a new row.
+            against the student roster — {copy.effect}, which blocks their sign-in immediately. Rows that match
+            nobody are reported, never created as a new row.
           </p>
         </div>
 
@@ -381,7 +402,7 @@ export default function EligibilityCsvImportModal({ open, onClose, onImportSucce
               ) : (
                 <>
                   <FileText size={18} />
-                  <span>Mark Fee Pending</span>
+                  <span>{copy.action}</span>
                   <ArrowRight size={16} />
                 </>
               )}

@@ -18,6 +18,10 @@ import {
   X,
   Pin,
   PinOff,
+  CalendarClock,
+  Wallet,
+  Inbox,
+  Clock,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
 
@@ -37,15 +41,18 @@ const DASHBOARD_ID = 'dashboard';
 
 const adminTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'students', label: 'Students', icon: Users },
-  { id: 'mentors', label: 'Mentors', icon: Users },
+  { id: 'students', label: 'Student Directory', icon: Users },
+  { id: 'mentors', label: 'Mentor Directory', icon: Users },
   { id: 'ojts', label: 'OJT Setup', icon: Briefcase },
-  { id: 'allocations', label: 'Allocations', icon: Award },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
   { id: 'credits', label: 'Cloud Credits', icon: Cloud },
-  { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
-  { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
+  // Cross-cohort admin queues — deliberately not nested under OJT Setup like
+  // Sessions/Attendance were, since "all cohorts" is a real, load-bearing
+  // view for both (a company-wide pending queue), not a state that should be
+  // forced to always carry one cohort.
+  { id: 'session-requests', label: 'Session Requests', icon: Inbox },
+  { id: 'payouts', label: 'Payouts', icon: Wallet },
   { id: 'eligibility', label: 'Eligibility Status', icon: ShieldCheck },
 ];
 
@@ -56,7 +63,11 @@ const mentorTabs = [
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
   { id: 'credits', label: 'Credit Requests', icon: Cloud },
+  { id: 'sessions', label: 'Sessions', icon: CalendarClock },
+  { id: 'session-requests', label: 'Session Requests', icon: Inbox },
+  { id: 'availability', label: 'My Availability', icon: Clock },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
+  { id: 'payouts', label: 'Payouts', icon: Wallet },
   { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
 ];
 
@@ -66,6 +77,7 @@ const studentTabs = [
   { id: 'tasks', label: 'My Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'My Submissions', icon: Upload },
   { id: 'credits', label: 'Cloud Credits', icon: CreditCard },
+  { id: 'sessions', label: 'Sessions', icon: CalendarClock },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
 ];
 

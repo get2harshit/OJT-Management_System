@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Edit2, UserCheck, UserX } from 'lucide-react';
+import { Edit2, UserCheck, UserX, History, LogIn, LogOut, ArrowLeftRight, Briefcase } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import SpinnerSquare from '../../components/SpinnerSquare';
@@ -7,7 +7,14 @@ import Select from '../../components/Select';
 import Modal from '../../components/Modal';
 import ActionsMenu from '../../components/ActionsMenu';
 import type { ApiStudent } from '../../lib/types';
-import { apiListStudentsPage, apiListStudentBatches, apiUpdateStudentBatch, apiSetIndividualOverride } from '../../lib/api';
+import {
+  apiListStudentsPage,
+  apiListStudentBatches,
+  apiUpdateStudentBatch,
+  apiSetIndividualOverride,
+  apiGetStudentActivityHistory,
+  type StudentActivityEvent,
+} from '../../lib/api';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 
@@ -32,6 +39,9 @@ export default function AdminStudents() {
   const [editingStudent, setEditingStudent] = useState<ApiStudent | null>(null);
   const [batchInput, setBatchInput] = useState('');
   const [saving, setSaving] = useState(false);
+  const [historyStudent, setHistoryStudent] = useState<ApiStudent | null>(null);
+  const [historyEvents, setHistoryEvents] = useState<StudentActivityEvent[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const fetchStudents = useCallback(async () => {
     try {
@@ -132,6 +142,62 @@ export default function AdminStudents() {
     }
   };
 
+  const openHistory = async (student: ApiStudent) => {
+    setHistoryStudent(student);
+    setHistoryLoading(true);
+    try {
+      const events = await apiGetStudentActivityHistory(student.id);
+      setHistoryEvents(events);
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to load history');
+      setHistoryEvents([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const closeHistory = () => {
+    setHistoryStudent(null);
+    setHistoryEvents([]);
+  };
+
+  const formatEventDate = (iso: string) =>
+    new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  const describeEvent = (event: StudentActivityEvent) => {
+    const team = event.teamName || 'an unnamed team';
+    switch (event.type) {
+      case 'team_joined':
+        return { icon: LogIn, iconClass: 'text-green-400', text: `Joined ${team}` };
+      case 'team_left':
+        return { icon: LogOut, iconClass: 'text-red-400', text: `Left ${team}` };
+      case 'mentor_changed':
+        return {
+          icon: ArrowLeftRight,
+          iconClass: 'text-gold',
+          text: `Mentor changed on ${team}: ${event.fromMentorName ?? 'unassigned'} → ${event.toMentorName ?? 'unassigned'}`,
+        };
+      case 'project_changed': {
+        // The first allocation reads as "Project allocated", not as a change
+        // from "unallocated" — nothing was taken away, and phrasing it as a
+        // change would make every student's history open with a non-event.
+        const from = event.fromProjectTitle;
+        const to = event.toProjectTitle;
+        if (!from && to) {
+          return { icon: Briefcase, iconClass: 'text-sky-400', text: `Project allocated on ${team}: ${to}` };
+        }
+        if (from && !to) {
+          return { icon: Briefcase, iconClass: 'text-red-400', text: `Project removed from ${team} (was ${from})` };
+        }
+        return {
+          icon: Briefcase,
+          iconClass: 'text-sky-400',
+          text: `Project changed on ${team}: ${from ?? 'none'} → ${to ?? 'none'}`,
+        };
+      }
+    }
+  };
+
   const data = students.map(s => ({
     id: s.id,
     roll_number: s.rollNumber ?? '-',
@@ -209,6 +275,7 @@ export default function AdminStudents() {
                     icon: isAllowedIndividual ? UserX : UserCheck,
                     onClick: () => handleToggleIndividualOverride(student),
                   },
+                  { label: 'History', icon: History, onClick: () => openHistory(student) },
                 ]}
               />
             );
@@ -238,6 +305,40 @@ export default function AdminStudents() {
           >
             {saving ? 'Saving...' : 'Save Batch'}
           </button>
+        </div>
+      </Modal>
+
+      <Modal open={!!historyStudent} onClose={closeHistory} title="Activity History" size="lg">
+        <div className="space-y-4">
+          <p className="text-gray-400 text-sm">
+            Team and mentor changes for{' '}
+            <span className="text-white font-semibold">{historyStudent?.fullName || historyStudent?.email}</span>
+          </p>
+          {historyLoading ? (
+            <div className="min-h-[20vh] flex items-center justify-center">
+              <SpinnerSquare size={32} />
+            </div>
+          ) : historyEvents.length === 0 ? (
+            <p className="text-gray-500 text-sm text-center py-6">No activity recorded yet.</p>
+          ) : (
+            <ul className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+              {historyEvents.map((event, i) => {
+                const { icon: Icon, iconClass, text } = describeEvent(event);
+                return (
+                  <li key={i} className="flex items-start gap-3 pb-3 border-b border-zinc-800 last:border-0">
+                    <Icon size={16} className={`mt-0.5 shrink-0 ${iconClass}`} />
+                    <div className="min-w-0">
+                      <p className="text-sm text-white">{text}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {formatEventDate(event.at)}
+                        {event.reason ? ` — ${event.reason}` : ''}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       </Modal>
     </PageLayout>

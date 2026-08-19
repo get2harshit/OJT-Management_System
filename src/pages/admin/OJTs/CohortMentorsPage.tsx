@@ -1,14 +1,12 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Users, Save, Check, AlertTriangle } from 'lucide-react';
-import CohortPageHeader from './CohortPageHeader';
+import { Save, Check, AlertTriangle, ChevronRight } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import type { ApiMentor } from '../../../lib/types';
 import { apiListMentorsPage, apiListMentorIds, apiGetCohort, apiAddMentorsToCohort } from '../../../lib/api';
-import { getCohortLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import { usePageRefresh } from '../../../context/RefreshContext';
 
@@ -42,7 +40,6 @@ export default function CohortMentorsPage() {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
 
-  const [cohortLabel, setCohortLabel] = useState('');
   const [rows, setRows] = useState<MentorRow[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
 
@@ -66,7 +63,6 @@ export default function CohortMentorsPage() {
     if (!cohortId) return;
     try {
       const details = await apiGetCohort(cohortId, true);
-      setCohortLabel(getCohortLabel(details));
       setAlreadyMapped(new Set(details.mentors.map((m) => m.id)));
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load this OJT');
@@ -81,6 +77,10 @@ export default function CohortMentorsPage() {
         page,
         limit,
         search: search || undefined,
+        // Counts teams for this OJT without scoping the list to it — the roster
+        // shown here has to include mentors not on the OJT yet, because adding
+        // them is what this screen does.
+        teamCountsCohortId: cohortId,
         type: typeFilter === 'internal' || typeFilter === 'external' ? typeFilter : undefined,
       });
       setRows(res.data as MentorRow[]);
@@ -90,7 +90,7 @@ export default function CohortMentorsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, search, typeFilter, showError]);
+  }, [cohortId, page, limit, search, typeFilter, showError]);
 
   // Runs once — the mapped set is the save's baseline, so re-reading it on
   // every filter change would discard ticks made in the meantime.
@@ -122,6 +122,17 @@ export default function CohortMentorsPage() {
       else next.add(row.id);
       return next;
     });
+  };
+
+  // A mentor already on this OJT has nothing left for this screen to do to
+  // them — their row becomes a door into their Workspace for this cohort
+  // instead of a dead click. A mentor not yet on the OJT still just toggles.
+  const handleRowClick = (row: MentorRow) => {
+    if (alreadyMapped.has(row.id)) {
+      if (cohortId) navigate(`/admin/dashboard/ojts/${cohortId}/mentors/${row.id}`);
+      return;
+    }
+    toggleOne(row);
   };
 
   // The header checkbox acts on the current page, which is what a checkbox in a
@@ -186,12 +197,6 @@ export default function CohortMentorsPage() {
 
   return (
     <PageLayout className="space-y-4">
-      <CohortPageHeader
-        title="Add Mentors"
-        subtitle={cohortLabel ? `${cohortLabel} · who can be staffed on this OJT's tracks` : undefined}
-        icon={Users}
-      />
-
       {/* Status, warning and actions on one row, so the table gets the height. */}
       <div className="flex items-center justify-between gap-x-4 gap-y-2 flex-wrap">
         <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">
@@ -271,8 +276,8 @@ export default function CohortMentorsPage() {
               alreadyMapped.has(row.id) ? (
                 // Locked rather than pre-ticked: there is no unmap endpoint, so
                 // an editable checkbox here would offer a removal that silently
-                // never happens.
-                <span title="Already on this OJT" className="text-emerald-400 flex">
+                // never happens. Click the row itself to open their Workspace.
+                <span title="Already on this OJT — click row to open their Workspace" className="text-emerald-400 flex">
                   <Check size={15} />
                 </span>
               ) : (
@@ -314,6 +319,34 @@ export default function CohortMentorsPage() {
               </span>
             ),
           },
+          {
+            // How loaded this mentor already is on this OJT — the number that
+            // decides whether adding them is useful, shown where the decision
+            // is made instead of on the Allocations screen it used to live on.
+            //
+            // A mentor with none reads as a dash rather than 0: on this page
+            // most rows are people not on the OJT at all, and a column of
+            // zeroes would say "nobody mentors anything here" when it means
+            // "nothing has been allocated to them yet".
+            key: 'teamsReporting',
+            header: 'Teams',
+            render: (row) =>
+              row.teamsReporting ? (
+                <span className="text-gray-200 tabular-nums" title={`${row.teamsReporting} team${row.teamsReporting === 1 ? '' : 's'} report to this mentor in this OJT`}>
+                  {row.teamsReporting}
+                </span>
+              ) : (
+                <span className="text-gray-600">—</span>
+              ),
+          },
+          {
+            key: 'workspaceLink',
+            header: '',
+            render: (row) =>
+              alreadyMapped.has(row.id) ? (
+                <ChevronRight size={14} className="text-gray-600" />
+              ) : null,
+          },
         ]}
         data={rows}
         loading={loading}
@@ -329,7 +362,7 @@ export default function CohortMentorsPage() {
           },
         }}
         onSearchChange={handleSearch}
-        onRowClick={toggleOne}
+        onRowClick={handleRowClick}
         searchPlaceholder="Search name, email or organization..."
         hideExport
         leftHeaderContent={

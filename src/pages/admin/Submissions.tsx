@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ArrowLeft, Eye, Loader2, Users } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Eye, Loader2, Users, X } from 'lucide-react';
 import SplitPane from '../../components/SplitPane';
 import RosterList from '../../components/RosterList';
 import SubmissionDetail from '../../components/SubmissionDetail';
@@ -65,9 +66,13 @@ export default function AdminSubmissions({
 }: Props = {}) {
   const { showSuccess, showError } = useToast();
   const { options: trackOptions } = useTracks();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [cohortFilter, setCohortFilter] = useState('');
+  // Seeded from a ?cohortId=&mentorId= link (e.g. the Mentor Workspace's
+  // "this mentor's submissions" link) — mentorFilter below already drives
+  // the exact same roster query, this just lets a deep link pre-set it.
+  const [cohortFilter, setCohortFilter] = useState(searchParams.get('cohortId') || '');
   const [cohortsLoaded, setCohortsLoaded] = useState(false);
   const [globalMentors, setGlobalMentors] = useState<ApiMentor[]>([]);
 
@@ -84,7 +89,7 @@ export default function AdminSubmissions({
 
   const [batchFilter, setBatchFilter] = useState('ALL');
   const [trackFilter, setTrackFilter] = useState('ALL');
-  const [mentorFilter, setMentorFilter] = useState('ALL');
+  const [mentorFilter, setMentorFilter] = useState(searchParams.get('mentorId') || 'ALL');
   // Keyed by taskId when a submission is linked to one, else a synthetic
   // `type:<documentType>` key for older/unlinked submissions — a task's
   // title is what identifies a submission now, not a fixed document-type
@@ -265,6 +270,13 @@ export default function AdminSubmissions({
     setPage(1);
     setMentorFilter(value);
   };
+  const clearMentorFilter = () => {
+    setPage(1);
+    setMentorFilter('ALL');
+    const next = new URLSearchParams(searchParams);
+    next.delete('mentorId');
+    setSearchParams(next, { replace: true });
+  };
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleRosterSearchChange = (value: string) => {
@@ -354,6 +366,16 @@ export default function AdminSubmissions({
         <div>
           <h1 className="text-2xl font-bold text-white">Submissions</h1>
           <p className="text-gray-400 text-sm mt-1">Review and manage student submissions</p>
+          {mentorFilter !== 'ALL' && (
+            <div className="flex items-center gap-2 text-xs bg-gold/10 border border-gold/20 text-gold rounded-lg px-3 py-2 w-fit mt-2">
+              <span>
+                Showing only {globalMentors.find((m) => m.id === mentorFilter)?.fullName || 'this mentor'}&apos;s students
+              </span>
+              <button onClick={clearMentorFilter} className="hover:text-white transition-colors" aria-label="Clear mentor filter">
+                <X size={13} />
+              </button>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Select

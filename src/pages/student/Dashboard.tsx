@@ -3,21 +3,19 @@ import { CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Clock, Brief
 import StatCard from '../../components/StatCard';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Modal from '../../components/Modal';
-import type { Credit, Attendance, PrdSubmission, PrdStatus, MyTeamStatus } from '../../lib/types';
-import { apiGetMySubmissions, apiGetMyCohort, apiGetMyTeamStatus } from '../../lib/api';
+import type { Credit, PrdSubmission, PrdStatus, MyTeamStatus } from '../../lib/types';
+import { apiGetMySubmissions, apiGetMyCohort, apiGetMyTeamStatus, apiGetMyAttendance } from '../../lib/api';
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask } from '../../lib/api/tasks';
 import { apiGetMyNotifications, apiMarkNotificationRead } from '../../lib/api/notifications';
 import type { AppNotification } from '../../lib/api/notifications';
 import { useAuth } from '../../context/useAuth';
 import { useCredits } from '../../hooks/useCredits';
-import { useAttendance } from '../../hooks/useAttendance';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 interface Props {
   studentId: string;
   credits: Credit[];
-  attendance: Attendance[];
   onNavigateToSection: (tab: string) => void;
 }
 
@@ -43,14 +41,15 @@ const SUBMISSION_STATUS_BUCKETS: { label: string; statuses: PrdStatus[]; barClas
 export default function StudentDashboard({
   studentId,
   credits: propCredits,
-  attendance: propAttendance,
   onNavigateToSection,
 }: Partial<Props> & Pick<Props, 'studentId' | 'onNavigateToSection'>) {
   const { user } = useAuth();
   const { credits: hookCredits } = useCredits();
-  const { attendance: hookAttendance } = useAttendance();
   const credits = propCredits ?? hookCredits ?? [];
-  const attendance = propAttendance ?? hookAttendance ?? [];
+
+  // Sessions this student was marked present at — the real count, replacing a
+  // filter over localStorage mock rows.
+  const [presentCount, setPresentCount] = useState(0);
 
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [submissions, setSubmissions] = useState<PrdSubmission[]>([]);
@@ -94,6 +93,11 @@ export default function StudentDashboard({
   useEffect(() => {
     loadDashboardData();
     loadAnnouncements();
+    // Asks the server for the count rather than pulling every attendance row
+    // down to measure its length — limit 1 is enough, the total is what's read.
+    apiGetMyAttendance({ status: 'present', page: 1, limit: 1 })
+      .then((res) => setPresentCount(res.pagination.total))
+      .catch(() => setPresentCount(0));
   }, [loadDashboardData, loadAnnouncements]);
 
   // The page-wide refresh covers announcements too, so the card's own button
@@ -119,7 +123,6 @@ export default function StudentDashboard({
   }, []);
 
   const myCredits = useMemo(() => credits.filter((c) => c.student_id === studentId), [credits, studentId]);
-  const myAttendance = useMemo(() => attendance.filter((a) => a.student_id === studentId), [attendance, studentId]);
 
   const pendingTasks = tasks.filter((t) => {
     const status = t.myAssignment?.status;
@@ -129,7 +132,11 @@ export default function StudentDashboard({
   const approvedTaskCount = tasks.filter((t) => t.myAssignment?.status === 'approved').length;
   const pendingReviewCount = submissions.filter((s) => s.status === 'submitted' || s.status === 'under_review').length;
   const totalCredits = myCredits.reduce((sum, c) => sum + Number(c.amount), 0);
-  const attendanceDays = myAttendance.length;
+  // Sessions this student was actually marked present at, from the real
+  // attendance endpoint. It used to count rows of localStorage mock data
+  // filtered by student_id, which meant the number was the same invented one
+  // for everybody and had nothing to do with any session they attended.
+  const attendanceDays = presentCount;
 
   const progressPct = tasks.length > 0 ? Math.round((approvedTaskCount / tasks.length) * 100) : 0;
 

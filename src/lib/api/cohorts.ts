@@ -26,6 +26,24 @@ export async function apiGetCohort(id: string, includeRoster: boolean = false): 
   return cachedFetch(`cohorts:get:${id}:${includeRoster}`, COHORTS_TTL, () => apiFetch<CohortDetails>(url));
 }
 
+export interface ApiCohortTabCounts {
+  students: number;
+  mentors: number;
+  tracks: number;
+  projects: number;
+  teams: number;
+  allocations: number;
+  sessions: number;
+  sessionRequests: number;
+  payouts: number;
+  evaluationConfigs: number;
+}
+
+/** Plain per-section counts for the OJT Setup tab badges — no rows, just numbers. */
+export async function apiGetCohortTabCounts(id: string): Promise<ApiCohortTabCounts> {
+  return apiFetch<ApiCohortTabCounts>(`/api/v1/cohorts/${id}/tab-counts`);
+}
+
 export async function apiCreateCohort(body: CreateCohortBody): Promise<Cohort> {
   const cohort = await apiFetch<Cohort>('/api/v1/cohorts', {
     method: 'POST',

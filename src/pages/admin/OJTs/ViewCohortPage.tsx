@@ -2,7 +2,6 @@ import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, Megaphone, X, type LucideIcon } from 'lucide-react';
-import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import DataTable from '../../../components/DataTable';
@@ -10,9 +9,10 @@ import type { CohortDetails, Project, ApiStudent, ApiMentor, TeamAllocationDetai
 import { apiGetCohort, apiGetProjectsForCohortPage, apiListStudentsPage, apiListMentorsPage, apiGetStudent, apiGetMentorById, apiGetProject } from '../../../lib/api';
 import { apiGetTeamsForCohortDetailed } from '../../../lib/api/allocations';
 import { getDurationString, formatDateDisplay } from '../../../lib/utils';
-import { getCohortLabel, getSemesterSessionLabel } from '../../../lib/cohortLabel';
+import { getSemesterSessionLabel } from '../../../lib/cohortLabel';
 import { useToast } from '../../../toast';
 import { apiCreateAnnouncement } from '../../../lib/api/notifications';
+import PastAnnouncements from '../../../components/PastAnnouncements';
 import { usePageRefresh } from '../../../context/RefreshContext';
 import { useTracks } from '../../../hooks/useTracks';
 
@@ -547,6 +547,9 @@ export default function ViewCohortPage() {
 
   // Announcement modal state
   const [showAnnModal, setShowAnnModal] = useState(false);
+  // Bumped after a publish so the list below reloads — the announcement that
+  // was just sent should be the first thing visible after the modal closes.
+  const [annRefreshKey, setAnnRefreshKey] = useState(0);
   const [annTitle, setAnnTitle] = useState('');
   const [annContent, setAnnContent] = useState('');
   const [annTargetBatch, setAnnTargetBatch] = useState('All Batches');
@@ -745,11 +748,8 @@ export default function ViewCohortPage() {
 
   if (loading || !cohort) {
     return (
-      <div className="space-y-6">
-        <CohortPageHeader title="View OJT Cohort" />
-        <div className="min-h-[50vh] flex items-center justify-center">
-          <SpinnerSquare size={48} />
-        </div>
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <SpinnerSquare size={48} />
       </div>
     );
   }
@@ -801,8 +801,6 @@ export default function ViewCohortPage() {
 
   return (
     <PageLayout className="space-y-6">
-      <CohortPageHeader title={getCohortLabel(cohort)} subtitle="OJT cohort details" />
-
       {/* Filter Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
@@ -1052,6 +1050,15 @@ export default function ViewCohortPage() {
         </div>
       )}
 
+      {/* On the same screen as the button that publishes them: what has already
+          been said is the context for writing the next one, and being able to
+          correct or withdraw an announcement is no use if you cannot find it. */}
+      {cohortId && (
+        <div className="border-t border-zinc-800 pt-5">
+          <PastAnnouncements cohortId={cohortId} refreshKey={annRefreshKey} />
+        </div>
+      )}
+
       {/* Announcement creation modal */}
       {showAnnModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
@@ -1163,6 +1170,7 @@ export default function ViewCohortPage() {
                     setAnnTargetTrack('');
                     setAnnPriority('normal');
                     setShowAnnModal(false);
+                    setAnnRefreshKey((k) => k + 1);
                     showSuccess(
                       recipientCount > 0
                         ? `Announcement published to ${recipientCount} student${recipientCount !== 1 ? 's' : ''}.`

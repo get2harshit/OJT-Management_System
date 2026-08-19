@@ -8,6 +8,7 @@ import Tasks from './Tasks';
 import Submissions from './Submissions';
 import Credits from './Credits';
 import Attendance from './Attendance';
+import Sessions from './Sessions';
 import { useAuth } from '../../context/useAuth';
 import { useNotificationNavigate } from '../../context/NotificationNavigateContext';
 
@@ -60,6 +61,9 @@ function StudentPanelContent({ studentId, onLogout }: { studentId: string; onLog
       case 'allocation':
         goToSection('projects');
         break;
+      case 'session':
+        goToSection('sessions');
+        break;
       default:
         // team_invite / announcement have no dedicated section of their own —
         // the notification itself (Accept/Reject for an invite) is the
@@ -89,7 +93,8 @@ function StudentPanelContent({ studentId, onLogout }: { studentId: string; onLog
           }
         />
         <Route path="credits" element={<Credits studentId={studentId} />} />
-        <Route path="attendance" element={<Attendance studentId={studentId} />} />
+        <Route path="sessions" element={<Sessions />} />
+        <Route path="attendance" element={<Attendance />} />
         {/* An unknown section is a bad link, not a blank screen — send it to
             the panel's own front page rather than rendering nothing. */}
         <Route path="*" element={<Navigate to={BASE_PATH} replace />} />

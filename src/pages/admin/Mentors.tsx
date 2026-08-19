@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import type { ApiMentor } from '../../lib/types';
 import { getTrackColor, MENTOR_TYPE_DOT_COLORS } from '../../lib/constants';
-import { apiListMentorsPage } from '../../lib/api';
+import { apiListMentorsPage, apiListCohorts, apiGetTeamCountsForMentors } from '../../lib/api';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useTracks } from '../../hooks/useTracks';
 
@@ -16,6 +17,7 @@ const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
 export default function AdminMentors() {
+  const navigate = useNavigate();
   const { tracks } = useTracks();
   const trackNameBySlug = new Map(tracks.map(t => [t.slug, t.name]));
   const [mentors, setMentors] = useState<MentorRow[]>([]);
@@ -25,6 +27,16 @@ export default function AdminMentors() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+  // Team counts are scoped to the active cohort — "how busy is this mentor
+  // right now", not a lifetime total across every OJT they've ever staffed.
+  const [activeCohortId, setActiveCohortId] = useState('');
+  const [teamCounts, setTeamCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    apiListCohorts()
+      .then((cohorts) => setActiveCohortId((cohorts.find(c => c.isActive) || cohorts[0])?.id ?? ''))
+      .catch(() => setActiveCohortId(''));
+  }, []);
 
   const fetchMentors = useCallback(async () => {
     try {
@@ -46,6 +58,15 @@ export default function AdminMentors() {
       setLoading(false);
     });
   }, [fetchMentors]);
+
+  // Counts follow whichever mentors are on the current page — a bulk call
+  // per page, never one per mentor.
+  useEffect(() => {
+    if (!activeCohortId || mentors.length === 0) return;
+    apiGetTeamCountsForMentors(activeCohortId, mentors.map(m => m.id))
+      .then((counts) => setTeamCounts((prev) => ({ ...prev, ...counts })))
+      .catch(() => {});
+  }, [activeCohortId, mentors]);
 
   usePageRefresh(fetchMentors);
 
@@ -69,6 +90,7 @@ export default function AdminMentors() {
     email: m.email || '—',
     type: m.isExternal ? 'External' : 'Internal',
     assignedTracks: m.assignedTracks,
+    teamCount: teamCounts[m.id],
     _raw: m,
   }));
 
@@ -78,7 +100,8 @@ export default function AdminMentors() {
         <h1 className="text-2xl font-bold text-white">Mentors</h1>
         <p className="text-sm text-gray-400">
           Expertise is what a mentor can teach in general. To put a mentor on an OJT&apos;s track — which is
-          what decides who teams can pick — use that OJT&apos;s Track Config.
+          what decides who teams can pick — use that OJT&apos;s Track Config. Click a mentor to open their
+          workspace — the teams reporting to them, meeting cadence, rate, and schedule for a chosen OJT.
         </p>
       </div>
 
@@ -106,6 +129,17 @@ export default function AdminMentors() {
               },
             },
             {
+              // Scoped to the active OJT — "how busy is this mentor right
+              // now", not a lifetime total across every OJT they've staffed.
+              key: 'teamCount',
+              header: 'Teams',
+              render: (row) => (
+                <span className="text-sm text-gray-300 tabular-nums">
+                  {row.teamCount === undefined ? '—' : row.teamCount}
+                </span>
+              ),
+            },
+            {
               // What this mentor can teach in general, identical across every
               // OJT — not who is staffing a given OJT's track. That is set per
               // OJT in Track Config, and it is the only thing that decides
@@ -131,6 +165,7 @@ export default function AdminMentors() {
             },
           ]}
           data={tableData}
+          onRowClick={(row) => navigate(`/admin/dashboard/mentors/${row.id}`)}
           searchPlaceholder="Search mentors..."
           onSearchChange={handleSearchChange}
           serverPagination={{

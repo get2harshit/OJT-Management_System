@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Calendar, RefreshCw, Edit2, Users, Users2, Download, Settings2 } from 'lucide-react';
+import { Plus, Trash2, Calendar, RefreshCw, Edit2, Download } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
 import ActionsMenu from '../../../components/ActionsMenu';
@@ -236,12 +236,14 @@ export default function CohortsPanel() {
           searchPlaceholder="Search cohorts..."
           onRowClick={(row) => navigate(`/admin/dashboard/ojts/${row.id}/view`)}
           actions={(row) => (
+            // Track Configuration / Select Student / Manage Teams used to
+            // live here too, but they're all one click away the moment the
+            // row itself is clicked — the tab bar inside CohortDetailLayout
+            // covers them, so keeping them here was a second, inconsistent
+            // way to reach the same three destinations.
             <ActionsMenu
               items={[
                 { label: 'Edit OJT', icon: Edit2, onClick: () => handleEditCohort(row.id) },
-                { label: 'Track Configuration', icon: Settings2, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/track-config`) },
-                { label: 'Select Student', icon: Users, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/students`) },
-                { label: 'Manage Teams', icon: Users2, onClick: () => navigate(`/admin/dashboard/ojts/${row.id}/teams`) },
                 { label: 'Download Projects CSV', icon: Download, onClick: () => handleDownloadProjectsCsv(row) },
                 { label: 'Delete OJT', icon: Trash2, onClick: () => handleDeleteCohort(row.id), danger: true },
               ]}

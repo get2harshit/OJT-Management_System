@@ -174,6 +174,12 @@ export interface ApiMentor {
   tracks?: string[];      // backend track enum values, e.g. 'product_development'
   capacity?: number;      // max concurrent students
   currentLoad?: number;   // present only when requested with ?withLoad=true
+  /**
+   * Teams reporting to this mentor in one cohort — present only when the
+   * request named that cohort via teamCountsCohortId. Undefined means the
+   * question wasn't asked, which is not the same as zero.
+   */
+  teamsReporting?: number;
 }
 
 // The active cohort a student belongs to (GET /api/v1/teams/my-cohort).
@@ -271,13 +277,6 @@ export interface PendingReceivedRequest {
   expiresAt: string;
 }
 
-// Admin-only view of a team (GET /api/v1/teams/cohort/:cohortId) — same
-// shape as the student-facing Team, plus fields only the admin panel needs.
-export interface AdminTeam extends Team {
-  createdAt: string;
-  hasSubmittedProjectPreferences: boolean;
-}
-
 // A team's submitted project slots (POST /api/v1/teams/projects/preferences).
 // preference1 is the team's own proposed project, preference2 is a catalog pick.
 // Each preference carries its own mentor pick — the two must be different mentors.
@@ -373,6 +372,12 @@ export interface MentorLoadSummaryRow {
 export interface TeamAllocationDetail {
   teamId: string;
   teamName: string | null;
+  // Whether this is a solo team of one — set once at formation.
+  isIndividual: boolean;
+  // Which of the mentor's own named groups/batches this team is filed
+  // under. Null if ungrouped.
+  groupId: string | null;
+  groupName: string | null;
   track: string;
   members: { studentId: string; fullName: string | null; batch: string | null; email: string | null; rollNumber: string | null; pendingReviewCount?: number }[];
   tier: string;
@@ -383,6 +388,7 @@ export interface TeamAllocationDetail {
   preference1ReviewNote: string | null;
   allocationStatus: TeamAllocationStatus;
   allocatedProjectId: string | null;
+  allocatedProjectTitle: string | null;
   // The team's real mentor for allocatedProjectId — an admin's mentor
   // override wins if set, else whichever preference matches. Null until allocated.
   allocatedMentorId: string | null;

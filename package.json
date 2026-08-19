@@ -8,9 +8,17 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json"
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "audit:reachability": "node scripts/audit-reachability.mjs"
   },
   "dependencies": {
+    "@100mslive/react-sdk": "^0.12.2",
+    "@fullcalendar/core": "^6.1.21",
+    "@fullcalendar/daygrid": "^6.1.21",
+    "@fullcalendar/interaction": "^6.1.21",
+    "@fullcalendar/list": "^6.1.21",
+    "@fullcalendar/react": "^6.1.21",
+    "@fullcalendar/timegrid": "^6.1.21",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-day-picker": "^10.0.1",

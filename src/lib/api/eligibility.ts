@@ -40,24 +40,31 @@ export async function apiDeleteEligibilityStatus(id: string): Promise<void> {
 // ojt_students by email (falling back to registration number). A row with
 // neither field, or one that matches no student, comes back in `unmatched`
 // rather than being silently dropped or turned into a phantom row.
-export interface EligibilityBulkFeePendingRow {
+export interface EligibilityBulkMarkRow {
   msuEmail?: string;
   msuRegistrationNumber?: string;
 }
 
-export interface EligibilityBulkFeePendingResult {
+/** Which flag an upload sets. Both refuse the student at sign-in, with different messages. */
+export type EligibilityBulkFlag = 'feePending' | 'isIntern';
+
+export interface EligibilityBulkMarkResult {
   matched: number;
   created: number;
   updated: number;
   unmatched: Array<{ identifier: string; reason: string }>;
 }
 
-export async function apiBulkMarkFeePending(
-  rows: EligibilityBulkFeePendingRow[]
-): Promise<EligibilityBulkFeePendingResult> {
-  const { data } = await apiFetch<{ data: EligibilityBulkFeePendingResult }>('/api/v1/eligibility/bulk-fee-pending', {
+// Only ever sets the flag to true. Clearing one is a per-student correction on
+// the row itself — a file of names should not silently un-flag everyone it
+// happens not to mention.
+export async function apiBulkMarkEligibility(
+  flag: EligibilityBulkFlag,
+  rows: EligibilityBulkMarkRow[]
+): Promise<EligibilityBulkMarkResult> {
+  const { data } = await apiFetch<{ data: EligibilityBulkMarkResult }>('/api/v1/eligibility/bulk-mark', {
     method: 'POST',
-    body: JSON.stringify({ rows }),
+    body: JSON.stringify({ flag, rows }),
   });
   return data;
 }
