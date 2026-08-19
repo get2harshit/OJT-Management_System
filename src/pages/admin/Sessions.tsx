@@ -663,7 +663,7 @@ export default function AdminSessions() {
                 <span className="text-xs text-gray-500">· {selected.kind_label}</span>
               </p>
               <p><span className="text-gray-500">When:</span> {new Date(selected.start_time).toLocaleString()} — {new Date(selected.end_time).toLocaleTimeString()}</p>
-              {selected.location_or_link && (
+              {(selected.location_or_link || selected.live_session_id) && (
                 <div className="flex items-center gap-1.5">
                   <SessionJoinLink session={selected} isHost userName={selected.mentor.full_name} />
                 </div>

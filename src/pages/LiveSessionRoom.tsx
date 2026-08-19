@@ -107,6 +107,7 @@ export default function LiveSessionRoom() {
   // a second join on the same token puts the room into a state it never
   // recovers from.
   const joinAttempted = useRef(false);
+  const leaveTimeoutRef = useRef<number | null>(null);
   const connectedRef = useRef(false);
   const leavingSelf = useRef(false);
   const [ended, setEnded] = useState(false);
@@ -135,11 +136,28 @@ export default function LiveSessionRoom() {
   }, [notification]);
 
   useEffect(() => {
-    if (!state?.authToken || joinAttempted.current) return;
-    joinAttempted.current = true;
-    hmsActions.join({ authToken: state.authToken, userName: state.userName || 'Guest' }).catch(() => setEnded(true));
+    if (!state?.authToken) return;
+    // StrictMode's synthetic mount→cleanup→mount runs synchronously in one
+    // tick. A real leave from the first cleanup would race the still-running
+    // join and corrupt the SDK's local-peer state before it ever attaches a
+    // track (the room opened with mic/camera granted but nothing rendered).
+    // Deferring the leave and cancelling it if a remount follows immediately
+    // tells the two apart; only a genuine unmount leaves nothing to cancel.
+    if (leaveTimeoutRef.current !== null) {
+      window.clearTimeout(leaveTimeoutRef.current);
+      leaveTimeoutRef.current = null;
+    }
+    if (!joinAttempted.current) {
+      joinAttempted.current = true;
+      hmsActions.join({ authToken: state.authToken, userName: state.userName || 'Guest' }).catch(() => setEnded(true));
+    }
     return () => {
-      if (connectedRef.current) hmsActions.leave().catch(() => {});
+      if (connectedRef.current) {
+        leaveTimeoutRef.current = window.setTimeout(() => {
+          leaveTimeoutRef.current = null;
+          hmsActions.leave().catch(() => {});
+        }, 0);
+      }
     };
   }, [state?.authToken, state?.userName, hmsActions]);
 

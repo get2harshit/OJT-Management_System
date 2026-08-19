@@ -19,10 +19,9 @@ import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
 import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
-import type { Cohort, TeamWithProject } from '../../lib/types';
+import type { Cohort } from '../../lib/types';
 import {
   apiListMyCohorts,
-  apiListMyTeamsDetailed,
   apiGetMySessions,
   apiCreateSession,
   apiRescheduleSession,
@@ -31,8 +30,10 @@ import {
   apiStartLiveSession,
   apiEndLiveSession,
   apiGetSelfSchedulePermission,
+  apiGetMentorWorkspace,
   type ApiSession,
   type ApiSessionStatus,
+  type ApiMentorWorkspaceTeam,
 } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
@@ -69,7 +70,6 @@ export default function MentorSessions() {
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [selectedCohortId, setSelectedCohortId] = useState('');
-  const [teams, setTeams] = useState<TeamWithProject[]>([]);
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [canSelfSchedule, setCanSelfSchedule] = useState(false);
@@ -110,9 +110,6 @@ export default function MentorSessions() {
     apiListMyCohorts()
       .then(setCohorts)
       .catch(() => setCohorts([]));
-    apiListMyTeamsDetailed()
-      .then(setTeams)
-      .catch(() => setTeams([]));
   }, []);
 
   useEffect(() => {
@@ -146,10 +143,36 @@ export default function MentorSessions() {
 
   usePageRefresh(loadSessions);
 
-  const cohortTeams = useMemo(() => teams.filter((t) => t.cohortId === selectedCohortId), [teams, selectedCohortId]);
+  // The same "which of my own teams can this session hold" source the admin
+  // create-session picker uses (apiGetMentorWorkspace) — a mentor scheduling
+  // for themself needs the same group visibility an admin scheduling on
+  // their behalf gets: which group each team is in, so a whole group's teams
+  // can be picked at a glance instead of hunting for them by name. The
+  // Select component's own "Select All" already covers "every team".
+  const [workspaceTeams, setWorkspaceTeams] = useState<ApiMentorWorkspaceTeam[]>([]);
+  useEffect(() => {
+    if (!selectedCohortId || !user) {
+      setWorkspaceTeams([]);
+      return;
+    }
+    apiGetMentorWorkspace(selectedCohortId, user.id)
+      .then((workspace) => setWorkspaceTeams(workspace.teams))
+      .catch(() => setWorkspaceTeams([]));
+  }, [selectedCohortId, user]);
+
   const teamOptions = useMemo(
-    () => cohortTeams.map((t) => ({ value: t.teamId, label: t.members.map((m) => m.fullName ?? m.studentId).join(', ') || t.name || 'Team' })),
-    [cohortTeams]
+    () =>
+      [...workspaceTeams]
+        .sort(
+          (a, b) =>
+            (a.groupName ?? '￿').localeCompare(b.groupName ?? '￿') ||
+            (a.name ?? '').localeCompare(b.name ?? '')
+        )
+        .map((t) => ({
+          value: t.id,
+          label: t.groupName ? `${t.name ?? `Team (${t.memberCount})`} · ${t.groupName}` : t.name ?? `Team (${t.memberCount})`,
+        })),
+    [workspaceTeams]
   );
 
   // A session is only draggable/resizable on the calendar while it's still in
@@ -555,7 +578,7 @@ export default function MentorSessions() {
                 <span className="text-xs text-gray-500">· {selected.kind_label}</span>
               </p>
               <p><span className="text-gray-500">When:</span> {new Date(selected.start_time).toLocaleString()} — {new Date(selected.end_time).toLocaleTimeString()}</p>
-              {selected.location_or_link && (
+              {(selected.location_or_link || selected.live_session_id) && (
                 <div className="flex items-center gap-1.5">
                   <SessionJoinLink session={selected} isHost userName={user?.fullName ?? user?.email} />
                 </div>
