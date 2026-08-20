@@ -4,13 +4,10 @@ import { useAuth } from '../context/useAuth';
 import {
   LayoutDashboard,
   Users,
-  Cloud,
-  CalendarCheck,
   FolderOpen,
   CheckSquare,
   LogOut,
   Upload,
-  CreditCard,
   Briefcase,
   Award,
   ClipboardCheck,
@@ -46,7 +43,6 @@ const adminTabs = [
   { id: 'ojts', label: 'OJT Setup', icon: Briefcase },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
-  { id: 'credits', label: 'Cloud Credits', icon: Cloud },
   // Cross-cohort admin queues — deliberately not nested under OJT Setup like
   // Sessions/Attendance were, since "all cohorts" is a real, load-bearing
   // view for both (a company-wide pending queue), not a state that should be
@@ -62,11 +58,9 @@ const mentorTabs = [
   { id: 'proposals', label: 'Project Proposals', icon: ClipboardCheck },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
-  { id: 'credits', label: 'Credit Requests', icon: Cloud },
   { id: 'sessions', label: 'Sessions', icon: CalendarClock },
   { id: 'session-requests', label: 'Session Requests', icon: Inbox },
   { id: 'availability', label: 'My Availability', icon: Clock },
-  { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   { id: 'payouts', label: 'Payouts', icon: Wallet },
   { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
 ];
@@ -76,9 +70,7 @@ const studentTabs = [
   { id: 'projects', label: 'Select Project', icon: Briefcase },
   { id: 'tasks', label: 'My Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'My Submissions', icon: Upload },
-  { id: 'credits', label: 'Cloud Credits', icon: CreditCard },
   { id: 'sessions', label: 'Sessions', icon: CalendarClock },
-  { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
 ];
 
 export default function Sidebar({
