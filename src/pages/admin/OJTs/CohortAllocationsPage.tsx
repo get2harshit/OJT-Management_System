@@ -5,6 +5,7 @@ import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, ArrowLeft, UserCog
 import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
+import AllocationOverrideModal from './AllocationOverrideModal';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import type { TeamAllocationDetail, MentorLoadSummaryRow, CohortAllocationRunStatus, Project, AllocationPreviewEntry, CohortPendingProposal } from '../../../lib/types';
@@ -13,7 +14,6 @@ import {
   apiGetTeamsForCohortDetailed,
   apiPreviewAllocation,
   apiDraftAllocation,
-  apiOverrideTeamAllocation,
   apiResolveTeamAllocation,
   apiGetMentorLoadSummary,
   apiGetRunnableTeamCount,
@@ -87,7 +87,6 @@ export default function CohortAllocationsPage() {
   // nothing left to run until a later batch of teams submits preferences.
   const [runnableCount, setRunnableCount] = useState(0);
   const [overrideTeam, setOverrideTeam] = useState<TeamAllocationDetail | null>(null);
-  const [savingOverride, setSavingOverride] = useState(false);
   const [resolveTeam, setResolveTeam] = useState<TeamAllocationDetail | null>(null);
   const [resolveProjectId, setResolveProjectId] = useState<string | null>(null);
   const [resolveMentorSearch, setResolveMentorSearch] = useState('');
@@ -411,21 +410,6 @@ export default function CohortAllocationsPage() {
       showError(err instanceof Error ? err.message : 'Failed to publish allocation');
     } finally {
       setPublishing(false);
-    }
-  };
-
-  const handleOverride = async (projectId: string) => {
-    if (!overrideTeam) return;
-    setSavingOverride(true);
-    try {
-      await apiOverrideTeamAllocation(overrideTeam.teamId, projectId);
-      showSuccess('Allocation updated.');
-      setOverrideTeam(null);
-      await refreshAfterMutation();
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to update allocation');
-    } finally {
-      setSavingOverride(false);
     }
   };
 
@@ -1015,45 +999,14 @@ export default function CohortAllocationsPage() {
         )}
       </Modal>
 
-      <Modal
-        open={!!overrideTeam}
+      <AllocationOverrideModal
+        team={overrideTeam}
+        mentors={mentorLoadSummary}
+        loadMentors={loadMentorPickerData}
+        mentorsLoading={mentorPickerLoading}
         onClose={() => setOverrideTeam(null)}
-        title={overrideTeam?.allocationStatus === 'allocated' ? 'Override Allocation' : 'Assign Allocation'}
-      >
-        {overrideTeam && (
-          <div className="space-y-3">
-            <p className="text-gray-400 text-sm">
-              {overrideTeam.allocationStatus === 'allocated'
-                ? "Choose which of this team's own preferences to allocate. This overrides any recommendation."
-                : "Choose which of this team's own preferences to allocate."}
-            </p>
-            {[overrideTeam.preference1, overrideTeam.preference2].map((pref, idx) => {
-              const selected = overrideTeam.allocatedProjectId === pref.projectId;
-              return (
-                <button
-                  key={pref.projectId}
-                  onClick={() => handleOverride(pref.projectId)}
-                  disabled={savingOverride}
-                  className={`w-full text-left rounded-lg p-4 border transition-all duration-200 disabled:opacity-50 ${
-                    selected ? 'bg-gold/10 border-gold' : 'bg-zinc-900 border-zinc-750 hover:border-zinc-600'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">
-                        Preference {idx + 1}
-                      </p>
-                      <p className="text-white font-semibold">{pref.projectTitle}</p>
-                      {pref.mentorName && <p className="text-gray-400 text-xs mt-0.5">{pref.mentorName}</p>}
-                    </div>
-                    {selected && <CheckCircle2 size={18} className="text-gold shrink-0" />}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </Modal>
+        onSaved={refreshAfterMutation}
+      />
 
       <Modal
         open={!!resolveTeam}

@@ -637,6 +637,11 @@ function CellDrawer({
         // Only the imported catalog: a project a team wrote for itself belongs
         // to that team, and the create endpoint refuses one.
         source: 'catalog',
+        // Scopes the list to these students' admission year. Track alone used
+        // to be the whole filter, which is how 2025 students were offered — and
+        // given — 2026 projects. The year is resolved server-side from these
+        // ids, the same way this drawer's track and mentor steps already work.
+        studentIds,
       })
         .then(done((res) => setProjects(res.data))).catch(fail)
         .finally(() => { if (!cancelled) setLoading(false); });
