@@ -18,12 +18,15 @@ import {
 } from 'lucide-react';
 import Select from '../../components/Select';
 import Button from '../../components/Button';
+import AssigneePickerTable, { dedupeStudentRows } from '../../components/AssigneePickerTable';
+import type { AssigneePickerStudentRow, AssigneePickerTeamRow } from '../../components/AssigneePickerTable';
 import { useTracks } from '../../hooks/useTracks';
 import { apiCreateTask } from '../../lib/api/tasks';
 import type { ApiTaskCategory } from '../../lib/api/tasks';
 import { apiListMentors } from '../../lib/api/mentors';
 import { apiListStudents } from '../../lib/api/students';
-import type { ApiMentor, ApiStudent, Cohort } from '../../lib/types';
+import { apiGetTeamsForCohortDetailed } from '../../lib/api/allocations';
+import type { ApiMentor, Cohort } from '../../lib/types';
 import { useToast } from '../../toast';
 import { apiListCohorts } from '../../lib/api';
 import { usePageRefresh } from '../../context/RefreshContext';
@@ -32,7 +35,7 @@ const WEEKS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 const TASK_CATEGORY_OPTIONS: { value: ApiTaskCategory; label: string }[] = [
   { value: 'document_submission', label: 'Document Submission' },
-  { value: 'general', label: 'General (no submission)' },
+  { value: 'general', label: 'General (Text Response)' },
   { value: 'link_submission', label: 'Link Submission' },
 ];
 
@@ -45,20 +48,30 @@ const MENTOR_CONTENT_MODE_OPTIONS: { value: 'checklist' | 'questions' | 'both'; 
 export default function CreateTaskPage() {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
-  const { options: trackOptions } = useTracks();
+  const { tracks, options: trackOptions } = useTracks();
+  const trackNameBySlug = useMemo(() => new Map(tracks.map((t) => [t.slug, t.name])), [tracks]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
-  const [students, setStudents] = useState<ApiStudent[]>([]);
   const [saving, setSaving] = useState(false);
 
-  const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
-  // Single track only — the backend matches this against a single-value
-  // Postgres enum (team.track / mentor.track / task assignment queries), so
-  // a multi-select here would produce a comma-joined string that crashes
-  // Prisma with "Invalid value for argument track" (a real bug hit in
-  // testing: selecting all 5 tracks sent "Product Development, Application
-  // Development, ..." as one string).
-  const [selectedTrack, setSelectedTrack] = useState<string>('');
+  // A task now carries a real set of tracks (isMulti) — this is the actual
+  // fix for a real bug hit in testing: selecting all 5 tracks under the old
+  // single-value Select sent "Product Development, Application
+  // Development, ..." as one comma-joined string and crashed Prisma with
+  // "Invalid value for argument track".
+  const [selectedTracks, setSelectedTracks] = useState<string[]>([]);
+  // Narrows the assignee-picker table below (both students and teams);
+  // sent to the API alongside track so the candidate pool stays server-
+  // filtered rather than fetched whole and sliced client-side.
+  const [batchFilter, setBatchFilter] = useState('');
+  const [studentCandidates, setStudentCandidates] = useState<AssigneePickerStudentRow[]>([]);
+  const [teamCandidates, setTeamCandidates] = useState<AssigneePickerTeamRow[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  // Student ids (individual mode) or team ids (team mode) — cleared
+  // whenever the track/batch/mode selection changes, since the pool it was
+  // built against no longer applies.
+  const [selectedAssignees, setSelectedAssignees] = useState<Set<string>>(new Set());
+
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -66,7 +79,7 @@ export default function CreateTaskPage() {
     due_date: '',
     targetRole: 'student' as 'student' | 'mentor',
     assignMode: 'individual' as 'individual' | 'team',
-    assigned_to: [] as string[],
+    assigned_to: [] as string[], // mentor-target only — students/teams use selectedAssignees
     week_number: '1',
     category: 'document_submission' as ApiTaskCategory,
   });
@@ -93,27 +106,6 @@ export default function CreateTaskPage() {
     loadMentorsAndCohorts();
   }, [loadMentorsAndCohorts]);
 
-  // The assignable student pool — scoped backend-side to the current
-  // batch/track filters, plus publishedOnly so a student whose team
-  // allocation isn't visible to them yet can never be picked here (they'd
-  // just be silently dropped by TaskService's own publish gate on save).
-  const loadStudents = useCallback(() => {
-    if (form.targetRole !== 'student') return Promise.resolve();
-    return apiListStudents({
-      batch: selectedBatches.length > 0 ? selectedBatches : undefined,
-      track: selectedTrack || undefined,
-      publishedOnly: true,
-    })
-      .then(setStudents)
-      .catch(console.error);
-  }, [form.targetRole, selectedBatches, selectedTrack]);
-
-  useEffect(() => {
-    loadStudents();
-  }, [loadStudents]);
-
-  usePageRefresh(useCallback(() => Promise.all([loadMentorsAndCohorts(), loadStudents()]), [loadMentorsAndCohorts, loadStudents]));
-
   // Every task is created under whichever cohort is currently active — the
   // form has no cohort picker of its own, it just targets "the" running
   // cohort, same assumption the due-date auto-calculation below already made.
@@ -122,23 +114,111 @@ export default function CreateTaskPage() {
     [cohorts]
   );
 
-
-  // Batch options come from the cohort's own allowedBatches, not the
-  // (now already-filtered) students list — otherwise picking one batch would
-  // shrink the dropdown's own option list down to just that batch.
+  // Batch options come from the cohort's own allowedBatches — matches the
+  // candidate pool regardless of which track(s) are selected.
   const uniqueBatches = activeCohort?.allowedBatches || [];
+  const batchOptions = [{ value: '', label: 'All Batches' }, ...uniqueBatches.map(b => ({ value: b, label: b }))];
 
-  const assignableList = form.targetRole === 'student'
-    ? students.map(s => ({ id: s.id, label: `${s.fullName || s.email} (${s.rollNumber || 'N/A'})` }))
-    : mentors.map(m => ({ id: m.id, label: m.fullName || m.email || m.id }));
+  // The assignable student pool for the picker table — one apiListStudents
+  // call per selected track (the endpoint takes a single track), merged and
+  // deduped client-side. publishedOnly means a student whose team
+  // allocation isn't visible to them yet can never be picked here (they'd
+  // just be silently dropped by TaskService's own publish gate on save).
+  const loadStudentCandidates = useCallback(() => {
+    if (form.targetRole !== 'student' || selectedTracks.length === 0) {
+      setStudentCandidates([]);
+      return Promise.resolve();
+    }
+    setCandidatesLoading(true);
+    return Promise.all(
+      selectedTracks.map((track) =>
+        apiListStudents({ batch: batchFilter ? [batchFilter] : undefined, track, publishedOnly: true })
+          // ApiStudent.track isn't reliably populated (a student's real
+          // track lives on their team's track_id, not a direct column —
+          // apiListStudents filters via that join, per StudentRepository).
+          // Tag rows with the track this specific call was scoped to
+          // instead of trusting s.track, or the picker's Track column
+          // shows blank for real students.
+          .then((students) => students.map((s) => ({ ...s, queriedTrack: track })))
+      )
+    )
+      .then((results) => {
+        const rows: AssigneePickerStudentRow[] = results.flat().map((s) => ({
+          id: s.id,
+          fullName: s.fullName ?? null,
+          batch: s.batch ?? null,
+          track: s.queriedTrack,
+          rollNumber: s.rollNumber ?? null,
+        }));
+        setStudentCandidates(dedupeStudentRows(rows));
+      })
+      .catch(console.error)
+      .finally(() => setCandidatesLoading(false));
+  }, [form.targetRole, selectedTracks, batchFilter]);
+
+  // Same merge-per-track approach for teams — apiGetTeamsForCohortDetailed
+  // also takes one track at a time. status: 'published' matches the same
+  // gate TaskService applies on save, so nothing shows here that would just
+  // get silently filtered out at submit time.
+  const loadTeamCandidates = useCallback(() => {
+    if (form.targetRole !== 'student' || form.assignMode !== 'team' || selectedTracks.length === 0 || !activeCohort) {
+      setTeamCandidates([]);
+      return Promise.resolve();
+    }
+    setCandidatesLoading(true);
+    return Promise.all(
+      selectedTracks.map((track) =>
+        apiGetTeamsForCohortDetailed(activeCohort.id, {
+          track,
+          batch: batchFilter || undefined,
+          status: 'published',
+          limit: 200,
+          skipCount: true,
+        })
+      )
+    )
+      .then((pages) => {
+        const merged = new Map<string, AssigneePickerTeamRow>();
+        pages.forEach((page) => {
+          page.data.forEach((t) => {
+            merged.set(t.teamId, {
+              id: t.teamId,
+              teamName: t.teamName,
+              track: t.track,
+              memberNames: t.members.map((m) => m.fullName || 'Unnamed'),
+            });
+          });
+        });
+        setTeamCandidates(Array.from(merged.values()));
+      })
+      .catch(console.error)
+      .finally(() => setCandidatesLoading(false));
+  }, [form.targetRole, form.assignMode, selectedTracks, batchFilter, activeCohort]);
+
+  useEffect(() => {
+    loadStudentCandidates();
+  }, [loadStudentCandidates]);
+
+  useEffect(() => {
+    loadTeamCandidates();
+  }, [loadTeamCandidates]);
+
+  usePageRefresh(
+    useCallback(
+      () => Promise.all([loadMentorsAndCohorts(), loadStudentCandidates(), loadTeamCandidates()]),
+      [loadMentorsAndCohorts, loadStudentCandidates, loadTeamCandidates]
+    )
+  );
+
+  const mentorAssignableList = mentors.map(m => ({ id: m.id, label: m.fullName || m.email || m.id }));
 
   const handleSave = async () => {
     if (!form.title) {
       showError('Task title is required');
       return;
     }
-    if (!selectedTrack) {
-      showError('Select a track');
+    if (selectedTracks.length === 0) {
+      showError('Select at least one track');
       return;
     }
     if (!form.start_date) {
@@ -155,6 +235,14 @@ export default function CreateTaskPage() {
     }
     if (!activeCohort) {
       showError('No active cohort found — a task must belong to a running cohort');
+      return;
+    }
+    if (form.targetRole === 'student' && selectedAssignees.size === 0) {
+      showError(form.assignMode === 'team' ? 'Select at least one team' : 'Select at least one student');
+      return;
+    }
+    if (form.targetRole === 'mentor' && form.assigned_to.length === 0) {
+      showError('Select at least one mentor');
       return;
     }
 
@@ -187,13 +275,14 @@ export default function CreateTaskPage() {
         // 'general' rather than exposed as a picker (see mentorContentMode).
         category: form.targetRole === 'mentor' ? 'general' : form.category,
         assign_mode: form.targetRole === 'student' ? form.assignMode : 'individual',
-        // Team-submission mode assigns whole teams matching the track/batch
-        // filters — no individual hand-picking, so assignees is never sent.
-        assignees: form.assignMode === 'individual' && form.assigned_to.length > 0 ? form.assigned_to : undefined,
+        assignees: form.targetRole === 'mentor'
+          ? form.assigned_to
+          : form.assignMode === 'individual' ? Array.from(selectedAssignees) : undefined,
+        teamIds: form.targetRole === 'student' && form.assignMode === 'team' ? Array.from(selectedAssignees) : undefined,
         start_date: new Date(form.start_date).toISOString(),
         deadline: new Date(form.due_date).toISOString(),
         week: `Week ${form.week_number}`,
-        track: selectedTrack,
+        tracks: selectedTracks,
         cohort_id: activeCohort.id,
         checklist_items: form.targetRole === 'mentor' && (mentorContentMode === 'checklist' || mentorContentMode === 'both')
           ? trimmedChecklist.map(label => ({ label }))
@@ -238,20 +327,19 @@ export default function CreateTaskPage() {
       {/* Main 2-Column Workspace — the only scrollable region on this page */}
       <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 lg:grid-cols-3 gap-6 pb-6">
 
-        {/* Left 2 Columns: Role & Assignees + Task Details */}
+        {/* Left 2 Columns: the field order the admin actually works through —
+            Task Type -> Track -> Team/Students -> Category -> Title -> Date */}
         <div className="lg:col-span-2 space-y-6">
-          
-          {/* Card 1: Target Role & Assignees */}
+
+          {/* Card 1: Task Type */}
           <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-6 shadow-sm">
             <div className="flex items-center justify-between border-b border-zinc-750 pb-4">
               <h2 className="text-base font-semibold text-white flex items-center gap-2">
                 <Users size={18} className="text-gold" />
-                1. Target Role & Assignees
+                1. Task Type
               </h2>
-              <span className="text-xs text-gray-500">Step 1 of 2</span>
             </div>
 
-            {/* Role Selection Toggle */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <button
                 type="button"
@@ -259,6 +347,7 @@ export default function CreateTaskPage() {
                   setForm({ ...form, targetRole: 'student', assigned_to: [] });
                   setChecklistItems([]);
                   setQnaQuestions([]);
+                  setSelectedAssignees(new Set());
                 }}
                 className={`p-4 rounded-xl border flex items-center gap-4 text-left transition-all duration-200 ${
                   form.targetRole === 'student'
@@ -277,7 +366,10 @@ export default function CreateTaskPage() {
 
               <button
                 type="button"
-                onClick={() => setForm({ ...form, targetRole: 'mentor', assignMode: 'individual', assigned_to: [] })}
+                onClick={() => {
+                  setForm({ ...form, targetRole: 'mentor', assignMode: 'individual', assigned_to: [] });
+                  setSelectedAssignees(new Set());
+                }}
                 className={`p-4 rounded-xl border flex items-center gap-4 text-left transition-all duration-200 ${
                   form.targetRole === 'mentor'
                     ? 'bg-purple-500/10 border-purple-500 text-white shadow-lg shadow-purple-500/5'
@@ -392,148 +484,93 @@ export default function CreateTaskPage() {
                 )}
               </div>
             )}
+          </div>
 
-            {/* Submission Mode Toggle — team mode assigns whole teams
-                matching the track/batch filters below (one member's
-                submission completes it for the team); only meaningful for
-                students, mentors have no team concept. */}
-            {form.targetRole === 'student' && (
-              <div>
-                <label className="block text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wider">Submission Mode</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, assignMode: 'individual', assigned_to: [] })}
-                    className={`px-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${
-                      form.assignMode === 'individual'
-                        ? 'bg-gold/10 border-gold text-gold'
-                        : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-zinc-600'
-                    }`}
-                  >
-                    Individual Submission
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, assignMode: 'team', assigned_to: [] })}
-                    className={`px-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${
-                      form.assignMode === 'team'
-                        ? 'bg-gold/10 border-gold text-gold'
-                        : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-zinc-600'
-                    }`}
-                  >
-                    Team Submission
-                  </button>
-                </div>
-              </div>
-            )}
+          {/* Card 2: Track (multi-select) */}
+          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-3 shadow-sm">
+            <h2 className="text-base font-semibold text-white flex items-center gap-2 border-b border-zinc-750 pb-4">
+              <Layers size={18} className="text-gold" />
+              2. Track
+            </h2>
+            <Select
+              isMulti
+              value={selectedTracks}
+              onChange={v => {
+                setSelectedTracks(v as string[]);
+                setSelectedAssignees(new Set());
+              }}
+              className="w-full"
+              placeholder="Select track(s)..."
+              options={trackOptions}
+            />
+            <p className="text-[11px] text-gray-500">
+              A task can span more than one track — the pool below fills with every matching track's students/teams, and the task shows up under a list filter on any of them.
+            </p>
+          </div>
 
-            {/* Filter Inset Box — Track is always shown now since the
-                backend requires `track` on every task regardless of
-                target_role; Batch filtering only makes sense for students. */}
-            <div className="bg-zinc-900/80 border border-zinc-750 rounded-xl p-4 space-y-3">
-              <p className="text-xs text-gray-400 uppercase font-semibold tracking-wider flex items-center gap-1.5">
-                <Layers size={14} className="text-gold" />
-                Filter Assignable Pool
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {form.targetRole === 'student' && (
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1.5 font-medium">Filter by Batch</label>
-                    <Select
-                      isMulti
-                      value={selectedBatches}
-                      onChange={v => {
-                        setSelectedBatches(v as string[]);
-                        setForm(prev => ({ ...prev, assigned_to: [] }));
-                      }}
-                      className="w-full text-xs"
-                      placeholder="All Batches"
-                      options={uniqueBatches.map(b => ({ value: b, label: b }))}
-                    />
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1.5 font-medium">Track *</label>
-                  <Select
-                    value={selectedTrack}
-                    onChange={v => {
-                      setSelectedTrack(v as string);
-                      setForm(prev => ({ ...prev, assigned_to: [] }));
-                    }}
-                    className="w-full text-xs"
-                    placeholder="Select track..."
-                    options={trackOptions}
-                  />
-                </div>
-              </div>
+          {/* Card 3: Team/Students (or Mentors) */}
+          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-3 shadow-sm">
+            <div className="flex justify-between items-center border-b border-zinc-750 pb-4">
+              <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                <Users size={18} className="text-gold" />
+                3. {form.targetRole === 'student' ? 'Team / Students' : 'Mentors'}
+              </h2>
+              <span className="text-xs text-gray-500">
+                {form.targetRole === 'student' ? `${selectedAssignees.size} selected` : `${form.assigned_to.length} selected`}
+              </span>
             </div>
 
-            {/* Assignee Multi-Select — not applicable in team-submission
-                mode, where teams are auto-matched by track/batch instead of
-                hand-picked. */}
-            {form.assignMode === 'team' ? (
-              <div className="bg-zinc-900/80 border border-zinc-750 rounded-xl p-4">
-                <p className="text-sm text-gray-300">
-                  Every team matching the track{selectedBatches.length > 0 ? ' and batch' : ''} filter above will be assigned this task — one member submitting completes it for the whole team.
-                </p>
-              </div>
+            {form.targetRole === 'student' ? (
+              selectedTracks.length === 0 ? (
+                <p className="text-sm text-gray-500 py-8 text-center">Select a track above to see who can be assigned.</p>
+              ) : (
+                <AssigneePickerTable
+                  mode={form.assignMode}
+                  onModeChange={(mode) => {
+                    setForm(prev => ({ ...prev, assignMode: mode }));
+                    setSelectedAssignees(new Set());
+                  }}
+                  studentRows={studentCandidates}
+                  teamRows={teamCandidates}
+                  batchOptions={batchOptions}
+                  batchFilter={batchFilter}
+                  onBatchFilterChange={(v) => {
+                    setBatchFilter(v);
+                    setSelectedAssignees(new Set());
+                  }}
+                  trackNameBySlug={trackNameBySlug}
+                  selected={selectedAssignees}
+                  onSelectedChange={setSelectedAssignees}
+                  loading={candidatesLoading}
+                />
+              )
             ) : (
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <label className="text-sm font-medium text-gray-300">
-                    Select {form.targetRole === 'student' ? 'Students' : 'Mentors'} ({form.assigned_to.length} selected)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (form.assigned_to.length === assignableList.length) {
-                        setForm({ ...form, assigned_to: [] });
-                      } else {
-                        setForm({ ...form, assigned_to: assignableList.map(a => a.id) });
-                      }
-                    }}
-                    className="text-xs text-gold hover:underline font-semibold transition-colors"
-                  >
-                    {form.assigned_to.length === assignableList.length && assignableList.length > 0 ? 'Clear All' : 'Select All'}
-                  </button>
-                </div>
+              <>
                 <Select
                   isMulti
                   isSearchable
                   value={form.assigned_to}
                   onChange={v => setForm({ ...form, assigned_to: v as string[] })}
                   className="w-full"
-                  placeholder={`Search and select ${form.targetRole}(s)...`}
-                  options={assignableList.map(a => ({ value: a.id, label: a.label }))}
+                  placeholder="Search and select mentor(s)..."
+                  options={mentorAssignableList.map(a => ({ value: a.id, label: a.label }))}
                 />
-                {form.targetRole === 'student' && (
-                  <p className="text-[11px] text-gray-500 mt-1.5">
-                    Only students whose team's project allocation has been published are shown here.
-                  </p>
-                )}
-              </div>
+              </>
+            )}
+            {form.targetRole === 'student' && (
+              <p className="text-[11px] text-gray-500">
+                Only students whose team's project allocation has been published are shown here.
+              </p>
             )}
           </div>
 
-          {/* Card 2: Task Specifications */}
+          {/* Card 4: Category (student only) + Title + Description */}
           <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-6 shadow-sm">
             <div className="flex items-center justify-between border-b border-zinc-750 pb-4">
               <h2 className="text-base font-semibold text-white flex items-center gap-2">
                 <FileText size={18} className="text-gold" />
-                2. Task Specifications & Description
+                4. Task Specifications
               </h2>
-              <span className="text-xs text-gray-500">Step 2 of 2</span>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Goal / Task Title *</label>
-              <input
-                type="text"
-                value={form.title}
-                onChange={e => setForm({ ...form, title: e.target.value })}
-                placeholder="e.g., Set up Database Schema & API Contracts"
-                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-gold transition-colors placeholder-gray-500"
-              />
             </div>
 
             {/* Category only applies to a student task — a mentor task's
@@ -554,10 +591,23 @@ export default function CreateTaskPage() {
                 <p className="text-[11px] text-gray-500 mt-1.5">
                   {form.category === 'document_submission'
                     ? 'Student submits a file via the Submissions tab.'
-                    : 'No file/link expected — reviewed directly from the Tasks tab.'}
+                    : form.category === 'link_submission'
+                    ? 'Student submits a link via the Submissions tab.'
+                    : 'Student writes a short text response via the Submissions tab — no file or link needed.'}
                 </p>
               </div>
             )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Goal / Task Title *</label>
+              <input
+                type="text"
+                value={form.title}
+                onChange={e => setForm({ ...form, title: e.target.value })}
+                placeholder="e.g., Set up Database Schema & API Contracts"
+                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-gold transition-colors placeholder-gray-500"
+              />
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Detailed Instructions & Notes</label>
@@ -571,61 +621,56 @@ export default function CreateTaskPage() {
             </div>
           </div>
 
-        </div>
-
-        {/* Right Sidebar Column: Timeline, Summary & Actions */}
-        <div className="lg:col-span-1 space-y-6">
-          
-          {/* Card 3: Schedule & Timeline */}
+          {/* Card 5: Date */}
           <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-5 shadow-sm">
-            <h3 className="text-base font-semibold text-white flex items-center gap-2 border-b border-zinc-750 pb-3">
+            <h2 className="text-base font-semibold text-white flex items-center gap-2 border-b border-zinc-750 pb-4">
               <Calendar size={18} className="text-gold" />
-              Schedule & Target Date
-            </h3>
+              5. Date
+            </h2>
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                Target Week
-              </label>
-              <Select
-                value={form.week_number}
-                onChange={v => setForm({ ...form, week_number: v as string })}
-                className="w-full text-sm"
-                options={WEEKS.map(w => ({ value: String(w), label: `Week ${w}` }))}
-              />
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                  Target Week
+                </label>
+                <Select
+                  value={form.week_number}
+                  onChange={v => setForm({ ...form, week_number: v as string })}
+                  className="w-full text-sm"
+                  options={WEEKS.map(w => ({ value: String(w), label: `Week ${w}` }))}
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                Start Date *
-              </label>
-              <input
-                type="date"
-                style={{ colorScheme: 'dark' }}
-                value={form.start_date}
-                onChange={e => {
-                  const newStart = e.target.value;
-                  let newDue = form.due_date;
-                  if (newStart) {
-                    const [y, m, d] = newStart.split('-').map(Number);
-                    if (y && m && d) {
-                      const dueObj = new Date(Date.UTC(y, m - 1, d + 7));
-                      newDue = dueObj.toISOString().split('T')[0];
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                  Start Date *
+                </label>
+                <input
+                  type="date"
+                  style={{ colorScheme: 'dark' }}
+                  value={form.start_date}
+                  onChange={e => {
+                    const newStart = e.target.value;
+                    let newDue = form.due_date;
+                    if (newStart) {
+                      const [y, m, d] = newStart.split('-').map(Number);
+                      if (y && m && d) {
+                        const dueObj = new Date(Date.UTC(y, m - 1, d + 7));
+                        newDue = dueObj.toISOString().split('T')[0];
+                      }
+                    } else {
+                      newDue = '';
                     }
-                  } else {
-                    newDue = '';
-                  }
-                  setForm(prev => ({ ...prev, start_date: newStart, due_date: newDue }));
-                }}
-                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
-              />
-            </div>
+                    setForm(prev => ({ ...prev, start_date: newStart, due_date: newDue }));
+                  }}
+                  className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                Due Date *
-              </label>
-              <div className="relative">
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                  Due Date *
+                </label>
                 <input
                   type="date"
                   style={{ colorScheme: 'dark' }}
@@ -633,15 +678,19 @@ export default function CreateTaskPage() {
                   onChange={e => setForm(prev => ({ ...prev, due_date: e.target.value }))}
                   className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
                 />
+                <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1">
+                  <Clock size={12} />
+                  Calculated automatically (+7 days) when start date is selected
+                </p>
               </div>
-              <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1">
-                <Clock size={12} />
-                Calculated automatically (+7 days) when start date is selected
-              </p>
             </div>
           </div>
 
-          {/* Card 4: Summary Card */}
+        </div>
+
+        {/* Right Sidebar Column: Summary only — every actual field lives in
+            the ordered flow on the left. */}
+        <div className="lg:col-span-1 space-y-6">
           <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4 shadow-sm">
             <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 border-b border-zinc-750 pb-3">
               <Sparkles size={16} className="text-gold" />
@@ -654,9 +703,15 @@ export default function CreateTaskPage() {
                 <span className="font-semibold text-white capitalize">{form.targetRole}s</span>
               </div>
               <div className="flex justify-between items-center py-1.5 border-b border-zinc-800">
+                <span className="text-gray-400">Tracks</span>
+                <span className="font-semibold text-gold text-right">
+                  {selectedTracks.length > 0 ? selectedTracks.map(s => trackNameBySlug.get(s) ?? s).join(', ') : 'None selected'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-1.5 border-b border-zinc-800">
                 <span className="text-gray-400">Assignees Selected</span>
                 <span className="font-semibold text-gold">
-                  {form.assigned_to.length > 0 ? `${form.assigned_to.length} selected` : 'All matching pool'}
+                  {form.targetRole === 'student' ? selectedAssignees.size : form.assigned_to.length}
                 </span>
               </div>
               <div className="flex justify-between items-center py-1.5 border-b border-zinc-800">
@@ -673,7 +728,6 @@ export default function CreateTaskPage() {
               </div>
             </div>
           </div>
-
         </div>
 
       </div>

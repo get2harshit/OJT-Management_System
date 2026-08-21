@@ -1,17 +1,33 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, Loader2, Eye, X } from 'lucide-react';
+import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, Loader2, Eye, X, UserPlus, UserMinus, Send } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
-import { apiListTasks, apiGetTask, apiDeleteTask, apiUpdateTask, apiGetAssigneeProgress, apiApproveTask, apiRequestResubmit } from '../../lib/api/tasks';
+import {
+  apiListTasks,
+  apiGetTask,
+  apiDeleteTask,
+  apiUpdateTask,
+  apiGetAssigneeProgress,
+  apiApproveTask,
+  apiRequestResubmit,
+  apiAddTaskAssignees,
+  apiRemoveTaskAssignment,
+  apiBulkRequestResubmit,
+} from '../../lib/api/tasks';
 import type { ApiTask, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
+import { apiListStudents } from '../../lib/api/students';
+import { apiGetTeamsForCohortDetailed } from '../../lib/api/allocations';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import ActionsMenu from '../../components/ActionsMenu';
+import AssigneePickerTable, { dedupeStudentRows } from '../../components/AssigneePickerTable';
+import type { AssigneePickerStudentRow, AssigneePickerTeamRow } from '../../components/AssigneePickerTable';
 import { getTrackColor } from '../../lib/constants';
 import { useTracks } from '../../hooks/useTracks';
 import { useToast } from '../../toast';
+import { useConfirm } from '../../confirm';
 import { apiListCohorts } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import type { Cohort } from '../../lib/types';
@@ -69,7 +85,10 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
   // whatever happens to be currently loaded.
   const [assignedById, setAssignedById] = useState(searchParams.get('assignedById') || '');
   const [assignedByName, setAssignedByName] = useState('');
-  const [editingTask, setEditingTask] = useState<ApiTask | null>(null);
+  // Same open-state/detail split as the Review Assignments modal below —
+  // editingTaskId opens the modal immediately (with a loading state), the
+  // full task loads into editTaskDetail once apiGetTask resolves.
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   // The list response only carries assignmentsSummary (a capped preview),
   // never the full per-assignee list — reviewTaskId drives the modal's
   // open state, reviewTask holds the full detail fetched on demand via
@@ -88,11 +107,29 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
     title: '',
     description: '',
     week: '1',
-    track: '',
+    tracks: [] as string[],
     deadline: ''
   });
+  // Full task detail behind the Edit modal — handleEditClick fetches this
+  // via apiGetTask before opening, since the list row's ApiTask only
+  // carries a 5-row assignmentsSummary preview, not the full assignments
+  // array the assignee-management section below needs.
+  const [editTaskDetail, setEditTaskDetail] = useState<ApiTask | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [removingAssignmentId, setRemovingAssignmentId] = useState<string | null>(null);
+  const [resubmitSelected, setResubmitSelected] = useState<Set<string>>(new Set());
+  const [resubmitComment, setResubmitComment] = useState('');
+  const [bulkResubmitting, setBulkResubmitting] = useState(false);
+  const [addAssigneesOpen, setAddAssigneesOpen] = useState(false);
+  const [addCandidateStudents, setAddCandidateStudents] = useState<AssigneePickerStudentRow[]>([]);
+  const [addCandidateTeams, setAddCandidateTeams] = useState<AssigneePickerTeamRow[]>([]);
+  const [addCandidatesLoading, setAddCandidatesLoading] = useState(false);
+  const [addBatchFilter, setAddBatchFilter] = useState('');
+  const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
+  const [addingAssignees, setAddingAssignees] = useState(false);
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
+  const confirm = useConfirm();
 
   const loadCohorts = useCallback(() => {
     return apiListCohorts().then(setCohorts).catch(() => setCohorts([]));
@@ -204,6 +241,13 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
   };
 
   const handleDelete = async (id: string) => {
+    const ok = await confirm({
+      title: 'Delete this task?',
+      message: 'This permanently deletes the task along with every assignee\'s submission, status history, and comments. This can\'t be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await apiDeleteTask(id);
       showSuccess('Task deleted successfully');
@@ -228,32 +272,210 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
     }
   };
 
-  const handleEditClick = (t: ApiTask) => {
-    setEditingTask(t);
-    setEditForm({
-      title: t.title || '',
-      description: t.description || '',
-      week: t.week ? t.week.replace(/Week\s+/i, '') : '1',
-      track: t.track || '',
-      deadline: t.deadline ? t.deadline.split('T')[0] : ''
+  const closeEditModal = () => {
+    setEditingTaskId(null);
+    setEditTaskDetail(null);
+    setResubmitSelected(new Set());
+    setResubmitComment('');
+    setAddAssigneesOpen(false);
+    setAddSelected(new Set());
+    setAddBatchFilter('');
+  };
+
+  const handleEditClick = async (t: ApiTask) => {
+    setEditingTaskId(t.id);
+    setEditTaskDetail(null);
+    setEditLoading(true);
+    try {
+      const res = await apiGetTask(t.id);
+      const full = res.data;
+      setEditTaskDetail(full);
+      setEditForm({
+        title: full.title || '',
+        description: full.description || '',
+        week: full.week ? full.week.replace(/Week\s+/i, '') : '1',
+        tracks: full.tracks && full.tracks.length > 0 ? full.tracks : (full.track ? [full.track] : []),
+        deadline: full.deadline ? full.deadline.split('T')[0] : ''
+      });
+    } catch {
+      showError('Failed to load task details');
+      setEditingTaskId(null);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const loadAddCandidates = useCallback(async () => {
+    if (!editTaskDetail) return;
+    setAddCandidatesLoading(true);
+    try {
+      if (editTaskDetail.target_role === 'mentor') {
+        // Mentor-targeted tasks don't scope by track/batch the way student
+        // tasks do — the picker's own batch filter stays irrelevant here,
+        // so just leave the team list empty and let the caller decide.
+        setAddCandidateStudents([]);
+        setAddCandidateTeams([]);
+        return;
+      }
+      const tracksToUse = editForm.tracks.length > 0 ? editForm.tracks : [];
+      if (tracksToUse.length === 0) {
+        setAddCandidateStudents([]);
+        setAddCandidateTeams([]);
+        return;
+      }
+      if (editTaskDetail.assign_mode === 'team') {
+        const pages = await Promise.all(
+          tracksToUse.map((track) =>
+            apiGetTeamsForCohortDetailed(editTaskDetail.cohort_id, {
+              track,
+              batch: addBatchFilter || undefined,
+              status: 'published',
+              limit: 200,
+              skipCount: true,
+            })
+          )
+        );
+        const merged = new Map<string, AssigneePickerTeamRow>();
+        pages.forEach((page) => {
+          page.data.forEach((team) => {
+            merged.set(team.teamId, {
+              id: team.teamId,
+              teamName: team.teamName,
+              track: team.track,
+              memberNames: team.members.map((m) => m.fullName || 'Unnamed'),
+            });
+          });
+        });
+        setAddCandidateTeams(Array.from(merged.values()));
+      } else {
+        const results = await Promise.all(
+          tracksToUse.map((track) =>
+            apiListStudents({ batch: addBatchFilter ? [addBatchFilter] : undefined, track, publishedOnly: true })
+              // See CreateTaskPage's loadStudentCandidates — ApiStudent.track
+              // isn't reliably populated, tag with the track this call was
+              // actually scoped to.
+              .then((students) => students.map((s) => ({ ...s, queriedTrack: track })))
+          )
+        );
+        setAddCandidateStudents(
+          dedupeStudentRows(
+            results.flat().map((s) => ({
+              id: s.id,
+              fullName: s.fullName ?? null,
+              batch: s.batch ?? null,
+              track: s.queriedTrack,
+              rollNumber: s.rollNumber ?? null,
+            }))
+          )
+        );
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setAddCandidatesLoading(false);
+    }
+  }, [editTaskDetail, editForm.tracks, addBatchFilter]);
+
+  useEffect(() => {
+    if (addAssigneesOpen) loadAddCandidates();
+  }, [addAssigneesOpen, loadAddCandidates]);
+
+  const handleAddAssignees = async () => {
+    if (!editTaskDetail || addSelected.size === 0) return;
+    // A team-mode task assigns per-student rows fanned out from a team, and
+    // apiAddTaskAssignees only takes assignee (student) ids — adding a whole
+    // team here would need that fan-out resolved client-side first, which
+    // isn't wired up yet. Blocked with a clear message rather than silently
+    // adding nobody or crashing on a team id treated as a student id.
+    if (editTaskDetail.assign_mode === 'team') {
+      showError('Adding whole teams from Edit isn\'t supported yet — add the extra students individually instead.');
+      return;
+    }
+    setAddingAssignees(true);
+    try {
+      const res = await apiAddTaskAssignees(editTaskDetail.id, Array.from(addSelected));
+      const { added, skipped } = res.data;
+      if (added.length > 0) showSuccess(`${added.length} assignee${added.length === 1 ? '' : 's'} added`);
+      if (skipped.length > 0) showError(`${skipped.length} skipped: ${skipped.map((s) => s.reason).join(', ')}`);
+      const refreshed = await apiGetTask(editTaskDetail.id);
+      setEditTaskDetail(refreshed.data);
+      setAddSelected(new Set());
+      setAddAssigneesOpen(false);
+      fetchTasksOnly();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to add assignees');
+    } finally {
+      setAddingAssignees(false);
+    }
+  };
+
+  const handleRemoveAssignee = async (assignment: ApiAssignment) => {
+    if (!editTaskDetail) return;
+    const ok = await confirm({
+      title: 'Remove assignee?',
+      message: 'Their submission and status history is kept — they just stop seeing this task and drop off the assignee list. This can\'t be undone from here; add them back manually if needed.',
+      confirmLabel: 'Remove',
+      variant: 'danger',
     });
+    if (!ok) return;
+    setRemovingAssignmentId(assignment.id);
+    try {
+      await apiRemoveTaskAssignment(editTaskDetail.id, assignment.id);
+      showSuccess('Assignee removed');
+      const refreshed = await apiGetTask(editTaskDetail.id);
+      setEditTaskDetail(refreshed.data);
+      setResubmitSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(assignment.id);
+        return next;
+      });
+      fetchTasksOnly();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to remove assignee');
+    } finally {
+      setRemovingAssignmentId(null);
+    }
+  };
+
+  const handleBulkResubmit = async () => {
+    if (!editTaskDetail || resubmitSelected.size === 0 || !resubmitComment.trim()) return;
+    setBulkResubmitting(true);
+    try {
+      const res = await apiBulkRequestResubmit(editTaskDetail.id, Array.from(resubmitSelected), resubmitComment.trim());
+      const { succeeded, skipped } = res.data;
+      if (succeeded.length > 0) showSuccess(`Resubmit requested for ${succeeded.length}`);
+      if (skipped.length > 0) showError(`${skipped.length} skipped: ${skipped.map((s) => s.reason).join(', ')}`);
+      const refreshed = await apiGetTask(editTaskDetail.id);
+      setEditTaskDetail(refreshed.data);
+      setResubmitSelected(new Set());
+      setResubmitComment('');
+      fetchTasksOnly();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to request resubmit');
+    } finally {
+      setBulkResubmitting(false);
+    }
   };
 
   const handleUpdate = async () => {
-    if (!editingTask) return;
+    if (!editingTaskId) return;
+    if (editForm.tracks.length === 0) {
+      showError('Select at least one track');
+      return;
+    }
     try {
-      await apiUpdateTask(editingTask.id, {
+      await apiUpdateTask(editingTaskId, {
         title: editForm.title,
         description: editForm.description,
         week: `Week ${editForm.week}`,
-        track: editForm.track,
+        tracks: editForm.tracks,
         deadline: editForm.deadline ? new Date(editForm.deadline).toISOString() : undefined,
       });
       showSuccess('Task updated successfully');
-      setEditingTask(null);
+      closeEditModal();
       fetchTasksOnly();
-    } catch {
-      showError('Failed to update task');
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to update task');
     }
   };
 
@@ -284,6 +506,13 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
     });
 
   const selectedAssignee = allAssignees.find(a => a.id === selectedAssigneeId);
+  // The edit modal's task may belong to a different cohort than whichever
+  // one the list filter currently has selected, so its batch options are
+  // looked up by the task's own cohort_id, not activeCohort.
+  const editCohortBatchOptions = useMemo(() => {
+    const cohort = editTaskDetail ? cohorts.find(c => c.id === editTaskDetail.cohort_id) : undefined;
+    return [{ value: '', label: 'All Batches' }, ...(cohort?.allowedBatches ?? []).map(b => ({ value: b, label: b }))];
+  }, [cohorts, editTaskDetail]);
   // Same status palette the rest of the app uses (colour-500 at low opacity),
   // not the darker 900-based shades that read off-theme here.
   const statusConfig: Record<ApiAssignmentStatus, { label: string; icon: typeof Circle; cls: string }> = {
@@ -379,19 +608,26 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
           },
           {
             key: 'track', header: 'Tech Stack/Track', render: (row) => {
-              if (!row.track) {
+              // A task can now carry more than one track — `tracks` is the
+              // real field; `track` (singular) is a transitional fallback
+              // for the gap between backend/frontend deploys.
+              const slugs = row.tracks && row.tracks.length > 0 ? row.tracks : (row.track ? [row.track] : []);
+              if (slugs.length === 0) {
                 return <span className="text-xs text-gray-500">All</span>;
               }
-              // The row carries the track slug (e.g. product_development) —
-              // resolve it to the readable name + the same track colour used
-              // everywhere else, instead of showing the snake_case string.
-              const label = trackNameBySlug.get(row.track) ?? row.track;
-              const color = getTrackColor(row.track);
               return (
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-200 whitespace-nowrap">
-                  <span className={`w-1.5 h-1.5 rounded-full ${color.dot}`} />
-                  {label}
-                </span>
+                <div className="flex flex-wrap gap-1">
+                  {slugs.map((slug) => {
+                    const label = trackNameBySlug.get(slug) ?? slug;
+                    const color = getTrackColor(slug);
+                    return (
+                      <span key={slug} className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-200 whitespace-nowrap">
+                        <span className={`w-1.5 h-1.5 rounded-full ${color.dot}`} />
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
               );
             }
           },
@@ -536,60 +772,220 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
         )}
       />
 
-      <Modal open={!!editingTask} onClose={() => setEditingTask(null)} title="Edit Task">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Title</label>
-            <input 
-              type="text" 
-              value={editForm.title} 
-              onChange={e => setEditForm(prev => ({ ...prev, title: e.target.value }))}
-              className="w-full bg-zinc-800 text-white text-sm border border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:border-gold" 
-            />
+      <Modal size="xl" open={!!editingTaskId} onClose={closeEditModal} title="Edit Task">
+        {editLoading || !editTaskDetail ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 size={28} className="animate-spin text-gray-500" />
           </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Description</label>
-            <textarea 
-              value={editForm.description} 
-              onChange={e => setEditForm(prev => ({ ...prev, description: e.target.value }))}
-              className="w-full bg-zinc-800 text-white text-sm border border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:border-gold h-20" 
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Target Week</label>
-              <Select 
-                value={editForm.week}
-                onChange={v => setEditForm(prev => ({ ...prev, week: v as string }))}
-                options={Array.from({ length: 12 }, (_, i) => ({ value: String(i+1), label: `Week ${i+1}` }))}
-              />
+        ) : (
+          <div className="space-y-5">
+            {/* Read-only, for positional consistency with Create — target
+                role/category are fixed at creation, changing them after
+                assignees exist is structurally risky (mentor checklist/Q&A
+                vs. student document category) and isn't editable here. */}
+            <div className="flex items-center gap-2 text-xs">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border font-semibold uppercase ${
+                editTaskDetail.target_role === 'student'
+                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/25'
+                  : 'bg-purple-500/10 text-purple-400 border-purple-500/25'
+              }`}>
+                {editTaskDetail.target_role === 'student' ? 'Students' : 'Mentors'}
+              </span>
+              <span className="px-2.5 py-1 rounded-full border border-zinc-700 bg-zinc-800 text-gray-400 font-medium">
+                {editTaskDetail.category.replace('_', ' ')}
+              </span>
+              {editTaskDetail.assign_mode && (
+                <span className="px-2.5 py-1 rounded-full border border-zinc-700 bg-zinc-800 text-gray-400 font-medium capitalize">
+                  {editTaskDetail.assign_mode} submission
+                </span>
+              )}
             </div>
+
             <div>
               <label className="block text-sm text-gray-400 mb-1">Track</label>
-              <Select 
-                value={editForm.track}
-                onChange={v => setEditForm(prev => ({ ...prev, track: v as string }))}
-                placeholder="All Tracks"
+              <Select
+                isMulti
+                value={editForm.tracks}
+                onChange={v => setEditForm(prev => ({ ...prev, tracks: v as string[] }))}
+                placeholder="Select track(s)..."
                 options={trackOptions}
+                className="w-full"
               />
             </div>
+
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Title</label>
+              <input
+                type="text"
+                value={editForm.title}
+                onChange={e => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+                className="w-full bg-zinc-800 text-white text-sm border border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:border-gold"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Description</label>
+              <textarea
+                value={editForm.description}
+                onChange={e => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                className="w-full bg-zinc-800 text-white text-sm border border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:border-gold h-20"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Target Week</label>
+                <Select
+                  value={editForm.week}
+                  onChange={v => setEditForm(prev => ({ ...prev, week: v as string }))}
+                  options={Array.from({ length: 12 }, (_, i) => ({ value: String(i+1), label: `Week ${i+1}` }))}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Due Date</label>
+                <input
+                  type="date"
+                  value={editForm.deadline}
+                  onChange={e => setEditForm(prev => ({ ...prev, deadline: e.target.value }))}
+                  className="w-full bg-zinc-800 text-white text-sm border border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:border-gold"
+                />
+              </div>
+            </div>
+
+            <div className="pt-1">
+              <Button onClick={handleUpdate} className="w-full">
+                Save Changes
+              </Button>
+            </div>
+
+            {/* ── Assignees ──────────────────────────────────────────── */}
+            <div className="pt-4 border-t border-zinc-750 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <User size={15} className="text-gold" />
+                  Assignees ({editTaskDetail.assignments?.length ?? 0})
+                </h4>
+                {editTaskDetail.target_role !== 'mentor' && editTaskDetail.assign_mode !== 'team' && (
+                  <button
+                    type="button"
+                    onClick={() => setAddAssigneesOpen((v) => !v)}
+                    className="flex items-center gap-1.5 text-xs text-gold hover:text-gold-hover font-medium transition-colors"
+                  >
+                    <UserPlus size={14} /> {addAssigneesOpen ? 'Close' : 'Add assignees'}
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {(editTaskDetail.assignments ?? []).map((a) => {
+                  const cfg = statusConfig[a.status] || statusConfig.pending;
+                  return (
+                    <div
+                      key={a.id}
+                      className="flex items-center justify-between gap-3 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2"
+                    >
+                      <label className="flex items-center gap-2.5 min-w-0 cursor-pointer flex-1">
+                        <input
+                          type="checkbox"
+                          checked={resubmitSelected.has(a.id)}
+                          disabled={a.status !== 'review'}
+                          onChange={() => setResubmitSelected((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(a.id)) next.delete(a.id);
+                            else next.add(a.id);
+                            return next;
+                          })}
+                          title={a.status !== 'review' ? 'Only assignees currently in review can be resubmitted' : 'Select for bulk resubmit'}
+                          className="rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                        />
+                        <span className="text-sm text-white truncate">{a.assignee?.full_name || a.assignee_id}</span>
+                        <span className={`shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${cfg.cls}`}>
+                          {cfg.label}
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAssignee(a)}
+                        disabled={removingAssignmentId === a.id}
+                        title="Remove from task"
+                        className="shrink-0 p-1.5 text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40"
+                      >
+                        {removingAssignmentId === a.id ? <Loader2 size={14} className="animate-spin" /> : <UserMinus size={14} />}
+                      </button>
+                    </div>
+                  );
+                })}
+                {(editTaskDetail.assignments?.length ?? 0) === 0 && (
+                  <p className="text-xs text-gray-500 text-center py-4">No assignees on this task.</p>
+                )}
+              </div>
+
+              {/* Bulk resubmit — one shared comment for every selected
+                  assignee currently in review. A checkbox is disabled for
+                  anyone not in 'review' (e.g. still pending) since
+                  requestResubmit can't act on them; selecting none disables
+                  the button below rather than silently no-op-ing. */}
+              {resubmitSelected.size > 0 && (
+                <div className="bg-zinc-900/80 border border-zinc-750 rounded-lg p-3 space-y-2">
+                  <label className="block text-xs text-gray-400">
+                    Resubmit reason — shared across {resubmitSelected.size} selected
+                  </label>
+                  <textarea
+                    value={resubmitComment}
+                    onChange={e => setResubmitComment(e.target.value)}
+                    placeholder="What needs to change..."
+                    rows={2}
+                    className="w-full bg-zinc-800 text-white text-sm border border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:border-gold resize-none"
+                  />
+                  <Button
+                    onClick={handleBulkResubmit}
+                    disabled={bulkResubmitting || !resubmitComment.trim()}
+                    leftIcon={bulkResubmitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    className="w-full"
+                  >
+                    Request Resubmit for {resubmitSelected.size} Selected
+                  </Button>
+                </div>
+              )}
+
+              {editTaskDetail.target_role === 'student' && editTaskDetail.assign_mode === 'team' && (
+                <p className="text-[11px] text-gray-500">
+                  This task assigns by whole team — add more teams from the Create flow instead.
+                </p>
+              )}
+
+              {addAssigneesOpen && (
+                <div className="bg-zinc-900/80 border border-zinc-750 rounded-lg p-3 space-y-3">
+                  {editForm.tracks.length === 0 ? (
+                    <p className="text-xs text-gray-500">Set at least one track above to see who's assignable.</p>
+                  ) : (
+                    <>
+                      <AssigneePickerTable
+                        mode="individual"
+                        studentRows={addCandidateStudents.filter((s) => !(editTaskDetail.assignments ?? []).some((a) => a.assignee_id === s.id))}
+                        teamRows={addCandidateTeams}
+                        batchOptions={editCohortBatchOptions}
+                        batchFilter={addBatchFilter}
+                        onBatchFilterChange={setAddBatchFilter}
+                        trackNameBySlug={trackNameBySlug}
+                        selected={addSelected}
+                        onSelectedChange={setAddSelected}
+                        loading={addCandidatesLoading}
+                      />
+                      <Button
+                        onClick={handleAddAssignees}
+                        disabled={addingAssignees || addSelected.size === 0}
+                        leftIcon={addingAssignees ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+                        className="w-full"
+                      >
+                        Add {addSelected.size || ''} Selected
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Due Date</label>
-            <input 
-              type="date" 
-              value={editForm.deadline} 
-              onChange={e => setEditForm(prev => ({ ...prev, deadline: e.target.value }))}
-              className="w-full bg-zinc-800 text-white text-sm border border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:border-gold" 
-            />
-          </div>
-          
-          <div className="pt-2">
-            <Button onClick={handleUpdate} className="w-full">
-              Save Changes
-            </Button>
-          </div>
-        </div>
+        )}
       </Modal>
 
       {/* ── Assignee Progress Board Modal ─────────────────────────────── */}

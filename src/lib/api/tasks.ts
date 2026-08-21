@@ -101,7 +101,12 @@ export interface ApiTask {
   title: string;
   description: string;
   week: string;
-  track: string;
+  // A task now carries a set of tracks — `tracks` is the real field.
+  // `track` is transitional (first of `tracks`, or null) — kept only so a
+  // not-yet-redeployed page reading the old single-value shape doesn't
+  // break during the gap between a backend and frontend deploy.
+  tracks: string[];
+  track?: string | null;
   start_date?: string | null;
   deadline: string;
   target_role: 'student' | 'mentor' | 'batch_manager';
@@ -138,7 +143,7 @@ export type ApiTaskType = 'prd' | 'db_schema' | 'hld' | 'lld' | 'api_contract' |
 export type ApiTaskCategory = 'document_submission' | 'general' | 'link_submission';
 export type ApiTaskAssignMode = 'team' | 'individual';
 
-// Backend requires week/track/start_date/deadline/target_role/category/
+// Backend requires week/tracks/start_date/deadline/target_role/category/
 // assign_mode unconditionally now (only `title` used to be required) — see
 // createTaskSchema in task.routes.ts. task_type is no longer set at
 // creation — the task's title already conveys what deliverable is expected,
@@ -148,7 +153,7 @@ export interface CreateTaskPayload {
   title: string;
   description?: string;
   week: string; // e.g. "Week 1"
-  track: string; // e.g. "product_development" (will be mapped automatically)
+  tracks: string[]; // e.g. ["product_development", "gen_ai"] (slugs, mapped automatically)
   start_date: string; // ISO datetime string, must be before deadline
   deadline: string; // ISO datetime string
   target_role: 'student' | 'mentor' | 'batch_manager';
@@ -166,14 +171,24 @@ export interface CreateTaskPayload {
 }
 
 // Backend's PUT /tasks/:id only persists these fields (see updateTaskSchema in
-// task.routes.ts and TaskService.updateTask) — reassigning assignees/
-// targetRole/batch isn't supported on update, only at creation time.
+// task.routes.ts and TaskService.updateTask) — reassigning target_role/batch
+// isn't supported on update; assignees are added/removed via the dedicated
+// apiAddTaskAssignees/apiRemoveTaskAssignment endpoints instead.
 export interface UpdateTaskPayload {
   title?: string;
   description?: string;
   week?: string;
-  track?: string;
+  tracks?: string[];
   deadline?: string;
+}
+
+// Shared shape for a batch mutation that can partially fail — one bad id
+// (not yet published, already assigned, wrong status, out of quota) is
+// reported per-item instead of failing the whole request.
+export interface ApiBatchSkip {
+  assigneeId?: string;
+  assignmentId?: string;
+  reason: string;
 }
 
 export interface ApiTaskPagination {
@@ -207,13 +222,9 @@ export interface ApiTaskListFilter {
 }
 
 export async function apiCreateTask(payload: CreateTaskPayload): Promise<{ success: boolean; message: string; data: ApiTask }> {
-  const body: Record<string, unknown> = { ...payload } as Record<string, unknown>;
-  if (payload.track) {
-    body.track = payload.track;
-  }
   const res = await apiFetch<{ success: boolean; message: string; data: ApiTask }>('/api/v1/tasks', {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
   invalidateCached('tasks:list');
   return res;
@@ -276,16 +287,37 @@ export async function apiGetTask(id: string): Promise<{ success: boolean; data: 
 }
 
 export async function apiUpdateTask(id: string, payload: UpdateTaskPayload): Promise<{ success: boolean; message: string; data: ApiTask }> {
-  const body: Record<string, unknown> = { ...payload } as Record<string, unknown>;
-  if (payload.track) {
-    body.track = payload.track;
-  }
   const res = await apiFetch<{ success: boolean; message: string; data: ApiTask }>(`/api/v1/tasks/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
   invalidateCached('tasks:list');
   invalidateCached(`tasks:get:${id}`);
+  return res;
+}
+
+// Additive only — never touches an existing assignment. See
+// removeTaskAssignment/addTaskAssignments in TaskRepository.ts for why.
+export async function apiAddTaskAssignees(
+  taskId: string,
+  assigneeIds: string[]
+): Promise<{ success: boolean; message: string; data: { added: string[]; skipped: ApiBatchSkip[] } }> {
+  const res = await apiFetch<{ success: boolean; message: string; data: { added: string[]; skipped: ApiBatchSkip[] } }>(
+    `/api/v1/tasks/${taskId}/assignees`,
+    { method: 'POST', body: JSON.stringify({ assigneeIds }) }
+  );
+  invalidateTaskCaches(taskId);
+  return res;
+}
+
+// Soft-removes one assignee — their submission/status history is kept, they
+// just stop seeing this task and drop out of active listings.
+export async function apiRemoveTaskAssignment(taskId: string, assignmentId: string): Promise<{ success: boolean; message: string }> {
+  const res = await apiFetch<{ success: boolean; message: string }>(
+    `/api/v1/tasks/${taskId}/assignments/${assignmentId}`,
+    { method: 'DELETE' }
+  );
+  invalidateTaskCaches(taskId);
   return res;
 }
 
@@ -364,6 +396,22 @@ export async function apiRequestResubmit(taskId: string, assignmentId: string, c
     method: 'PATCH',
     body: JSON.stringify({ comment }),
   });
+  invalidateTaskCaches(taskId);
+  return res;
+}
+
+// Same rules as apiRequestResubmit, run across a hand-picked batch with one
+// shared comment — an assignee still at 'pending' (never submitted) or out
+// of resubmit quota comes back in `skipped` rather than failing the request.
+export async function apiBulkRequestResubmit(
+  taskId: string,
+  assignmentIds: string[],
+  comment: string
+): Promise<{ success: boolean; message: string; data: { succeeded: string[]; skipped: ApiBatchSkip[] } }> {
+  const res = await apiFetch<{ success: boolean; message: string; data: { succeeded: string[]; skipped: ApiBatchSkip[] } }>(
+    `/api/v1/tasks/${taskId}/assignments/bulk-resubmit`,
+    { method: 'POST', body: JSON.stringify({ assignmentIds, comment }) }
+  );
   invalidateTaskCaches(taskId);
   return res;
 }

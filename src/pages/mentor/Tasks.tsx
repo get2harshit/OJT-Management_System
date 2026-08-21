@@ -25,7 +25,7 @@ import { useTracks } from '../../hooks/useTracks';
 
 const CATEGORY_OPTIONS: { value: ApiTaskCategory; label: string }[] = [
   { value: 'document_submission', label: 'Document Submission' },
-  { value: 'general', label: 'General (no submission)' },
+  { value: 'general', label: 'General (Text Response)' },
   { value: 'link_submission', label: 'Link Submission' },
 ];
 
@@ -189,7 +189,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
         start_date: new Date(form.startDate).toISOString(),
         deadline: new Date(form.dueDate).toISOString(),
         week: `Week ${form.week}`,
-        track: form.track,
+        tracks: [form.track],
         cohort_id: activeCohortId,
       });
 
