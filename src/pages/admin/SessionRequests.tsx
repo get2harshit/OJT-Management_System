@@ -15,7 +15,7 @@ import {
   type ApiSessionRequestStatus,
   type ApiSessionRequestType,
 } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
 
 const STATUS_STYLES: Record<ApiSessionRequestStatus, string> = {
@@ -132,7 +132,7 @@ export default function AdminSessionRequests() {
     }
   };
 
-  const cohortOptions = useMemo(() => cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) })), [cohorts]);
+  const cohortOptions = useMemo(() => buildCohortOptions(cohorts), [cohorts]);
 
   return (
     <PageLayout mode="fill" className="space-y-6">

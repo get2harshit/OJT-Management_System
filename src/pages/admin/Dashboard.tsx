@@ -10,7 +10,7 @@ import {
   apiGetDashboardMetrics,
   apiListCohorts,
 } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 import { useTracks } from '../../hooks/useTracks';
@@ -62,7 +62,7 @@ export default function AdminDashboard({ onNavigateToSection }: Props) {
   usePageRefresh(useCallback(() => Promise.all([loadCohorts(), loadMetrics()]), [loadCohorts, loadMetrics]));
 
   const semesterOptions = useMemo(() => {
-    return cohorts.map(c => ({ value: c.id, label: getCohortLabel(c) }));
+    return buildCohortOptions(cohorts);
   }, [cohorts]);
 
   const batchOptions = useMemo(() => {

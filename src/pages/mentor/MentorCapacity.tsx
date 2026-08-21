@@ -5,7 +5,7 @@ import SpinnerSquare from '../../components/SpinnerSquare';
 import type { Cohort, MentorCapacitySummary, Team } from '../../lib/types';
 import { apiListMyCohorts, apiGetMentorCapacity, apiListMyTeams } from '../../lib/api';
 import { useAuth } from '../../context/useAuth';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 
@@ -81,7 +81,7 @@ export default function MentorCapacity() {
         <Select
           value={cohortId}
           onChange={setCohortId}
-          options={cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }))}
+          options={buildCohortOptions(cohorts)}
           placeholder="Select a cohort"
         />
       </div>
