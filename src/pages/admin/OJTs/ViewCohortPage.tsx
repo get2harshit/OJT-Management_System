@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react
 import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, Megaphone, X, Lightbulb, type LucideIcon } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
-import SelfProposedProjectsPanel from './SelfProposedProjectsPanel';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import DataTable from '../../../components/DataTable';
@@ -17,15 +16,12 @@ import { apiCreateAnnouncement } from '../../../lib/api/notifications';
 import { usePageRefresh } from '../../../context/RefreshContext';
 import { useTracks } from '../../../hooks/useTracks';
 
-type PanelView = '' | 'students' | 'projects' | 'mentors' | 'self-projects';
+type PanelView = '' | 'students' | 'projects' | 'mentors';
 
 const PANEL_OPTIONS: { value: PanelView; label: string }[] = [
   { value: 'students', label: 'Students' },
   { value: 'projects', label: 'Projects' },
   { value: 'mentors', label: 'Mentors' },
-  // Projects the teams wrote themselves, as opposed to the admin catalog the
-  // 'projects' option above lists.
-  { value: 'self-projects', label: 'Student Proposed Projects' },
 ];
 
 // resolveTeamAssignment falls back to the team's own track when a project
@@ -836,6 +832,13 @@ export default function ViewCohortPage() {
             Create Announcement
           </button>
           <button
+            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/self-proposed-projects`)}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"
+          >
+            <Lightbulb size={16} />
+            Student Proposed Projects
+          </button>
+          <button
             onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/projects`)}
             className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"
           >
@@ -884,25 +887,13 @@ export default function ViewCohortPage() {
               {panelView === 'students' && <Users size={14} className="text-gold" />}
               {panelView === 'projects' && <Briefcase size={14} className="text-gold" />}
               {panelView === 'mentors' && <UserCog size={14} className="text-gold" />}
-              {panelView === 'self-projects' && <Lightbulb size={14} className="text-gold" />}
             </div>
             <span className="text-white text-sm font-semibold">
-              {panelView === 'students'
-                ? 'Students'
-                : panelView === 'projects'
-                ? 'Projects'
-                : panelView === 'mentors'
-                ? 'Mentors'
-                : 'Student Proposed Projects'}
+              {panelView === 'students' ? 'Students' : panelView === 'projects' ? 'Projects' : 'Mentors'}
             </span>
           </div>
 
-          {/* Owns its own fetching, filtering and detail modal, so it sits
-              outside the shared list/detail machinery the other three views
-              share — none of that state applies to it. */}
-          {panelView === 'self-projects' ? (
-            <SelfProposedProjectsPanel cohortId={cohortId!} trackOptions={trackOptions} />
-          ) : !isBrowsingList ? (
+          {!isBrowsingList ? (
             <div
               ref={detailWrapRef}
               style={{
@@ -1064,7 +1055,7 @@ export default function ViewCohortPage() {
 
       {panelView === '' && (
         <div className="border border-dashed border-zinc-800 rounded-xl py-20 flex flex-col items-center justify-center gap-2">
-          <p className="text-gray-500 text-sm">Select a view from the dropdown above to see this OJT's students, projects, mentors or student-proposed projects.</p>
+          <p className="text-gray-500 text-sm">Select a view from the dropdown above to see this OJT's students, projects or mentors.</p>
         </div>
       )}
 
