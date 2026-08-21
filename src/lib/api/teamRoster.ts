@@ -16,7 +16,24 @@ export interface ApiMentorGroup {
   name: string;
   created_by_id: string;
   created_at: string;
+  meeting_pattern_type: 'weekdays' | 'interval' | null;
+  meeting_weekdays: number[];
+  meeting_interval_days: number | null;
+  meeting_interval_anchor: string | null;
 }
+
+/**
+ * A group's recurring meeting pattern — purely descriptive (seeds a default
+ * cadence target on the teams that join, and drives UI suggestions), never
+ * auto-creates a session. `null` clears whatever pattern was set. 'weekdays'
+ * covers any combination of days, not just presets like Mon/Wed/Fri;
+ * 'interval' covers "every N days" patterns (alternate days = intervalDays: 2)
+ * that don't line up with a fixed weekly weekday set.
+ */
+export type MeetingPattern =
+  | { type: 'weekdays'; weekdays: number[] }
+  | { type: 'interval'; intervalDays: number; anchorDate: string }
+  | null;
 
 /**
  * Thrown for the 409 the roster endpoints raise when a change would affect
@@ -141,11 +158,30 @@ export async function apiListMentorGroups(cohortId: string, mentorId: string): P
   return res.data;
 }
 
-export async function apiCreateMentorGroup(cohortId: string, mentorId: string, name: string): Promise<ApiMentorGroup> {
+export async function apiCreateMentorGroup(
+  cohortId: string,
+  mentorId: string,
+  name: string,
+  meetingPattern?: MeetingPattern
+): Promise<ApiMentorGroup> {
   const res = await apiFetch<{ data: ApiMentorGroup }>(`/api/v1/cohorts/${cohortId}/mentors/${mentorId}/groups`, {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, meetingPattern }),
   });
+  invalidateCached('mentor-groups');
+  return res.data;
+}
+
+export async function apiSetGroupMeetingPattern(
+  cohortId: string,
+  mentorId: string,
+  groupId: string,
+  meetingPattern: MeetingPattern
+): Promise<ApiMentorGroup> {
+  const res = await apiFetch<{ data: ApiMentorGroup }>(
+    `/api/v1/cohorts/${cohortId}/mentors/${mentorId}/groups/${groupId}/meeting-pattern`,
+    { method: 'PATCH', body: JSON.stringify({ meetingPattern }) }
+  );
   invalidateCached('mentor-groups');
   return res.data;
 }

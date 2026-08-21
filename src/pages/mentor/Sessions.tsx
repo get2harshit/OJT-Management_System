@@ -34,8 +34,10 @@ import {
   type ApiSession,
   type ApiSessionStatus,
   type ApiMentorWorkspaceTeam,
+  type ApiMentorGroup,
 } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
+import { formatMeetingPattern } from '../../lib/meetingPattern';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useAuth } from '../../context/useAuth';
@@ -53,15 +55,21 @@ function toLocalInputValue(iso: string | Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function formatGroupOptionLabel(group: ApiMentorGroup): string {
+  const pattern = formatMeetingPattern(group);
+  return pattern ? `${group.name} (${pattern})` : group.name;
+}
+
 interface SessionFormState {
   teamIds: string[];
   title: string;
   locationOrLink: string;
   startLocal: string;
   endLocal: string;
+  groupHint: string;
 }
 
-const EMPTY_FORM: SessionFormState = { teamIds: [], title: '', locationOrLink: '', startLocal: '', endLocal: '' };
+const EMPTY_FORM: SessionFormState = { teamIds: [], title: '', locationOrLink: '', startLocal: '', endLocal: '', groupHint: '' };
 
 export default function MentorSessions() {
   const navigate = useNavigate();
@@ -150,15 +158,31 @@ export default function MentorSessions() {
   // can be picked at a glance instead of hunting for them by name. The
   // Select component's own "Select All" already covers "every team".
   const [workspaceTeams, setWorkspaceTeams] = useState<ApiMentorWorkspaceTeam[]>([]);
+  const [groups, setGroups] = useState<ApiMentorGroup[]>([]);
   useEffect(() => {
     if (!selectedCohortId || !user) {
       setWorkspaceTeams([]);
+      setGroups([]);
       return;
     }
     apiGetMentorWorkspace(selectedCohortId, user.id)
-      .then((workspace) => setWorkspaceTeams(workspace.teams))
-      .catch(() => setWorkspaceTeams([]));
+      .then((workspace) => {
+        setWorkspaceTeams(workspace.teams);
+        setGroups(workspace.groups);
+      })
+      .catch(() => {
+        setWorkspaceTeams([]);
+        setGroups([]);
+      });
   }, [selectedCohortId, user]);
+
+  // Filling teamIds from a chosen group's *current* team list — a one-shot
+  // convenience, not a lasting link, mirroring the admin create-session
+  // picker's own group shortcut. Still fully editable in Team(s) right below.
+  const applyGroupHint = (form: SessionFormState, setForm: (f: SessionFormState) => void, groupId: string) => {
+    const teamIds = groupId ? workspaceTeams.filter((t) => t.groupId === groupId).map((t) => t.id) : form.teamIds;
+    setForm({ ...form, groupHint: groupId, teamIds });
+  };
 
   const teamOptions = useMemo(
     () =>
@@ -384,6 +408,7 @@ export default function MentorSessions() {
       locationOrLink: selected.location_or_link ?? '',
       startLocal: toLocalInputValue(selected.start_time),
       endLocal: toLocalInputValue(selected.end_time),
+      groupHint: '',
     });
   };
 
@@ -442,6 +467,17 @@ export default function MentorSessions() {
 
   const sessionForm = (form: SessionFormState, setForm: (f: SessionFormState) => void) => (
     <div className="space-y-3">
+      {groups.length > 0 && (
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">Schedule for group (optional)</label>
+          <Select
+            value={form.groupHint}
+            onChange={(v) => applyGroupHint(form, setForm, v)}
+            options={[{ value: '', label: 'Custom selection' }, ...groups.map((g) => ({ value: g.id, label: formatGroupOptionLabel(g) }))]}
+          />
+          <p className="text-[11px] text-gray-500 mt-1">Fills Team(s) below with this group's current teams — still editable.</p>
+        </div>
+      )}
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Team(s)</label>
         <Select isMulti value={form.teamIds} onChange={(v) => setForm({ ...form, teamIds: v })} options={teamOptions} placeholder="Select team(s)" isSearchable />
@@ -480,7 +516,7 @@ export default function MentorSessions() {
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <Select value={selectedCohortId} onChange={setSelectedCohortId} variant="filter" placeholder="Select cohort" className="w-[200px]" options={cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }))} />
+          <Select value={selectedCohortId} onChange={setSelectedCohortId} variant="filter" placeholder="Select cohort" className="w-[200px]" options={buildCohortOptions(cohorts)} />
           <button
             onClick={() => canSelfSchedule && setCreateForm({ ...EMPTY_FORM })}
             disabled={!canSelfSchedule}

@@ -19,10 +19,12 @@ import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
 import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
+import { formatMeetingPattern } from '../../lib/meetingPattern';
 import type { ApiMentor } from '../../lib/types';
 import {
   apiListMentorsPage,
   apiGetMentorWorkspace,
+  apiListMentorGroups,
   apiListSessions,
   apiCreateSession,
   apiRescheduleSession,
@@ -32,6 +34,8 @@ import {
   apiEndLiveSession,
   type ApiSession,
   type ApiSessionStatus,
+  type ApiMentorGroup,
+  type ApiMentorWorkspaceTeam,
 } from '../../lib/api';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
@@ -42,6 +46,11 @@ const STATUS_COLORS: Record<ApiSessionStatus, string> = {
   completed: '#22c55e',
   cancelled: '#ef4444',
 };
+
+function formatGroupOptionLabel(group: ApiMentorGroup): string {
+  const pattern = formatMeetingPattern(group);
+  return pattern ? `${group.name} (${pattern})` : group.name;
+}
 
 // YYYY-MM-DDTHH:mm, for a native <input type="datetime-local">, from an ISO string or Date.
 function toLocalInputValue(iso: string | Date): string {
@@ -57,9 +66,14 @@ interface SessionFormState {
   locationOrLink: string;
   startLocal: string;
   endLocal: string;
+  // "Schedule for this group" — a UI-only convenience that fills teamIds in
+  // one click, never sent to the backend (a session still binds to teams
+  // directly, never to a group). Kept only so the picker can show which
+  // group's teams were just filled in; freely editable afterward below.
+  groupHint: string;
 }
 
-const EMPTY_FORM: SessionFormState = { mentorId: '', teamIds: [], title: '', locationOrLink: '', startLocal: '', endLocal: '' };
+const EMPTY_FORM: SessionFormState = { mentorId: '', teamIds: [], title: '', locationOrLink: '', startLocal: '', endLocal: '', groupHint: '' };
 
 export default function AdminSessions() {
   const navigate = useNavigate();
@@ -182,10 +196,20 @@ export default function AdminSessions() {
    * count.
    */
   const [teamsByMentor, setTeamsByMentor] = useState<Record<string, { value: string; label: string }[]>>({});
+  // Raw (unmapped) teams, kept alongside the label-mapped list above purely so
+  // the group picker below can resolve "which team ids belong to group X" —
+  // teamsByMentor only carries what the Select needs to render.
+  const [rawTeamsByMentor, setRawTeamsByMentor] = useState<Record<string, ApiMentorWorkspaceTeam[]>>({});
+  const [groupsByMentor, setGroupsByMentor] = useState<Record<string, ApiMentorGroup[]>>({});
   const loadTeamsForMentor = useCallback(async (mentorId: string) => {
     if (!selectedCohortId || !mentorId || teamsByMentor[mentorId]) return;
     try {
-      const workspace = await apiGetMentorWorkspace(selectedCohortId, mentorId);
+      const [workspace, groups] = await Promise.all([
+        apiGetMentorWorkspace(selectedCohortId, mentorId),
+        apiListMentorGroups(selectedCohortId, mentorId),
+      ]);
+      setRawTeamsByMentor((current) => ({ ...current, [mentorId]: workspace.teams }));
+      setGroupsByMentor((current) => ({ ...current, [mentorId]: groups }));
       setTeamsByMentor((current) => ({
         ...current,
         // Group name in the label, because picking teams is how a common
@@ -212,6 +236,15 @@ export default function AdminSessions() {
       setTeamsByMentor((current) => ({ ...current, [mentorId]: [] }));
     }
   }, [selectedCohortId, teamsByMentor]);
+
+  // Filling teamIds from a chosen group's *current* team list — a one-shot
+  // convenience, not a lasting link. Still fully editable in the Team(s)
+  // picker right below afterward.
+  const applyGroupHint = (form: SessionFormState, setForm: (f: SessionFormState) => void, groupId: string) => {
+    const teams = rawTeamsByMentor[form.mentorId] ?? [];
+    const teamIds = groupId ? teams.filter((t) => t.groupId === groupId).map((t) => t.id) : form.teamIds;
+    setForm({ ...form, groupHint: groupId, teamIds });
+  };
 
   // Staffing can change under a cached list; drop it when the cohort does.
   useEffect(() => { setTeamsByMentor({}); }, [selectedCohortId]);
@@ -403,6 +436,7 @@ export default function AdminSessions() {
       locationOrLink: selected.location_or_link ?? '',
       startLocal: toLocalInputValue(selected.start_time),
       endLocal: toLocalInputValue(selected.end_time),
+      groupHint: '',
     });
   };
 
@@ -469,7 +503,7 @@ export default function AdminSessions() {
             // Teams already picked belonged to the previous mentor, so they go
             // with them — keeping them would submit exactly what the rule
             // refuses.
-            setForm({ ...form, mentorId: v, teamIds: [] });
+            setForm({ ...form, mentorId: v, teamIds: [], groupHint: '' });
             loadTeamsForMentor(v);
           }}
           options={mentorOptions}
@@ -477,6 +511,23 @@ export default function AdminSessions() {
           isSearchable
         />
       </div>
+      {(groupsByMentor[form.mentorId] ?? []).length > 0 && (
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">Schedule for group (optional)</label>
+          <Select
+            value={form.groupHint}
+            onChange={(v) => applyGroupHint(form, setForm, v)}
+            options={[
+              { value: '', label: 'Custom selection' },
+              ...(groupsByMentor[form.mentorId] ?? []).map((g) => ({
+                value: g.id,
+                label: formatGroupOptionLabel(g),
+              })),
+            ]}
+          />
+          <p className="text-[11px] text-gray-500 mt-1">Fills Team(s) below with this group's current teams — still editable.</p>
+        </div>
+      )}
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Team(s)</label>
         <Select
