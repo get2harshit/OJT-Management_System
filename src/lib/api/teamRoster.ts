@@ -296,3 +296,37 @@ export async function apiGetStudentActivityHistory(studentId: string): Promise<S
   const res = await apiFetch<{ data: StudentActivityEvent[] }>(`/api/v1/teams/students/${studentId}/activity`);
   return res.data;
 }
+
+export interface ApiTeamPerformanceWeek {
+  /** ISO timestamp of the week's Monday 00:00 UTC. */
+  weekStart: string;
+  tasksApproved: number;
+  sessionsHeld: number;
+  /**
+   * Present and total-marked stay separate on purpose: a week where nothing
+   * was marked is "no data", not 0% attendance, and the UI has to be able to
+   * tell those apart.
+   */
+  attendancePresent: number;
+  attendanceMarked: number;
+}
+
+export interface ApiTeamPerformance {
+  weeks: ApiTeamPerformanceWeek[];
+  openTasks: number;
+  tasksNeedingResubmit: number;
+  memberCount: number;
+}
+
+/**
+ * One team's week-by-week record — tasks approved, sessions held, attendance —
+ * plus its current open/needs-resubmit task counts.
+ *
+ * Returns the raw signals rather than a single score by design: an invented
+ * composite reads as authoritative and hides the very inputs a mentor can act
+ * on. `weeks` is clamped server-side to 1..26.
+ */
+export async function apiGetTeamPerformance(teamId: string, weeks = 8): Promise<ApiTeamPerformance> {
+  const res = await apiFetch<{ data: ApiTeamPerformance }>(`/api/v1/teams/${teamId}/performance?weeks=${weeks}`);
+  return res.data;
+}

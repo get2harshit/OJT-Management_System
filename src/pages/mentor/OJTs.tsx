@@ -3,6 +3,7 @@ import { Users, GitBranch, FolderGit2, Loader2, Briefcase, Layers, CalendarCheck
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import TeamPerformancePanel from '../../components/TeamPerformancePanel';
 import type { TeamWithProject, Cohort, Project } from '../../lib/types';
 import { apiListMyTeamsDetailed, apiListMyCohorts, apiGetProject } from '../../lib/api';
 import { apiGetMentorWorkspace, type ApiMentorWorkspace, type ApiMentorWorkspaceTeam } from '../../lib/api/teamRoster';
@@ -60,7 +61,10 @@ export default function MentorOJTs() {
   // treats "the" active cohort (see deactivateOtherCohorts).
   useEffect(() => {
     if (cohorts.length === 0) return;
-    setSelectedCohortId((prev) => prev || cohorts.find((c) => c.isActive)?.id || prev);
+    // Falls back to the first cohort when none is active, matching
+    // mentor/Sessions.tsx — otherwise a mentor whose only OJT has finished
+    // sits on "Select a cohort" forever with exactly one thing to select.
+    setSelectedCohortId((prev) => prev || cohorts.find((c) => c.isActive)?.id || cohorts[0]?.id || prev);
   }, [cohorts]);
 
   useEffect(() => {
@@ -257,6 +261,13 @@ function TeamProjectDetail({ team }: { team: TeamWithProject }) {
 
   return (
     <div className="space-y-5">
+      {/* How the team has actually been doing, above the project brief — a
+          mentor opening a team wants the current picture first, not the spec. */}
+      <div>
+        <p className="text-[11px] text-gray-500 uppercase tracking-wide mb-2">Recent activity</p>
+        <TeamPerformancePanel teamId={team.teamId} />
+      </div>
+
       {/* Team members */}
       <div>
         <p className="text-[11px] text-gray-500 uppercase tracking-wide mb-2">Students</p>
