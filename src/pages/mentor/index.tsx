@@ -9,7 +9,7 @@ import Tasks from './Tasks';
 import Submissions from './Submissions';
 import Attendance from './Attendance';
 import Sessions from './Sessions';
-import Payouts from './Payouts';
+import WorkSummary from './WorkSummary';
 import SessionRequests from './SessionRequests';
 import Availability from './Availability';
 import EvaluationTracker from './EvaluationTracker';
@@ -76,7 +76,7 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
         goToSection('sessions');
         break;
       case 'payout':
-        goToSection('payouts');
+        goToSection('work-summary');
         break;
       default:
         break;
@@ -115,7 +115,10 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
         <Route path="credits" element={<Credits mentorId={mentorId} />} />
         <Route path="sessions" element={<Sessions />} />
         <Route path="attendance" element={<Attendance />} />
-        <Route path="payouts" element={<Payouts />} />
+        <Route path="work-summary" element={<WorkSummary />} />
+        {/* Payout notifications and any old link still say "payouts" — the
+            mentor-side page is now about work delivered, not money. */}
+        <Route path="payouts" element={<Navigate to={`${BASE_PATH}/work-summary`} replace />} />
         <Route path="session-requests" element={<SessionRequests />} />
         <Route path="availability" element={<Availability />} />
         <Route path="evaluation" element={<EvaluationTracker />} />

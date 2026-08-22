@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Users, GitBranch, FolderGit2, Loader2, Briefcase } from 'lucide-react';
+import { Users, GitBranch, FolderGit2, Loader2, Briefcase, Layers, CalendarCheck } from 'lucide-react';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import type { TeamWithProject, Cohort, Project } from '../../lib/types';
 import { apiListMyTeamsDetailed, apiListMyCohorts, apiGetProject } from '../../lib/api';
+import { apiGetMentorWorkspace, type ApiMentorWorkspace, type ApiMentorWorkspaceTeam } from '../../lib/api/teamRoster';
 import { buildCohortOptions } from '../../lib/cohortLabel';
+import { useAuth } from '../../context/useAuth';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 // "G1 (Aditya, Subham)" — the team's number plus its members on one line.
@@ -16,10 +18,16 @@ function teamLabel(team: TeamWithProject): string {
 }
 
 export default function MentorOJTs() {
+  const { user } = useAuth();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [teams, setTeams] = useState<TeamWithProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCohortId, setSelectedCohortId] = useState('');
+
+  // The mentor's own workspace for this cohort — where the batch/group each
+  // team is filed under lives, plus its weekly meeting target. The team list
+  // above knows members and projects but nothing about grouping.
+  const [workspace, setWorkspace] = useState<ApiMentorWorkspace | null>(null);
 
   const [selectedTeam, setSelectedTeam] = useState<TeamWithProject | null>(null);
 
@@ -55,6 +63,20 @@ export default function MentorOJTs() {
     setSelectedCohortId((prev) => prev || cohorts.find((c) => c.isActive)?.id || prev);
   }, [cohorts]);
 
+  useEffect(() => {
+    if (!selectedCohortId || !user?.id) {
+      setWorkspace(null);
+      return;
+    }
+    let cancelled = false;
+    apiGetMentorWorkspace(selectedCohortId, user.id)
+      .then((data) => { if (!cancelled) setWorkspace(data); })
+      // Grouping is extra context on top of the team list, not the point of
+      // the page — if it fails the teams still render, just ungrouped.
+      .catch(() => { if (!cancelled) setWorkspace(null); });
+    return () => { cancelled = true; };
+  }, [selectedCohortId, user?.id]);
+
   // Only this mentor's teams in the chosen cohort — the mentor picks a cohort
   // first, then sees its projects and students.
   const cohortTeams = useMemo(
@@ -62,12 +84,45 @@ export default function MentorOJTs() {
     [teams, selectedCohortId]
   );
 
+  const workspaceByTeamId = useMemo(() => {
+    const map = new Map<string, ApiMentorWorkspaceTeam>();
+    workspace?.teams.forEach((t) => map.set(t.id, t));
+    return map;
+  }, [workspace]);
+
+  /**
+   * Teams split into the batches the mentor's admin filed them under.
+   *
+   * Every declared group gets a section even when empty, so a batch that was
+   * just created is visibly there waiting for teams rather than silently
+   * missing. Anything not filed anywhere collects under "Ungrouped", which is
+   * only rendered when it actually has teams.
+   */
+  const groupedTeams = useMemo(() => {
+    const sections: { id: string; name: string; teams: TeamWithProject[] }[] =
+      (workspace?.groups ?? []).map((g) => ({ id: g.id, name: g.name, teams: [] }));
+    const byId = new Map(sections.map((s) => [s.id, s]));
+    const ungrouped: TeamWithProject[] = [];
+
+    cohortTeams.forEach((team) => {
+      const groupId = workspaceByTeamId.get(team.teamId)?.groupId;
+      const section = groupId ? byId.get(groupId) : undefined;
+      if (section) section.teams.push(team);
+      else ungrouped.push(team);
+    });
+
+    if (ungrouped.length > 0) {
+      sections.push({ id: '__ungrouped', name: 'Ungrouped', teams: ungrouped });
+    }
+    return sections;
+  }, [cohortTeams, workspace, workspaceByTeamId]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">OJTs &amp; Projects</h1>
-          <p className="text-gray-400 text-sm mt-1">Pick a cohort to see its projects and the students on each team.</p>
+          <p className="text-gray-400 text-sm mt-1">Your teams and their projects, grouped into the batches they belong to.</p>
         </div>
         <Select
           value={selectedCohortId}
@@ -93,32 +148,52 @@ export default function MentorOJTs() {
           No teams are allocated to you in this cohort yet.
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {cohortTeams.map((team) => (
-            <button
-              key={team.teamId}
-              onClick={() => setSelectedTeam(team)}
-              className="text-left bg-zinc-850 border border-zinc-750 rounded-xl p-5 hover:border-gold/60 hover:scale-[1.02] transition-all duration-200"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold">
-                  <GitBranch size={12} />
-                  {team.track}
-                </span>
-                <span className="flex items-center gap-1 text-xs text-gray-400">
-                  <Users size={12} />
-                  {team.members.length}
+        <div className="space-y-6">
+          {groupedTeams.map((section) => (
+            <div key={section.id}>
+              <div className="flex items-center gap-2 mb-3">
+                <Layers size={14} className="text-gray-500 shrink-0" />
+                <h2 className="text-sm font-semibold text-gray-300">{section.name}</h2>
+                <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-zinc-800 text-gray-400 font-semibold">
+                  {section.teams.length}
                 </span>
               </div>
-              <p className="text-white font-semibold text-sm mb-1 flex items-center gap-1.5">
-                <Users size={13} className="text-gold shrink-0" />
-                {teamLabel(team)}
-              </p>
-              <p className="text-gray-300 text-sm truncate flex items-center gap-1.5">
-                <FolderGit2 size={13} className="text-gray-500 shrink-0" />
-                {team.project ? team.project.title : 'No project allocated yet'}
-              </p>
-            </button>
+              {section.teams.length === 0 ? (
+                <p className="text-gray-500 text-sm bg-zinc-850 border border-zinc-750 border-dashed rounded-xl p-4">
+                  No teams in this batch yet.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {section.teams.map((team) => (
+                    <button
+                      key={team.teamId}
+                      onClick={() => setSelectedTeam(team)}
+                      className="text-left bg-zinc-850 border border-zinc-750 rounded-xl p-5 hover:border-gold/60 hover:scale-[1.02] transition-all duration-200"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold">
+                          <GitBranch size={12} />
+                          {team.track}
+                        </span>
+                        <span className="flex items-center gap-1 text-xs text-gray-400">
+                          <Users size={12} />
+                          {team.members.length}
+                        </span>
+                      </div>
+                      <p className="text-white font-semibold text-sm mb-1 flex items-center gap-1.5">
+                        <Users size={13} className="text-gold shrink-0" />
+                        {teamLabel(team)}
+                      </p>
+                      <p className="text-gray-300 text-sm truncate flex items-center gap-1.5">
+                        <FolderGit2 size={13} className="text-gray-500 shrink-0" />
+                        {team.project ? team.project.title : 'No project allocated yet'}
+                      </p>
+                      <CadenceBadge team={workspaceByTeamId.get(team.teamId)} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -132,6 +207,30 @@ export default function MentorOJTs() {
         {selectedTeam && <TeamProjectDetail team={selectedTeam} />}
       </Modal>
     </div>
+  );
+}
+
+/**
+ * How this week's meetings stand against the target an admin set for the team.
+ * Renders nothing when no target is set — most teams have none, and "0 of 0"
+ * would read as a miss rather than as "not tracked".
+ */
+function CadenceBadge({ team }: { team: ApiMentorWorkspaceTeam | undefined }) {
+  if (!team || team.weeklySessionTarget === null) return null;
+
+  const met = team.cadenceStatus === 'met';
+  return (
+    <p
+      className={`mt-3 inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+        met
+          ? 'bg-green-500/10 text-green-400 border-green-500/20'
+          : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+      }`}
+    >
+      <CalendarCheck size={11} className="shrink-0" />
+      {team.sessionsThisWeek}/{team.weeklySessionTarget} this week
+      {met ? '' : ' — behind'}
+    </p>
   );
 }
 

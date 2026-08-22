@@ -22,6 +22,7 @@ import {
   Wallet,
   Inbox,
   Clock,
+  ClipboardList,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
 
@@ -67,7 +68,9 @@ const mentorTabs = [
   { id: 'session-requests', label: 'Session Requests', icon: Inbox },
   { id: 'availability', label: 'My Availability', icon: Clock },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
-  { id: 'payouts', label: 'Payouts', icon: Wallet },
+  // Deliberately not "Payouts" — the mentor-side page shows work delivered
+  // (sessions, hours, teams), never rates or amounts.
+  { id: 'work-summary', label: 'My Work Summary', icon: ClipboardList },
   { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
 ];
 

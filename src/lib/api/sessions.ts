@@ -158,6 +158,28 @@ export async function apiGetMyUpcomingSessions(filter: SessionListFilter): Promi
   return fetchSessionsPage(`/api/v1/students/me/sessions?${toQuery(filter)}`);
 }
 
+/**
+ * The calling mentor's session record in aggregate. Carries no rate or
+ * amount by design — it describes work delivered, not money.
+ */
+export interface ApiMentorSessionStats {
+  scheduled: number;
+  rescheduled: number;
+  completed: number;
+  cancelled: number;
+  total: number;
+  /** Actual duration where the mentor recorded one, else the scheduled duration. */
+  deliveredMinutes: number;
+  /** Distinct teams this mentor has actually completed a session with. */
+  teamsMentored: number;
+}
+
+export async function apiGetMySessionStats(cohortId?: string): Promise<ApiMentorSessionStats> {
+  const query = cohortId ? `?cohortId=${encodeURIComponent(cohortId)}` : '';
+  const res = await apiFetch<{ data: ApiMentorSessionStats }>(`/api/v1/mentors/me/session-stats${query}`);
+  return res.data;
+}
+
 export interface RescheduleSessionBody {
   scheduledDate: string;
   startTime: string;

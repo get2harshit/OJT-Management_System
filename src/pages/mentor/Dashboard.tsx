@@ -3,10 +3,12 @@ import { Users, CheckSquare, FolderOpen, CalendarClock, ClipboardList, TrendingU
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
-import type { ApiStudent, Team, PrdSubmission, PrdStatus } from '../../lib/types';
-import { apiListMyTeams, apiListStudents, apiGetAllPrdSubmissions, apiGetMySessions } from '../../lib/api';
+import OjtWeekBadge from '../../components/OjtWeekBadge';
+import type { ApiStudent, Team, PrdSubmission, PrdStatus, Cohort } from '../../lib/types';
+import { apiListMyTeams, apiListStudents, apiGetAllPrdSubmissions, apiGetMySessions, apiListMyCohorts } from '../../lib/api';
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask } from '../../lib/api/tasks';
+import { useAuth } from '../../context/useAuth';
 
 import { usePageRefresh } from '../../context/RefreshContext';
 
@@ -34,6 +36,8 @@ const SUBMISSION_STATUS_BUCKETS: { label: string; statuses: PrdStatus[]; barClas
 export default function MentorDashboard({
   onNavigateToSection,
 }: Partial<Props> & Pick<Props, 'mentorId' | 'onNavigateToSection'>) {
+  const { user } = useAuth();
+  const mentorName = user?.fullName || (user?.email ? user.email.split('@')[0] : 'Mentor');
   // mentorId is no longer needed here — GET /tasks and the submissions list
   // both scope to the authenticated caller server-side, not a passed id.
   // Attendance has no real backend endpoint anywhere in this app yet — still
@@ -57,14 +61,19 @@ export default function MentorDashboard({
   const [upcomingSessions, setUpcomingSessions] = useState(0);
   const [sessionsHeld, setSessionsHeld] = useState(0);
   const [loadingRoster, setLoadingRoster] = useState(true);
+  // Only for the "Week 6 of 24" badge — the mentor's currently running OJT.
+  const [activeCohort, setActiveCohort] = useState<Cohort | null>(null);
 
   const loadDashboardData = useCallback(() => {
-    return Promise.all([apiListMyTeams(), apiListStudents(), apiListTasks(), apiGetAllPrdSubmissions()])
-      .then(([teams, students, taskRes, submissionRes]) => {
+    return Promise.all([apiListMyTeams(), apiListStudents(), apiListTasks(), apiGetAllPrdSubmissions(), apiListMyCohorts()])
+      .then(([teams, students, taskRes, submissionRes, cohorts]) => {
         setMyTeams(teams);
         setApiStudents(students);
         setTasks(taskRes.data);
         setSubmissions(submissionRes);
+        // /cohorts/mine is ordered created_at DESC, so the first active entry
+        // is the one the backend itself treats as "the" active cohort.
+        setActiveCohort(cohorts.find((c) => c.isActive) ?? null);
       })
       .catch((err) => console.error('Mentor dashboard failed to load', err))
       .finally(() => setLoadingRoster(false));
@@ -145,9 +154,14 @@ export default function MentorDashboard({
 
   return (
     <div className="space-y-4 sm:space-y-6 lg:space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Mentor Dashboard</h1>
-        <p className="text-gray-400 text-sm mt-1">Overview of your assigned students and tasks</p>
+      <div className="bg-zinc-850 border border-zinc-750 p-6 rounded-2xl shadow-sm">
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            Welcome back, <span className="text-gold">{mentorName}</span> 👋
+          </h1>
+          <OjtWeekBadge startDate={activeCohort?.startDate} endDate={activeCohort?.endDate} />
+        </div>
+        <p className="text-gray-400 text-sm mt-1">Your teams, sessions and reviews at a glance.</p>
       </div>
 
       {/* Filter Bar */}
