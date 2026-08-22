@@ -8,18 +8,20 @@ import listPlugin from '@fullcalendar/list';
 // the two were imported from each other's package.
 import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction';
 import type { EventClickArg, DateSelectArg, EventContentArg, EventDropArg, EventHoveringArg } from '@fullcalendar/core';
-import { CalendarClock, Settings, Plus, Users2, XCircle, CheckCircle2, RefreshCw, Radio, Square } from 'lucide-react';
+import { CalendarClock, Settings, Plus, Users2, XCircle, CheckCircle2, RefreshCw, Radio, Square, BarChart3 } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import SessionHoverPreview from '../../components/SessionHoverPreview';
 import SessionJoinLink from '../../components/SessionJoinLink';
+import LiveSessionReportModal from '../../components/LiveSessionReportModal';
 import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
 import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
 import { formatMeetingPattern } from '../../lib/meetingPattern';
+import { DEFAULT_SESSION_LOCATION, PST_CAMPUS_ROOM_OPTIONS, defaultSessionTitle } from '../../lib/sessionLocation';
 import type { ApiMentor } from '../../lib/types';
 import {
   apiListMentorsPage,
@@ -257,9 +259,18 @@ export default function AdminSessions() {
     const session = arg.event.extendedProps.session as ApiSession | undefined;
     if (!session) return null;
     const teamNames = session.teams.map((t) => t.team.name).join(', ') || '—';
+    const isLiveNow = !!session.live_session_id && !session.live_ended_at;
     return (
       <div className="px-1 py-0.5 overflow-hidden leading-tight">
-        {arg.timeText && <div className="text-[10px] font-bold truncate">{arg.timeText}</div>}
+        <div className="flex items-center gap-1">
+          {arg.timeText && <div className="text-[10px] font-bold truncate">{arg.timeText}</div>}
+          {isLiveNow && (
+            <span className="flex items-center gap-0.5 text-[9px] font-bold text-red-600 shrink-0">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse" />
+              LIVE
+            </span>
+          )}
+        </div>
         <div className="text-[11px] font-semibold truncate">{session.title || session.mentor.full_name}</div>
         <div className="text-[10px] truncate opacity-75 flex items-center gap-1">
           <Users2 size={9} className="shrink-0" />
@@ -316,7 +327,12 @@ export default function AdminSessions() {
   );
 
   const handleSelect = useCallback((arg: DateSelectArg) => {
-    setCreateForm({ ...EMPTY_FORM, startLocal: toLocalInputValue(arg.start), endLocal: toLocalInputValue(arg.end) });
+    setCreateForm({
+      ...EMPTY_FORM,
+      locationOrLink: DEFAULT_SESSION_LOCATION,
+      startLocal: toLocalInputValue(arg.start),
+      endLocal: toLocalInputValue(arg.end),
+    });
   }, []);
 
   const handleEventClick = useCallback((arg: EventClickArg) => {
@@ -383,6 +399,7 @@ export default function AdminSessions() {
   // faculty is, which session — are the server's to supply from the token and
   // the row; nothing about them is sent from here.
   const [liveBusy, setLiveBusy] = useState(false);
+  const [showLiveReport, setShowLiveReport] = useState(false);
 
   const startLive = async (session: ApiSession) => {
     setLiveBusy(true);
@@ -502,8 +519,16 @@ export default function AdminSessions() {
           onChange={(v) => {
             // Teams already picked belonged to the previous mentor, so they go
             // with them — keeping them would submit exactly what the rule
-            // refuses.
-            setForm({ ...form, mentorId: v, teamIds: [], groupHint: '' });
+            // refuses. Title only auto-fills while still blank, so it never
+            // overwrites something the admin already typed.
+            const mentorName = mentors.find((m) => m.id === v)?.fullName;
+            setForm({
+              ...form,
+              mentorId: v,
+              teamIds: [],
+              groupHint: '',
+              title: form.title === '' ? defaultSessionTitle(mentorName) : form.title,
+            });
             loadTeamsForMentor(v);
           }}
           options={mentorOptions}
@@ -570,9 +595,18 @@ export default function AdminSessions() {
       </div>
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Location / Link (optional)</label>
+        <Select
+          value={PST_CAMPUS_ROOM_OPTIONS.some((o) => o.value === form.locationOrLink) ? form.locationOrLink : ''}
+          onChange={(v) => setForm({ ...form, locationOrLink: v })}
+          options={PST_CAMPUS_ROOM_OPTIONS}
+          placeholder="Pick a PST Campus room…"
+          isSearchable
+          className="w-full mb-2"
+        />
         <input
           value={form.locationOrLink}
           onChange={(e) => setForm({ ...form, locationOrLink: e.target.value })}
+          placeholder="…or paste a meeting link / type a custom location"
           className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
         />
       </div>
@@ -607,7 +641,7 @@ export default function AdminSessions() {
             Scheduling Config
           </button>
           <button
-            onClick={() => setCreateForm({ ...EMPTY_FORM })}
+            onClick={() => setCreateForm({ ...EMPTY_FORM, locationOrLink: DEFAULT_SESSION_LOCATION })}
             disabled={!selectedCohortId}
             className="flex items-center gap-1.5 text-xs px-3 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
           >
@@ -720,6 +754,15 @@ export default function AdminSessions() {
                 </div>
               )}
               {selected.cancellation_reason && <p className="text-red-400">Cancelled: {selected.cancellation_reason}</p>}
+              {selected.live_session_id && (
+                <button
+                  onClick={() => setShowLiveReport(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+                >
+                  <BarChart3 size={14} />
+                  View report
+                </button>
+              )}
             </div>
 
             {(selected.status === 'scheduled' || selected.status === 'rescheduled') && !rescheduleForm && !showCancelPrompt && !showCompletePrompt && (
@@ -843,6 +886,15 @@ export default function AdminSessions() {
           </div>
         )}
       </Modal>
+
+      {selected && (
+        <LiveSessionReportModal
+          sessionId={selected.id}
+          sessionTitle={selected.title ?? undefined}
+          open={showLiveReport}
+          onClose={() => setShowLiveReport(false)}
+        />
+      )}
     </PageLayout>
   );
 }
