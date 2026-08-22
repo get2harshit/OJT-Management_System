@@ -25,6 +25,7 @@ import {
   ClipboardList,
   HelpCircle,
   MessageSquare,
+  Share2,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
 
@@ -61,7 +62,7 @@ const adminTabs = [
 
 const mentorTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'ojts', label: 'OJTs & Projects', icon: Briefcase },
+  { id: 'ojts', label: 'My OJT', icon: Briefcase },
   { id: 'proposals', label: 'Project Proposals', icon: ClipboardCheck },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'Submissions', icon: FolderOpen },
@@ -89,6 +90,7 @@ const studentTabs = [
   { id: 'credits', label: 'Cloud Credits', icon: CreditCard },
   { id: 'sessions', label: 'Sessions', icon: CalendarClock },
   { id: 'doubt-requests', label: 'Ask for a Session', icon: HelpCircle },
+  { id: 'resources', label: 'Resources', icon: Share2 },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
 ];
 

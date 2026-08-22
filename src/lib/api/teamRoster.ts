@@ -330,3 +330,57 @@ export async function apiGetTeamPerformance(teamId: string, weeks = 8): Promise<
   const res = await apiFetch<{ data: ApiTeamPerformance }>(`/api/v1/teams/${teamId}/performance?weeks=${weeks}`);
   return res.data;
 }
+
+export interface ApiMentorRosterTeam {
+  id: string;
+  name: string | null;
+  track: string | null;
+  groupId: string | null;
+  groupName: string | null;
+  memberCount: number;
+  /** The roster is the single source of truth for "my teams" on this screen. */
+  members: { id: string; fullName: string | null; rollNumber: string | null }[];
+  allocatedProjectId: string | null;
+  allocatedProjectTitle: string | null;
+  weeklySessionTarget: number | null;
+  sessionsThisWeek: number;
+  cadenceStatus: CadenceStatus;
+  weeks: ApiTeamPerformanceWeek[];
+}
+
+export interface ApiMentorRosterStudent {
+  id: string;
+  fullName: string | null;
+  rollNumber: string | null;
+  email: string | null;
+  teamId: string | null;
+  teamName: string | null;
+  attendancePresent: number;
+  attendanceMarked: number;
+  tasksOpen: number;
+  tasksApproved: number;
+  tasksNeedingResubmit: number;
+  submissionsPending: number;
+}
+
+export interface ApiMentorRoster {
+  teams: ApiMentorRosterTeam[];
+  students: ApiMentorRosterStudent[];
+  /** Roster-wide totals per week — the headline trend, not any one team's. */
+  weeks: ApiTeamPerformanceWeek[];
+}
+
+/**
+ * The mentor's whole roster for one cohort in a single call: every team with
+ * its own weekly buckets, every student with their current rollup, and the
+ * roster-wide weekly totals.
+ *
+ * Exists so the roster screen does not call apiGetTeamPerformance once per
+ * team — the N+1 this app has already been bitten by twice.
+ */
+export async function apiGetMyRoster(cohortId: string, weeks = 8): Promise<ApiMentorRoster> {
+  const res = await apiFetch<{ data: ApiMentorRoster }>(
+    `/api/v1/teams/mine/roster?cohortId=${encodeURIComponent(cohortId)}&weeks=${weeks}`
+  );
+  return res.data;
+}
