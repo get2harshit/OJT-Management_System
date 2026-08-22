@@ -116,9 +116,90 @@ export async function apiResolveTeamAllocation(teamId: string, allocatedProjectI
   invalidateCached('allocation');
 }
 
-// Admin — how many teams are currently allocated to each mentor, per track, against their threshold.
-export async function apiGetMentorLoadSummary(cohortId: string): Promise<MentorLoadSummaryRow[]> {
-  return apiFetch<MentorLoadSummaryRow[]>(`/api/v1/teams/cohort/${cohortId}/mentor-load-summary`);
+/** One row of the admin's "put this team on a different project" picker. */
+export interface AllocatableProject {
+  id: string;
+  /** Catalog code, e.g. "PST_GI_035". */
+  projectId: string | null;
+  title: string;
+  problemStatement: string | null;
+  /** Admission years this project is offered to. */
+  batch: string[];
+  /**
+   * How many teams already hold it. Two is the ceiling the student-facing
+   * browse enforces; a row at or above it is still offered here, marked rather
+   * than hidden, because this screen is where a bad placement gets repaired.
+   */
+  teamsHolding: number;
+}
+
+/**
+ * Admin — the catalog this team's allocation may be moved to.
+ *
+ * Scoped server-side to the team's track and admission year; nothing here
+ * narrows anything, so there is no client-side filter to get wrong.
+ */
+export async function apiGetAllocatableProjects(
+  teamId: string,
+  params: { search?: string; page?: number; limit?: number } = {}
+): Promise<{ data: AllocatableProject[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
+  const query = new URLSearchParams();
+  if (params.search) query.set('search', params.search);
+  query.set('page', String(params.page ?? 1));
+  query.set('limit', String(params.limit ?? 20));
+  const res = await apiFetch<{ success: boolean; data: AllocatableProject[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
+    `/api/v1/teams/${teamId}/allocatable-projects?${query.toString()}`
+  );
+  return { data: res.data ?? [], pagination: res.pagination };
+}
+
+/**
+ * Admin — moves a team onto a catalog project that was never one of its
+ * preferences, naming the mentor at the same time.
+ *
+ * The repair path apiOverrideTeamAllocation cannot express: a team whose both
+ * preferences came from the wrong admission year has no valid preference to be
+ * restricted to. Writes both preference slots as well as the allocation.
+ */
+export async function apiReassignToCatalogProject(
+  teamId: string,
+  projectId: string,
+  mentorId: string
+): Promise<void> {
+  await apiFetch<void>(`/api/v1/teams/${teamId}/allocation/catalog-project`, {
+    method: 'PATCH',
+    body: JSON.stringify({ projectId, mentorId }),
+  });
+  invalidateCached('allocation');
+}
+
+export interface MentorLoadSummaryFilter {
+  /** Matched against mentor name and email. */
+  search?: string;
+  type?: 'internal' | 'external';
+  /** Track slug — matched against this OJT's staffing, not declared expertise. */
+  track?: string;
+}
+
+// Admin — one row per mentor with everything they carry in this cohort
+// (preferred / pending / allocated / published) against their capacity.
+//
+// Filters go to the server rather than being applied to a fetched list: the
+// roster runs to dozens of mentors and this is read while hunting for one of
+// them. The counts themselves are always cohort-wide — a filter narrows which
+// mentors come back, never what each one is carrying.
+export async function apiGetMentorLoadSummary(
+  cohortId: string,
+  filter: MentorLoadSummaryFilter = {}
+): Promise<MentorLoadSummaryRow[]> {
+  const query = new URLSearchParams();
+  if (filter.search) query.set('search', filter.search);
+  if (filter.type) query.set('type', filter.type);
+  if (filter.track) query.set('track', filter.track);
+  const qs = query.toString();
+  return apiFetch<MentorLoadSummaryRow[]>(
+    `/api/v1/teams/cohort/${cohortId}/mentor-load-summary${qs ? `?${qs}` : ''}`
+  );
 }
 
 // Admin — how many teams still have something for Run Allocation to do
