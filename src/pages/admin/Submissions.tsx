@@ -16,7 +16,7 @@ import {
   apiListCohorts,
   apiReviewPrdSubmission,
 } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
 import { statusDotClass } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
@@ -383,7 +383,7 @@ export default function AdminSubmissions({
             onChange={(v) => handleCohortChange(v as string)}
             variant="filter"
             placeholder="Select cohort"
-            options={cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }))}
+            options={buildCohortOptions(cohorts)}
           />
           <Select
             value={batchFilter}

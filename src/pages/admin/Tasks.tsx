@@ -29,7 +29,7 @@ import { useTracks } from '../../hooks/useTracks';
 import { useToast } from '../../toast';
 import { useConfirm } from '../../confirm';
 import { apiListCohorts } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
 import type { Cohort } from '../../lib/types';
 import { useAuth } from '../../context/useAuth';
 import { usePageRefresh } from '../../context/RefreshContext';
@@ -547,7 +547,7 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
             variant="filter"
             placeholder="Select cohort"
             className="w-[168px]"
-            options={cohorts.map(c => ({ value: c.id, label: getCohortLabel(c) }))}
+            options={buildCohortOptions(cohorts)}
           />
           <Select
             value={roleFilter}

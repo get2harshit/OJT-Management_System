@@ -5,7 +5,7 @@ import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import type { TeamWithProject, Cohort, Project } from '../../lib/types';
 import { apiListMyTeamsDetailed, apiListMyCohorts, apiGetProject } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 // "G1 (Aditya, Subham)" — the team's number plus its members on one line.
@@ -75,7 +75,7 @@ export default function MentorOJTs() {
           variant="filter"
           className="w-[220px]"
           placeholder="Select a cohort"
-          options={cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }))}
+          options={buildCohortOptions(cohorts)}
         />
       </div>
 

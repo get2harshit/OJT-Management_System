@@ -28,7 +28,7 @@ import {
   type ApiMentorRate,
   type ApiRateType,
 } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
 
 const STATUS_STYLES: Record<ApiPayoutStatus, string> = {
@@ -316,7 +316,7 @@ export default function AdminPayouts() {
     }
   };
 
-  const cohortOptions = useMemo(() => cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) })), [cohorts]);
+  const cohortOptions = useMemo(() => buildCohortOptions(cohorts), [cohorts]);
 
   // Batches is the only tab that stacks content below its table, so it's the
   // only one that scrolls as a whole; the others hand their leftover height

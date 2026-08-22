@@ -22,7 +22,7 @@ import {
   type ApiHoliday,
   type ApiSchedulingConfig,
 } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -240,7 +240,7 @@ export default function SchedulingConfig() {
     return `${days} · ${minutesToTime(config.day_start_minute)}-${minutesToTime(config.day_end_minute)} ${config.timezone}`;
   };
 
-  const cohortOptions = useMemo(() => cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) })), [cohorts]);
+  const cohortOptions = useMemo(() => buildCohortOptions(cohorts), [cohorts]);
   // Intl.supportedValuesOf ships with Node 18+ and every modern browser —
   // no need to hand-maintain a zone list.
   const timezoneOptions = useMemo(

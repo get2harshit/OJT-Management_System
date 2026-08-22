@@ -5,7 +5,7 @@ import Select from '../../components/Select';
 import SessionAttendancePanel from '../../components/SessionAttendancePanel';
 import type { Cohort } from '../../lib/types';
 import { apiListMyCohorts, apiGetMySessions } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
 
 export default function MentorAttendance() {
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
@@ -47,7 +47,7 @@ export default function MentorAttendance() {
           variant="filter"
           placeholder="Select cohort"
           className="w-[200px]"
-          options={cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }))}
+          options={buildCohortOptions(cohorts)}
         />
       </div>
 

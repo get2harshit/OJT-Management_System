@@ -8,13 +8,14 @@ import listPlugin from '@fullcalendar/list';
 // the two were imported from each other's package.
 import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction';
 import type { EventClickArg, DateSelectArg, EventContentArg, EventDropArg, EventHoveringArg } from '@fullcalendar/core';
-import { CalendarClock, Plus, Users2, XCircle, CheckCircle2, RefreshCw, Lock, Radio, Square } from 'lucide-react';
+import { CalendarClock, Plus, Users2, XCircle, CheckCircle2, RefreshCw, Lock, Radio, Square, BarChart3 } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import SessionHoverPreview from '../../components/SessionHoverPreview';
 import SessionJoinLink from '../../components/SessionJoinLink';
+import LiveSessionReportModal from '../../components/LiveSessionReportModal';
 import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
@@ -34,8 +35,11 @@ import {
   type ApiSession,
   type ApiSessionStatus,
   type ApiMentorWorkspaceTeam,
+  type ApiMentorGroup,
 } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
+import { formatMeetingPattern } from '../../lib/meetingPattern';
+import { DEFAULT_SESSION_LOCATION, PST_CAMPUS_ROOM_OPTIONS, defaultSessionTitle } from '../../lib/sessionLocation';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useAuth } from '../../context/useAuth';
@@ -53,15 +57,21 @@ function toLocalInputValue(iso: string | Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function formatGroupOptionLabel(group: ApiMentorGroup): string {
+  const pattern = formatMeetingPattern(group);
+  return pattern ? `${group.name} (${pattern})` : group.name;
+}
+
 interface SessionFormState {
   teamIds: string[];
   title: string;
   locationOrLink: string;
   startLocal: string;
   endLocal: string;
+  groupHint: string;
 }
 
-const EMPTY_FORM: SessionFormState = { teamIds: [], title: '', locationOrLink: '', startLocal: '', endLocal: '' };
+const EMPTY_FORM: SessionFormState = { teamIds: [], title: '', locationOrLink: '', startLocal: '', endLocal: '', groupHint: '' };
 
 export default function MentorSessions() {
   const navigate = useNavigate();
@@ -150,15 +160,31 @@ export default function MentorSessions() {
   // can be picked at a glance instead of hunting for them by name. The
   // Select component's own "Select All" already covers "every team".
   const [workspaceTeams, setWorkspaceTeams] = useState<ApiMentorWorkspaceTeam[]>([]);
+  const [groups, setGroups] = useState<ApiMentorGroup[]>([]);
   useEffect(() => {
     if (!selectedCohortId || !user) {
       setWorkspaceTeams([]);
+      setGroups([]);
       return;
     }
     apiGetMentorWorkspace(selectedCohortId, user.id)
-      .then((workspace) => setWorkspaceTeams(workspace.teams))
-      .catch(() => setWorkspaceTeams([]));
+      .then((workspace) => {
+        setWorkspaceTeams(workspace.teams);
+        setGroups(workspace.groups);
+      })
+      .catch(() => {
+        setWorkspaceTeams([]);
+        setGroups([]);
+      });
   }, [selectedCohortId, user]);
+
+  // Filling teamIds from a chosen group's *current* team list — a one-shot
+  // convenience, not a lasting link, mirroring the admin create-session
+  // picker's own group shortcut. Still fully editable in Team(s) right below.
+  const applyGroupHint = (form: SessionFormState, setForm: (f: SessionFormState) => void, groupId: string) => {
+    const teamIds = groupId ? workspaceTeams.filter((t) => t.groupId === groupId).map((t) => t.id) : form.teamIds;
+    setForm({ ...form, groupHint: groupId, teamIds });
+  };
 
   const teamOptions = useMemo(
     () =>
@@ -206,9 +232,18 @@ export default function MentorSessions() {
     const session = arg.event.extendedProps.session as ApiSession | undefined;
     if (!session) return null;
     const teamNames = session.teams.map((t) => t.team.name).join(', ') || '—';
+    const isLiveNow = !!session.live_session_id && !session.live_ended_at;
     return (
       <div className="px-1 py-0.5 overflow-hidden leading-tight">
-        {arg.timeText && <div className="text-[10px] font-bold truncate">{arg.timeText}</div>}
+        <div className="flex items-center gap-1">
+          {arg.timeText && <div className="text-[10px] font-bold truncate">{arg.timeText}</div>}
+          {isLiveNow && (
+            <span className="flex items-center gap-0.5 text-[9px] font-bold text-red-600 shrink-0">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse" />
+              LIVE
+            </span>
+          )}
+        </div>
         <div className="text-[11px] font-semibold truncate">{session.title || teamNames}</div>
         <div className="text-[10px] truncate opacity-75 flex items-center gap-1">
           <Users2 size={9} className="shrink-0" />
@@ -267,9 +302,15 @@ export default function MentorSessions() {
   const handleSelect = useCallback(
     (arg: DateSelectArg) => {
       if (!canSelfSchedule) return;
-      setCreateForm({ ...EMPTY_FORM, startLocal: toLocalInputValue(arg.start), endLocal: toLocalInputValue(arg.end) });
+      setCreateForm({
+        ...EMPTY_FORM,
+        title: defaultSessionTitle(user?.fullName),
+        locationOrLink: DEFAULT_SESSION_LOCATION,
+        startLocal: toLocalInputValue(arg.start),
+        endLocal: toLocalInputValue(arg.end),
+      });
     },
-    [canSelfSchedule]
+    [canSelfSchedule, user?.fullName]
   );
 
   const handleEventClick = useCallback((arg: EventClickArg) => {
@@ -336,6 +377,7 @@ export default function MentorSessions() {
   // faculty is, which session — are the server's to supply from the token and
   // the row; nothing about them is sent from here.
   const [liveBusy, setLiveBusy] = useState(false);
+  const [showLiveReport, setShowLiveReport] = useState(false);
 
   const startLive = async (session: ApiSession) => {
     setLiveBusy(true);
@@ -384,6 +426,7 @@ export default function MentorSessions() {
       locationOrLink: selected.location_or_link ?? '',
       startLocal: toLocalInputValue(selected.start_time),
       endLocal: toLocalInputValue(selected.end_time),
+      groupHint: '',
     });
   };
 
@@ -442,6 +485,17 @@ export default function MentorSessions() {
 
   const sessionForm = (form: SessionFormState, setForm: (f: SessionFormState) => void) => (
     <div className="space-y-3">
+      {groups.length > 0 && (
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">Schedule for group (optional)</label>
+          <Select
+            value={form.groupHint}
+            onChange={(v) => applyGroupHint(form, setForm, v)}
+            options={[{ value: '', label: 'Custom selection' }, ...groups.map((g) => ({ value: g.id, label: formatGroupOptionLabel(g) }))]}
+          />
+          <p className="text-[11px] text-gray-500 mt-1">Fills Team(s) below with this group's current teams — still editable.</p>
+        </div>
+      )}
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Team(s)</label>
         <Select isMulti value={form.teamIds} onChange={(v) => setForm({ ...form, teamIds: v })} options={teamOptions} placeholder="Select team(s)" isSearchable />
@@ -462,7 +516,20 @@ export default function MentorSessions() {
       </div>
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Location / Link (optional)</label>
-        <input value={form.locationOrLink} onChange={(e) => setForm({ ...form, locationOrLink: e.target.value })} className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
+        <Select
+          value={PST_CAMPUS_ROOM_OPTIONS.some((o) => o.value === form.locationOrLink) ? form.locationOrLink : ''}
+          onChange={(v) => setForm({ ...form, locationOrLink: v })}
+          options={PST_CAMPUS_ROOM_OPTIONS}
+          placeholder="Pick a PST Campus room…"
+          isSearchable
+          className="w-full mb-2"
+        />
+        <input
+          value={form.locationOrLink}
+          onChange={(e) => setForm({ ...form, locationOrLink: e.target.value })}
+          placeholder="…or paste a meeting link / type a custom location"
+          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+        />
       </div>
     </div>
   );
@@ -480,9 +547,12 @@ export default function MentorSessions() {
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <Select value={selectedCohortId} onChange={setSelectedCohortId} variant="filter" placeholder="Select cohort" className="w-[200px]" options={cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }))} />
+          <Select value={selectedCohortId} onChange={setSelectedCohortId} variant="filter" placeholder="Select cohort" className="w-[200px]" options={buildCohortOptions(cohorts)} />
           <button
-            onClick={() => canSelfSchedule && setCreateForm({ ...EMPTY_FORM })}
+            onClick={() =>
+              canSelfSchedule &&
+              setCreateForm({ ...EMPTY_FORM, title: defaultSessionTitle(user?.fullName), locationOrLink: DEFAULT_SESSION_LOCATION })
+            }
             disabled={!canSelfSchedule}
             title={canSelfSchedule ? undefined : 'Self-schedule permission required'}
             className="flex items-center gap-1.5 text-xs px-3 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -584,6 +654,15 @@ export default function MentorSessions() {
                 </div>
               )}
               {selected.cancellation_reason && <p className="text-red-400">Cancelled: {selected.cancellation_reason}</p>}
+              {selected.live_session_id && (
+                <button
+                  onClick={() => setShowLiveReport(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+                >
+                  <BarChart3 size={14} />
+                  View report
+                </button>
+              )}
             </div>
 
             {(selected.status === 'scheduled' || selected.status === 'rescheduled') && !rescheduleForm && !showCancelPrompt && !showCompletePrompt && (
@@ -683,6 +762,15 @@ export default function MentorSessions() {
           </div>
         )}
       </Modal>
+
+      {selected && (
+        <LiveSessionReportModal
+          sessionId={selected.id}
+          sessionTitle={selected.title ?? undefined}
+          open={showLiveReport}
+          onClose={() => setShowLiveReport(false)}
+        />
+      )}
     </PageLayout>
   );
 }

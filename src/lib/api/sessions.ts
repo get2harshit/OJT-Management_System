@@ -343,3 +343,58 @@ export async function apiGetSessionJoinToken(sessionId: string): Promise<Session
   });
   return res.data;
 }
+
+// ── What actually happened in the room — pulled from Polaris's own join/leave
+// logs, not our own database. Read-only; the attendance sync below is the
+// only thing here that writes anything.
+
+export interface ApiLiveStudentReport {
+  studentId: string;
+  fullName: string;
+  email: string;
+  joined: boolean;
+  joinedAt: string | null;
+  leftAt: string | null;
+  durationSeconds: number;
+  percentPresent: number;
+  meetsAttendanceThreshold: boolean;
+}
+
+export interface ApiLiveOtherParticipant {
+  userId: string;
+  name: string;
+  roles: string[];
+  joinedAt: string | null;
+  leftAt: string | null;
+  durationSeconds: number;
+}
+
+export interface ApiLiveSessionReport {
+  sessionId: string;
+  totalDurationSeconds: number;
+  sessionStart: string | null;
+  sessionEnd: string | null;
+  attendanceThresholdPercent: number;
+  totalExpected: number;
+  presentCount: number;
+  students: ApiLiveStudentReport[];
+  otherParticipants: ApiLiveOtherParticipant[];
+}
+
+export async function apiGetLiveSessionReport(sessionId: string): Promise<ApiLiveSessionReport> {
+  const res = await apiFetch<{ data: ApiLiveSessionReport }>(`/api/v1/sessions/${sessionId}/live-report`);
+  return res.data;
+}
+
+/**
+ * Fills in real attendance from the report above, for students still
+ * 'not_marked' only — never overwrites a mentor's own mark. Safe to call more
+ * than once; called automatically whenever the report is opened.
+ */
+export async function apiSyncLiveAttendance(sessionId: string): Promise<{ updatedCount: number }> {
+  const res = await apiFetch<{ data: { updatedCount: number } }>(`/api/v1/sessions/${sessionId}/live-report/sync-attendance`, {
+    method: 'POST',
+  });
+  invalidateCached('sessions');
+  return res.data;
+}
