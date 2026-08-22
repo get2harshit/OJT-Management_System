@@ -23,6 +23,8 @@ import {
   Inbox,
   Clock,
   ClipboardList,
+  HelpCircle,
+  MessageSquare,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
 
@@ -66,12 +68,17 @@ const mentorTabs = [
   { id: 'credits', label: 'Credit Requests', icon: Cloud },
   { id: 'sessions', label: 'Sessions', icon: CalendarClock },
   { id: 'session-requests', label: 'Session Requests', icon: Inbox },
+  // Sits next to Session Requests because both are inboxes, but they are
+  // opposite directions: that one is this mentor asking an admin, this one
+  // is their students asking them.
+  { id: 'doubt-requests', label: 'Doubt Requests', icon: HelpCircle },
   { id: 'availability', label: 'My Availability', icon: Clock },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   // Deliberately not "Payouts" — the mentor-side page shows work delivered
   // (sessions, hours, teams), never rates or amounts.
   { id: 'work-summary', label: 'My Work Summary', icon: ClipboardList },
   { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
+  { id: 'chat', label: 'Chat', icon: MessageSquare },
 ];
 
 const studentTabs = [
@@ -81,6 +88,7 @@ const studentTabs = [
   { id: 'submissions', label: 'My Submissions', icon: Upload },
   { id: 'credits', label: 'Cloud Credits', icon: CreditCard },
   { id: 'sessions', label: 'Sessions', icon: CalendarClock },
+  { id: 'doubt-requests', label: 'Ask for a Session', icon: HelpCircle },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
 ];
 

@@ -11,6 +11,8 @@ import Attendance from './Attendance';
 import Sessions from './Sessions';
 import WorkSummary from './WorkSummary';
 import SessionRequests from './SessionRequests';
+import DoubtRequests from './DoubtRequests';
+import Chat from './Chat';
 import Availability from './Availability';
 import EvaluationTracker from './EvaluationTracker';
 import Credits from './Credits';
@@ -120,6 +122,8 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
             mentor-side page is now about work delivered, not money. */}
         <Route path="payouts" element={<Navigate to={`${BASE_PATH}/work-summary`} replace />} />
         <Route path="session-requests" element={<SessionRequests />} />
+        <Route path="doubt-requests" element={<DoubtRequests />} />
+        <Route path="chat" element={<Chat />} />
         <Route path="availability" element={<Availability />} />
         <Route path="evaluation" element={<EvaluationTracker />} />
         {/* An unknown section is a bad link, not a blank screen — send it to

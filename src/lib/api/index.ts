@@ -18,6 +18,7 @@ export * from './sessions';
 export * from './schedulingConfig';
 export * from './payouts';
 export * from './sessionRequests';
+export * from './doubtRequests';
 export * from './mentorAvailability';
 export * from './mentorRates';
 export * from './teamRoster';
