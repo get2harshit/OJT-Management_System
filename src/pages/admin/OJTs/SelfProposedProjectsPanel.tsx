@@ -233,8 +233,10 @@ function CountCards({ counts }: { counts: SelfProposedCounts | null }) {
  *
  * Team and students come first because that is what an admin scans for, and
  * the wide free-text columns follow. DataTable scrolls horizontally on its
- * own, so the long ones can stay — a project's full write-up belongs in the
- * modal, not squeezed into a cell.
+ * own, so the long ones can stay — but every free-text cell is clamped to two
+ * lines, because a table row is only as short as its tallest cell and one
+ * project's full write-up was enough to bury every other column. The whole
+ * text belongs in the modal, which onRowClick opens.
  */
 function buildColumns() {
   return [
@@ -281,10 +283,16 @@ function buildColumns() {
     {
       key: 'description',
       header: 'Description',
+      // Two lines, then cut. NOT `inline-block`: line-clamp works by setting
+      // `display: -webkit-box`, so any display utility alongside it wins and
+      // the clamp silently does nothing — which is how a single long write-up
+      // grew a table row to several hundred pixels and pushed every other
+      // column's content out of view. The full text is one click away in the
+      // view modal (onRowClick), and on hover as a title.
       render: (row: SelfProposedProject) => (
-        <span className="text-gray-400 line-clamp-2 max-w-[420px] inline-block align-top">
-          {row.description}
-        </span>
+        <p className="text-gray-400 line-clamp-2 min-w-[240px] max-w-[420px]" title={row.description || undefined}>
+          {row.description || '\u2014'}
+        </p>
       ),
     },
     {
@@ -297,10 +305,12 @@ function buildColumns() {
     {
       key: 'techStack',
       header: 'Tech Stack',
+      // Same clamp as Description, and for the same reason — a long stack list
+      // is the other cell that can run a row tall.
       render: (row: SelfProposedProject) => (
-        <span className="text-gray-400 max-w-[280px] inline-block align-top">
-          {row.techStack.join(', ') || '—'}
-        </span>
+        <p className="text-gray-400 line-clamp-2 max-w-[280px]" title={row.techStack.join(', ') || undefined}>
+          {row.techStack.join(', ') || '\u2014'}
+        </p>
       ),
     },
     {
