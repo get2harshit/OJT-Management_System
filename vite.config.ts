@@ -17,8 +17,16 @@ export default defineConfig({
   // undefined, not a ReferenceError. Nothing in src/ reads process.env — this
   // app's own config comes from import.meta.env — so this only ever applies to
   // dependencies.
+  //
+  // `process` itself needs the same treatment as `process.env`: the SDK's
+  // analytics init also reads process.version directly (not through .env),
+  // reachable only once certain store selectors are used — the crash didn't
+  // show up until a later change exercised that path, even though the
+  // dependency was there all along. Same fix, same reasoning, one property
+  // wider.
   define: {
     'process.env': '{}',
+    process: '{}',
   },
   // Pinned so the dev URL is stable and matches the backend's CORS
   // allowlist. strictPort is the important half: without it Vite answers a
