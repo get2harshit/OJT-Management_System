@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Users, GitBranch, FolderGit2, Loader2, Briefcase } from 'lucide-react';
+import { Users, GitBranch, FolderGit2, Loader2, Briefcase, Lightbulb, Pencil, Eye } from 'lucide-react';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
@@ -7,6 +7,11 @@ import type { TeamWithProject, Cohort, Project } from '../../lib/types';
 import { apiListMyTeamsDetailed, apiListMyCohorts, apiGetProject } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
 import { usePageRefresh } from '../../context/RefreshContext';
+import {
+  apiListSelfProposedProjects,
+  type SelfProposedProject,
+} from '../../lib/api/selfProposedProjects';
+import SelfProposedProjectModal from '../admin/OJTs/SelfProposedProjectModal';
 
 // "G1 (Aditya, Subham)" — the team's number plus its members on one line.
 function teamLabel(team: TeamWithProject): string {
@@ -141,6 +146,13 @@ export default function MentorOJTs() {
 function TeamProjectDetail({ team }: { team: TeamWithProject }) {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
+  const { proposed, reloadProposed } = useProposedProject(team);
+  const [openMode, setOpenMode] = useState<'view' | 'edit' | null>(null);
+
+  // Most teams are allocated the very project they proposed, so the card above
+  // and a separate "proposed" card would be the same project twice. When they
+  // match, the edit affordance goes on the card that's already there.
+  const allocatedIsProposal = !!proposed && proposed.id === team.project?.id;
 
   useEffect(() => {
     if (!team.project) {
@@ -184,30 +196,160 @@ function TeamProjectDetail({ team }: { team: TeamWithProject }) {
             <Loader2 size={22} className="animate-spin text-gray-500" />
           </div>
         ) : (
-          <ProjectCard project={project} fallbackTitle={team.project.title} fallbackTrack={team.track} />
+          <ProjectCard
+            project={project}
+            fallbackTitle={team.project.title}
+            fallbackTrack={team.track}
+            proposalActions={
+              allocatedIsProposal ? (
+                <ProposalActions onOpen={setOpenMode} lastEdit={proposed!.lastEdit} />
+              ) : null
+            }
+          />
         )}
       </div>
+
+      {/* Only when it isn't already the card above — a team can have an
+          approved proposal and be allocated something else entirely, and
+          before the cohort is published there is no allocated card at all. */}
+      {proposed && !allocatedIsProposal && (
+        <div className="bg-zinc-900 border border-zinc-750 rounded-xl p-5 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-[11px] text-gold uppercase tracking-wide font-bold">
+                <Lightbulb size={12} />
+                Proposed by this team
+              </p>
+              <p className="text-white font-semibold mt-1.5 break-words">{proposed.title}</p>
+              {proposed.projectId && (
+                <p className="text-[11px] font-mono text-gray-500 mt-0.5">{proposed.projectId}</p>
+              )}
+            </div>
+            <ProposalActions onOpen={setOpenMode} lastEdit={proposed.lastEdit} />
+          </div>
+          {proposed.description && (
+            <p className="text-sm text-gray-300 leading-relaxed line-clamp-3 whitespace-pre-wrap">
+              {proposed.description}
+            </p>
+          )}
+        </div>
+      )}
+
+      {openMode && proposed && (
+        <SelfProposedProjectModal
+          projectId={proposed.id}
+          initialMode={openMode}
+          onClose={() => setOpenMode(null)}
+          onSaved={reloadProposed}
+        />
+      )}
     </div>
   );
 }
 
-function ProjectCard({ project, fallbackTitle, fallbackTrack }: { project: Project | null; fallbackTitle: string; fallbackTrack: string }) {
+/** View/edit buttons, plus who last touched the proposal. */
+function ProposalActions({
+  onOpen,
+  lastEdit,
+}: {
+  onOpen: (mode: 'view' | 'edit') => void;
+  lastEdit: SelfProposedProject['lastEdit'];
+}) {
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      {lastEdit && (
+        <span className="text-[11px] text-gray-500 hidden lg:inline whitespace-nowrap">
+          Edited {new Date(lastEdit.at).toLocaleDateString()} by {lastEdit.by}
+        </span>
+      )}
+      <button
+        onClick={() => onOpen('view')}
+        title="View full project"
+        className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-zinc-800 transition-colors"
+      >
+        <Eye size={15} />
+      </button>
+      <button
+        onClick={() => onOpen('edit')}
+        title="Edit project"
+        className="p-1.5 rounded-md text-gray-400 hover:text-gold hover:bg-zinc-800 transition-colors"
+      >
+        <Pencil size={15} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * This team's own approved proposal, if it has one.
+ *
+ * Not gated on the cohort being published, unlike the allocated project above:
+ * that gate hides draft allocation results, and a team's approved proposal is
+ * neither a result nor news to the mentor who approved it.
+ */
+function useProposedProject(team: TeamWithProject) {
+  const [proposed, setProposed] = useState<SelfProposedProject | null>(null);
+
+  const reloadProposed = useCallback(async () => {
+    try {
+      // Scoped to this one team server-side; the mentor's own scope applies on
+      // top, so a team outside it simply comes back empty.
+      const res = await apiListSelfProposedProjects({
+        cohortId: team.cohortId,
+        teamId: team.teamId,
+        limit: 1,
+      });
+      setProposed(res.data[0] ?? null);
+    } catch {
+      setProposed(null);
+    }
+  }, [team.cohortId, team.teamId]);
+
+  useEffect(() => {
+    reloadProposed();
+  }, [reloadProposed]);
+
+  return { proposed, reloadProposed };
+}
+
+function ProjectCard({
+  project,
+  fallbackTitle,
+  fallbackTrack,
+  // Present only when this project is the team's own proposal, which is the
+  // one case staff may edit — a catalog project shown here is read-only.
+  proposalActions = null,
+}: {
+  project: Project | null;
+  fallbackTitle: string;
+  fallbackTrack: string;
+  proposalActions?: React.ReactNode;
+}) {
   const title = project?.title ?? fallbackTitle;
   const track = project?.track ?? fallbackTrack;
 
   return (
     <div className="space-y-4">
-      <div>
-        <div className="flex items-center gap-2 flex-wrap mb-1">
-          {project?.projectId && (
-            <span className="text-[11px] font-mono text-gray-500">{project.projectId}</span>
-          )}
-          <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold">
-            <FolderGit2 size={12} />
-            {track}
-          </span>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            {project?.projectId && (
+              <span className="text-[11px] font-mono text-gray-500">{project.projectId}</span>
+            )}
+            <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold">
+              <FolderGit2 size={12} />
+              {track}
+            </span>
+            {proposalActions && (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-gray-300 border border-zinc-700">
+                <Lightbulb size={11} className="text-gold shrink-0" />
+                Proposed by this team
+              </span>
+            )}
+          </div>
+          <h3 className="text-lg font-bold text-white break-words">{title}</h3>
         </div>
-        <h3 className="text-lg font-bold text-white">{title}</h3>
+        {proposalActions}
       </div>
 
       {project?.description && (

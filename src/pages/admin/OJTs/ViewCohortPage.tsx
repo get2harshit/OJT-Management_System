@@ -1,7 +1,7 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, Megaphone, X, type LucideIcon } from 'lucide-react';
+import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, Megaphone, X, Lightbulb, type LucideIcon } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
@@ -832,6 +832,13 @@ export default function ViewCohortPage() {
             Create Announcement
           </button>
           <button
+            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/self-proposed-projects`)}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"
+          >
+            <Lightbulb size={16} />
+            Student Proposed Projects
+          </button>
+          <button
             onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/projects`)}
             className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"
           >
@@ -1048,7 +1055,7 @@ export default function ViewCohortPage() {
 
       {panelView === '' && (
         <div className="border border-dashed border-zinc-800 rounded-xl py-20 flex flex-col items-center justify-center gap-2">
-          <p className="text-gray-500 text-sm">Select Students, Projects, or Mentors from the dropdown above to view details.</p>
+          <p className="text-gray-500 text-sm">Select a view from the dropdown above to see this OJT's students, projects or mentors.</p>
         </div>
       )}
 
