@@ -342,6 +342,8 @@ export interface ApiMentorRosterTeam {
   members: { id: string; fullName: string | null; rollNumber: string | null }[];
   allocatedProjectId: string | null;
   allocatedProjectTitle: string | null;
+  /** Assignments past their task's deadline and still not approved. */
+  tasksOverdue: number;
   weeklySessionTarget: number | null;
   sessionsThisWeek: number;
   cadenceStatus: CadenceStatus;
@@ -382,5 +384,83 @@ export async function apiGetMyRoster(cohortId: string, weeks = 8): Promise<ApiMe
   const res = await apiFetch<{ data: ApiMentorRoster }>(
     `/api/v1/teams/mine/roster?cohortId=${encodeURIComponent(cohortId)}&weeks=${weeks}`
   );
+  return res.data;
+}
+
+export interface ApiMentorOjtTrack {
+  id: string;
+  name: string;
+  slug: string;
+  /** Teams on this track that currently report to this mentor. */
+  teamCount: number;
+  /**
+   * True when an admin formally staffed this mentor on the track. False means
+   * teams reached them another way (usually a reassignment) — both are
+   * legitimate, and the UI says which rather than picking one silently.
+   */
+  staffed: boolean;
+}
+
+export interface ApiMentorOjtOverview {
+  teamCount: number;
+  studentCount: number;
+  groupCount: number;
+  tracks: ApiMentorOjtTrack[];
+  /** Numerator and denominator, never a bare percentage — see the endpoint's own note. */
+  tasksApproved: number;
+  tasksTotal: number;
+  submissionsPending: number;
+  sessions: {
+    scheduled: number;
+    rescheduled: number;
+    completed: number;
+    cancelled: number;
+    total: number;
+  };
+}
+
+/**
+ * Every headline number the mentor dashboard shows for one OJT, in one call.
+ *
+ * Replaces a dashboard that fetched every student and every submission in the
+ * system and filtered them in the browser — the exact over-fetching this
+ * codebase's own conventions forbid.
+ */
+export async function apiGetMyOjtOverview(cohortId: string): Promise<ApiMentorOjtOverview> {
+  const res = await apiFetch<{ data: ApiMentorOjtOverview }>(
+    `/api/v1/teams/mine/ojt-overview?cohortId=${encodeURIComponent(cohortId)}`
+  );
+  return res.data;
+}
+
+export interface ApiPeerTeamMember {
+  id: string;
+  fullName: string | null;
+  rollNumber: string | null;
+}
+
+export interface ApiPeerTeam {
+  id: string;
+  name: string | null;
+  track: string | null;
+  projectTitle: string | null;
+  members: ApiPeerTeamMember[];
+}
+
+export interface ApiPeerTeams {
+  mentor: { id: string; fullName: string | null } | null;
+  /** The caller's own team, already excluded from `teams`. */
+  myTeamId: string | null;
+  teams: ApiPeerTeam[];
+}
+
+/**
+ * The other teams under this student's own mentor.
+ *
+ * Carries no performance or contact data by design — the backend leaves it
+ * out of the payload entirely rather than trusting the UI to hide it.
+ */
+export async function apiGetMyPeerTeams(): Promise<ApiPeerTeams> {
+  const res = await apiFetch<{ data: ApiPeerTeams }>('/api/v1/teams/mine/peer-teams');
   return res.data;
 }

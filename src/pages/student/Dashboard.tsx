@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Clock, Briefcase, UserCheck, AlertCircle, ArrowUpRight, Megaphone, RefreshCw } from 'lucide-react';
 import StatCard from '../../components/StatCard';
+import PeerTeamsPanel from '../../components/PeerTeamsPanel';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Modal from '../../components/Modal';
 import OjtWeekBadge from '../../components/OjtWeekBadge';
@@ -422,6 +423,8 @@ export default function StudentDashboard({
           </div>
         </div>
       </div>
+
+      <PeerTeamsPanel />
     </div>
   );
 }
