@@ -173,9 +173,33 @@ export async function apiReassignToCatalogProject(
   invalidateCached('allocation');
 }
 
-// Admin — how many teams are currently allocated to each mentor, per track, against their threshold.
-export async function apiGetMentorLoadSummary(cohortId: string): Promise<MentorLoadSummaryRow[]> {
-  return apiFetch<MentorLoadSummaryRow[]>(`/api/v1/teams/cohort/${cohortId}/mentor-load-summary`);
+export interface MentorLoadSummaryFilter {
+  /** Matched against mentor name and email. */
+  search?: string;
+  type?: 'internal' | 'external';
+  /** Track slug — matched against this OJT's staffing, not declared expertise. */
+  track?: string;
+}
+
+// Admin — one row per mentor with everything they carry in this cohort
+// (preferred / pending / allocated / published) against their capacity.
+//
+// Filters go to the server rather than being applied to a fetched list: the
+// roster runs to dozens of mentors and this is read while hunting for one of
+// them. The counts themselves are always cohort-wide — a filter narrows which
+// mentors come back, never what each one is carrying.
+export async function apiGetMentorLoadSummary(
+  cohortId: string,
+  filter: MentorLoadSummaryFilter = {}
+): Promise<MentorLoadSummaryRow[]> {
+  const query = new URLSearchParams();
+  if (filter.search) query.set('search', filter.search);
+  if (filter.type) query.set('type', filter.type);
+  if (filter.track) query.set('track', filter.track);
+  const qs = query.toString();
+  return apiFetch<MentorLoadSummaryRow[]>(
+    `/api/v1/teams/cohort/${cohortId}/mentor-load-summary${qs ? `?${qs}` : ''}`
+  );
 }
 
 // Admin — how many teams still have something for Run Allocation to do

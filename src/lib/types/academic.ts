@@ -351,17 +351,37 @@ export interface MentorCapacityListRow {
 export interface MentorLoadSummaryRow {
   mentorId: string;
   mentorName: string | null;
+  /** Track slugs — resolve against useTracks() for display names. */
   tracks: string[];
+  /** Industry mentor rather than internal. */
+  isExternal: boolean;
+  organization: string | null;
+  /**
+   * Teams that named this mentor in either preference slot, whatever became
+   * of it — the demand behind every other count. Counted per team, not per
+   * slot, so a team naming the same mentor twice still counts once.
+   */
+  preferredCount: number;
   /** Teams the allocation run has already placed with this mentor. */
   allocatedCount: number;
   /**
-   * Teams holding this mentor in a submitted-but-unallocated preference.
+   * Of allocatedCount, the ones students can actually see — committed before
+   * the cohort's last publish. Zero across the board until the cohort is
+   * published, which is itself the useful signal.
+   */
+  publishedCount: number;
+  /**
+   * Preference slots still holding this mentor unallocated.
+   *
    * allocatedCount is zero for everybody until a run has happened, so it says
    * nothing about whether students can still pick this mentor — this is the
-   * number that does.
+   * number that does, and the one softCap is measured against. Slot-counted,
+   * unlike preferredCount, because that is what the picker's soft cap counts.
    */
   pendingCount: number;
   threshold: number;
+  /** The pendingCount at which the student picker stops offering this mentor. */
+  softCap: number;
   /** At the soft cap — the student picker will not let a team select them. */
   isFull: boolean;
   /** At nominal capacity but still selectable. */
