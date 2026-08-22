@@ -23,6 +23,7 @@ import {
   type AllocatableProject,
 } from '../../../lib/api';
 import type { TeamAllocationDetail, MentorLoadSummaryRow } from '../../../lib/types';
+import { submittedPreferences } from '../../../lib/preferences';
 
 const PAGE_SIZE = 15;
 const SEARCH_DEBOUNCE_MS = 350;
@@ -205,14 +206,15 @@ export default function AllocationOverrideModal({
         {tab === 'preferences' ? (
           <div className="space-y-3">
             <p className="text-gray-400 text-sm">
-              Choose which of this team's own preferences to allocate. This leaves their
-              submitted choices as they are.
+              {submittedPreferences(team.preference1, team.preference2).length > 1
+                ? "Choose which of this team's own preferences to allocate. This leaves their submitted choices as they are."
+                : 'This team submitted a single preference — their track allows it. Use the catalog tab to move them somewhere else.'}
             </p>
-            {[team.preference1, team.preference2].map((pref, idx) => {
+            {submittedPreferences(team.preference1, team.preference2).map(({ pref, slot }) => {
               const selected = team.allocatedProjectId === pref.projectId;
               return (
                 <button
-                  key={`${pref.projectId}-${idx}`}
+                  key={pref.projectId}
                   onClick={() => handlePreferencePick(pref.projectId)}
                   disabled={saving}
                   className={`w-full text-left rounded-lg p-4 border transition-all duration-200 disabled:opacity-50 ${
@@ -222,7 +224,7 @@ export default function AllocationOverrideModal({
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">
-                        Preference {idx + 1}
+                        Preference {slot}
                       </p>
                       <p className="text-white font-semibold">{pref.projectTitle}</p>
                       {pref.mentorName && <p className="text-gray-400 text-xs mt-0.5">{pref.mentorName}</p>}

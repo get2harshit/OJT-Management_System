@@ -398,7 +398,13 @@ export interface TeamAllocationDetail {
   tier: string;
   submittedAt: string;
   preference1: { projectId: string; projectTitle: string; mentorId: string | null; mentorName: string | null };
-  preference2: { projectId: string; projectTitle: string; mentorId: string | null; mentorName: string | null };
+  /**
+   * Null across the board for a team that submitted only preference 1 — the
+   * schema allows it ('1_own'/'1_recommended' submission modes) and the API
+   * still returns the object, so every reader has to handle the empty slot.
+   * See lib/preferences.submittedPreferences.
+   */
+  preference2: { projectId: string | null; projectTitle: string | null; mentorId: string | null; mentorName: string | null };
   preference1ReviewStatus: PreferenceReviewStatus;
   preference1ReviewNote: string | null;
   allocationStatus: TeamAllocationStatus;
@@ -432,7 +438,8 @@ export interface AllocationPreviewEntry {
   // The team's own 2 submitted preferences — lets Reallocate offer "assign
   // from student preference" alongside a fully freeform pick.
   preference1: { projectId: string; projectTitle: string | null; mentorId: string | null; mentorName: string | null };
-  preference2: { projectId: string; projectTitle: string | null; mentorId: string | null; mentorName: string | null };
+  /** Null throughout when the team submitted only preference 1 — see TeamAllocationDetail.preference2. */
+  preference2: { projectId: string | null; projectTitle: string | null; mentorId: string | null; mentorName: string | null };
 }
 
 // Cohort student not yet in any team (GET /api/v1/teams/cohort/:cohortId/students-without-team)

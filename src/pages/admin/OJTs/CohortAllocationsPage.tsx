@@ -25,6 +25,7 @@ import {
 } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { formatDateDisplay } from '../../../lib/utils';
+import { submittedPreferences, allocatedPreferenceSlot } from '../../../lib/preferences';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
@@ -518,11 +519,11 @@ export default function CohortAllocationsPage() {
     pref1UnderReview: t.preference1ReviewStatus === 'pending_review',
     pref1Rejected: t.preference1ReviewStatus === 'rejected',
     overriddenAt: t.overriddenAt,
-    allocatedPrefNum: t.allocatedProjectId === t.preference1.projectId ? 1 : t.allocatedProjectId === t.preference2.projectId ? 2 : null,
+    allocatedPrefNum: allocatedPreferenceSlot(t.allocatedProjectId, t.preference1, t.preference2),
     allocatedProjectTitle:
-      t.allocatedProjectId === t.preference1.projectId
+      allocatedPreferenceSlot(t.allocatedProjectId, t.preference1, t.preference2) === 1
         ? t.preference1.projectTitle
-        : t.allocatedProjectId === t.preference2.projectId
+        : allocatedPreferenceSlot(t.allocatedProjectId, t.preference1, t.preference2) === 2
         ? t.preference2.projectTitle
         : null,
     allocatedMentorName: t.allocatedMentorName,
@@ -1016,7 +1017,7 @@ export default function CohortAllocationsPage() {
               )}
             </div>
 
-            {[detailTeam.preference1, detailTeam.preference2].map((pref, idx) => {
+            {submittedPreferences(detailTeam.preference1, detailTeam.preference2).map(({ pref, slot }) => {
               const selected = detailTeam.allocatedProjectId === pref.projectId;
               return (
                 <div
@@ -1024,7 +1025,7 @@ export default function CohortAllocationsPage() {
                   className={`rounded-lg p-3 border ${selected ? 'bg-gold/10 border-gold' : 'bg-zinc-900 border-zinc-750'}`}
                 >
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference {idx + 1}</p>
+                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference {slot}</p>
                     {selected && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gold/20 text-gold">
                         <CheckCircle2 size={11} />
@@ -1099,7 +1100,7 @@ export default function CohortAllocationsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                {[resolveTeam.preference1, resolveTeam.preference2].map((pref, idx) => {
+                {submittedPreferences(resolveTeam.preference1, resolveTeam.preference2).map(({ pref, slot }) => {
                   const selected = resolveProjectId === pref.projectId;
                   return (
                     <button
@@ -1112,7 +1113,7 @@ export default function CohortAllocationsPage() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div>
-                          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {idx + 1}</p>
+                          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {slot}</p>
                           <p className="text-white font-semibold text-sm">{pref.projectTitle}</p>
                         </div>
                         {selected && <CheckCircle2 size={16} className="text-gold shrink-0" />}
@@ -1214,7 +1215,7 @@ export default function CohortAllocationsPage() {
                   </span>
                 </div>
 
-                {[manualAllocateTeam.preference1, manualAllocateTeam.preference2].map((pref, idx) => {
+                {submittedPreferences(manualAllocateTeam.preference1, manualAllocateTeam.preference2).map(({ pref, slot }) => {
                   const selected = manualAllocateTeam.projectId === pref.projectId;
                   return (
                     <div
@@ -1222,7 +1223,7 @@ export default function CohortAllocationsPage() {
                       className={`rounded-lg p-3 border ${selected ? 'bg-gold/10 border-gold' : 'bg-zinc-900 border-zinc-750'}`}
                     >
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference {idx + 1}</p>
+                        <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference {slot}</p>
                         {selected && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gold/20 text-gold">
                             <CheckCircle2 size={11} />
@@ -1270,13 +1271,13 @@ export default function CohortAllocationsPage() {
               <div>
                 <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">Pick a project</p>
                 <div className="space-y-2">
-                  {[manualAllocateTeam.preference1, manualAllocateTeam.preference2].map((pref, idx) => (
+                  {submittedPreferences(manualAllocateTeam.preference1, manualAllocateTeam.preference2).map(({ pref, slot }) => (
                     <button
                       key={pref.projectId}
                       onClick={() => handleAssignProjectOnly(pref)}
                       className="w-full text-left rounded-lg p-3 border bg-zinc-900 border-zinc-750 hover:border-gold transition-colors"
                     >
-                      <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {idx + 1}</p>
+                      <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {slot}</p>
                       <p className="text-white font-semibold text-sm">{pref.projectTitle}</p>
                       {pref.mentorName && <p className="text-gray-400 text-xs mt-0.5">{pref.mentorName}</p>}
                     </button>
@@ -1289,7 +1290,7 @@ export default function CohortAllocationsPage() {
               <div>
                 <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">1. Project</p>
                 <div className="space-y-2">
-                  {[manualAllocateTeam.preference1, manualAllocateTeam.preference2].map((pref, idx) => {
+                  {submittedPreferences(manualAllocateTeam.preference1, manualAllocateTeam.preference2).map(({ pref, slot }) => {
                     const selected = manualAllocateSelectedProjectId === pref.projectId;
                     return (
                       <button
@@ -1301,7 +1302,7 @@ export default function CohortAllocationsPage() {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div>
-                            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {idx + 1}</p>
+                            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {slot}</p>
                             <p className="text-white font-semibold text-sm">{pref.projectTitle}</p>
                           </div>
                           {selected && <CheckCircle2 size={16} className="text-gold shrink-0" />}

@@ -15,6 +15,7 @@ import { useToast } from '../../../toast';
 import { apiCreateAnnouncement } from '../../../lib/api/notifications';
 import { usePageRefresh } from '../../../context/RefreshContext';
 import { useTracks } from '../../../hooks/useTracks';
+import { submittedPreferences } from '../../../lib/preferences';
 
 type PanelView = '' | 'students' | 'projects' | 'mentors';
 
@@ -55,7 +56,10 @@ function resolveTeamAssignment(team: TeamAllocationDetail, projectsById: Map<str
       allocated: true,
       branches: [{
         label: 'Allocated',
-        projectTitle: project?.title ?? fromPref.projectTitle,
+        // Neither preference matches when an admin reassigned the team to a
+        // catalog project that was never one of its choices, and a team that
+        // submitted only preference 1 has nothing in the second slot at all.
+        projectTitle: project?.title ?? fromPref.projectTitle ?? '—',
         projectTrack: project?.track ?? team.track,
         mentorName: team.allocatedMentorName,
       }],
@@ -63,20 +67,16 @@ function resolveTeamAssignment(team: TeamAllocationDetail, projectsById: Map<str
   }
   return {
     allocated: false,
-    branches: [
-      {
-        label: 'Preference 1',
-        projectTitle: team.preference1.projectTitle,
-        projectTrack: trackFor(team.preference1.projectId),
-        mentorName: team.preference1.mentorName,
-      },
-      {
-        label: 'Preference 2',
-        projectTitle: team.preference2.projectTitle,
-        projectTrack: trackFor(team.preference2.projectId),
-        mentorName: team.preference2.mentorName,
-      },
-    ],
+    // A slot the team never filled is left out rather than drawn empty — see
+    // lib/preferences.submittedPreferences.
+    branches: submittedPreferences(team.preference1, team.preference2).map(({ pref, slot }) => ({
+      label: `Preference ${slot}`,
+      // A filled slot always joins a real project, so the fallback is only
+      // here because the shared slot type allows a null title.
+      projectTitle: pref.projectTitle ?? '—',
+      projectTrack: trackFor(pref.projectId),
+      mentorName: pref.mentorName,
+    })),
   };
 }
 
