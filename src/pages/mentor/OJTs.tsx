@@ -1,23 +1,24 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useParams, useOutletContext } from 'react-router-dom';
-import { Users, Loader2, Briefcase, CalendarCheck, Search, ChevronRight, TrendingUp } from 'lucide-react';
-import Select from '../../components/Select';
+import { Loader2, Briefcase, CalendarCheck, TrendingUp, Star, Users } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import SharedResourcesPanel from '../../components/SharedResourcesPanel';
 import WeeklyTrendChart, { TREND_MEASURES } from '../../components/WeeklyTrendChart';
-import SkillAssessmentPanel from '../../components/SkillAssessmentPanel';
+import { taskCoveragePct, attendancePct } from '../../lib/rosterMetrics';
 import type { ApiMentorRoster, ApiMentorRosterTeam, ApiMentorRosterStudent } from '../../lib/api/teamRoster';
 import type { MentorOjtOutletContext } from './ojt/MentorOjtLayout';
 
 /**
- * The mentor's home page for one OJT: a line of context, then how the
- * roster is doing, then the students themselves. Teams and Projects get
- * their own tabs (see MentorTeams.tsx / MentorProjects.tsx) rather than
- * sharing this page — the same "give it real space" reasoning that already
- * pulled Performance out of a click-through modal applies to those two.
+ * The mentor's home page for one OJT: a line of context, then a glance at
+ * how the roster is doing — every team and every student, one line each,
+ * task/attendance/skill at a glance, no click required. The full interactive
+ * versions of both (filters, project detail, the skill-assessment tool
+ * itself) live on their own tabs (see MentorTeams.tsx / MentorStudents.tsx)
+ * — the same "give it real space" reasoning that already pulled Performance
+ * out of a click-through modal applies there.
  *
  * The roster itself is fetched once in MentorOjtLayout and shared with this
- * page (and Teams, and Projects) via useOutletContext — three separate
+ * page (and Teams & Projects, and Students) via useOutletContext — separate
  * fetches of the same data is exactly the "two sources for one fact" shape
  * that once made Performance and Teams disagree about team count.
  */
@@ -48,8 +49,8 @@ export default function MentorOJTs() {
           {/* ── Performance — the headline, full width, no click needed ────── */}
           <PerformanceSection roster={roster} loading={rosterLoading} />
 
-          {/* ── My Students ─────────────────────────────────────────────────── */}
-          <StudentsSection roster={roster} loading={rosterLoading} cohortId={selectedCohortId} />
+          {/* ── Students — same glance, one row per student ─────────────────── */}
+          <StudentsOverviewSection roster={roster} loading={rosterLoading} />
 
           {/* ── Shared resources ────────────────────────────────────────────── */}
           <SharedResourcesPanel
@@ -152,6 +153,7 @@ function TeamTrendRow({ team }: { team: ApiMentorRosterTeam }) {
       <div className="hidden sm:flex items-center gap-3 shrink-0 text-[11px] tabular-nums">
         <Stat label="approved" value={String(current.tasksApproved)} />
         <Stat label="attendance" value={attendance === null ? '—' : `${attendance}%`} />
+        <SkillRatingChip value={team.skillRatingAvg} />
         <CadenceChip team={team} />
       </div>
     </div>
@@ -162,6 +164,19 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <span className="text-gray-400">
       <span className="text-white font-semibold">{value}</span> {label}
+    </span>
+  );
+}
+
+/** Shared by the team and student overview rows — a star plus the average, or a plain dash before anyone's been assessed. */
+function SkillRatingChip({ value }: { value: number | null }) {
+  if (value === null) {
+    return <span className="text-gray-600">not rated</span>;
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-gray-400">
+      <Star size={11} className="text-gold fill-gold" />
+      <span className="text-white font-semibold">{value}</span>
     </span>
   );
 }
@@ -183,70 +198,26 @@ function CadenceChip({ team }: { team: ApiMentorRosterTeam }) {
   );
 }
 
-// ── My Students ──────────────────────────────────────────────────────────────
+// ── Students (Overview glance) ──────────────────────────────────────────────
 
-type StudentSort = 'name' | 'attendance' | 'open';
-
-function StudentsSection({ roster, loading, cohortId }: { roster: ApiMentorRoster | null; loading: boolean; cohortId: string }) {
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<StudentSort>('name');
-  const [expanded, setExpanded] = useState<string | null>(null);
-
-  const students = useMemo(() => {
-    const list = (roster?.students ?? []).filter((s) => {
-      if (!search.trim()) return true;
-      const needle = search.trim().toLowerCase();
-      return (
-        (s.fullName ?? '').toLowerCase().includes(needle) ||
-        (s.rollNumber ?? '').toLowerCase().includes(needle) ||
-        (s.teamName ?? '').toLowerCase().includes(needle)
-      );
-    });
-
-    const rate = (s: ApiMentorRosterStudent) =>
-      s.attendanceMarked === 0 ? -1 : s.attendancePresent / s.attendanceMarked;
-
-    return [...list].sort((a, b) => {
-      // Both "worst first" sorts exist to answer the same question — who needs
-      // attention — so they put the problem at the top rather than the bottom.
-      if (sort === 'attendance') return rate(a) - rate(b);
-      if (sort === 'open') return b.tasksOpen + b.tasksNeedingResubmit - (a.tasksOpen + a.tasksNeedingResubmit);
-      return (a.fullName ?? '').localeCompare(b.fullName ?? '');
-    });
-  }, [roster, search, sort]);
+/**
+ * Every student, one line each — task coverage, attendance, skill rating, no
+ * click needed. The interactive version (search/sort, full detail, the
+ * skill-assessment tool itself) lives on the Students tab; this is the
+ * headline glance, same three numbers, same shared helpers, so the two
+ * screens can never disagree about what they mean for a given student.
+ */
+function StudentsOverviewSection({ roster, loading }: { roster: ApiMentorRoster | null; loading: boolean }) {
+  const students = roster?.students ?? [];
 
   return (
     <section className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
-        <div>
-          <h2 className="text-base font-semibold text-white flex items-center gap-2">
-            <Users size={17} className="text-gold" />
-            My students
-          </h2>
-          <p className="text-xs text-gray-500 mt-0.5">Where each of them currently stands.</p>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search students…"
-              className="w-[190px] bg-zinc-900 border border-zinc-750 rounded-lg pl-8 pr-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-gold/60"
-            />
-          </div>
-          <Select
-            value={sort}
-            onChange={(v) => setSort(v as StudentSort)}
-            variant="filter"
-            className="w-[180px]"
-            options={[
-              { value: 'name', label: 'Name' },
-              { value: 'attendance', label: 'Lowest attendance' },
-              { value: 'open', label: 'Most open work' },
-            ]}
-          />
-        </div>
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-white flex items-center gap-2">
+          <Users size={17} className="text-gold" />
+          Students
+        </h2>
+        <p className="text-xs text-gray-500 mt-0.5">Task coverage, attendance and placement-readiness, at a glance.</p>
       </div>
 
       {loading ? (
@@ -255,18 +226,12 @@ function StudentsSection({ roster, loading, cohortId }: { roster: ApiMentorRoste
         </div>
       ) : students.length === 0 ? (
         <p className="text-sm text-gray-500 bg-zinc-900 border border-zinc-750 border-dashed rounded-lg p-5 text-center">
-          {search.trim() ? 'Nobody matches that search.' : 'No students are allocated to you in this OJT yet.'}
+          No students are allocated to you in this OJT yet.
         </p>
       ) : (
         <div className="space-y-1.5">
           {students.map((student) => (
-            <StudentRow
-              key={student.id}
-              student={student}
-              cohortId={cohortId}
-              expanded={expanded === student.id}
-              onToggle={() => setExpanded(expanded === student.id ? null : student.id)}
-            />
+            <StudentGlanceRow key={student.id} student={student} />
           ))}
         </div>
       )}
@@ -274,89 +239,28 @@ function StudentsSection({ roster, loading, cohortId }: { roster: ApiMentorRoste
   );
 }
 
-/**
- * A student's current standing, with detail expanding inline rather than in a
- * modal — the same reason performance itself came out of one.
- */
-function StudentRow({
-  student,
-  cohortId,
-  expanded,
-  onToggle,
-}: {
-  student: ApiMentorRosterStudent;
-  cohortId: string;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const attendance =
-    student.attendanceMarked === 0
-      ? null
-      : Math.round((student.attendancePresent / student.attendanceMarked) * 100);
-  const needsAttention = (attendance !== null && attendance < 75) || student.tasksNeedingResubmit > 0;
+function StudentGlanceRow({ student }: { student: ApiMentorRosterStudent }) {
+  const coverage = taskCoveragePct(student);
+  const attendance = attendancePct(student);
 
   return (
-    <div className="bg-zinc-900 border border-zinc-750 rounded-lg">
-      <button onClick={onToggle} className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left">
-        <ChevronRight
-          size={14}
-          className={`text-gray-500 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
+    <div className="flex items-center gap-4 bg-zinc-900 border border-zinc-750 rounded-lg px-3.5 py-2.5">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-white font-medium truncate">{student.fullName ?? 'Unnamed student'}</p>
+        <p className="text-[11px] text-gray-500 truncate">
+          {student.rollNumber ?? '—'}
+          {student.teamName ? ` · ${student.teamName}` : ''}
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3 shrink-0 text-[11px] tabular-nums">
+        <Stat label="tasks" value={coverage === null ? '—' : `${coverage}%`} />
+        <Stat
+          label="attendance"
+          value={attendance === null ? '—' : `${attendance}%`}
         />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm text-white font-medium truncate">{student.fullName ?? 'Unnamed student'}</p>
-          <p className="text-[11px] text-gray-500 truncate">
-            {student.rollNumber ?? '—'}
-            {student.teamName ? ` · ${student.teamName}` : ''}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 shrink-0 text-[11px] tabular-nums">
-          <span className={attendance !== null && attendance < 75 ? 'text-red-400' : 'text-gray-400'}>
-            <span className="font-semibold">{attendance === null ? '—' : `${attendance}%`}</span> attendance
-          </span>
-          <span className="text-gray-400 hidden sm:inline">
-            <span className="text-white font-semibold">{student.tasksOpen}</span> open
-          </span>
-          {needsAttention && (
-            <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 shrink-0" title="Needs attention" />
-          )}
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="px-3.5 pb-3 pt-1 border-t border-zinc-750/60">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Detail
-              label="Attendance"
-              value={attendance === null ? 'Not marked yet' : `${student.attendancePresent} of ${student.attendanceMarked} sessions`}
-            />
-            <Detail label="Tasks approved" value={String(student.tasksApproved)} />
-            <Detail label="Open tasks" value={String(student.tasksOpen)} />
-            <Detail
-              label="Needs resubmit"
-              value={String(student.tasksNeedingResubmit)}
-              warn={student.tasksNeedingResubmit > 0}
-            />
-            <Detail
-              label="Submissions awaiting review"
-              value={String(student.submissionsPending)}
-              warn={student.submissionsPending > 0}
-            />
-            {student.email && <Detail label="Email" value={student.email} />}
-          </div>
-
-          <SkillAssessmentPanel studentId={student.id} cohortId={cohortId} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Detail({ label, value, warn = false }: { label: string; value: string; warn?: boolean }) {
-  return (
-    <div>
-      <p className="text-[10px] text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className={`text-sm mt-0.5 ${warn ? 'text-yellow-400 font-semibold' : 'text-gray-200'}`}>{value}</p>
+        <SkillRatingChip value={student.skillRatingAvg} />
+      </div>
     </div>
   );
 }

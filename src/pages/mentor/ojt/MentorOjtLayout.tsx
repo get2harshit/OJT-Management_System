@@ -24,8 +24,8 @@ import type { Cohort } from '../../../lib/types';
 // side's own tab-count badges already carve out.
 const SECTIONS: { path: string; label: string; external?: boolean; countKey?: keyof TabCounts }[] = [
   { path: 'overview', label: 'Overview' },
-  { path: 'teams', label: 'Teams', countKey: 'teams' },
-  { path: 'projects', label: 'Projects', countKey: 'projects' },
+  { path: 'teams', label: 'Teams & Projects', countKey: 'teams' },
+  { path: 'students', label: 'Students', countKey: 'students' },
   { path: 'tasks', label: 'Tasks', countKey: 'tasks' },
   { path: 'submissions', label: 'Submissions', countKey: 'submissionsPending' },
   { path: 'sessions', label: 'Sessions', countKey: 'sessions' },
@@ -36,10 +36,10 @@ const SECTIONS: { path: string; label: string; external?: boolean; countKey?: ke
 const ROSTER_WEEKS = 8;
 
 /**
- * Shared with every child tab via useOutletContext — Overview, Teams and
- * Projects all read the same roster, fetched once here rather than three
- * times as a mentor switches tabs. Tasks/Submissions/Sessions/Attendance/
- * Evaluation don't need it and don't consume this context.
+ * Shared with every child tab via useOutletContext — Overview, Teams &
+ * Projects, and Students all read the same roster, fetched once here rather
+ * than three times as a mentor switches tabs. Tasks/Submissions/Sessions/
+ * Attendance/Evaluation don't need it and don't consume this context.
  */
 export interface MentorOjtOutletContext {
   roster: ApiMentorRoster | null;
@@ -48,7 +48,7 @@ export interface MentorOjtOutletContext {
 
 interface TabCounts {
   teams: number;
-  projects: number;
+  students: number;
   tasks: number;
   submissionsPending: number;
   sessions: number;
@@ -77,7 +77,7 @@ export default function MentorOjtLayout() {
 
   const cohort = cohorts.find((c) => c.id === cohortId) ?? null;
 
-  // The roster underlying Overview/Teams/Projects — one fetch for the whole
+  // The roster underlying Overview/Teams & Projects — one fetch for the whole
   // hub. Calling apiGetMyRoster once per tab, as each used to do on its own,
   // is the exact "two sources for one fact" shape this app has already been
   // bitten by (Performance vs. Teams & projects once disagreed about team
@@ -106,10 +106,10 @@ export default function MentorOjtLayout() {
 
   usePageRefresh(loadRoster);
 
-  // Tab badges. Teams/Projects/Submissions are read straight off the roster
-  // that's already loaded above — free, and guaranteed to agree with what
-  // those tabs themselves show since it's the same object. Tasks, Sessions
-  // and Evaluation instead run the EXACT query their own tab runs (limit: 1,
+  // Tab badges. Teams/Students/Submissions are read straight off
+  // the roster that's already loaded above — free, and guaranteed to agree
+  // with what those tabs themselves show since it's the same object. Tasks,
+  // Sessions and Evaluation instead run the EXACT query their own tab runs (limit: 1,
   // reading only pagination.total) rather than a second, differently-shaped
   // count — a badge computed a different way than its tab is exactly how a
   // number on screen ends up contradicting the list underneath it.
@@ -145,7 +145,7 @@ export default function MentorOjtLayout() {
   const tabCounts: TabCounts | null = roster && otherCounts
     ? {
         teams: roster.teams.length,
-        projects: roster.teams.length,
+        students: roster.students.length,
         submissionsPending: roster.students.reduce((n, s) => n + s.submissionsPending, 0),
         tasks: otherCounts.tasks,
         sessions: otherCounts.sessions,

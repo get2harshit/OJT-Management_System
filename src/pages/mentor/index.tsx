@@ -5,7 +5,7 @@ import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import OJTs from './OJTs';
 import MentorTeams from './ojt/MentorTeams';
-import MentorProjects from './ojt/MentorProjects';
+import MentorStudents from './ojt/MentorStudents';
 import MentoredStudents from './MentoredStudents';
 import MentorOjtLayout from './ojt/MentorOjtLayout';
 import MentorOjtRedirect from './ojt/MentorOjtRedirect';
@@ -101,7 +101,11 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
           <Route index element={<Navigate to="overview" replace />} />
           <Route path="overview" element={<OJTs />} />
           <Route path="teams" element={<MentorTeams />} />
-          <Route path="projects" element={<MentorProjects />} />
+          {/* Teams and Projects used to be separate tabs; a team card already
+              opens the same TeamProjectDetail modal a Projects list would
+              have, so this bookmark just lands on the merged tab instead. */}
+          <Route path="projects" element={<Navigate to="../teams" replace />} />
+          <Route path="students" element={<MentorStudents />} />
           <Route
             path="tasks"
             element={

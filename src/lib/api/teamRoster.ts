@@ -348,6 +348,8 @@ export interface ApiMentorRosterTeam {
   sessionsThisWeek: number;
   cadenceStatus: CadenceStatus;
   weeks: ApiTeamPerformanceWeek[];
+  /** Average of this team's members' own skillRatingAvg, over members who've been assessed at least once. Null when nobody on the team has been. */
+  skillRatingAvg: number | null;
 }
 
 export interface ApiMentorRosterStudent {
@@ -363,6 +365,8 @@ export interface ApiMentorRosterStudent {
   tasksApproved: number;
   tasksNeedingResubmit: number;
   submissionsPending: number;
+  /** This student's most recent skill-assessment average, or null if never assessed. */
+  skillRatingAvg: number | null;
 }
 
 export interface ApiMentorRoster {

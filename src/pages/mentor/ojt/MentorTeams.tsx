@@ -29,6 +29,11 @@ const TEAM_VIEWS: { id: TeamView; label: string }[] = [
  * Every team this mentor has in this OJT, with its own full page — pulled
  * out of Overview so it gets real space instead of sharing a screen with
  * Performance and My Students.
+ *
+ * Also does the job a separate Projects tab used to: each card already
+ * names the team's allocated project and clicking it opens the same
+ * TeamProjectDetail modal a project-first list would have shown, so a
+ * second tab just for projects had nothing left to add of its own.
  */
 export default function MentorTeams() {
   const { roster, loading } = useOutletContext<MentorOjtOutletContext>();
