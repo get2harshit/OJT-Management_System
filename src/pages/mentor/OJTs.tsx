@@ -5,6 +5,7 @@ import Select from '../../components/Select';
 import PageLayout from '../../components/PageLayout';
 import SharedResourcesPanel from '../../components/SharedResourcesPanel';
 import WeeklyTrendChart, { TREND_MEASURES } from '../../components/WeeklyTrendChart';
+import SkillAssessmentPanel from '../../components/SkillAssessmentPanel';
 import type { ApiMentorRoster, ApiMentorRosterTeam, ApiMentorRosterStudent } from '../../lib/api/teamRoster';
 import type { MentorOjtOutletContext } from './ojt/MentorOjtLayout';
 
@@ -48,7 +49,7 @@ export default function MentorOJTs() {
           <PerformanceSection roster={roster} loading={rosterLoading} />
 
           {/* ── My Students ─────────────────────────────────────────────────── */}
-          <StudentsSection roster={roster} loading={rosterLoading} />
+          <StudentsSection roster={roster} loading={rosterLoading} cohortId={selectedCohortId} />
 
           {/* ── Shared resources ────────────────────────────────────────────── */}
           <SharedResourcesPanel
@@ -186,7 +187,7 @@ function CadenceChip({ team }: { team: ApiMentorRosterTeam }) {
 
 type StudentSort = 'name' | 'attendance' | 'open';
 
-function StudentsSection({ roster, loading }: { roster: ApiMentorRoster | null; loading: boolean }) {
+function StudentsSection({ roster, loading, cohortId }: { roster: ApiMentorRoster | null; loading: boolean; cohortId: string }) {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<StudentSort>('name');
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -262,6 +263,7 @@ function StudentsSection({ roster, loading }: { roster: ApiMentorRoster | null; 
             <StudentRow
               key={student.id}
               student={student}
+              cohortId={cohortId}
               expanded={expanded === student.id}
               onToggle={() => setExpanded(expanded === student.id ? null : student.id)}
             />
@@ -278,10 +280,12 @@ function StudentsSection({ roster, loading }: { roster: ApiMentorRoster | null; 
  */
 function StudentRow({
   student,
+  cohortId,
   expanded,
   onToggle,
 }: {
   student: ApiMentorRosterStudent;
+  cohortId: string;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -320,24 +324,28 @@ function StudentRow({
       </button>
 
       {expanded && (
-        <div className="px-3.5 pb-3 pt-1 border-t border-zinc-750/60 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Detail
-            label="Attendance"
-            value={attendance === null ? 'Not marked yet' : `${student.attendancePresent} of ${student.attendanceMarked} sessions`}
-          />
-          <Detail label="Tasks approved" value={String(student.tasksApproved)} />
-          <Detail label="Open tasks" value={String(student.tasksOpen)} />
-          <Detail
-            label="Needs resubmit"
-            value={String(student.tasksNeedingResubmit)}
-            warn={student.tasksNeedingResubmit > 0}
-          />
-          <Detail
-            label="Submissions awaiting review"
-            value={String(student.submissionsPending)}
-            warn={student.submissionsPending > 0}
-          />
-          {student.email && <Detail label="Email" value={student.email} />}
+        <div className="px-3.5 pb-3 pt-1 border-t border-zinc-750/60">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <Detail
+              label="Attendance"
+              value={attendance === null ? 'Not marked yet' : `${student.attendancePresent} of ${student.attendanceMarked} sessions`}
+            />
+            <Detail label="Tasks approved" value={String(student.tasksApproved)} />
+            <Detail label="Open tasks" value={String(student.tasksOpen)} />
+            <Detail
+              label="Needs resubmit"
+              value={String(student.tasksNeedingResubmit)}
+              warn={student.tasksNeedingResubmit > 0}
+            />
+            <Detail
+              label="Submissions awaiting review"
+              value={String(student.submissionsPending)}
+              warn={student.submissionsPending > 0}
+            />
+            {student.email && <Detail label="Email" value={student.email} />}
+          </div>
+
+          <SkillAssessmentPanel studentId={student.id} cohortId={cohortId} />
         </div>
       )}
     </div>
