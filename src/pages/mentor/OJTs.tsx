@@ -1,74 +1,29 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
-import { Users, GitBranch, FolderGit2, Loader2, Briefcase, Layers, CalendarCheck, Search, ChevronRight, TrendingUp, AlertTriangle } from 'lucide-react';
-import Modal from '../../components/Modal';
+import { useState, useMemo } from 'react';
+import { useParams, useOutletContext } from 'react-router-dom';
+import { Users, Loader2, Briefcase, CalendarCheck, Search, ChevronRight, TrendingUp } from 'lucide-react';
 import Select from '../../components/Select';
-import SpinnerSquare from '../../components/SpinnerSquare';
 import PageLayout from '../../components/PageLayout';
 import SharedResourcesPanel from '../../components/SharedResourcesPanel';
 import WeeklyTrendChart, { TREND_MEASURES } from '../../components/WeeklyTrendChart';
-import type { Project } from '../../lib/types';
-import { apiGetProject } from '../../lib/api';
-import { apiGetMyRoster, type ApiMentorRoster, type ApiMentorRosterTeam, type ApiMentorRosterStudent } from '../../lib/api/teamRoster';
-import { teamAttentionReasons, type AttentionReason } from '../../lib/teamAttention';
-import { usePageRefresh } from '../../context/RefreshContext';
-
-const WEEKS = 8;
-
-// "G1 (Aditya, Subham)" — the team's number plus its members on one line.
-function teamLabel(team: ApiMentorRosterTeam): string {
-  const names = team.members.map((m) => m.fullName ?? m.id).join(', ');
-  const number = team.name ?? 'Team';
-  return names ? `${number} (${names})` : number;
-}
+import type { ApiMentorRoster, ApiMentorRosterTeam, ApiMentorRosterStudent } from '../../lib/api/teamRoster';
+import type { MentorOjtOutletContext } from './ojt/MentorOjtLayout';
 
 /**
- * The mentor's workspace for one OJT, ordered by what they actually need:
- * a line of context, then how the roster is doing, then the students
- * themselves, then teams and resources.
+ * The mentor's home page for one OJT: a line of context, then how the
+ * roster is doing, then the students themselves. Teams and Projects get
+ * their own tabs (see MentorTeams.tsx / MentorProjects.tsx) rather than
+ * sharing this page — the same "give it real space" reasoning that already
+ * pulled Performance out of a click-through modal applies to those two.
  *
- * Performance is deliberately not behind a click. It used to live inside the
- * team modal, which meant the one thing a mentor should see first took two
- * clicks and got a modal's worth of space.
+ * The roster itself is fetched once in MentorOjtLayout and shared with this
+ * page (and Teams, and Projects) via useOutletContext — three separate
+ * fetches of the same data is exactly the "two sources for one fact" shape
+ * that once made Performance and Teams disagree about team count.
  */
 export default function MentorOJTs() {
-  // The OJT comes from the URL — MentorOjtLayout owns the picker and the
-  // cohort header above this page, so neither is repeated here.
   const { cohortId } = useParams<{ cohortId: string }>();
   const selectedCohortId = cohortId ?? '';
-
-  // Teams come from the roster too, not from /teams/my-teams. That endpoint
-  // resolves a mentor's teams a different way (it excludes unpublished
-  // allocations), and reading both on one screen produced the contradiction
-  // of "1 team" in Performance and "no teams" in Teams & projects.
-  const [roster, setRoster] = useState<ApiMentorRoster | null>(null);
-  const [rosterLoading, setRosterLoading] = useState(false);
-
-  const [selectedTeam, setSelectedTeam] = useState<ApiMentorRosterTeam | null>(null);
-
-  // One call for the whole roster — every team's weekly buckets and every
-  // student's rollup. Calling the single-team endpoint per team here would be
-  // the N+1 this app has already been bitten by twice.
-  const loadRoster = useCallback(async () => {
-    if (!selectedCohortId) {
-      setRoster(null);
-      return;
-    }
-    setRosterLoading(true);
-    try {
-      setRoster(await apiGetMyRoster(selectedCohortId, WEEKS));
-    } catch {
-      setRoster(null);
-    } finally {
-      setRosterLoading(false);
-    }
-  }, [selectedCohortId]);
-
-  useEffect(() => {
-    loadRoster();
-  }, [loadRoster]);
-
-  usePageRefresh(loadRoster);
+  const { roster, loading: rosterLoading } = useOutletContext<MentorOjtOutletContext>();
 
   const cohortTeams = useMemo(() => roster?.teams ?? [], [roster]);
 
@@ -95,9 +50,6 @@ export default function MentorOJTs() {
           {/* ── My Students ─────────────────────────────────────────────────── */}
           <StudentsSection roster={roster} loading={rosterLoading} />
 
-          {/* ── Teams ───────────────────────────────────────────────────────── */}
-          <TeamsSection teams={cohortTeams} loading={rosterLoading} onOpenTeam={setSelectedTeam} />
-
           {/* ── Shared resources ────────────────────────────────────────────── */}
           <SharedResourcesPanel
             cohortId={selectedCohortId}
@@ -106,21 +58,17 @@ export default function MentorOJTs() {
           />
         </>
       )}
-
-      <Modal
-        open={!!selectedTeam}
-        onClose={() => setSelectedTeam(null)}
-        title={selectedTeam ? teamLabel(selectedTeam) : ''}
-        size="lg"
-      >
-        {selectedTeam && <TeamProjectDetail team={selectedTeam} />}
-      </Modal>
     </PageLayout>
   );
 }
 
 function sessionsThisWeek(roster: ApiMentorRoster): number {
   return roster.weeks[roster.weeks.length - 1]?.sessionsHeld ?? 0;
+}
+
+/** "8 weeks" once the OJT has run that long, "3 weeks" if it's only three in — never a fixed number regardless of how far the OJT has actually progressed. */
+function weekSpanLabel(weekCount: number): string {
+  return `last ${weekCount} week${weekCount === 1 ? '' : 's'}`;
 }
 
 // ── Performance ──────────────────────────────────────────────────────────────
@@ -135,7 +83,7 @@ function PerformanceSection({ roster, loading }: { roster: ApiMentorRoster | nul
             Performance
           </h2>
           <p className="text-xs text-gray-500 mt-0.5">
-            Across everyone you mentor — last {WEEKS} weeks, Monday to Sunday.
+            Across everyone you mentor — {roster ? weekSpanLabel(roster.weeks.length) : 'this OJT'}, Monday to Sunday.
           </p>
         </div>
       </div>
@@ -405,366 +353,3 @@ function Detail({ label, value, warn = false }: { label: string; value: string; 
   );
 }
 
-// ── Teams & projects ─────────────────────────────────────────────────────────
-
-type TeamView = 'track' | 'group' | 'attention';
-
-const TEAM_VIEWS: { id: TeamView; label: string }[] = [
-  { id: 'track', label: 'By track' },
-  { id: 'group', label: 'By group' },
-  { id: 'attention', label: 'Needs attention' },
-];
-
-/**
- * The mentor's teams, grouped the way they're currently thinking about them.
- *
- * Track and group are two real, different organisations of the same teams —
- * a track is what the team is building, a group is the batch an admin filed
- * them under — so neither can stand in for the other. "Needs attention" is
- * not a third grouping but a filter, and it opens selected whenever anything
- * is actually flagged, because a mentor arriving at this screen wants the
- * problems first and the inventory second.
- */
-function TeamsSection({
-  teams,
-  loading,
-  onOpenTeam,
-}: {
-  teams: ApiMentorRosterTeam[];
-  loading: boolean;
-  onOpenTeam: (team: ApiMentorRosterTeam) => void;
-}) {
-  const reasonsByTeam = useMemo(() => {
-    const map = new Map<string, AttentionReason[]>();
-    teams.forEach((team) => map.set(team.id, teamAttentionReasons(team)));
-    return map;
-  }, [teams]);
-
-  const flaggedCount = useMemo(
-    () => [...reasonsByTeam.values()].filter((r) => r.length > 0).length,
-    [reasonsByTeam]
-  );
-
-  const [view, setView] = useState<TeamView>('track');
-  // Land on the problems when there are any — but only as the initial view,
-  // never overriding a mentor who has since picked a different one.
-  const [viewTouched, setViewTouched] = useState(false);
-  useEffect(() => {
-    if (!viewTouched && flaggedCount > 0) setView('attention');
-  }, [flaggedCount, viewTouched]);
-
-  const sections = useMemo(() => {
-    if (view === 'attention') {
-      const flagged = teams
-        .filter((t) => (reasonsByTeam.get(t.id) ?? []).length > 0)
-        .sort((a, b) => (reasonsByTeam.get(b.id)?.length ?? 0) - (reasonsByTeam.get(a.id)?.length ?? 0));
-      return flagged.length === 0 ? [] : [{ id: '__attention', name: 'Needs attention', teams: flagged }];
-    }
-
-    const buckets = new Map<string, { id: string; name: string; teams: ApiMentorRosterTeam[] }>();
-    const unfiled: ApiMentorRosterTeam[] = [];
-
-    teams.forEach((team) => {
-      const key = view === 'track' ? team.track : team.groupId;
-      const name = view === 'track' ? team.track : team.groupName ?? 'Batch';
-      if (!key || !name) {
-        unfiled.push(team);
-        return;
-      }
-      if (!buckets.has(key)) buckets.set(key, { id: key, name, teams: [] });
-      buckets.get(key)!.teams.push(team);
-    });
-
-    const result = [...buckets.values()].sort((a, b) => a.name.localeCompare(b.name));
-    if (unfiled.length > 0) {
-      result.push({
-        id: '__unfiled',
-        name: view === 'track' ? 'No track' : 'Ungrouped',
-        teams: unfiled,
-      });
-    }
-    return result;
-  }, [teams, view, reasonsByTeam]);
-
-  return (
-    <section className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
-        <div>
-          <h2 className="text-base font-semibold text-white flex items-center gap-2">
-            <Briefcase size={17} className="text-gold" />
-            Teams
-          </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {loading ? 'Loading teams…' : `${teams.length} active team${teams.length === 1 ? '' : 's'}`}
-            {!loading && flaggedCount > 0 && (
-              <>
-                {' · '}
-                <span className="text-yellow-400">
-                  {flaggedCount} need{flaggedCount === 1 ? 's' : ''} attention
-                </span>
-              </>
-            )}
-          </p>
-        </div>
-        {!loading && teams.length > 0 && (
-          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-750 rounded-lg p-1">
-            {TEAM_VIEWS.map((option) => (
-              <button
-                key={option.id}
-                onClick={() => {
-                  setViewTouched(true);
-                  setView(option.id);
-                }}
-                className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
-                  view === option.id ? 'bg-zinc-750 text-white font-medium' : 'text-gray-400 hover:text-gray-200'
-                }`}
-              >
-                {option.label}
-                {option.id === 'attention' && flaggedCount > 0 && (
-                  <span className="ml-1.5 text-[10px] text-yellow-400 font-semibold tabular-nums">{flaggedCount}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {loading ? (
-        // "No teams" is a claim about the data, so it waits until there is
-        // data — otherwise every load flashes it before the roster arrives.
-        <div className="py-8 flex items-center justify-center">
-          <SpinnerSquare size={32} />
-        </div>
-      ) : teams.length === 0 ? (
-        <p className="text-sm text-gray-500 bg-zinc-900 border border-zinc-750 border-dashed rounded-lg p-5 text-center">
-          No teams are allocated to you in this OJT yet.
-        </p>
-      ) : sections.length === 0 ? (
-        <p className="text-sm text-gray-500 bg-zinc-900 border border-zinc-750 border-dashed rounded-lg p-5 text-center">
-          Nothing needs your attention right now — attendance, session cadence and task deadlines all look fine.
-        </p>
-      ) : (
-        <div className="space-y-5">
-          {sections.map((section) => (
-            <div key={section.id}>
-              {view !== 'attention' && (
-                <div className="flex items-center gap-2 mb-2.5">
-                  {view === 'track' ? (
-                    <GitBranch size={13} className="text-gray-500 shrink-0" />
-                  ) : (
-                    <Layers size={13} className="text-gray-500 shrink-0" />
-                  )}
-                  <h3 className="text-sm font-medium text-gray-300">{section.name}</h3>
-                  <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-zinc-800 text-gray-400 font-semibold">
-                    {section.teams.length}
-                  </span>
-                </div>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {section.teams.map((team) => (
-                  <TeamCard
-                    key={team.id}
-                    team={team}
-                    reasons={reasonsByTeam.get(team.id) ?? []}
-                    onOpen={() => onOpenTeam(team)}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function TeamCard({
-  team,
-  reasons,
-  onOpen,
-}: {
-  team: ApiMentorRosterTeam;
-  reasons: AttentionReason[];
-  onOpen: () => void;
-}) {
-  const flagged = reasons.length > 0;
-  return (
-    <button
-      onClick={onOpen}
-      className={`text-left bg-zinc-900 border rounded-xl p-4 transition-colors ${
-        flagged ? 'border-yellow-500/40 hover:border-yellow-500/70' : 'border-zinc-750 hover:border-gold/60'
-      }`}
-    >
-      <div className="flex items-center justify-between mb-2.5">
-        <span className="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold">
-          <GitBranch size={12} />
-          {team.track ?? 'No track'}
-        </span>
-        <span className="flex items-center gap-1 text-xs text-gray-400">
-          <Users size={12} />
-          {team.memberCount}
-        </span>
-      </div>
-      <p className="text-white font-semibold text-sm mb-1 flex items-center gap-1.5">
-        <Users size={13} className="text-gold shrink-0" />
-        {teamLabel(team)}
-      </p>
-      <p className="text-gray-300 text-sm truncate flex items-center gap-1.5">
-        <FolderGit2 size={13} className="text-gray-500 shrink-0" />
-        {team.allocatedProjectTitle ?? 'No project allocated yet'}
-      </p>
-
-      {/* The reason is always shown with the flag. A colour-only warning would
-          leave the mentor to work out for themselves what is wrong. */}
-      {flagged && (
-        <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-zinc-800">
-          {reasons.map((reason) => (
-            <span
-              key={reason.code}
-              title={reason.detail}
-              className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
-            >
-              <AlertTriangle size={10} />
-              {reason.label}
-            </span>
-          ))}
-        </div>
-      )}
-    </button>
-  );
-}
-
-// A team's members plus the full detail card of its allocated project —
-// fetched on open so the mentor sees the complete project (problem statement,
-// tech stack, goals…), not just the title on the team summary.
-function TeamProjectDetail({ team }: { team: ApiMentorRosterTeam }) {
-  const [project, setProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!team.allocatedProjectId) {
-      setProject(null);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    apiGetProject(team.allocatedProjectId)
-      .then((p) => { if (!cancelled) setProject(p); })
-      .catch(() => { if (!cancelled) setProject(null); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [team.allocatedProjectId]);
-
-  return (
-    <div className="space-y-5">
-      <div>
-        <p className="text-[11px] text-gray-500 uppercase tracking-wide mb-2">Students</p>
-        <div className="flex flex-wrap gap-2">
-          {team.members.map((m) => (
-            <span
-              key={m.id}
-              className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-zinc-800 text-gray-200 border border-zinc-700"
-            >
-              <Users size={12} className="text-gray-500" />
-              {m.fullName ?? 'Unnamed student'}
-              {m.rollNumber && <span className="text-gray-500">· {m.rollNumber}</span>}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-zinc-900 border border-zinc-750 rounded-xl p-5">
-        {!team.allocatedProjectId ? (
-          <p className="text-gray-500 text-sm">No project has been allocated to this team yet.</p>
-        ) : loading ? (
-          <div className="flex items-center justify-center py-6">
-            <Loader2 size={22} className="animate-spin text-gray-500" />
-          </div>
-        ) : (
-          <ProjectCard
-            project={project}
-            fallbackTitle={team.allocatedProjectTitle ?? 'Project'}
-            fallbackTrack={team.track ?? '—'}
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ProjectCard({ project, fallbackTitle, fallbackTrack }: { project: Project | null; fallbackTitle: string; fallbackTrack: string }) {
-  const title = project?.title ?? fallbackTitle;
-  const track = project?.track ?? fallbackTrack;
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <div className="flex items-center gap-2 flex-wrap mb-1">
-          {project?.projectId && <span className="text-[11px] font-mono text-gray-500">{project.projectId}</span>}
-          <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold">
-            <FolderGit2 size={12} />
-            {track}
-          </span>
-        </div>
-        <h3 className="text-lg font-bold text-white">{title}</h3>
-      </div>
-
-      {project?.description && (
-        <Section label="Description">
-          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{project.description}</p>
-        </Section>
-      )}
-      {project?.problemStatement && (
-        <Section label="Problem statement">
-          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{project.problemStatement}</p>
-        </Section>
-      )}
-      {project?.techStack && project.techStack.length > 0 && <ChipSection label="Tech stack" items={project.techStack} />}
-      {project?.framework && project.framework.length > 0 && <ChipSection label="Frameworks" items={project.framework} />}
-      {project?.coreLearningGoals && project.coreLearningGoals.length > 0 && (
-        <ListSection label="Core learning goals" items={project.coreLearningGoals} />
-      )}
-      {project?.stretchGoal && project.stretchGoal.length > 0 && (
-        <ListSection label="Stretch goals" items={project.stretchGoal} />
-      )}
-      {project?.evaluationMetrics && project.evaluationMetrics.length > 0 && (
-        <ListSection label="Evaluation metrics" items={project.evaluationMetrics} />
-      )}
-    </div>
-  );
-}
-
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="text-[11px] text-gray-500 uppercase tracking-wide mb-1">{label}</p>
-      {children}
-    </div>
-  );
-}
-
-function ChipSection({ label, items }: { label: string; items: string[] }) {
-  return (
-    <Section label={label}>
-      <div className="flex flex-wrap gap-1.5">
-        {items.map((item, i) => (
-          <span key={i} className="text-xs px-2 py-0.5 rounded-md bg-zinc-800 text-gray-300 border border-zinc-700">
-            {item}
-          </span>
-        ))}
-      </div>
-    </Section>
-  );
-}
-
-function ListSection({ label, items }: { label: string; items: string[] }) {
-  return (
-    <Section label={label}>
-      <ul className="list-disc list-inside space-y-0.5 text-sm text-gray-300">
-        {items.map((item, i) => (
-          <li key={i}>{item}</li>
-        ))}
-      </ul>
-    </Section>
-  );
-}

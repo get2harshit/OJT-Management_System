@@ -464,3 +464,35 @@ export async function apiGetMyPeerTeams(): Promise<ApiPeerTeams> {
   const res = await apiFetch<{ data: ApiPeerTeams }>('/api/v1/teams/mine/peer-teams');
   return res.data;
 }
+
+export interface ApiMentoredStudentRecord {
+  studentId: string;
+  fullName: string | null;
+  rollNumber: string | null;
+  email: string | null;
+  cohortId: string;
+  cohortName: string | null;
+  allowedBatches: string[];
+  sessionTerm: string;
+  cohortStartDate: string;
+  cohortEndDate: string;
+  cohortIsActive: boolean;
+  mentorRole: 'primary' | 'secondary';
+  teamId: string | null;
+  teamName: string | null;
+  track: string | null;
+  allocatedProjectTitle: string | null;
+}
+
+/**
+ * Every student the calling mentor has ever mentored, across every OJT —
+ * the mentor's own history directory. Distinct from the current-OJT roster
+ * inside My OJT: a mentor reassigned off a team keeps that stint here.
+ *
+ * Unpaginated by design — bounded by one mentor's own history, not the
+ * institution.
+ */
+export async function apiGetMyMentoredStudents(): Promise<ApiMentoredStudentRecord[]> {
+  const res = await apiFetch<{ data: ApiMentoredStudentRecord[] }>('/api/v1/teams/mine/mentored-students');
+  return res.data;
+}

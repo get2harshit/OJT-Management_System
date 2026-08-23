@@ -66,6 +66,7 @@ const adminTabs = [
 const mentorTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'ojts', label: 'My OJT', icon: Briefcase },
+  { id: 'mentored-students', label: 'My Students', icon: Users },
   { id: 'proposals', label: 'Project Proposals', icon: ClipboardCheck },
   { id: 'credits', label: 'Credit Requests', icon: Cloud },
   { id: 'session-requests', label: 'Session Requests', icon: Inbox },

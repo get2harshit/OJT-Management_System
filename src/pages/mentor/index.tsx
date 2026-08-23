@@ -4,6 +4,9 @@ import { useLegacyTabRedirect } from '../../hooks/useLegacyTabRedirect';
 import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import OJTs from './OJTs';
+import MentorTeams from './ojt/MentorTeams';
+import MentorProjects from './ojt/MentorProjects';
+import MentoredStudents from './MentoredStudents';
 import MentorOjtLayout from './ojt/MentorOjtLayout';
 import MentorOjtRedirect from './ojt/MentorOjtRedirect';
 import ProjectProposals from './ProjectProposals';
@@ -97,6 +100,8 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
         <Route path="ojts/:cohortId" element={<MentorOjtLayout />}>
           <Route index element={<Navigate to="overview" replace />} />
           <Route path="overview" element={<OJTs />} />
+          <Route path="teams" element={<MentorTeams />} />
+          <Route path="projects" element={<MentorProjects />} />
           <Route
             path="tasks"
             element={
@@ -134,6 +139,7 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
         <Route path="attendance" element={<MentorOjtRedirect section="attendance" />} />
         <Route path="evaluation" element={<MentorOjtRedirect section="evaluation" />} />
 
+        <Route path="mentored-students" element={<MentoredStudents />} />
         <Route path="proposals" element={<ProjectProposals />} />
         <Route path="credits" element={<Credits mentorId={mentorId} />} />
         <Route path="work-summary" element={<WorkSummary />} />

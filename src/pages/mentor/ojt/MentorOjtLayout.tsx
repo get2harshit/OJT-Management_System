@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
 import PageLayout from '../../../components/PageLayout';
 import Select from '../../../components/Select';
 import OjtWeekBadge from '../../../components/OjtWeekBadge';
 import { apiListMyCohorts } from '../../../lib/api';
+import { apiGetMyRoster, type ApiMentorRoster } from '../../../lib/api/teamRoster';
 import { buildCohortOptions } from '../../../lib/cohortLabel';
+import { usePageRefresh } from '../../../context/RefreshContext';
 import type { Cohort } from '../../../lib/types';
 
 /**
@@ -16,12 +18,27 @@ import type { Cohort } from '../../../lib/types';
  */
 const SECTIONS: { path: string; label: string; external?: boolean }[] = [
   { path: 'overview', label: 'Overview' },
+  { path: 'teams', label: 'Teams' },
+  { path: 'projects', label: 'Projects' },
   { path: 'tasks', label: 'Tasks' },
   { path: 'submissions', label: 'Submissions' },
   { path: 'sessions', label: 'Sessions' },
   { path: 'attendance', label: 'Attendance' },
   { path: 'evaluation', label: 'Evaluation' },
 ];
+
+const ROSTER_WEEKS = 8;
+
+/**
+ * Shared with every child tab via useOutletContext — Overview, Teams and
+ * Projects all read the same roster, fetched once here rather than three
+ * times as a mentor switches tabs. Tasks/Submissions/Sessions/Attendance/
+ * Evaluation don't need it and don't consume this context.
+ */
+export interface MentorOjtOutletContext {
+  roster: ApiMentorRoster | null;
+  loading: boolean;
+}
 
 /**
  * One tab strip around everything a mentor does inside a single OJT.
@@ -44,6 +61,35 @@ export default function MentorOjtLayout() {
   }, []);
 
   const cohort = cohorts.find((c) => c.id === cohortId) ?? null;
+
+  // The roster underlying Overview/Teams/Projects — one fetch for the whole
+  // hub. Calling apiGetMyRoster once per tab, as each used to do on its own,
+  // is the exact "two sources for one fact" shape this app has already been
+  // bitten by (Performance vs. Teams & projects once disagreed about team
+  // count for precisely this reason).
+  const [roster, setRoster] = useState<ApiMentorRoster | null>(null);
+  const [rosterLoading, setRosterLoading] = useState(false);
+
+  const loadRoster = useCallback(async () => {
+    if (!cohortId) {
+      setRoster(null);
+      return;
+    }
+    setRosterLoading(true);
+    try {
+      setRoster(await apiGetMyRoster(cohortId, ROSTER_WEEKS));
+    } catch {
+      setRoster(null);
+    } finally {
+      setRosterLoading(false);
+    }
+  }, [cohortId]);
+
+  useEffect(() => {
+    loadRoster();
+  }, [loadRoster]);
+
+  usePageRefresh(loadRoster);
 
   return (
     <PageLayout className="space-y-4">
@@ -96,7 +142,7 @@ export default function MentorOjtLayout() {
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col">
-        <Outlet />
+        <Outlet context={{ roster, loading: rosterLoading } satisfies MentorOjtOutletContext} />
       </div>
     </PageLayout>
   );
