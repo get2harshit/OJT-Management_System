@@ -4,7 +4,9 @@ import PageLayout from '../../../components/PageLayout';
 import Select from '../../../components/Select';
 import OjtWeekBadge from '../../../components/OjtWeekBadge';
 import { apiListMyCohorts } from '../../../lib/api';
-import { apiGetMyRoster, type ApiMentorRoster } from '../../../lib/api/teamRoster';
+import { apiListTasks } from '../../../lib/api/tasks';
+import { apiGetMyEvaluationQueue } from '../../../lib/api/evaluations';
+import { apiGetMyRoster, apiGetMyOjtOverview, type ApiMentorRoster } from '../../../lib/api/teamRoster';
 import { buildCohortOptions } from '../../../lib/cohortLabel';
 import { usePageRefresh } from '../../../context/RefreshContext';
 import type { Cohort } from '../../../lib/types';
@@ -16,15 +18,19 @@ import type { Cohort } from '../../../lib/types';
  * would delete a capability rather than organise one. These hand off with the
  * current OJT pre-filled instead.
  */
-const SECTIONS: { path: string; label: string; external?: boolean }[] = [
+// countKey names which field of TabCounts a badge reads. Omitted for
+// Overview (the hub, not a collection) and Attendance (a date-scoped view
+// with no single meaningful total) — the same two exceptions the admin
+// side's own tab-count badges already carve out.
+const SECTIONS: { path: string; label: string; external?: boolean; countKey?: keyof TabCounts }[] = [
   { path: 'overview', label: 'Overview' },
-  { path: 'teams', label: 'Teams' },
-  { path: 'projects', label: 'Projects' },
-  { path: 'tasks', label: 'Tasks' },
-  { path: 'submissions', label: 'Submissions' },
-  { path: 'sessions', label: 'Sessions' },
+  { path: 'teams', label: 'Teams', countKey: 'teams' },
+  { path: 'projects', label: 'Projects', countKey: 'projects' },
+  { path: 'tasks', label: 'Tasks', countKey: 'tasks' },
+  { path: 'submissions', label: 'Submissions', countKey: 'submissionsPending' },
+  { path: 'sessions', label: 'Sessions', countKey: 'sessions' },
   { path: 'attendance', label: 'Attendance' },
-  { path: 'evaluation', label: 'Evaluation' },
+  { path: 'evaluation', label: 'Evaluation', countKey: 'evaluation' },
 ];
 
 const ROSTER_WEEKS = 8;
@@ -38,6 +44,15 @@ const ROSTER_WEEKS = 8;
 export interface MentorOjtOutletContext {
   roster: ApiMentorRoster | null;
   loading: boolean;
+}
+
+interface TabCounts {
+  teams: number;
+  projects: number;
+  tasks: number;
+  submissionsPending: number;
+  sessions: number;
+  evaluation: number;
 }
 
 /**
@@ -91,6 +106,53 @@ export default function MentorOjtLayout() {
 
   usePageRefresh(loadRoster);
 
+  // Tab badges. Teams/Projects/Submissions are read straight off the roster
+  // that's already loaded above — free, and guaranteed to agree with what
+  // those tabs themselves show since it's the same object. Tasks, Sessions
+  // and Evaluation instead run the EXACT query their own tab runs (limit: 1,
+  // reading only pagination.total) rather than a second, differently-shaped
+  // count — a badge computed a different way than its tab is exactly how a
+  // number on screen ends up contradicting the list underneath it.
+  const [otherCounts, setOtherCounts] = useState<{ tasks: number; sessions: number; evaluation: number } | null>(null);
+
+  const loadOtherCounts = useCallback(async () => {
+    if (!cohortId) {
+      setOtherCounts(null);
+      return;
+    }
+    try {
+      const [tasksRes, overview, evalRes] = await Promise.all([
+        apiListTasks({ cohort_id: cohortId, page: 1, limit: 1 }),
+        apiGetMyOjtOverview(cohortId),
+        apiGetMyEvaluationQueue({ cohortId, page: 1, limit: 1 }),
+      ]);
+      setOtherCounts({
+        tasks: tasksRes.pagination.total,
+        sessions: overview.sessions.total,
+        evaluation: evalRes.pagination.total,
+      });
+    } catch {
+      setOtherCounts(null);
+    }
+  }, [cohortId]);
+
+  useEffect(() => {
+    loadOtherCounts();
+  }, [loadOtherCounts]);
+
+  usePageRefresh(loadOtherCounts);
+
+  const tabCounts: TabCounts | null = roster && otherCounts
+    ? {
+        teams: roster.teams.length,
+        projects: roster.teams.length,
+        submissionsPending: roster.students.reduce((n, s) => n + s.submissionsPending, 0),
+        tasks: otherCounts.tasks,
+        sessions: otherCounts.sessions,
+        evaluation: otherCounts.evaluation,
+      }
+    : null;
+
   return (
     <PageLayout className="space-y-4">
       <div className="space-y-3 shrink-0">
@@ -113,14 +175,23 @@ export default function MentorOjtLayout() {
         </div>
 
         <nav className="flex items-center gap-1 overflow-x-auto scrollbar-thin border-b border-zinc-750">
-          {SECTIONS.map((section) =>
-            section.external ? (
+          {SECTIONS.map((section) => {
+            const count = section.countKey && tabCounts ? tabCounts[section.countKey] : undefined;
+            const content = (
+              <>
+                {section.label}
+                {count !== undefined && (
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-zinc-750 text-[10px] font-semibold text-gray-400">{count}</span>
+                )}
+              </>
+            );
+            return section.external ? (
               <Link
                 key={section.path}
                 to={`/mentor/dashboard/${section.path}?cohortId=${cohortId}`}
                 className="flex items-center px-3.5 py-2 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-400 hover:text-white hover:border-zinc-700 transition-colors"
               >
-                {section.label}
+                {content}
               </Link>
             ) : (
               <NavLink
@@ -134,10 +205,10 @@ export default function MentorOjtLayout() {
                   }`
                 }
               >
-                {section.label}
+                {content}
               </NavLink>
-            )
-          )}
+            );
+          })}
         </nav>
       </div>
 

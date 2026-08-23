@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Users, GitBranch, FolderGit2, Briefcase, AlertTriangle } from 'lucide-react';
+import { Users, GitBranch, FolderGit2, Briefcase, AlertTriangle, CalendarCheck } from 'lucide-react';
 import Modal from '../../../components/Modal';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import PageLayout from '../../../components/PageLayout';
 import TeamProjectDetail from '../../../components/TeamProjectDetail';
+import WeeklyTrendChart from '../../../components/WeeklyTrendChart';
 import type { ApiMentorRosterTeam } from '../../../lib/api/teamRoster';
 import { teamAttentionReasons, type AttentionReason } from '../../../lib/teamAttention';
 import type { MentorOjtOutletContext } from './MentorOjtLayout';
@@ -249,6 +250,26 @@ function TeamCard({
         {team.allocatedProjectTitle ?? 'No project allocated yet'}
       </p>
 
+      {/* Team-level performance, at a glance, with no click needed — a
+          sparkline for the trend, numbers for where it stands right now. */}
+      <div className="mt-3 pt-3 border-t border-zinc-800">
+        <WeeklyTrendChart
+          title="Tasks approved"
+          weeks={team.weeks}
+          valueOf={(w) => w.tasksApproved}
+          format={(v) => String(v)}
+          compact
+        />
+        <div className="flex items-center gap-3 mt-2 text-[11px] tabular-nums">
+          <TeamStat label="approved" value={String(windowTasksApproved(team))} />
+          <TeamStat
+            label="attendance"
+            value={windowAttendancePct(team) === null ? '—' : `${windowAttendancePct(team)}%`}
+          />
+          <CadenceChip team={team} />
+        </div>
+      </div>
+
       {/* The reason is always shown with the flag. A colour-only warning would
           leave the mentor to work out for themselves what is wrong. */}
       {flagged && (
@@ -266,5 +287,43 @@ function TeamCard({
         </div>
       )}
     </button>
+  );
+}
+
+/** Tasks approved summed across the whole fetched window, not just this week — a truer "how is this team doing" than a single week's count. */
+function windowTasksApproved(team: ApiMentorRosterTeam): number {
+  return team.weeks.reduce((n, w) => n + w.tasksApproved, 0);
+}
+
+/** Attendance across the whole fetched window; null when nothing has been marked yet, never a misleading 0%. */
+function windowAttendancePct(team: ApiMentorRosterTeam): number | null {
+  const marked = team.weeks.reduce((n, w) => n + w.attendanceMarked, 0);
+  if (marked === 0) return null;
+  const present = team.weeks.reduce((n, w) => n + w.attendancePresent, 0);
+  return Math.round((present / marked) * 100);
+}
+
+function TeamStat({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="text-gray-400">
+      <span className="text-white font-semibold">{value}</span> {label}
+    </span>
+  );
+}
+
+function CadenceChip({ team }: { team: ApiMentorRosterTeam }) {
+  if (team.weeklySessionTarget === null) {
+    return <span className="text-gray-600">no target</span>;
+  }
+  const met = team.cadenceStatus === 'met';
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border font-semibold ${
+        met ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+      }`}
+    >
+      <CalendarCheck size={10} />
+      {team.sessionsThisWeek}/{team.weeklySessionTarget}
+    </span>
   );
 }
