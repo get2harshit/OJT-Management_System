@@ -275,10 +275,15 @@ export interface EvaluatorQueuePage {
 }
 
 // Mentor/external mentor — every evaluation they're a panelist on, paginated.
-export async function apiGetMyEvaluationQueue(params: { page?: number; limit?: number } = {}): Promise<EvaluatorQueuePage> {
+// cohortId names the OJT whose queue to return; without it the backend scopes
+// to the currently active OJT, which is what a cohort-less caller wants.
+export async function apiGetMyEvaluationQueue(
+  params: { page?: number; limit?: number; cohortId?: string } = {}
+): Promise<EvaluatorQueuePage> {
   const query = new URLSearchParams();
   if (params.page) query.set('page', String(params.page));
   if (params.limit) query.set('limit', String(params.limit));
+  if (params.cohortId) query.set('cohortId', params.cohortId);
   const qs = query.toString();
   const res = await apiFetch<{ data: RawEvaluatorQueueItem[]; pagination: { page: number; limit: number; total: number } }>(
     `/api/v1/evaluations/my-queue${qs ? `?${qs}` : ''}`,

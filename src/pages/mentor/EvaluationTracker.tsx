@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import { Award, Loader2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
@@ -17,6 +18,8 @@ const PAGE_SIZE = 20;
 // automatically when admin activates a cohort's evaluation, so this page is
 // purely a queue: nothing to set up here, just score what's assigned.
 export default function MentorEvaluationTracker() {
+  // The OJT this queue is scoped to, from the route.
+  const { cohortId } = useParams<{ cohortId: string }>();
   const { user } = useAuth();
   const myId = user?.id;
   const { showSuccess, showError } = useToast();
@@ -37,7 +40,7 @@ export default function MentorEvaluationTracker() {
   const loadQueue = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiGetMyEvaluationQueue({ page, limit });
+      const res = await apiGetMyEvaluationQueue({ page, limit, cohortId });
       setQueue(res.data);
       setTotal(res.pagination.total);
     } catch (err) {
@@ -46,7 +49,7 @@ export default function MentorEvaluationTracker() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, limit]);
+  }, [page, limit, cohortId]);
 
   useEffect(() => {
     loadQueue();

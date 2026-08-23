@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -20,9 +20,7 @@ import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
 import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
-import type { Cohort } from '../../lib/types';
 import {
-  apiListMyCohorts,
   apiGetMySessions,
   apiGetMySessionStats,
   type ApiMentorSessionStats,
@@ -39,7 +37,6 @@ import {
   type ApiMentorWorkspaceTeam,
   type ApiMentorGroup,
 } from '../../lib/api';
-import { buildCohortOptions } from '../../lib/cohortLabel';
 import { formatMeetingPattern } from '../../lib/meetingPattern';
 import { DEFAULT_SESSION_LOCATION, PST_CAMPUS_ROOM_OPTIONS, defaultSessionTitle } from '../../lib/sessionLocation';
 import { useToast } from '../../toast';
@@ -80,8 +77,10 @@ export default function MentorSessions() {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
 
-  const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [selectedCohortId, setSelectedCohortId] = useState('');
+  // The OJT comes from the route — MentorOjtLayout owns the picker above
+  // this page, so there is no second one here to drift out of step with it.
+  const { cohortId: routeCohortId } = useParams<{ cohortId: string }>();
+  const selectedCohortId = routeCohortId ?? '';
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [canSelfSchedule, setCanSelfSchedule] = useState(false);
@@ -118,17 +117,6 @@ export default function MentorSessions() {
     (span: { start: Date }) => span.start.getTime() >= Date.now() && !holidayDateKeys.has(localDateKey(span.start)),
     [holidayDateKeys]
   );
-
-  useEffect(() => {
-    apiListMyCohorts()
-      .then(setCohorts)
-      .catch(() => setCohorts([]));
-  }, []);
-
-  useEffect(() => {
-    if (cohorts.length === 0) return;
-    setSelectedCohortId((prev) => prev || cohorts.find((c) => c.isActive)?.id || cohorts[0]?.id || prev);
-  }, [cohorts]);
 
   useEffect(() => {
     if (!selectedCohortId || !user) return;
@@ -565,7 +553,6 @@ export default function MentorSessions() {
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <Select value={selectedCohortId} onChange={setSelectedCohortId} variant="filter" placeholder="Select cohort" className="w-[200px]" options={buildCohortOptions(cohorts)} />
           <button
             onClick={() =>
               canSelfSchedule &&

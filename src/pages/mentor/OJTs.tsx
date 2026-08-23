@@ -1,16 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import { Users, GitBranch, FolderGit2, Loader2, Briefcase, Layers, CalendarCheck, Search, ChevronRight, TrendingUp, AlertTriangle } from 'lucide-react';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import PageLayout from '../../components/PageLayout';
-import OjtWeekBadge from '../../components/OjtWeekBadge';
 import SharedResourcesPanel from '../../components/SharedResourcesPanel';
 import WeeklyTrendChart, { TREND_MEASURES } from '../../components/WeeklyTrendChart';
-import type { Cohort, Project } from '../../lib/types';
-import { apiListMyCohorts, apiGetProject } from '../../lib/api';
+import type { Project } from '../../lib/types';
+import { apiGetProject } from '../../lib/api';
 import { apiGetMyRoster, type ApiMentorRoster, type ApiMentorRosterTeam, type ApiMentorRosterStudent } from '../../lib/api/teamRoster';
-import { buildCohortOptions } from '../../lib/cohortLabel';
 import { teamAttentionReasons, type AttentionReason } from '../../lib/teamAttention';
 import { usePageRefresh } from '../../context/RefreshContext';
 
@@ -33,9 +32,10 @@ function teamLabel(team: ApiMentorRosterTeam): string {
  * clicks and got a modal's worth of space.
  */
 export default function MentorOJTs() {
-  const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedCohortId, setSelectedCohortId] = useState('');
+  // The OJT comes from the URL — MentorOjtLayout owns the picker and the
+  // cohort header above this page, so neither is repeated here.
+  const { cohortId } = useParams<{ cohortId: string }>();
+  const selectedCohortId = cohortId ?? '';
 
   // Teams come from the roster too, not from /teams/my-teams. That endpoint
   // resolves a mentor's teams a different way (it excludes unpublished
@@ -45,25 +45,6 @@ export default function MentorOJTs() {
   const [rosterLoading, setRosterLoading] = useState(false);
 
   const [selectedTeam, setSelectedTeam] = useState<ApiMentorRosterTeam | null>(null);
-
-  const loadCohorts = useCallback(() => {
-    return apiListMyCohorts()
-      .then((res) => setCohorts(res || []))
-      .catch(() => setCohorts([]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    loadCohorts();
-  }, [loadCohorts]);
-
-  // Falls back to the first cohort when none is active, matching
-  // mentor/Sessions.tsx — otherwise a mentor whose only OJT has finished sits
-  // on "Select a cohort" forever with exactly one thing to select.
-  useEffect(() => {
-    if (cohorts.length === 0) return;
-    setSelectedCohortId((prev) => prev || cohorts.find((c) => c.isActive)?.id || cohorts[0]?.id || prev);
-  }, [cohorts]);
 
   // One call for the whole roster — every team's weekly buckets and every
   // student's rollup. Calling the single-team endpoint per team here would be
@@ -87,50 +68,21 @@ export default function MentorOJTs() {
     loadRoster();
   }, [loadRoster]);
 
-  usePageRefresh(useCallback(() => Promise.all([loadCohorts(), loadRoster()]), [loadCohorts, loadRoster]));
-
-  const selectedCohort = useMemo(
-    () => cohorts.find((c) => c.id === selectedCohortId) ?? null,
-    [cohorts, selectedCohortId]
-  );
+  usePageRefresh(loadRoster);
 
   const cohortTeams = useMemo(() => roster?.teams ?? [], [roster]);
 
   return (
     <PageLayout mode="scroll" className="space-y-5">
-      {/* ── My OJT — context only, so it stays one line tall ───────────────── */}
-      <section className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <p className="text-[11px] text-gray-500 uppercase tracking-wide mb-1">My OJT</p>
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-xl font-bold text-white">{selectedCohort?.name ?? 'Select an OJT'}</h1>
-              <OjtWeekBadge startDate={selectedCohort?.startDate} endDate={selectedCohort?.endDate} />
-            </div>
-            {roster && (
-              <p className="text-sm text-gray-400 mt-1.5">
-                {roster.teams.length} team{roster.teams.length === 1 ? '' : 's'} · {roster.students.length} student
-                {roster.students.length === 1 ? '' : 's'} · {sessionsThisWeek(roster)} session
-                {sessionsThisWeek(roster) === 1 ? '' : 's'} this week
-              </p>
-            )}
-          </div>
-          <Select
-            value={selectedCohortId}
-            onChange={(v) => setSelectedCohortId(v as string)}
-            variant="filter"
-            className="w-[220px]"
-            placeholder="Select an OJT"
-            options={buildCohortOptions(cohorts)}
-          />
-        </div>
-      </section>
+      {roster && (
+        <p className="text-sm text-gray-400">
+          {roster.teams.length} team{roster.teams.length === 1 ? '' : 's'} · {roster.students.length} student
+          {roster.students.length === 1 ? '' : 's'} · {sessionsThisWeek(roster)} session
+          {sessionsThisWeek(roster) === 1 ? '' : 's'} this week
+        </p>
+      )}
 
-      {loading ? (
-        <div className="min-h-[40vh] flex items-center justify-center">
-          <SpinnerSquare size={48} />
-        </div>
-      ) : !selectedCohortId ? (
+      {!selectedCohortId ? (
         <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-10 text-center">
           <Briefcase size={32} className="text-zinc-600 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">Select an OJT above to see how your students are doing.</p>
@@ -144,7 +96,7 @@ export default function MentorOJTs() {
           <StudentsSection roster={roster} loading={rosterLoading} />
 
           {/* ── Teams ───────────────────────────────────────────────────────── */}
-          <TeamsSection teams={cohortTeams} onOpenTeam={setSelectedTeam} />
+          <TeamsSection teams={cohortTeams} loading={rosterLoading} onOpenTeam={setSelectedTeam} />
 
           {/* ── Shared resources ────────────────────────────────────────────── */}
           <SharedResourcesPanel
@@ -475,9 +427,11 @@ const TEAM_VIEWS: { id: TeamView; label: string }[] = [
  */
 function TeamsSection({
   teams,
+  loading,
   onOpenTeam,
 }: {
   teams: ApiMentorRosterTeam[];
+  loading: boolean;
   onOpenTeam: (team: ApiMentorRosterTeam) => void;
 }) {
   const reasonsByTeam = useMemo(() => {
@@ -541,8 +495,8 @@ function TeamsSection({
             Teams
           </h2>
           <p className="text-xs text-gray-500 mt-0.5">
-            {teams.length} active team{teams.length === 1 ? '' : 's'}
-            {flaggedCount > 0 && (
+            {loading ? 'Loading teams…' : `${teams.length} active team${teams.length === 1 ? '' : 's'}`}
+            {!loading && flaggedCount > 0 && (
               <>
                 {' · '}
                 <span className="text-yellow-400">
@@ -552,7 +506,7 @@ function TeamsSection({
             )}
           </p>
         </div>
-        {teams.length > 0 && (
+        {!loading && teams.length > 0 && (
           <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-750 rounded-lg p-1">
             {TEAM_VIEWS.map((option) => (
               <button
@@ -575,7 +529,13 @@ function TeamsSection({
         )}
       </div>
 
-      {teams.length === 0 ? (
+      {loading ? (
+        // "No teams" is a claim about the data, so it waits until there is
+        // data — otherwise every load flashes it before the roster arrives.
+        <div className="py-8 flex items-center justify-center">
+          <SpinnerSquare size={32} />
+        </div>
+      ) : teams.length === 0 ? (
         <p className="text-sm text-gray-500 bg-zinc-900 border border-zinc-750 border-dashed rounded-lg p-5 text-center">
           No teams are allocated to you in this OJT yet.
         </p>

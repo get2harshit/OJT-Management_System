@@ -12,7 +12,6 @@ import {
   Upload,
   CreditCard,
   Briefcase,
-  Award,
   ClipboardCheck,
   ShieldCheck,
   X,
@@ -60,25 +59,26 @@ const adminTabs = [
   { id: 'eligibility', label: 'Eligibility Status', icon: ShieldCheck },
 ];
 
+// Tasks, Submissions, Sessions, Attendance and Evaluation used to be here as
+// standalone entries, each keeping its own cohort picker. They now live as
+// tabs inside My OJT (see MentorOjtLayout) — one picker, in the URL, shared
+// by all of them — so they are not duplicated here as a second door in.
 const mentorTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'ojts', label: 'My OJT', icon: Briefcase },
   { id: 'proposals', label: 'Project Proposals', icon: ClipboardCheck },
-  { id: 'tasks', label: 'Tasks', icon: CheckSquare },
-  { id: 'submissions', label: 'Submissions', icon: FolderOpen },
   { id: 'credits', label: 'Credit Requests', icon: Cloud },
-  { id: 'sessions', label: 'Sessions', icon: CalendarClock },
   { id: 'session-requests', label: 'Session Requests', icon: Inbox },
   // Sits next to Session Requests because both are inboxes, but they are
   // opposite directions: that one is this mentor asking an admin, this one
   // is their students asking them.
   { id: 'doubt-requests', label: 'Doubt Requests', icon: HelpCircle },
   { id: 'availability', label: 'My Availability', icon: Clock },
-  { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   // Deliberately not "Payouts" — the mentor-side page shows work delivered
-  // (sessions, hours, teams), never rates or amounts.
+  // (sessions, hours, teams), never rates or amounts. Kept global rather than
+  // nested under one OJT — a mentor's work-summary spans every OJT they've
+  // ever worked, which is a real, load-bearing "all OJTs" view.
   { id: 'work-summary', label: 'My Work Summary', icon: ClipboardList },
-  { id: 'evaluation', label: 'Evaluation Tracker', icon: Award },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
 ];
 
