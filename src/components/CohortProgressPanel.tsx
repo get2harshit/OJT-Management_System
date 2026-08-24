@@ -93,7 +93,7 @@ export default function CohortProgressPanel({ cohortId }: { cohortId: string }) 
     { label: 'Sessions in the next 7 days', value: progress.delivery.sessionsScheduledNext7Days, icon: CalendarClock, to: `/admin/dashboard/ojts/${cohortId}/sessions` },
     { label: 'Sessions completed in the last 7', value: progress.delivery.sessionsCompletedLast7Days, icon: CheckCircle2, to: `/admin/dashboard/ojts/${cohortId}/sessions` },
     { label: 'Past sessions still unmarked', value: progress.delivery.sessionsAwaitingAttendance, icon: ClipboardList, to: `/admin/dashboard/ojts/${cohortId}/attendance` },
-    { label: 'Submissions awaiting review', value: progress.delivery.submissionsPendingReview, icon: FileText, to: '/admin/dashboard/submissions' },
+    { label: 'Submissions awaiting review', value: progress.delivery.submissionsPendingReview, icon: FileText, to: `/admin/dashboard/ojts/${cohortId}/submissions` },
   ];
 
   return (

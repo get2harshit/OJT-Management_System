@@ -493,7 +493,7 @@ export default function MentorWorkspace() {
                   {workspace.submissions.reviewed} reviewed
                 </p>
                 <button
-                  onClick={() => navigate(`/admin/dashboard/submissions?cohortId=${cohortId}&mentorId=${mentorId}`)}
+                  onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/submissions?mentorId=${mentorId}`)}
                   className="flex items-center gap-1 text-[11px] text-gold hover:underline mt-1"
                 >
                   Open in Submissions <ExternalLink size={11} />
@@ -508,7 +508,7 @@ export default function MentorWorkspace() {
                   {workspace.tasksAssignedCount} created by this mentor
                 </p>
                 <button
-                  onClick={() => navigate(`/admin/dashboard/tasks?cohortId=${cohortId}&assignedById=${mentorId}`)}
+                  onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/tasks?assignedById=${mentorId}`)}
                   className="flex items-center gap-1 text-[11px] text-gold hover:underline mt-1"
                 >
                   Open in Tasks <ExternalLink size={11} />

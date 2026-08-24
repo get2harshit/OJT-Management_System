@@ -23,6 +23,8 @@ const SECTIONS: { path: string; label: string; external?: boolean; countKey?: ke
   { path: 'projects', label: 'Projects', countKey: 'projects' },
   { path: 'teams', label: 'Teams & Roster', countKey: 'teams' },
   { path: 'allocations', label: 'Allocations', countKey: 'allocations' },
+  { path: 'tasks', label: 'Tasks' },
+  { path: 'submissions', label: 'Submissions' },
   { path: 'sessions', label: 'Sessions', countKey: 'sessions' },
   { path: 'session-requests', label: 'Session Requests', external: true, countKey: 'sessionRequests' },
   { path: 'attendance', label: 'Attendance' },

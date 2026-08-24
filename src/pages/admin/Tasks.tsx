@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, ClipboardList, Loader2, Eye, X, UserPlus, UserMinus, Send } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import {
@@ -29,7 +29,6 @@ import { useTracks } from '../../hooks/useTracks';
 import { useToast } from '../../toast';
 import { useConfirm } from '../../confirm';
 import { apiListCohorts } from '../../lib/api';
-import { buildCohortOptions } from '../../lib/cohortLabel';
 import type { Cohort } from '../../lib/types';
 import { useAuth } from '../../context/useAuth';
 import { usePageRefresh } from '../../context/RefreshContext';
@@ -139,22 +138,14 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
     loadCohorts();
   }, [loadCohorts]);
 
-  // Defaults to the active cohort once cohorts load (same fallback
-  // CreateTaskPage.tsx uses), but — unlike before — the admin can now
-  // switch to any other cohort via the selector below instead of being
-  // silently locked to whichever one auto-detected as "active".
-  const [selectedCohortId, setSelectedCohortId] = useState(searchParams.get('cohortId') || '');
-  useEffect(() => {
-    if (selectedCohortId || cohorts.length === 0) return;
-    const active = cohorts.find(c => c.isActive) || cohorts[0];
-    if (active) setSelectedCohortId(active.id);
-  }, [cohorts, selectedCohortId]);
-
-  // Admins have no ojt_cohort_members row of their own (only students/
-  // mentors do), so the backend can't infer "their" cohort on its own.
+  // The cohort this page is scoped to comes from the OJT Setup shell's own
+  // route (ojts/:cohortId/tasks) — CohortSectionRedirect resolves a default
+  // cohort for any old flat /admin/dashboard/tasks link before landing here,
+  // so by the time this component mounts the URL always names one.
+  const { cohortId } = useParams<{ cohortId: string }>();
   const activeCohort = useMemo(
-    () => cohorts.find(c => c.id === selectedCohortId),
-    [cohorts, selectedCohortId]
+    () => cohorts.find(c => c.id === cohortId),
+    [cohorts, cohortId]
   );
 
   const fetchTasksOnly = useCallback(async () => {
@@ -541,14 +532,6 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
             Progress") doesn't resize the control and shove the whole row
             around — the layout stays put as filters change. */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <Select
-            value={selectedCohortId}
-            onChange={(v) => { setPage(1); setSelectedCohortId(v as string); }}
-            variant="filter"
-            placeholder="Select cohort"
-            className="w-[168px]"
-            options={buildCohortOptions(cohorts)}
-          />
           <Select
             value={roleFilter}
             onChange={setRoleFilter}

@@ -6,7 +6,6 @@ import {
   Users,
   Cloud,
   CalendarCheck,
-  FolderOpen,
   CheckSquare,
   LogOut,
   Upload,
@@ -47,8 +46,11 @@ const adminTabs = [
   { id: 'students', label: 'Student Directory', icon: Users },
   { id: 'mentors', label: 'Mentor Directory', icon: Users },
   { id: 'ojts', label: 'OJT Setup', icon: Briefcase },
-  { id: 'tasks', label: 'Tasks', icon: CheckSquare },
-  { id: 'submissions', label: 'Submissions', icon: FolderOpen },
+  // Tasks and Submissions used to be here as standalone entries, each
+  // keeping its own cohort picker. They now live as tabs inside OJT Setup
+  // (see CohortDetailLayout) — one picker, in the URL, shared by every
+  // section — so they are not duplicated here as a second door in. Same
+  // move Sessions/Attendance/Allocations already made.
   { id: 'credits', label: 'Cloud Credits', icon: Cloud },
   // Cross-cohort admin queues — deliberately not nested under OJT Setup like
   // Sessions/Attendance were, since "all cohorts" is a real, load-bearing

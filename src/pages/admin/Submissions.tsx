@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Eye, Loader2, Users, X } from 'lucide-react';
 import SplitPane from '../../components/SplitPane';
 import RosterList from '../../components/RosterList';
@@ -16,7 +16,6 @@ import {
   apiListCohorts,
   apiReviewPrdSubmission,
 } from '../../lib/api';
-import { buildCohortOptions } from '../../lib/cohortLabel';
 import { statusDotClass } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
@@ -48,31 +47,28 @@ const SEARCH_DEBOUNCE_MS = 400;
 interface Props {
   // Set by the Tasks tab's "View Submission" action to jump straight to a
   // specific student's submission for a given task — resets the roster
-  // filters and switches cohort if needed (a task belongs to exactly one
-  // cohort, which may not be the currently-selected one). onFocusHandled
-  // clears it once consumed so a later manual visit to this tab doesn't
-  // re-trigger it.
+  // filters. The caller navigates here on the task's own cohort's route
+  // (ojts/:cohortId/submissions) before setting this, so there's no cohort
+  // to switch to any more — the URL already names it. onFocusHandled clears
+  // it once consumed so a later manual visit to this tab doesn't re-trigger it.
   focusStudentId?: string | null;
   focusTaskId?: string | null;
-  focusCohortId?: string | null;
   onFocusHandled?: () => void;
 }
 
 export default function AdminSubmissions({
   focusStudentId,
   focusTaskId,
-  focusCohortId,
   onFocusHandled,
 }: Props = {}) {
   const { showSuccess, showError } = useToast();
   const { options: trackOptions } = useTracks();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // The cohort this page is scoped to comes from the OJT Setup shell's own
+  // route (ojts/:cohortId/submissions) — same treatment as Tasks.tsx.
+  const { cohortId: cohortFilter } = useParams<{ cohortId: string }>();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  // Seeded from a ?cohortId=&mentorId= link (e.g. the Mentor Workspace's
-  // "this mentor's submissions" link) — mentorFilter below already drives
-  // the exact same roster query, this just lets a deep link pre-set it.
-  const [cohortFilter, setCohortFilter] = useState(searchParams.get('cohortId') || '');
   const [cohortsLoaded, setCohortsLoaded] = useState(false);
   const [globalMentors, setGlobalMentors] = useState<ApiMentor[]>([]);
 
@@ -104,16 +100,9 @@ export default function AdminSubmissions({
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
-  // Resolves cohorts AND the default cohortFilter in the same state update
-  // (not a separate effect reacting to `cohorts`) — otherwise loadRoster
-  // below fires once with cohortFilter still '' and then again a render
-  // later once the default is picked, doubling every call for no reason.
   const loadCohorts = useCallback(() => {
     return apiListCohorts()
-      .then((list) => {
-        setCohorts(list);
-        setCohortFilter((prev) => prev || (list.find(c => c.isActive) || list[0])?.id || '');
-      })
+      .then(setCohorts)
       .catch(() => setCohorts([]))
       .finally(() => setCohortsLoaded(true));
   }, []);
@@ -207,11 +196,11 @@ export default function AdminSubmissions({
   ]), [loadCohorts, loadGlobalMentors, loadRoster, cohortsLoaded, cohortFilter, selectedStudentId, loadStudentSubmissions]));
 
   // Resets every roster filter and switches cohort if needed, so the target
-  // student is never hidden by a stale batch/track/mentor/search filter, the
-  // wrong page, or a different cohort selection — then loads their
-  // submissions directly (this doesn't depend on the roster having loaded;
-  // the roster is only needed for the header's name/roll/track display,
-  // which degrades gracefully below if it hasn't caught up yet).
+  // student is never hidden by a stale batch/track/mentor/search filter or
+  // the wrong page — then loads their submissions directly (this doesn't
+  // depend on the roster having loaded; the roster is only needed for the
+  // header's name/roll/track display, which degrades gracefully below if it
+  // hasn't caught up yet).
   useEffect(() => {
     if (!focusStudentId) return;
 
@@ -220,9 +209,6 @@ export default function AdminSubmissions({
     setBatchFilter('ALL');
     setTrackFilter('ALL');
     setMentorFilter('ALL');
-    if (focusCohortId && focusCohortId !== cohortFilter) {
-      setCohortFilter(focusCohortId);
-    }
 
     setSelectedStudentId(focusStudentId);
     setSelectedSubId(null);
@@ -241,7 +227,7 @@ export default function AdminSubmissions({
       onFocusHandled?.();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusStudentId, focusTaskId, focusCohortId]);
+  }, [focusStudentId, focusTaskId]);
 
   const rosterItems = useMemo(
     () =>
@@ -254,10 +240,6 @@ export default function AdminSubmissions({
     [rosterStudents]
   );
 
-  const handleCohortChange = (value: string) => {
-    setPage(1);
-    setCohortFilter(value);
-  };
   const handleBatchFilterChange = (value: string) => {
     setPage(1);
     setBatchFilter(value);
@@ -378,13 +360,6 @@ export default function AdminSubmissions({
           )}
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <Select
-            value={cohortFilter}
-            onChange={(v) => handleCohortChange(v as string)}
-            variant="filter"
-            placeholder="Select cohort"
-            options={buildCohortOptions(cohorts)}
-          />
           <Select
             value={batchFilter}
             onChange={(v) => handleBatchFilterChange(v as string)}

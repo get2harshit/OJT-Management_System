@@ -63,12 +63,15 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
   );
 
   // Set by Tasks' "View Submission" action to hand off which student+task
-  // (and cohort — a task belongs to exactly one, which may differ from
-  // Submissions' currently-selected one) the Submissions section should jump
-  // straight to; cleared once Submissions consumes it so a later manual visit
-  // doesn't re-trigger it. It lives on the panel, which stays mounted while its
-  // routes change underneath it, so the value survives the navigation after it.
-  const [submissionFocus, setSubmissionFocus] = useState<{ studentId: string; taskId: string; cohortId: string } | null>(null);
+  // the Submissions section should jump straight to; cleared once
+  // Submissions consumes it so a later manual visit doesn't re-trigger it.
+  // It lives on the panel, which stays mounted while its routes change
+  // underneath it, so the value survives the navigation after it. No cohort
+  // here any more — Submissions now lives on a cohort-scoped route
+  // (ojts/:cohortId/submissions), so the navigate call itself already picks
+  // the right one; see the 'submission' notification case below for why
+  // that has to be a direct navigate rather than goToSection.
+  const [submissionFocus, setSubmissionFocus] = useState<{ studentId: string; taskId: string } | null>(null);
   const { showError } = useToast();
 
   useNotificationNavigate((n) => {
@@ -77,16 +80,21 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         goToSection('tasks');
         break;
       case 'submission':
-        // The notification only carries the submission's own id — resolve
-        // it to the studentId/taskId/cohortId Submissions' focus props
-        // actually need (same shape Tasks' own "View Submission" handoff uses).
+        // The notification only carries the submission's own id — resolve it
+        // to the studentId/taskId/cohortId Submissions' focus needs (same
+        // shape Tasks' own "View Submission" handoff uses). Navigates
+        // straight to that cohort's own route rather than goToSection,
+        // which would resolve the admin's *active* cohort instead — not
+        // necessarily the one this submission's task actually belongs to.
         if (n.referenceId) {
           apiGetPrdSubmission(n.referenceId)
             .then((sub) => {
               if (sub.studentId && sub.taskId && sub.cohortId) {
-                setSubmissionFocus({ studentId: sub.studentId, taskId: sub.taskId, cohortId: sub.cohortId });
+                setSubmissionFocus({ studentId: sub.studentId, taskId: sub.taskId });
+                navigate(`/admin/dashboard/ojts/${sub.cohortId}/submissions`);
+              } else {
+                goToSection('submissions');
               }
-              goToSection('submissions');
             })
             .catch(() => {
               showError('Could not open that submission — it may have been removed.');
@@ -132,28 +140,14 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
             flat URL. */}
         <Route path="allocations" element={<CohortSectionRedirect section="allocations" />} />
         <Route path="ojts" element={<OJTs />} />
-        <Route
-          path="tasks"
-          element={
-            <Tasks
-              onViewSubmission={(studentId, taskId, cohortId) => {
-                setSubmissionFocus({ studentId, taskId, cohortId });
-                goToSection('submissions');
-              }}
-            />
-          }
-        />
-        <Route
-          path="submissions"
-          element={
-            <Submissions
-              focusStudentId={submissionFocus?.studentId ?? null}
-              focusTaskId={submissionFocus?.taskId ?? null}
-              focusCohortId={submissionFocus?.cohortId ?? null}
-              onFocusHandled={() => setSubmissionFocus(null)}
-            />
-          }
-        />
+        {/* Tasks and Submissions are always for exactly one cohort — same
+            shape Attendance/Sessions already had (their own internal cohort
+            dropdown) before their own move into OJT Setup below. Old flat
+            URLs redirect so bookmarks, the sidebar, Dashboard's cards, and
+            the 'task'/'submission' notification click-handlers (below) keep
+            working. */}
+        <Route path="tasks" element={<CohortSectionRedirect section="tasks" />} />
+        <Route path="submissions" element={<CohortSectionRedirect section="submissions" />} />
         {/* Every mentor's grid for one week, in one place — a full page
             rather than a modal for the same reason the mentor's own report
             is: it is ten columns wide per mentor. */}
@@ -189,6 +183,27 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
           <Route path="track-config" element={<CohortTrackConfigPage />} />
           <Route path="teams" element={<CohortRosterPage />} />
           <Route path="allocations" element={<CohortAllocationsPage />} />
+          <Route
+            path="tasks"
+            element={
+              <Tasks
+                onViewSubmission={(studentId, taskId, cohortId) => {
+                  setSubmissionFocus({ studentId, taskId });
+                  navigate(`/admin/dashboard/ojts/${cohortId}/submissions`);
+                }}
+              />
+            }
+          />
+          <Route
+            path="submissions"
+            element={
+              <Submissions
+                focusStudentId={submissionFocus?.studentId ?? null}
+                focusTaskId={submissionFocus?.taskId ?? null}
+                onFocusHandled={() => setSubmissionFocus(null)}
+              />
+            }
+          />
           <Route path="sessions" element={<Sessions />} />
           <Route path="attendance" element={<Attendance />} />
           <Route path="evaluation-summary" element={<CohortEvaluationSummaryPage />} />
