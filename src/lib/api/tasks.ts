@@ -256,33 +256,6 @@ export async function apiListTasks(filter: ApiTaskListFilter = {}): Promise<{ su
   });
 }
 
-export interface ApiAssigneeProgressTask {
-  taskId: string;
-  taskTitle: string;
-  week: string | null;
-  status: ApiAssignmentStatus;
-  deadline: string | null;
-}
-
-export interface ApiAssigneeProgress {
-  id: string;
-  name: string | null;
-  role: string;
-  tasks: ApiAssigneeProgressTask[];
-}
-
-// One row per assignee with every task assigned to them in the cohort —
-// computed server-side so the Progress Board doesn't need to pull every
-// task's full record (description, category, statusHistory, etc.) via
-// apiListTasks({ limit: 1000 }) just to throw most of it away client-side.
-export async function apiGetAssigneeProgress(cohortId: string): Promise<ApiAssigneeProgress[]> {
-  const res = await apiFetch<{ success: boolean; data: ApiAssigneeProgress[] }>(
-    `/api/v1/tasks/assignee-progress?cohort_id=${cohortId}`,
-    { method: 'GET' }
-  );
-  return res.data;
-}
-
 export async function apiGetTask(id: string): Promise<{ success: boolean; data: ApiTask }> {
   return cachedFetch(`tasks:get:${id}`, TASKS_TTL, () =>
     apiFetch<{ success: boolean; data: ApiTask }>(`/api/v1/tasks/${id}`, { method: 'GET' })

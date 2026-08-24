@@ -10,6 +10,7 @@ import MentorWorkspaceRedirect from './MentorWorkspaceRedirect';
 import CohortSectionRedirect from './CohortSectionRedirect';
 import OJTs from './OJTs';
 import Tasks from './Tasks';
+import TaskDetailPage from './TaskDetailPage';
 import WeeklyReportOverview from './WeeklyReportOverview';
 import CreateTaskPage from './CreateTaskPage';
 import Submissions from './Submissions';
@@ -183,17 +184,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
           <Route path="track-config" element={<CohortTrackConfigPage />} />
           <Route path="teams" element={<CohortRosterPage />} />
           <Route path="allocations" element={<CohortAllocationsPage />} />
-          <Route
-            path="tasks"
-            element={
-              <Tasks
-                onViewSubmission={(studentId, taskId, cohortId) => {
-                  setSubmissionFocus({ studentId, taskId });
-                  navigate(`/admin/dashboard/ojts/${cohortId}/submissions`);
-                }}
-              />
-            }
-          />
+          <Route path="tasks" element={<Tasks />} />
           <Route
             path="submissions"
             element={
@@ -214,6 +205,17 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
             a screen whose job is one table doesn't compete with it for
             height. */}
         <Route path="ojts/:cohortId/mentors/:mentorId" element={<MentorWorkspace />} />
+        <Route
+          path="ojts/:cohortId/tasks/:taskId"
+          element={
+            <TaskDetailPage
+              onViewSubmission={(studentId, taskId, cohortId) => {
+                setSubmissionFocus({ studentId, taskId });
+                navigate(`/admin/dashboard/ojts/${cohortId}/submissions`);
+              }}
+            />
+          }
+        />
         <Route path="ojts/:cohortId/projects/insights" element={<ProjectInsightsPage />} />
         <Route path="ojts/:cohortId/self-proposed-projects" element={<SelfProposedProjectsPage />} />
         <Route path="ojts/:cohortId/track-config/:trackSlug/projects" element={<CohortProjectsPage />} />
