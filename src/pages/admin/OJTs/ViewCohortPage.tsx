@@ -2,7 +2,6 @@ import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, Megaphone, X, Lightbulb, type LucideIcon } from 'lucide-react';
-import CohortPageHeader from './CohortPageHeader';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import DataTable from '../../../components/DataTable';
