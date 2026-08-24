@@ -25,6 +25,7 @@ import ViewCohortPage from './OJTs/ViewCohortPage';
 import CohortStudentsPage from './OJTs/CohortStudentsPage';
 import CohortProjectsPage from './OJTs/CohortProjectsPage';
 import ProjectInsightsPage from './OJTs/ProjectInsightsPage';
+import SelfProposedProjectsPage from './OJTs/SelfProposedProjectsPage';
 import CohortMentorsPage from './OJTs/CohortMentorsPage';
 import CohortRosterPage from './OJTs/CohortRosterPage';
 import CohortAllocationsPage from './OJTs/CohortAllocationsPage';
@@ -199,6 +200,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
             height. */}
         <Route path="ojts/:cohortId/mentors/:mentorId" element={<MentorWorkspace />} />
         <Route path="ojts/:cohortId/projects/insights" element={<ProjectInsightsPage />} />
+        <Route path="ojts/:cohortId/self-proposed-projects" element={<SelfProposedProjectsPage />} />
         <Route path="ojts/:cohortId/track-config/:trackSlug/projects" element={<CohortProjectsPage />} />
         <Route path="ojts/:cohortId/manual-allocation" element={<ManualAllocationPage />} />
         <Route path="ojts/:cohortId/breakdown" element={<CohortOpsPage />} />

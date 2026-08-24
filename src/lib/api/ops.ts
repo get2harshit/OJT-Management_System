@@ -279,9 +279,29 @@ export async function apiGetOpsMentors(
 
 export async function apiGetOpsProjects(
   cohortId: string,
-  params: { page: number; limit: number; search?: string; trackId?: string; source?: OpsProjectSource }
+  params: {
+    page: number;
+    limit: number;
+    search?: string;
+    trackId?: string;
+    source?: OpsProjectSource;
+    /**
+     * The students this list is being picked for.
+     *
+     * Sent so the server can scope the catalog to their admission year — a
+     * track can be configured once per year, and a project belongs to a track
+     * while listing its years separately, so track alone would offer every
+     * year's catalog. The year itself is never computed here: the server
+     * resolves it from these ids, exactly as the track and mentor pickers on
+     * this screen already do.
+     */
+    studentIds?: string[];
+  }
 ): Promise<OpsPage<OpsProject>> {
-  return apiFetch<OpsPage<OpsProject>>(`/api/v1/cohorts/${cohortId}/ops/projects?${query(params)}`);
+  const { studentIds, ...rest } = params;
+  return apiFetch<OpsPage<OpsProject>>(
+    `/api/v1/cohorts/${cohortId}/ops/projects?${query({ ...rest, studentIds: studentIds?.join(',') })}`
+  );
 }
 
 // The dropdown values, fetched once per OJT. Kept off the list responses so the

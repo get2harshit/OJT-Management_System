@@ -1,6 +1,6 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Upload, Trash2, BarChart3 } from 'lucide-react';
 import CohortPageHeader from './CohortPageHeader';
 import DataTable from '../../../components/DataTable';
@@ -37,6 +37,14 @@ export default function CohortProjectsPage() {
   // (ojts/:cohortId/track-config/:trackSlug/projects) — when set, the list is
   // filtered to that track and CSV import forces every project onto it.
   const { cohortId, trackSlug } = useParams<{ cohortId: string; trackSlug?: string }>();
+  // Which variant of that track, when the track carries more than one. Rides as
+  // a query param (see CohortTrackConfigPage.variantPath) so every older URL
+  // stays valid. Without it the list is the track's whole catalog, which is
+  // right for the cohort-wide route and wrong for a variant's own page: a track
+  // configured once for 2024 and once for 2025 would show both years' projects
+  // under each. The server turns this into that variant's admission years.
+  const [searchParams] = useSearchParams();
+  const configId = searchParams.get('configId') ?? undefined;
   const navigate = useNavigate();
   const confirm = useConfirm();
   const { showError } = useToast();
@@ -80,6 +88,7 @@ export default function CohortProjectsPage() {
         // the whole page — so it takes precedence over the dropdown.
         track: trackSlug || track || undefined,
         projectId: projectId || undefined,
+        configId,
       });
       setProjects(res.data);
       setPagination(res.pagination);
@@ -87,7 +96,7 @@ export default function CohortProjectsPage() {
       console.error(err);
       showError('Failed to load projects for this cohort.');
     }
-  }, [cohortId, trackSlug, showError]);
+  }, [cohortId, trackSlug, configId, showError]);
 
   const loadCohortLabel = useCallback(() => {
     if (!cohortId) return Promise.resolve();

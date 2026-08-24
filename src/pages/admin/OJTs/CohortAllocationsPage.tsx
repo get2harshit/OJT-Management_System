@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { User, Users2, Shuffle, CheckCircle2, ArrowLeftRight, ArrowLeft, UserCog, UserPlus, Gauge, RotateCcw, AlertTriangle, ClipboardList, LayoutGrid } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import Modal from '../../../components/Modal';
+import AllocationOverrideModal from './AllocationOverrideModal';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import type { TeamAllocationDetail, MentorLoadSummaryRow, CohortAllocationRunStatus, Project, AllocationPreviewEntry, CohortPendingProposal } from '../../../lib/types';
@@ -12,7 +13,6 @@ import {
   apiGetTeamsForCohortDetailed,
   apiPreviewAllocation,
   apiDraftAllocation,
-  apiOverrideTeamAllocation,
   apiResolveTeamAllocation,
   apiGetMentorLoadSummary,
   apiGetRunnableTeamCount,
@@ -23,6 +23,7 @@ import {
   apiGetCohortPendingProposals,
 } from '../../../lib/api';
 import { formatDateDisplay } from '../../../lib/utils';
+import { submittedPreferences, allocatedPreferenceSlot } from '../../../lib/preferences';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
@@ -35,6 +36,20 @@ const STATUS_DOT: Record<string, { dot: string; text: string }> = {
   needs_review: { dot: 'bg-red-400', text: 'text-red-400' },
   pending: { dot: 'bg-gray-400', text: 'text-gray-400' },
 };
+
+// One rule for every "allocated vs capacity" badge on this page. The two
+// mentor pickers used `>=` and the load summary used `>`, so the same mentor
+// at 4/4 showed red in one modal and grey in the other.
+function capacityTone(allocated: number, capacity: number): string {
+  if (allocated > capacity) return 'text-red-400';
+  if (allocated >= capacity) return 'text-amber-400';
+  return 'text-gray-400';
+}
+
+const MENTOR_TYPE_OPTIONS = [
+  { value: 'internal', label: 'Internal' },
+  { value: 'external', label: 'Industry' },
+];
 
 const STATUS_LABELS: Record<string, string> = {
   allocated: 'Allocated',
@@ -84,7 +99,6 @@ export default function CohortAllocationsPage() {
   // nothing left to run until a later batch of teams submits preferences.
   const [runnableCount, setRunnableCount] = useState(0);
   const [overrideTeam, setOverrideTeam] = useState<TeamAllocationDetail | null>(null);
-  const [savingOverride, setSavingOverride] = useState(false);
   const [resolveTeam, setResolveTeam] = useState<TeamAllocationDetail | null>(null);
   const [resolveProjectId, setResolveProjectId] = useState<string | null>(null);
   const [resolveMentorSearch, setResolveMentorSearch] = useState('');
@@ -92,6 +106,15 @@ export default function CohortAllocationsPage() {
   const [mentorLoadSummary, setMentorLoadSummary] = useState<MentorLoadSummaryRow[]>([]);
   const [mentorPickerLoading, setMentorPickerLoading] = useState(false);
   const [showLoadSummary, setShowLoadSummary] = useState(false);
+  // The load summary keeps its own rows rather than reusing mentorLoadSummary:
+  // that array also feeds the resolve and override mentor pickers, which need
+  // every mentor in the cohort, so filtering it here would silently shrink
+  // their lists too.
+  const [summaryRows, setSummaryRows] = useState<MentorLoadSummaryRow[]>([]);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summarySearch, setSummarySearch] = useState('');
+  const [summaryType, setSummaryType] = useState('');
+  const [summaryTrack, setSummaryTrack] = useState('');
   const [detailTeam, setDetailTeam] = useState<TeamAllocationDetail | null>(null);
   // Self-proposed pref1 projects still awaiting mentor approval — teams still
   // go into allocation (on their pref2), but the admin is warned these are
@@ -225,6 +248,54 @@ export default function CohortAllocationsPage() {
       setSearch(value);
     }, SEARCH_DEBOUNCE_MS);
   };
+
+  // Refetched whenever a filter changes, because the filters are resolved
+  // server-side — see apiGetMentorLoadSummary.
+  useEffect(() => {
+    if (!showLoadSummary || !cohortId) return;
+    let cancelled = false;
+    setSummaryLoading(true);
+    apiGetMentorLoadSummary(cohortId, {
+      search: summarySearch || undefined,
+      type: (summaryType || undefined) as 'internal' | 'external' | undefined,
+      track: summaryTrack || undefined,
+    })
+      .then((rows) => { if (!cancelled) setSummaryRows(rows); })
+      .catch((err) => {
+        if (!cancelled) showError(err instanceof Error ? err.message : 'Failed to load mentor load summary');
+      })
+      .finally(() => { if (!cancelled) setSummaryLoading(false); });
+    return () => { cancelled = true; };
+  }, [showLoadSummary, cohortId, summarySearch, summaryType, summaryTrack, showError]);
+
+  const summarySearchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const handleSummarySearchChange = (value: string) => {
+    if (summarySearchDebounceRef.current) clearTimeout(summarySearchDebounceRef.current);
+    summarySearchDebounceRef.current = setTimeout(() => setSummarySearch(value), SEARCH_DEBOUNCE_MS);
+  };
+
+  // Filters reset on close so reopening never lands in somebody's leftover
+  // search with most of the roster missing and no obvious reason why.
+  const closeLoadSummary = () => {
+    setShowLoadSummary(false);
+    setSummarySearch('');
+    setSummaryType('');
+    setSummaryTrack('');
+  };
+
+  // Totals describe exactly what is on screen, so they move with the filters
+  // — "capacity across the industry mentors on Gen AI" is the question an
+  // admin is actually asking once they have narrowed to that.
+  const summaryTotals = summaryRows.reduce(
+    (acc, row) => ({
+      capacity: acc.capacity + row.threshold,
+      preferred: acc.preferred + row.preferredCount,
+      pending: acc.pending + row.pendingCount,
+      allocated: acc.allocated + row.allocatedCount,
+      published: acc.published + row.publishedCount,
+    }),
+    { capacity: 0, preferred: 0, pending: 0, allocated: 0, published: 0 }
+  );
 
   const handleTrackFilterChange = (value: string) => {
     setPage(1);
@@ -410,21 +481,6 @@ export default function CohortAllocationsPage() {
     }
   };
 
-  const handleOverride = async (projectId: string) => {
-    if (!overrideTeam) return;
-    setSavingOverride(true);
-    try {
-      await apiOverrideTeamAllocation(overrideTeam.teamId, projectId);
-      showSuccess('Allocation updated.');
-      setOverrideTeam(null);
-      await refreshAfterMutation();
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to update allocation');
-    } finally {
-      setSavingOverride(false);
-    }
-  };
-
   const handleResolveAllocation = async (mentorId: string) => {
     if (!resolveTeam || !resolveProjectId) return;
     setSavingResolve(true);
@@ -459,11 +515,11 @@ export default function CohortAllocationsPage() {
     pref1UnderReview: t.preference1ReviewStatus === 'pending_review',
     pref1Rejected: t.preference1ReviewStatus === 'rejected',
     overriddenAt: t.overriddenAt,
-    allocatedPrefNum: t.allocatedProjectId === t.preference1.projectId ? 1 : t.allocatedProjectId === t.preference2.projectId ? 2 : null,
+    allocatedPrefNum: allocatedPreferenceSlot(t.allocatedProjectId, t.preference1, t.preference2),
     allocatedProjectTitle:
-      t.allocatedProjectId === t.preference1.projectId
+      allocatedPreferenceSlot(t.allocatedProjectId, t.preference1, t.preference2) === 1
         ? t.preference1.projectTitle
-        : t.allocatedProjectId === t.preference2.projectId
+        : allocatedPreferenceSlot(t.allocatedProjectId, t.preference1, t.preference2) === 2
         ? t.preference2.projectTitle
         : null,
     allocatedMentorName: t.allocatedMentorName,
@@ -538,7 +594,7 @@ export default function CohortAllocationsPage() {
             <ClipboardList size={14} />
           </button>
           <button
-            onClick={() => { setShowLoadSummary(true); loadMentorPickerData(); }}
+            onClick={() => setShowLoadSummary(true)}
             disabled={loading}
             title="Mentor load summary"
             className="flex items-center gap-1.5 text-sm px-3 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
@@ -970,7 +1026,7 @@ export default function CohortAllocationsPage() {
               )}
             </div>
 
-            {[detailTeam.preference1, detailTeam.preference2].map((pref, idx) => {
+            {submittedPreferences(detailTeam.preference1, detailTeam.preference2).map(({ pref, slot }) => {
               const selected = detailTeam.allocatedProjectId === pref.projectId;
               return (
                 <div
@@ -978,7 +1034,7 @@ export default function CohortAllocationsPage() {
                   className={`rounded-lg p-3 border ${selected ? 'bg-gold/10 border-gold' : 'bg-zinc-900 border-zinc-750'}`}
                 >
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference {idx + 1}</p>
+                    <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference {slot}</p>
                     {selected && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gold/20 text-gold">
                         <CheckCircle2 size={11} />
@@ -1024,45 +1080,14 @@ export default function CohortAllocationsPage() {
         )}
       </Modal>
 
-      <Modal
-        open={!!overrideTeam}
+      <AllocationOverrideModal
+        team={overrideTeam}
+        mentors={mentorLoadSummary}
+        loadMentors={loadMentorPickerData}
+        mentorsLoading={mentorPickerLoading}
         onClose={() => setOverrideTeam(null)}
-        title={overrideTeam?.allocationStatus === 'allocated' ? 'Override Allocation' : 'Assign Allocation'}
-      >
-        {overrideTeam && (
-          <div className="space-y-3">
-            <p className="text-gray-400 text-sm">
-              {overrideTeam.allocationStatus === 'allocated'
-                ? "Choose which of this team's own preferences to allocate. This overrides any recommendation."
-                : "Choose which of this team's own preferences to allocate."}
-            </p>
-            {[overrideTeam.preference1, overrideTeam.preference2].map((pref, idx) => {
-              const selected = overrideTeam.allocatedProjectId === pref.projectId;
-              return (
-                <button
-                  key={pref.projectId}
-                  onClick={() => handleOverride(pref.projectId)}
-                  disabled={savingOverride}
-                  className={`w-full text-left rounded-lg p-4 border transition-all duration-200 disabled:opacity-50 ${
-                    selected ? 'bg-gold/10 border-gold' : 'bg-zinc-900 border-zinc-750 hover:border-zinc-600'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">
-                        Preference {idx + 1}
-                      </p>
-                      <p className="text-white font-semibold">{pref.projectTitle}</p>
-                      {pref.mentorName && <p className="text-gray-400 text-xs mt-0.5">{pref.mentorName}</p>}
-                    </div>
-                    {selected && <CheckCircle2 size={18} className="text-gold shrink-0" />}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </Modal>
+        onSaved={refreshAfterMutation}
+      />
 
       <Modal
         open={!!resolveTeam}
@@ -1084,7 +1109,7 @@ export default function CohortAllocationsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                {[resolveTeam.preference1, resolveTeam.preference2].map((pref, idx) => {
+                {submittedPreferences(resolveTeam.preference1, resolveTeam.preference2).map(({ pref, slot }) => {
                   const selected = resolveProjectId === pref.projectId;
                   return (
                     <button
@@ -1097,7 +1122,7 @@ export default function CohortAllocationsPage() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div>
-                          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {idx + 1}</p>
+                          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {slot}</p>
                           <p className="text-white font-semibold text-sm">{pref.projectTitle}</p>
                         </div>
                         {selected && <CheckCircle2 size={16} className="text-gold shrink-0" />}
@@ -1123,7 +1148,6 @@ export default function CohortAllocationsPage() {
                 {mentorLoadSummary
                   .filter((m) => (m.mentorName || '').toLowerCase().includes(resolveMentorSearch.toLowerCase()))
                   .map((mentor) => {
-                    const overCapacity = mentor.allocatedCount >= mentor.threshold;
                     return (
                       <button
                         key={mentor.mentorId}
@@ -1136,7 +1160,7 @@ export default function CohortAllocationsPage() {
                             <p className="text-white font-semibold text-sm">{mentor.mentorName || '—'}</p>
                             <p className="text-gray-500 text-xs">{(mentor.tracks ?? []).map(s => trackNameBySlug.get(s) ?? s).join(', ') || 'No tracks assigned'}</p>
                           </div>
-                          <span className={`text-xs font-bold shrink-0 ${overCapacity ? 'text-red-400' : 'text-gray-400'}`}>
+                          <span className={`text-xs font-bold shrink-0 tabular-nums ${capacityTone(mentor.allocatedCount, mentor.threshold)}`}>
                             {mentor.allocatedCount}/{mentor.threshold}
                           </span>
                         </div>
@@ -1200,7 +1224,7 @@ export default function CohortAllocationsPage() {
                   </span>
                 </div>
 
-                {[manualAllocateTeam.preference1, manualAllocateTeam.preference2].map((pref, idx) => {
+                {submittedPreferences(manualAllocateTeam.preference1, manualAllocateTeam.preference2).map(({ pref, slot }) => {
                   const selected = manualAllocateTeam.projectId === pref.projectId;
                   return (
                     <div
@@ -1208,7 +1232,7 @@ export default function CohortAllocationsPage() {
                       className={`rounded-lg p-3 border ${selected ? 'bg-gold/10 border-gold' : 'bg-zinc-900 border-zinc-750'}`}
                     >
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference {idx + 1}</p>
+                        <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Preference {slot}</p>
                         {selected && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gold/20 text-gold">
                             <CheckCircle2 size={11} />
@@ -1256,13 +1280,13 @@ export default function CohortAllocationsPage() {
               <div>
                 <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">Pick a project</p>
                 <div className="space-y-2">
-                  {[manualAllocateTeam.preference1, manualAllocateTeam.preference2].map((pref, idx) => (
+                  {submittedPreferences(manualAllocateTeam.preference1, manualAllocateTeam.preference2).map(({ pref, slot }) => (
                     <button
                       key={pref.projectId}
                       onClick={() => handleAssignProjectOnly(pref)}
                       className="w-full text-left rounded-lg p-3 border bg-zinc-900 border-zinc-750 hover:border-gold transition-colors"
                     >
-                      <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {idx + 1}</p>
+                      <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {slot}</p>
                       <p className="text-white font-semibold text-sm">{pref.projectTitle}</p>
                       {pref.mentorName && <p className="text-gray-400 text-xs mt-0.5">{pref.mentorName}</p>}
                     </button>
@@ -1275,7 +1299,7 @@ export default function CohortAllocationsPage() {
               <div>
                 <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">1. Project</p>
                 <div className="space-y-2">
-                  {[manualAllocateTeam.preference1, manualAllocateTeam.preference2].map((pref, idx) => {
+                  {submittedPreferences(manualAllocateTeam.preference1, manualAllocateTeam.preference2).map(({ pref, slot }) => {
                     const selected = manualAllocateSelectedProjectId === pref.projectId;
                     return (
                       <button
@@ -1287,7 +1311,7 @@ export default function CohortAllocationsPage() {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div>
-                            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {idx + 1}</p>
+                            <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Preference {slot}</p>
                             <p className="text-white font-semibold text-sm">{pref.projectTitle}</p>
                           </div>
                           {selected && <CheckCircle2 size={16} className="text-gold shrink-0" />}
@@ -1358,7 +1382,6 @@ export default function CohortAllocationsPage() {
                   {mentorLoadSummary
                     .filter((m) => (m.mentorName || '').toLowerCase().includes(manualAllocateMentorSearch.toLowerCase()))
                     .map((mentor) => {
-                      const overCapacity = mentor.allocatedCount >= mentor.threshold;
                       return (
                         <button
                           key={mentor.mentorId}
@@ -1371,7 +1394,7 @@ export default function CohortAllocationsPage() {
                               <p className="text-white font-semibold text-sm">{mentor.mentorName || '—'}</p>
                               <p className="text-gray-500 text-xs">{(mentor.tracks ?? []).map(s => trackNameBySlug.get(s) ?? s).join(', ') || 'No tracks assigned'}</p>
                             </div>
-                            <span className={`text-xs font-bold shrink-0 ${overCapacity ? 'text-red-400' : 'text-gray-400'}`}>
+                            <span className={`text-xs font-bold shrink-0 tabular-nums ${capacityTone(mentor.allocatedCount, mentor.threshold)}`}>
                               {mentor.allocatedCount}/{mentor.threshold}
                             </span>
                           </div>
@@ -1385,67 +1408,146 @@ export default function CohortAllocationsPage() {
         )}
       </Modal>
 
-      <Modal open={showLoadSummary} onClose={() => setShowLoadSummary(false)} title="Mentor Load Summary">
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {mentorPickerLoading ? (
-            <div className="py-4 flex justify-center"><SpinnerSquare size={28} /></div>
-          ) : mentorLoadSummary.length === 0 ? (
-            <p className="text-gray-400 text-sm">No mentor capacity configured for this cohort yet.</p>
-          ) : (
-            // Ordered by how close to closed they are, not alphabetically: the
-            // mentors students can no longer pick are the reason to open this,
-            // and they were previously buried in a 60-row alphabetical list.
-            [...mentorLoadSummary]
-              .sort((a, b) => {
-                const rank = (r: MentorLoadSummaryRow) => (r.isFull ? 0 : r.isNearingCapacity ? 1 : 2);
-                return rank(a) - rank(b)
-                  || b.pendingCount - a.pendingCount
-                  || (a.mentorName || '').localeCompare(b.mentorName || '');
-              })
-              .map((row) => {
-                const overCapacity = row.allocatedCount > row.threshold;
-                return (
-                  <div
-                    key={row.mentorId}
-                    className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 border ${
-                      row.isFull
-                        ? 'bg-red-500/5 border-red-500/25'
-                        : row.isNearingCapacity
-                          ? 'bg-amber-500/5 border-amber-500/25'
-                          : 'bg-zinc-800/50 border-zinc-750'
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-white text-sm font-medium truncate">{row.mentorName || '—'}</p>
-                      <p className="text-gray-500 text-xs truncate">{(row.tracks ?? []).join(', ') || 'No tracks assigned'}</p>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      {/* Pending is what closes a mentor off before allocation
-                          has run, so it is shown even at zero — an empty column
-                          reads as "nobody has picked them", which is the useful
-                          fact, where a missing one reads as no data. */}
-                      <span
-                        className={`text-xs font-semibold ${
-                          row.isFull ? 'text-red-400' : row.isNearingCapacity ? 'text-amber-400' : 'text-gray-500'
-                        }`}
-                        title="Teams holding this mentor in a submitted preference, not yet allocated"
-                      >
-                        {row.isFull ? 'FULL · ' : row.isNearingCapacity ? 'Nearing · ' : ''}
-                        {row.pendingCount} pending
+      <Modal open={showLoadSummary} onClose={closeLoadSummary} title="Mentor Load Summary" size="xl">
+        {/* Totals describe the filtered set, not the whole cohort — see summaryTotals. */}
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+          {([
+            ['Mentors', summaryRows.length, 'text-white'],
+            ['Capacity', summaryTotals.capacity, 'text-white'],
+            ['Preferred', summaryTotals.preferred, 'text-gray-300'],
+            ['Pending', summaryTotals.pending, summaryTotals.pending > 0 ? 'text-amber-400' : 'text-gray-500'],
+            ['Allocated', summaryTotals.allocated, 'text-gold'],
+            ['Published', summaryTotals.published, summaryTotals.published > 0 ? 'text-green-500' : 'text-gray-500'],
+          ] as const).map(([label, value, tone]) => (
+            <div key={label} className="rounded-lg bg-zinc-800/60 border border-zinc-750 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">{label}</p>
+              <p className={`text-lg font-bold tabular-nums ${tone}`}>{value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2 mt-4">
+          {/* Uncontrolled: the value that matters is the debounced one in
+              summarySearch, and binding the input to that would drop every
+              keystroke typed inside the debounce window. */}
+          <input
+            type="text"
+            defaultValue={summarySearch}
+            onChange={(e) => handleSummarySearchChange(e.target.value)}
+            placeholder="Search mentors by name or email..."
+            className="flex-1 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+          />
+          <Select
+            variant="filter"
+            className="sm:min-w-[150px]"
+            value={summaryType}
+            onChange={setSummaryType}
+            placeholder="All Mentors"
+            options={MENTOR_TYPE_OPTIONS}
+          />
+          <Select
+            variant="filter"
+            className="sm:min-w-[170px]"
+            value={summaryTrack}
+            onChange={setSummaryTrack}
+            placeholder="All Tracks"
+            options={trackOptions}
+          />
+        </div>
+
+        {/* Six numeric columns need fixed widths to line up, so the list
+            scrolls sideways on a narrow window rather than crushing them. */}
+        <div className="mt-3 overflow-x-auto">
+          <div className="min-w-[640px]">
+            <div className="grid grid-cols-[minmax(0,1fr)_3rem_3rem_3rem_3rem_5rem] gap-2 px-3 pb-2 text-[10px] uppercase tracking-wider font-bold text-gray-500">
+              <span>Mentor</span>
+              <span className="text-right" title="Teams that named this mentor in either preference, whatever came of it">Pref</span>
+              <span className="text-right" title="Preference slots still unallocated — this is what closes a mentor off in the student picker">Pend</span>
+              <span className="text-right" title="Teams placed with this mentor, by the run or by an admin">Alloc</span>
+              <span className="text-right" title="Allocated teams their students can already see">Pub</span>
+              <span className="text-right" title="Allocated teams against capacity">Load</span>
+            </div>
+
+            <div className="space-y-2 max-h-[46vh] overflow-y-auto">
+              {summaryLoading ? (
+                <div className="py-8 flex justify-center"><SpinnerSquare size={28} /></div>
+              ) : summaryRows.length === 0 ? (
+                <p className="text-gray-400 text-sm py-6 text-center">
+                  {summarySearch || summaryType || summaryTrack
+                    ? 'No mentor matches these filters.'
+                    : 'No mentor capacity configured for this cohort yet.'}
+                </p>
+              ) : (
+                // Ordered by how close to closed they are, not alphabetically:
+                // the mentors students can no longer pick, and the ones already
+                // carrying more than their capacity, are the reason to open
+                // this — both were buried in a 60-row alphabetical list.
+                [...summaryRows]
+                  .sort((a, b) => {
+                    const rank = (r: MentorLoadSummaryRow) => (r.isFull ? 0 : r.isNearingCapacity ? 1 : 2);
+                    return rank(a) - rank(b)
+                      || (b.allocatedCount - b.threshold) - (a.allocatedCount - a.threshold)
+                      || b.pendingCount - a.pendingCount
+                      || (a.mentorName || '').localeCompare(b.mentorName || '');
+                  })
+                  .map((row) => (
+                    <div
+                      key={row.mentorId}
+                      className={`grid grid-cols-[minmax(0,1fr)_3rem_3rem_3rem_3rem_5rem] gap-2 items-center rounded-lg px-3 py-2 border ${
+                        row.isFull
+                          ? 'bg-red-500/5 border-red-500/25'
+                          : row.isNearingCapacity
+                            ? 'bg-amber-500/5 border-amber-500/25'
+                            : 'bg-zinc-800/50 border-zinc-750'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-white text-sm font-medium truncate">{row.mentorName || '—'}</p>
+                          {row.isFull ? (
+                            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-red-400">Full</span>
+                          ) : row.isNearingCapacity ? (
+                            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-amber-400">Nearing</span>
+                          ) : null}
+                        </div>
+                        <p className="text-gray-500 text-xs truncate">
+                          <span className={row.isExternal ? 'text-sky-400' : 'text-gray-400'}>
+                            {row.isExternal ? 'Industry' : 'Internal'}
+                          </span>
+                          {row.organization ? ` · ${row.organization}` : ''}
+                          {' · '}
+                          {(row.tracks ?? []).map((slug) => trackNameBySlug.get(slug) ?? slug).join(', ') || 'No tracks assigned'}
+                        </p>
+                      </div>
+                      {/* Zero is shown greyed rather than left blank: an empty
+                          cell reads as missing data, a grey 0 reads as nobody. */}
+                      <span className="text-right text-sm tabular-nums text-gray-300">{row.preferredCount}</span>
+                      <span className={`text-right text-sm tabular-nums ${row.pendingCount > 0 ? 'text-amber-400' : 'text-gray-600'}`}>
+                        {row.pendingCount}
                       </span>
-                      <span
-                        className={`text-sm font-bold tabular-nums ${overCapacity ? 'text-red-400' : 'text-gray-300'}`}
-                        title="Allocated teams / capacity"
-                      >
-                        {row.allocatedCount}/{row.threshold}
+                      <span className="text-right text-sm tabular-nums font-semibold text-white">{row.allocatedCount}</span>
+                      <span className={`text-right text-sm tabular-nums ${row.publishedCount > 0 ? 'text-green-500' : 'text-gray-600'}`}>
+                        {row.publishedCount}
                       </span>
+                      <div className="text-right">
+                        <p className={`text-sm font-bold tabular-nums ${capacityTone(row.allocatedCount, row.threshold)}`}>
+                          {row.allocatedCount}/{row.threshold}
+                        </p>
+                        <p
+                          className="text-[10px] text-gray-600 tabular-nums"
+                          title={`The student picker stops offering this mentor once ${row.softCap} preference slots are pending`}
+                        >
+                          locks at {row.softCap}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                );
-              })
-          )}
+                  ))
+              )}
+            </div>
+          </div>
         </div>
       </Modal>
+
     </PageLayout>
   );
 }
