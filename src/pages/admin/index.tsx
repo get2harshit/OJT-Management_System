@@ -10,6 +10,7 @@ import MentorWorkspaceRedirect from './MentorWorkspaceRedirect';
 import CohortSectionRedirect from './CohortSectionRedirect';
 import OJTs from './OJTs';
 import Tasks from './Tasks';
+import WeeklyReportOverview from './WeeklyReportOverview';
 import CreateTaskPage from './CreateTaskPage';
 import Submissions from './Submissions';
 import Credits from './Credits';
@@ -152,6 +153,10 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
             />
           }
         />
+        {/* Every mentor's grid for one week, in one place — a full page
+            rather than a modal for the same reason the mentor's own report
+            is: it is ten columns wide per mentor. */}
+        <Route path="tasks/:taskId/weekly-report" element={<WeeklyReportOverview />} />
         <Route path="credits" element={<Credits />} />
         {/* Attendance and Sessions are always for exactly one cohort (unlike
             Payouts/Session Requests below, which have a real "all cohorts"

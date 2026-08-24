@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Calendar, Loader2, Eye } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
@@ -69,6 +70,7 @@ interface Props {
 }
 
 export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const { options: trackOptions } = useTracks();
   const [tasks, setTasks] = useState<ApiTask[]>([]);
@@ -338,7 +340,15 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   const handleRowClick = (row: (typeof tableData)[number]) => {
     if (bucket === 'to-me') {
       const task = tasks.find(t => t.id === row.id);
-      if (task) setStatusTask(task);
+      if (!task) return;
+      // A weekly report is a full grid of teams and students — far more
+      // than a side drawer holds — so it gets its own page rather than
+      // being squeezed into the status panel the other task shapes use.
+      if (task.category === 'weekly_report') {
+        navigate(`/mentor/dashboard/tasks/${task.id}/weekly-report`);
+        return;
+      }
+      setStatusTask(task);
     } else {
       openReviewModal(row.id);
     }

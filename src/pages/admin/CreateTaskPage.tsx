@@ -3,26 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Calendar,
-  Target,
   Users,
   UserCheck,
-  Sparkles,
   Layers,
-  Clock,
   Send,
   FileText,
-  ListChecks,
-  MessageSquareText,
-  Plus,
-  X
+  ClipboardList,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import Select from '../../components/Select';
 import Button from '../../components/Button';
 import AssigneePickerTable, { dedupeStudentRows } from '../../components/AssigneePickerTable';
 import type { AssigneePickerStudentRow, AssigneePickerTeamRow } from '../../components/AssigneePickerTable';
+import WeeklyReportGrid, { WeeklyReportSummaryStrip } from '../../components/WeeklyReportGrid';
 import { useTracks } from '../../hooks/useTracks';
 import { apiCreateTask } from '../../lib/api/tasks';
-import type { ApiTaskCategory } from '../../lib/api/tasks';
+import type { ApiTaskCategory, ApiWeeklyReportSummary, ApiWeeklyReportTeam } from '../../lib/api/tasks';
 import { apiListMentors } from '../../lib/api/mentors';
 import { apiListStudents } from '../../lib/api/students';
 import { apiGetTeamsForCohortDetailed } from '../../lib/api/allocations';
@@ -39,16 +36,85 @@ const TASK_CATEGORY_OPTIONS: { value: ApiTaskCategory; label: string }[] = [
   { value: 'link_submission', label: 'Link Submission' },
 ];
 
-const MENTOR_CONTENT_MODE_OPTIONS: { value: 'checklist' | 'questions' | 'both'; label: string }[] = [
-  { value: 'checklist', label: 'Checklist' },
-  { value: 'questions', label: 'Questions' },
-  { value: 'both', label: 'Both' },
+const MENTOR_TYPE_FILTER_OPTIONS = [
+  { value: 'all', label: 'All types' },
+  { value: 'internal', label: 'Internal' },
+  { value: 'external', label: 'Industry' },
 ];
+
+// What the admin actually sends, shown while they're deciding whether to
+// send it — one filled-in example row, rendered through the exact same
+// WeeklyReportGrid component a mentor and the admin's own "View Weekly
+// Reports" page use. Reusing the real component rather than redrawing a
+// mock of it means this preview can never drift out of sync with the real
+// grid — if a column is added or reordered there, it changes here too.
+const SAMPLE_WEEKLY_REPORT_TEAMS: ApiWeeklyReportTeam[] = [
+  {
+    teamId: 'preview-team',
+    teamName: 'Team Alpha',
+    trackName: 'Gen AI',
+    projectTitle: 'Customer Support Chatbot',
+    projectStatus: 'on_track',
+    teamHealth: 'positive',
+    weeklyFeedback: 'Good progress on the retrieval pipeline this week — on track for the demo.',
+    // One list for the whole team — everyone on it works the same project.
+    techStack: ['React', 'Node.js', 'FastAPI'],
+    students: [
+      {
+        studentId: 'preview-student-1',
+        name: 'Aisha Khan',
+        registrationNumber: '2025A1234',
+        batch: '2025 A',
+        techSkill: 4,
+        communication: 4,
+        overallPerformance: 4,
+      },
+      {
+        studentId: 'preview-student-2',
+        name: 'Rohan Mehta',
+        registrationNumber: '2025A5678',
+        batch: '2025 A',
+        techSkill: 3,
+        communication: 5,
+        overallPerformance: 4,
+      },
+    ],
+  },
+];
+
+/**
+ * The strip that sits above the grid — the same summary a mentor and the
+ * admin's own aggregate view see, built here from the same illustrative
+ * numbers rather than a live query (no task exists yet to compute it from).
+ * Its week columns track the Target Week the admin has picked below, so
+ * picking Week 3 previews W1–W3 exactly like the real strip would once
+ * three weeks of reports existed.
+ */
+function buildSampleWeeklySummary(uptoWeek: number): ApiWeeklyReportSummary {
+  const weeks = Array.from({ length: Math.max(uptoWeek, 1) }, (_, i) => {
+    const week = i + 1;
+    // Every earlier week reads as fully on track; only the current one
+    // shows a shortfall — the one case worth illustrating, since a full
+    // week never needs the admin's attention.
+    const onTrack = week === uptoWeek ? 8 : 10;
+    return { week, label: `W${week}`, onTrack, total: 10 };
+  });
+  return {
+    teamCount: 10,
+    studentCount: 14,
+    weeks,
+    noShowStudents: [
+      { studentId: 'preview-noshow-1', name: 'Karan Bhatt', batch: '2025 A' },
+      { studentId: 'preview-noshow-2', name: 'Meera Iyer', batch: '2025 B' },
+    ],
+  };
+}
 
 export default function CreateTaskPage() {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const { tracks, options: trackOptions } = useTracks();
+  const mentorTrackFilterOptions = useMemo(() => [{ value: '', label: 'All tracks' }, ...trackOptions], [trackOptions]);
   const trackNameBySlug = useMemo(() => new Map(tracks.map((t) => [t.slug, t.name])), [tracks]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
@@ -71,6 +137,15 @@ export default function CreateTaskPage() {
   // whenever the track/batch/mode selection changes, since the pool it was
   // built against no longer applies.
   const [selectedAssignees, setSelectedAssignees] = useState<Set<string>>(new Set());
+  // Narrows the mentor picker below — Internal/Industry and a track, both
+  // applied server-side (apiListMentors). Independent of selectedTracks:
+  // a mentor task no longer carries an admin-picked track at all (see
+  // mentorTaskTracks below), these two only decide who shows up to pick from.
+  const [mentorTypeFilter, setMentorTypeFilter] = useState<'all' | 'internal' | 'external'>('all');
+  const [mentorTrackFilter, setMentorTrackFilter] = useState('');
+  // Collapsed by default — most admins sending a routine weekly report
+  // already know the shape; this is for the first time, or a refresher.
+  const [showTemplatePreview, setShowTemplatePreview] = useState(false);
 
   const [form, setForm] = useState({
     title: '',
@@ -83,28 +158,32 @@ export default function CreateTaskPage() {
     week_number: '1',
     category: 'document_submission' as ApiTaskCategory,
   });
-  // Replaces the student-target Category picker entirely when targetRole is
-  // 'mentor' — a mentor task is always one of exactly these 3 shapes, never
-  // a document/link submission. Drives which of the two builders below show.
-  const [mentorContentMode, setMentorContentMode] = useState<'checklist' | 'questions' | 'both'>('checklist');
-  // Admin-defined structure for a mentor-targeted task only — a plain
-  // string per row while editing (blank rows filtered out on submit), not
-  // yet the {label}/{question} shape the API expects.
-  const [checklistItems, setChecklistItems] = useState<string[]>([]);
-  const [qnaQuestions, setQnaQuestions] = useState<string[]>([]);
 
-  const loadMentorsAndCohorts = useCallback(() => {
-    return Promise.all([apiListMentors(), apiListCohorts()])
-      .then(([mentorsRes, cohortsRes]) => {
-        setMentors(mentorsRes || []);
-        setCohorts(cohortsRes || []);
-      })
-      .catch(console.error);
+  const sampleWeeklySummary = useMemo(() => buildSampleWeeklySummary(Number(form.week_number) || 1), [form.week_number]);
+
+  const loadCohorts = useCallback(() => {
+    return apiListCohorts().then(setCohorts).catch(console.error);
   }, []);
 
   useEffect(() => {
-    loadMentorsAndCohorts();
-  }, [loadMentorsAndCohorts]);
+    loadCohorts();
+  }, [loadCohorts]);
+
+  // Mentor pool for the picker, server-filtered by type/track — refetched
+  // whenever either changes rather than fetched once and sliced client-side
+  // (this codebase's standing rule: filters are always backend-side, never
+  // a client-side narrowing of an already-fetched full list). Only runs in
+  // mentor mode; the student flow never reads `mentors` at all.
+  const loadMentors = useCallback(() => {
+    if (form.targetRole !== 'mentor') return Promise.resolve();
+    return apiListMentors(mentorTypeFilter === 'all' ? undefined : mentorTypeFilter, mentorTrackFilter || undefined)
+      .then(res => setMentors(res || []))
+      .catch(() => setMentors([]));
+  }, [form.targetRole, mentorTypeFilter, mentorTrackFilter]);
+
+  useEffect(() => {
+    loadMentors();
+  }, [loadMentors]);
 
   // Every task is created under whichever cohort is currently active — the
   // form has no cohort picker of its own, it just targets "the" running
@@ -205,19 +284,51 @@ export default function CreateTaskPage() {
 
   usePageRefresh(
     useCallback(
-      () => Promise.all([loadMentorsAndCohorts(), loadStudentCandidates(), loadTeamCandidates()]),
-      [loadMentorsAndCohorts, loadStudentCandidates, loadTeamCandidates]
+      () => Promise.all([loadCohorts(), loadMentors(), loadStudentCandidates(), loadTeamCandidates()]),
+      [loadCohorts, loadMentors, loadStudentCandidates, loadTeamCandidates]
     )
   );
 
   const mentorAssignableList = mentors.map(m => ({ id: m.id, label: m.fullName || m.email || m.id }));
+
+  // What the sidebar column used to say, as one line. Every part is dropped
+  // until it has a value, so an empty form reads as a prompt rather than a
+  // row of "Not set".
+  // The task still carries a track set (used by the Tasks list filter and
+  // its Tech Stack/Track column) — but for a mentor task nobody picks it by
+  // hand any more. It's the union of the selected mentors' own declared
+  // tracks, so the task is discoverable under whichever track(s) actually
+  // sent it. mentors here is already the type/track-filtered pool, but
+  // form.assigned_to can only ever hold ids drawn from whatever that pool
+  // was at selection time, so this stays correct even after the filters
+  // change again.
+  const mentorTaskTracks = useMemo(() => {
+    if (form.targetRole !== 'mentor') return [];
+    const selected = new Set(form.assigned_to);
+    return Array.from(new Set(mentors.filter(m => selected.has(m.id)).flatMap(m => m.tracks ?? [])));
+  }, [form.targetRole, form.assigned_to, mentors]);
+
+  const summaryLine = useMemo(() => {
+    const assigneeCount = form.targetRole === 'student' ? selectedAssignees.size : form.assigned_to.length;
+    const secondPart = form.targetRole === 'student'
+      ? (selectedTracks.length > 0 ? selectedTracks.map(slug => trackNameBySlug.get(slug) ?? slug).join(', ') : 'no track yet')
+      : (mentorTaskTracks.length > 0 ? mentorTaskTracks.map(slug => trackNameBySlug.get(slug) ?? slug).join(', ') : 'pick mentors to set the track');
+    const parts = [
+      `To ${form.targetRole === 'student' ? 'students' : 'mentors'}`,
+      secondPart,
+      assigneeCount > 0 ? `${assigneeCount} selected` : 'nobody selected yet',
+      `Week ${form.week_number}`,
+    ];
+    if (form.start_date && form.due_date) parts.push(`${form.start_date} → ${form.due_date}`);
+    return parts.join('  ·  ');
+  }, [form.targetRole, form.assigned_to.length, form.week_number, form.start_date, form.due_date, selectedAssignees.size, selectedTracks, mentorTaskTracks, trackNameBySlug]);
 
   const handleSave = async () => {
     if (!form.title) {
       showError('Task title is required');
       return;
     }
-    if (selectedTracks.length === 0) {
+    if (form.targetRole === 'student' && selectedTracks.length === 0) {
       showError('Select at least one track');
       return;
     }
@@ -245,23 +356,9 @@ export default function CreateTaskPage() {
       showError('Select at least one mentor');
       return;
     }
-
-    // Blank rows are just in-progress editing state, never sent — a row is
-    // only "real" once it has actual text in it.
-    const trimmedChecklist = checklistItems.map(s => s.trim()).filter(Boolean);
-    const trimmedQna = qnaQuestions.map(s => s.trim()).filter(Boolean);
-
-    if (form.targetRole === 'mentor') {
-      const needsChecklist = mentorContentMode === 'checklist' || mentorContentMode === 'both';
-      const needsQna = mentorContentMode === 'questions' || mentorContentMode === 'both';
-      if (needsChecklist && trimmedChecklist.length === 0) {
-        showError('Add at least one checklist item');
-        return;
-      }
-      if (needsQna && trimmedQna.length === 0) {
-        showError('Add at least one question');
-        return;
-      }
+    if (form.targetRole === 'mentor' && mentorTaskTracks.length === 0) {
+      showError('None of the selected mentors have a track set — pick mentors who have one, or set it on their profile first.');
+      return;
     }
 
     setSaving(true);
@@ -270,10 +367,10 @@ export default function CreateTaskPage() {
         title: form.title,
         description: form.description || undefined,
         target_role: form.targetRole,
-        // A mentor task is always exactly one of checklist/questions/both —
-        // never a document/link submission, so category is fixed to
-        // 'general' rather than exposed as a picker (see mentorContentMode).
-        category: form.targetRole === 'mentor' ? 'general' : form.category,
+        // A mentor task is always the weekly report — never a document or
+        // link submission — so category is fixed rather than exposed as a
+        // picker. It is also what makes the mentor's page render the grid.
+        category: form.targetRole === 'mentor' ? 'weekly_report' : form.category,
         assign_mode: form.targetRole === 'student' ? form.assignMode : 'individual',
         assignees: form.targetRole === 'mentor'
           ? form.assigned_to
@@ -282,14 +379,8 @@ export default function CreateTaskPage() {
         start_date: new Date(form.start_date).toISOString(),
         deadline: new Date(form.due_date).toISOString(),
         week: `Week ${form.week_number}`,
-        tracks: selectedTracks,
+        tracks: form.targetRole === 'mentor' ? mentorTaskTracks : selectedTracks,
         cohort_id: activeCohort.id,
-        checklist_items: form.targetRole === 'mentor' && (mentorContentMode === 'checklist' || mentorContentMode === 'both')
-          ? trimmedChecklist.map(label => ({ label }))
-          : undefined,
-        qna_questions: form.targetRole === 'mentor' && (mentorContentMode === 'questions' || mentorContentMode === 'both')
-          ? trimmedQna.map(question => ({ question }))
-          : undefined,
       });
       showSuccess('Task created successfully');
       navigate('/admin/dashboard?tab=tasks');
@@ -324,228 +415,190 @@ export default function CreateTaskPage() {
         </div>
       </div>
 
-      {/* Main 2-Column Workspace — the only scrollable region on this page */}
-      <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 lg:grid-cols-3 gap-6 pb-6">
+      {/* One card, not five.
+          Creating a task is a single sequence — pick who, pick where, pick
+          them, describe it, date it — and the old layout broke that sequence
+          across five separate panels plus a summary column, so the admin's
+          eye had to travel to six places to check one form. Sections are
+          divided by a rule inside one surface instead, and the summary that
+          used to sit in its own column is now one line above the button that
+          uses it. */}
+      <div className="flex-1 min-h-0 overflow-y-auto pb-6">
+        <div className="w-full max-w-[1600px] bg-zinc-850 border border-zinc-750 rounded-xl shadow-sm divide-y divide-zinc-800">
 
-        {/* Left 2 Columns: the field order the admin actually works through —
-            Task Type -> Track -> Team/Students -> Category -> Title -> Date */}
-        <div className="lg:col-span-2 space-y-6">
-
-          {/* Card 1: Task Type */}
-          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-6 shadow-sm">
-            <div className="flex items-center justify-between border-b border-zinc-750 pb-4">
-              <h2 className="text-base font-semibold text-white flex items-center gap-2">
-                <Users size={18} className="text-gold" />
-                1. Task Type
-              </h2>
+          {/* Who it goes to. A compact segmented control rather than two
+              large cards — it is a two-way choice, not a decision that needs
+              a third of the screen, and everything below reshapes from it. */}
+          <div className="p-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-white">Assign to</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                {form.targetRole === 'student'
+                  ? 'Students, picked by track and batch below.'
+                  : 'Mentors, who each get a weekly report grid of their own teams.'}
+              </p>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setForm({ ...form, targetRole: 'student', assigned_to: [] });
-                  setChecklistItems([]);
-                  setQnaQuestions([]);
-                  setSelectedAssignees(new Set());
-                }}
-                className={`p-4 rounded-xl border flex items-center gap-4 text-left transition-all duration-200 ${
-                  form.targetRole === 'student'
-                    ? 'bg-blue-500/10 border-blue-500 text-white shadow-lg shadow-blue-500/5'
-                    : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-zinc-600'
-                }`}
-              >
-                <div className={`p-3 rounded-lg ${form.targetRole === 'student' ? 'bg-blue-500 text-white' : 'bg-zinc-800 text-gray-400'}`}>
-                  <Users size={22} />
-                </div>
-                <div>
-                  <p className="font-semibold text-sm text-white">Assign to Students</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Scope goals to student tracks & batches</p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setForm({ ...form, targetRole: 'mentor', assignMode: 'individual', assigned_to: [] });
-                  setSelectedAssignees(new Set());
-                }}
-                className={`p-4 rounded-xl border flex items-center gap-4 text-left transition-all duration-200 ${
-                  form.targetRole === 'mentor'
-                    ? 'bg-purple-500/10 border-purple-500 text-white shadow-lg shadow-purple-500/5'
-                    : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-zinc-600'
-                }`}
-              >
-                <div className={`p-3 rounded-lg ${form.targetRole === 'mentor' ? 'bg-purple-500 text-white' : 'bg-zinc-800 text-gray-400'}`}>
-                  <UserCheck size={22} />
-                </div>
-                <div>
-                  <p className="font-semibold text-sm text-white">Assign to Mentors</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Assign milestones to cohort mentors</p>
-                </div>
-              </button>
+            <div className="inline-flex rounded-lg border border-zinc-750 bg-zinc-900 p-1 shrink-0">
+              {([
+                { value: 'student' as const, label: 'Students', Icon: Users, tone: 'bg-blue-500/15 text-blue-300 border-blue-500/40' },
+                { value: 'mentor' as const, label: 'Mentors', Icon: UserCheck, tone: 'bg-purple-500/15 text-purple-300 border-purple-500/40' },
+              ]).map(({ value, label, Icon, tone }) => {
+                const active = form.targetRole === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => {
+                      setForm(prev => ({
+                        ...prev,
+                        targetRole: value,
+                        assigned_to: [],
+                        ...(value === 'mentor' ? { assignMode: 'individual' as const } : {}),
+                      }));
+                      setSelectedAssignees(new Set());
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-colors ${
+                      active ? tone : 'border-transparent text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    <Icon size={14} />
+                    {label}
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            {/* Task Structure — replaces the student-target Category picker
-                entirely for a mentor task: it's always exactly one of these
-                3 shapes (never a document/link submission), so this is the
-                single choice that decides both what gets built below and
-                what category the backend receives. */}
-            {form.targetRole === 'mentor' && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wider">Task Type</label>
-                  <Select
-                    value={mentorContentMode}
-                    onChange={v => setMentorContentMode(v as 'checklist' | 'questions' | 'both')}
-                    options={MENTOR_CONTENT_MODE_OPTIONS}
-                    className="w-full"
-                  />
+          {form.targetRole === 'mentor' && (
+            <div className="px-5 py-4 bg-purple-500/[0.04] space-y-3">
+              <div className="flex items-start gap-2.5">
+                <ClipboardList size={16} className="text-purple-400 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    <span className="text-white font-semibold">Weekly Report.</span> Each mentor fills a grid of
+                    their own teams — project status, team health and written feedback per team, plus tech skill,
+                    communication and overall OJT performance (0&ndash;5) for every student. Pick the week below.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowTemplatePreview(v => !v)}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-purple-300 hover:text-purple-200 transition-colors mt-2"
+                  >
+                    {showTemplatePreview ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    {showTemplatePreview ? 'Hide' : 'Preview'} what the mentor will see
+                  </button>
                 </div>
-
-                {(mentorContentMode === 'checklist' || mentorContentMode === 'both') && (
-                  <div>
-                    <label className="flex items-center gap-2 text-xs text-gray-400 mb-2 font-medium uppercase tracking-wider">
-                      <ListChecks size={14} className="text-purple-400" />
-                      Checklist Items *
-                    </label>
-                    <div className="space-y-2">
-                      {checklistItems.map((value, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={value}
-                            onChange={e => {
-                              const next = [...checklistItems];
-                              next[index] = e.target.value;
-                              setChecklistItems(next);
-                            }}
-                            placeholder={`Checklist item ${index + 1}`}
-                            className="flex-1 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gold transition-colors placeholder-gray-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setChecklistItems(checklistItems.filter((_, i) => i !== index))}
-                            className="p-2 text-gray-500 hover:text-red-400 transition-colors shrink-0"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setChecklistItems([...checklistItems, ''])}
-                        className="flex items-center gap-1.5 text-xs text-gold hover:text-gold-hover font-medium transition-colors"
-                      >
-                        <Plus size={14} /> Add checklist item
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {(mentorContentMode === 'questions' || mentorContentMode === 'both') && (
-                  <div>
-                    <label className="flex items-center gap-2 text-xs text-gray-400 mb-2 font-medium uppercase tracking-wider">
-                      <MessageSquareText size={14} className="text-purple-400" />
-                      Questions *
-                    </label>
-                    <div className="space-y-2">
-                      {qnaQuestions.map((value, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={value}
-                            onChange={e => {
-                              const next = [...qnaQuestions];
-                              next[index] = e.target.value;
-                              setQnaQuestions(next);
-                            }}
-                            placeholder={`Question ${index + 1}`}
-                            className="flex-1 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gold transition-colors placeholder-gray-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setQnaQuestions(qnaQuestions.filter((_, i) => i !== index))}
-                            className="p-2 text-gray-500 hover:text-red-400 transition-colors shrink-0"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setQnaQuestions([...qnaQuestions, ''])}
-                        className="flex items-center gap-1.5 text-xs text-gold hover:text-gold-hover font-medium transition-colors"
-                      >
-                        <Plus size={14} /> Add question
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
-            )}
-          </div>
 
-          {/* Card 2: Track (multi-select) */}
-          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-3 shadow-sm">
-            <h2 className="text-base font-semibold text-white flex items-center gap-2 border-b border-zinc-750 pb-4">
-              <Layers size={18} className="text-gold" />
-              2. Track
-            </h2>
-            <Select
-              isMulti
-              value={selectedTracks}
-              onChange={v => {
-                setSelectedTracks(v as string[]);
-                setSelectedAssignees(new Set());
-              }}
-              className="w-full"
-              placeholder="Select track(s)..."
-              options={trackOptions}
-            />
-            <p className="text-[11px] text-gray-500">
-              A task can span more than one track — the pool below fills with every matching track's students/teams, and the task shows up under a list filter on any of them.
-            </p>
-          </div>
+              {showTemplatePreview && (
+                <div className="space-y-2.5">
+                  <WeeklyReportSummaryStrip summary={sampleWeeklySummary} />
+                  <WeeklyReportGrid teams={SAMPLE_WEEKLY_REPORT_TEAMS} readOnly />
+                  <p className="text-[10px] text-gray-500">
+                    Example only — real numbers and one row per team like this appear once mentors start reporting.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* Card 3: Team/Students (or Mentors) */}
-          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-3 shadow-sm">
-            <div className="flex justify-between items-center border-b border-zinc-750 pb-4">
-              <h2 className="text-base font-semibold text-white flex items-center gap-2">
-                <Users size={18} className="text-gold" />
-                3. {form.targetRole === 'student' ? 'Team / Students' : 'Mentors'}
-              </h2>
-              <span className="text-xs text-gray-500">
-                {form.targetRole === 'student' ? `${selectedAssignees.size} selected` : `${form.assigned_to.length} selected`}
+          {/* Track — student mode only. A mentor task has nothing to scope by
+              track any more: the report always covers all of a mentor's
+              teams regardless of track, and who gets picked is narrowed by
+              the type/track filters sitting on the Mentors picker below
+              instead of a track chosen for the task itself. */}
+          {form.targetRole === 'student' && (
+            <div className="p-5 space-y-2">
+              <SectionLabel icon={<Layers size={13} />} text="Track" required />
+              <Select
+                isMulti
+                value={selectedTracks}
+                onChange={v => {
+                  setSelectedTracks(v as string[]);
+                  setSelectedAssignees(new Set());
+                }}
+                className="w-full"
+                placeholder="Select track(s)..."
+                options={trackOptions}
+              />
+              <p className="text-[11px] text-gray-500">
+                A task can span more than one track — the list below fills with every matching track&rsquo;s students or teams.
+              </p>
+            </div>
+          )}
+
+          {/* Who */}
+          <div className="p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <SectionLabel
+                icon={<Users size={13} />}
+                text={form.targetRole === 'student' ? 'Team / Students' : 'Mentors'}
+                required
+              />
+              <span className="text-[11px] text-gray-500">
+                {form.targetRole === 'student' ? selectedAssignees.size : form.assigned_to.length} selected
               </span>
             </div>
 
             {form.targetRole === 'student' ? (
               selectedTracks.length === 0 ? (
-                <p className="text-sm text-gray-500 py-8 text-center">Select a track above to see who can be assigned.</p>
+                <p className="text-sm text-gray-500 py-8 text-center border border-dashed border-zinc-800 rounded-lg">
+                  Pick a track above to see who can be assigned.
+                </p>
               ) : (
-                <AssigneePickerTable
-                  mode={form.assignMode}
-                  onModeChange={(mode) => {
-                    setForm(prev => ({ ...prev, assignMode: mode }));
-                    setSelectedAssignees(new Set());
-                  }}
-                  studentRows={studentCandidates}
-                  teamRows={teamCandidates}
-                  batchOptions={batchOptions}
-                  batchFilter={batchFilter}
-                  onBatchFilterChange={(v) => {
-                    setBatchFilter(v);
-                    setSelectedAssignees(new Set());
-                  }}
-                  trackNameBySlug={trackNameBySlug}
-                  selected={selectedAssignees}
-                  onSelectedChange={setSelectedAssignees}
-                  loading={candidatesLoading}
-                />
+                <>
+                  <AssigneePickerTable
+                    mode={form.assignMode}
+                    onModeChange={(mode) => {
+                      setForm(prev => ({ ...prev, assignMode: mode }));
+                      setSelectedAssignees(new Set());
+                    }}
+                    studentRows={studentCandidates}
+                    teamRows={teamCandidates}
+                    batchOptions={batchOptions}
+                    batchFilter={batchFilter}
+                    onBatchFilterChange={(v) => {
+                      setBatchFilter(v);
+                      setSelectedAssignees(new Set());
+                    }}
+                    trackNameBySlug={trackNameBySlug}
+                    selected={selectedAssignees}
+                    onSelectedChange={setSelectedAssignees}
+                    loading={candidatesLoading}
+                  />
+                  <p className="text-[11px] text-gray-500">
+                    Only students whose team&rsquo;s project allocation has been published are shown here.
+                  </p>
+                </>
               )
             ) : (
               <>
+                {/* Narrows the pool the search box below draws from — both
+                    filters are applied server-side (apiListMentors), never
+                    a client-side slice of an already-fetched full list. */}
+                <div className="flex items-center gap-2">
+                  <Select
+                    variant="filter"
+                    value={mentorTypeFilter}
+                    onChange={v => {
+                      setMentorTypeFilter(v as 'all' | 'internal' | 'external');
+                      setForm(prev => ({ ...prev, assigned_to: [] }));
+                    }}
+                    className="w-36"
+                    options={MENTOR_TYPE_FILTER_OPTIONS}
+                  />
+                  <Select
+                    variant="filter"
+                    value={mentorTrackFilter}
+                    onChange={v => {
+                      setMentorTrackFilter(v as string);
+                      setForm(prev => ({ ...prev, assigned_to: [] }));
+                    }}
+                    className="w-48"
+                    options={mentorTrackFilterOptions}
+                  />
+                </div>
                 <Select
                   isMulti
                   isSearchable
@@ -555,33 +608,35 @@ export default function CreateTaskPage() {
                   placeholder="Search and select mentor(s)..."
                   options={mentorAssignableList.map(a => ({ value: a.id, label: a.label }))}
                 />
+                <p className="text-[11px] text-gray-500">
+                  {mentorTaskTracks.length > 0
+                    ? `Filed under: ${mentorTaskTracks.map(slug => trackNameBySlug.get(slug) ?? slug).join(', ')} — from the selected mentors' own tracks.`
+                    : 'The task is filed under whichever tracks the selected mentors have — pick at least one mentor with a track set.'}
+                </p>
               </>
-            )}
-            {form.targetRole === 'student' && (
-              <p className="text-[11px] text-gray-500">
-                Only students whose team's project allocation has been published are shown here.
-              </p>
             )}
           </div>
 
-          {/* Card 4: Category (student only) + Title + Description */}
-          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-6 shadow-sm">
-            <div className="flex items-center justify-between border-b border-zinc-750 pb-4">
-              <h2 className="text-base font-semibold text-white flex items-center gap-2">
-                <FileText size={18} className="text-gold" />
-                4. Task Specifications
-              </h2>
+          {/* What it is */}
+          <div className="p-5 space-y-4">
+            <SectionLabel icon={<FileText size={13} />} text="Details" />
+
+            <div>
+              <label className="block text-xs text-gray-400 mb-1.5">Goal / Task Title *</label>
+              <input
+                type="text"
+                value={form.title}
+                onChange={e => setForm({ ...form, title: e.target.value })}
+                placeholder="e.g., Set up Database Schema & API Contracts"
+                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-gold transition-colors placeholder-gray-500"
+              />
             </div>
 
-            {/* Category only applies to a student task — a mentor task's
-                shape is fully decided by the Task Type toggle in Card 1
-                (Checklist/Questions/Both), not this picker. */}
+            {/* Category is a student-only idea — a mentor task's shape is
+                already decided by the Assign to toggle above. */}
             {form.targetRole === 'student' && (
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                  <Target size={15} className="text-gold" />
-                  Category *
-                </label>
+                <label className="block text-xs text-gray-400 mb-1.5">Category *</label>
                 <Select
                   value={form.category}
                   onChange={v => setForm({ ...form, category: v as ApiTaskCategory })}
@@ -599,40 +654,23 @@ export default function CreateTaskPage() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Goal / Task Title *</label>
-              <input
-                type="text"
-                value={form.title}
-                onChange={e => setForm({ ...form, title: e.target.value })}
-                placeholder="e.g., Set up Database Schema & API Contracts"
-                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-gold transition-colors placeholder-gray-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Detailed Instructions & Notes</label>
+              <label className="block text-xs text-gray-400 mb-1.5">Detailed Instructions &amp; Notes</label>
               <textarea
                 value={form.description}
                 onChange={e => setForm({ ...form, description: e.target.value })}
                 placeholder="Describe expectations, required deliverables, evaluation guidelines, or reference documentation..."
-                rows={5}
-                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-gold transition-colors resize-none placeholder-gray-500 leading-relaxed"
+                rows={4}
+                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-gold transition-colors resize-none placeholder-gray-500 leading-relaxed"
               />
             </div>
           </div>
 
-          {/* Card 5: Date */}
-          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-5 shadow-sm">
-            <h2 className="text-base font-semibold text-white flex items-center gap-2 border-b border-zinc-750 pb-4">
-              <Calendar size={18} className="text-gold" />
-              5. Date
-            </h2>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* When */}
+          <div className="p-5 space-y-3">
+            <SectionLabel icon={<Calendar size={13} />} text="Schedule" required />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Target Week
-                </label>
+                <label className="block text-xs text-gray-400 mb-1.5">Target Week</label>
                 <Select
                   value={form.week_number}
                   onChange={v => setForm({ ...form, week_number: v as string })}
@@ -642,9 +680,7 @@ export default function CreateTaskPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Start Date *
-                </label>
+                <label className="block text-xs text-gray-400 mb-1.5">Start Date *</label>
                 <input
                   type="date"
                   style={{ colorScheme: 'dark' }}
@@ -663,93 +699,62 @@ export default function CreateTaskPage() {
                     }
                     setForm(prev => ({ ...prev, start_date: newStart, due_date: newDue }));
                   }}
-                  className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
+                  className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Due Date *
-                </label>
+                <label className="block text-xs text-gray-400 mb-1.5">Due Date *</label>
                 <input
                   type="date"
                   style={{ colorScheme: 'dark' }}
                   value={form.due_date}
                   onChange={e => setForm(prev => ({ ...prev, due_date: e.target.value }))}
-                  className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
+                  className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
                 />
-                <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1">
-                  <Clock size={12} />
-                  Calculated automatically (+7 days) when start date is selected
-                </p>
+                <p className="text-[11px] text-gray-500 mt-1">Auto-set to +7 days from the start date.</p>
               </div>
             </div>
           </div>
 
         </div>
-
-        {/* Right Sidebar Column: Summary only — every actual field lives in
-            the ordered flow on the left. */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-6 space-y-4 shadow-sm">
-            <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 border-b border-zinc-750 pb-3">
-              <Sparkles size={16} className="text-gold" />
-              Assignment Summary
-            </h3>
-
-            <div className="space-y-3 text-xs">
-              <div className="flex justify-between items-center py-1.5 border-b border-zinc-800">
-                <span className="text-gray-400">Target Role</span>
-                <span className="font-semibold text-white capitalize">{form.targetRole}s</span>
-              </div>
-              <div className="flex justify-between items-center py-1.5 border-b border-zinc-800">
-                <span className="text-gray-400">Tracks</span>
-                <span className="font-semibold text-gold text-right">
-                  {selectedTracks.length > 0 ? selectedTracks.map(s => trackNameBySlug.get(s) ?? s).join(', ') : 'None selected'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center py-1.5 border-b border-zinc-800">
-                <span className="text-gray-400">Assignees Selected</span>
-                <span className="font-semibold text-gold">
-                  {form.targetRole === 'student' ? selectedAssignees.size : form.assigned_to.length}
-                </span>
-              </div>
-              <div className="flex justify-between items-center py-1.5 border-b border-zinc-800">
-                <span className="text-gray-400">Target Week</span>
-                <span className="font-semibold text-white">Week {form.week_number}</span>
-              </div>
-              <div className="flex justify-between items-center py-1.5 border-b border-zinc-800">
-                <span className="text-gray-400">Start Date</span>
-                <span className="font-semibold text-white">{form.start_date || 'Not set'}</span>
-              </div>
-              <div className="flex justify-between items-center py-1.5">
-                <span className="text-gray-400">Due Date</span>
-                <span className="font-semibold text-white">{form.due_date || 'Not set'}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
       </div>
 
-      {/* Bottom action bar — fixed, doesn't scroll with the form content above */}
-      <div className="shrink-0 flex items-center justify-end gap-3 border-t border-zinc-750/60 pt-4">
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/admin/dashboard?tab=tasks')}
-          className="px-4 py-2 text-sm text-gray-400 hover:text-white"
-        >
-          Cancel
-        </Button>
-        <Button
-          onClick={handleSave}
-          disabled={saving}
-          className="px-6 py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors flex items-center gap-2 shadow-lg shadow-gold/10"
-        >
-          <Send size={16} />
-          {saving ? 'Creating...' : 'Create Goal & Task'}
-        </Button>
+      {/* Bottom action bar — the old summary column, reduced to the one line
+          that actually matters, next to the button it describes. */}
+      <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-750/60 pt-4">
+        <p className="text-[11px] text-gray-500 min-w-0">
+          {summaryLine}
+        </p>
+        <div className="flex items-center gap-3 shrink-0">
+          <Button
+            variant="ghost"
+            onClick={() => navigate('/admin/dashboard?tab=tasks')}
+            className="px-4 py-2 text-sm text-gray-400 hover:text-white"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-6 py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors flex items-center gap-2 shadow-lg shadow-gold/10"
+          >
+            <Send size={16} />
+            {saving ? 'Creating...' : 'Create Goal & Task'}
+          </Button>
+        </div>
       </div>
     </div>
+  );
+}
+
+/** One section's heading inside the single form card. */
+function SectionLabel({ icon, text, required }: { icon: React.ReactNode; text: string; required?: boolean }) {
+  return (
+    <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+      <span className="text-gold">{icon}</span>
+      {text}
+      {required && <span className="text-gold">*</span>}
+    </p>
   );
 }

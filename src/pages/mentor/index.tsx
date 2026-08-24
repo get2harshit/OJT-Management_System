@@ -6,6 +6,7 @@ import Dashboard from './Dashboard';
 import OJTs from './OJTs';
 import ProjectProposals from './ProjectProposals';
 import Tasks from './Tasks';
+import WeeklyReport from './WeeklyReport';
 import Submissions from './Submissions';
 import Attendance from './Attendance';
 import Sessions from './Sessions';
@@ -112,6 +113,10 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
             />
           }
         />
+        {/* Its own route rather than a drawer on the Tasks page: the grid
+            is ten columns wide and as tall as the mentor has teams. Nested
+            under tasks/ so the back link and the tab it belongs to agree. */}
+        <Route path="tasks/:taskId/weekly-report" element={<WeeklyReport />} />
         <Route path="credits" element={<Credits mentorId={mentorId} />} />
         <Route path="sessions" element={<Sessions />} />
         <Route path="attendance" element={<Attendance />} />

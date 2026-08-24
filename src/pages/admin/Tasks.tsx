@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, Loader2, Eye, X, UserPlus, UserMinus, Send } from 'lucide-react';
+import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ChevronRight, ClipboardCheck, ClipboardList, Loader2, Eye, X, UserPlus, UserMinus, Send } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
@@ -759,6 +759,16 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
         actions={(row) => (
           <ActionsMenu
             items={[
+              // A weekly report has no submission to open — what a mentor
+              // sends back is the grid itself, so the first action is
+              // reading every mentor's grid rather than a review queue.
+              ...(row.category === 'weekly_report'
+                ? [{
+                    label: 'View Weekly Reports',
+                    icon: ClipboardList,
+                    onClick: () => navigate(`/admin/dashboard/tasks/${row.id}/weekly-report`),
+                  }]
+                : []),
               // Every category (document/general/link) now submits real
               // content through the Submissions tab — this panel just opens
               // the assignee list and routes each one there to review.
@@ -781,8 +791,9 @@ export default function AdminTasks({ onViewSubmission }: Props = {}) {
           <div className="space-y-5">
             {/* Read-only, for positional consistency with Create — target
                 role/category are fixed at creation, changing them after
-                assignees exist is structurally risky (mentor checklist/Q&A
-                vs. student document category) and isn't editable here. */}
+                assignees exist is structurally risky (a mentor weekly report
+                vs. a student document submission are different shapes
+                entirely) and isn't editable here. */}
             <div className="flex items-center gap-2 text-xs">
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border font-semibold uppercase ${
                 editTaskDetail.target_role === 'student'
@@ -1211,6 +1222,11 @@ function AdminAssigneeReviewPanel({
   const assignments = task.assignments || [];
   const assignedByMentor = task.assigner?.role === 'mentor';
   const hasStructuredContent = (task.checklist_items?.length ?? 0) > 0 || (task.qna_questions?.length ?? 0) > 0;
+  // A weekly report has no document behind it — what the mentor sent back
+  // is the grid, and approving it happens on the report page next to what
+  // is being judged. Sending an admin to the Submissions tab here would be
+  // a dead end.
+  const isWeeklyReport = task.category === 'weekly_report';
 
   const statusDot: Record<ApiAssignmentStatus, string> = {
     pending: 'bg-zinc-400',
@@ -1232,11 +1248,15 @@ function AdminAssigneeReviewPanel({
         {task.description && <p className="text-gray-400 text-sm mt-1">{task.description}</p>}
       </div>
 
-      {!hasStructuredContent && (
+      {isWeeklyReport ? (
+        <p className="text-xs text-gray-400 bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-2">
+          Read and act on these from <span className="text-gold font-medium">View Weekly Reports</span> — each mentor's grid is there, with Approve and Resubmit beside it.
+        </p>
+      ) : !hasStructuredContent ? (
         <p className="text-xs text-gray-400 bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-2">
           Open a submitted row's submission below to approve or resubmit it.
         </p>
-      )}
+      ) : null}
 
       {assignedByMentor && (
         <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
@@ -1263,7 +1283,11 @@ function AdminAssigneeReviewPanel({
                 </span>
               </div>
 
-              {assignment.status !== 'pending' ? (
+              {isWeeklyReport ? (
+                <p className="text-[11px] text-gray-500">
+                  {assignment.status === 'pending' ? 'Not submitted yet.' : 'Open View Weekly Reports to read this one.'}
+                </p>
+              ) : assignment.status !== 'pending' ? (
                 <button
                   onClick={() => onViewSubmission?.(assignment.assignee_id, task.id, task.cohort_id)}
                   className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-gold hover:text-gold/80 bg-gold/10 hover:bg-gold/15 border border-gold/25 rounded-lg py-2 transition-colors"

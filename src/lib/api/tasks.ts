@@ -140,7 +140,10 @@ export interface ApiTask {
 }
 
 export type ApiTaskType = 'prd' | 'db_schema' | 'hld' | 'lld' | 'api_contract' | 'others';
-export type ApiTaskCategory = 'document_submission' | 'general' | 'link_submission';
+// 'weekly_report' is mentor-only and admin-only (backend enforces both) —
+// it makes the mentor's task page render the weekly report grid instead of
+// a submit box. See ojt_mentor_weekly_reports.
+export type ApiTaskCategory = 'document_submission' | 'general' | 'link_submission' | 'weekly_report';
 export type ApiTaskAssignMode = 'team' | 'individual';
 
 // Backend requires week/tracks/start_date/deadline/target_role/category/
@@ -164,10 +167,10 @@ export interface CreateTaskPayload {
   assignees?: string[];
   // Required by the backend — every task belongs to exactly one cohort.
   cohort_id: string;
-  // Admin-only, mentor-target-only (backend enforces both) — omit entirely
-  // for a plain task with neither structure.
-  checklist_items?: { label: string }[];
-  qna_questions?: { question: string }[];
+  // checklist_items/qna_questions used to be settable here. A mentor task
+  // is now created with category: 'weekly_report' instead, and the answers
+  // live in their own tables rather than a JSON blob. The backend no longer
+  // accepts either field on create.
 }
 
 // Backend's PUT /tasks/:id only persists these fields (see updateTaskSchema in
@@ -414,4 +417,129 @@ export async function apiBulkRequestResubmit(
   );
   invalidateTaskCaches(taskId);
   return res;
+}
+
+
+// ---------------------------------------------------------------------------
+// Mentor weekly report
+//
+// Replaces the checklist/Q&A shape a mentor task used to come back in: a
+// grid of the mentor's teams, each with a per-team judgement and a row of
+// 0-5 ratings per student, plus the summary strip across the top. Lives
+// under the task's own URL because a report is always one week's task.
+// ---------------------------------------------------------------------------
+
+export type ApiReportProjectStatus = 'on_track' | 'delayed' | 'ahead';
+export type ApiReportTeamHealth = 'positive' | 'neutral' | 'negative';
+
+export interface ApiWeeklyReportStudent {
+  studentId: string;
+  name: string;
+  registrationNumber: string | null;
+  batch: string | null;
+  /** Rated here, but has since left the team — read-only history. */
+  isFormerMember?: boolean;
+  // null means "not rated yet", which is deliberately not the same as 0 —
+  // an unfilled cell must stay visibly unfilled.
+  techSkill: number | null;
+  communication: number | null;
+  overallPerformance: number | null;
+}
+
+export interface ApiWeeklyReportTeam {
+  teamId: string;
+  teamName: string;
+  trackName: string;
+  /** null when the team has no allocated project yet — a real state, not an error. */
+  projectTitle: string | null;
+  projectStatus: ApiReportProjectStatus | null;
+  teamHealth: ApiReportTeamHealth | null;
+  weeklyFeedback: string | null;
+  /** What the project is built with this week — one list per team; everyone on it works the same project. Empty, never missing. */
+  techStack: string[];
+  /** Reported on here, but the team has since moved to another mentor — shown as history, not editable. */
+  isFormerTeam?: boolean;
+  students: ApiWeeklyReportStudent[];
+}
+
+export interface ApiNoShowStudent {
+  studentId: string;
+  name: string;
+  batch: string | null;
+}
+
+export interface ApiWeeklyReportSummary {
+  teamCount: number;
+  studentCount: number;
+  /** One entry per week up to and including this task's, W1..Wn. */
+  weeks: { week: number; label: string; onTrack: number; total: number }[];
+  /** Students marked absent on a session inside this task's window — who, not just how many. */
+  noShowStudents: ApiNoShowStudent[];
+}
+
+export interface ApiMyWeeklyReport {
+  task: { id: string; title: string; description: string | null; week: string; start_date: string; deadline: string };
+  assignment: { id: string; status: ApiAssignmentStatus };
+  summary: ApiWeeklyReportSummary;
+  teams: ApiWeeklyReportTeam[];
+}
+
+export interface ApiAllWeeklyReports {
+  task: { id: string; title: string; description: string | null; week: string; start_date: string; deadline: string };
+  summary: ApiWeeklyReportSummary;
+  mentors: {
+    assignmentId: string;
+    mentorId: string;
+    mentorName: string;
+    status: ApiAssignmentStatus;
+    teamCount: number;
+    /** Teams this mentor has actually put something in — not just teams that have a row. */
+    filledTeams: number;
+    teams: ApiWeeklyReportTeam[];
+  }[];
+}
+
+/** Partial by design — send only what changed, everything omitted is left alone. */
+export interface SaveWeeklyReportTeamPayload {
+  projectStatus?: ApiReportProjectStatus | null;
+  teamHealth?: ApiReportTeamHealth | null;
+  weeklyFeedback?: string | null;
+  techStack?: string[];
+  students?: {
+    studentId: string;
+    techSkill?: number | null;
+    communication?: number | null;
+    overallPerformance?: number | null;
+  }[];
+}
+
+export async function apiGetMyWeeklyReport(taskId: string): Promise<ApiMyWeeklyReport> {
+  const res = await apiFetch<{ success: boolean; data: ApiMyWeeklyReport }>(
+    `/api/v1/tasks/${taskId}/weekly-report`,
+    { method: 'GET' }
+  );
+  return res.data;
+}
+
+// Returns the refreshed grid, so the caller never has to re-fetch to stay
+// in step with what the server now holds.
+export async function apiSaveWeeklyReportTeam(
+  taskId: string,
+  teamId: string,
+  payload: SaveWeeklyReportTeamPayload
+): Promise<ApiMyWeeklyReport> {
+  const res = await apiFetch<{ success: boolean; message: string; data: ApiMyWeeklyReport }>(
+    `/api/v1/tasks/${taskId}/weekly-report/${teamId}`,
+    { method: 'PUT', body: JSON.stringify(payload) }
+  );
+  invalidateTaskCaches(taskId);
+  return res.data;
+}
+
+export async function apiGetAllWeeklyReports(taskId: string): Promise<ApiAllWeeklyReports> {
+  const res = await apiFetch<{ success: boolean; data: ApiAllWeeklyReports }>(
+    `/api/v1/tasks/${taskId}/weekly-report/all`,
+    { method: 'GET' }
+  );
+  return res.data;
 }
