@@ -189,6 +189,8 @@ export interface MyCohort {
   name: string | null;
   sessionTerm: SemesterSession;
   allowedBatches: string[];
+  startDate: string;
+  endDate: string;
 }
 
 export interface TeamMemberInfo {
@@ -321,16 +323,6 @@ export interface PendingProposal {
     id: string;
     title: string;
   };
-}
-
-// A mentor's computed/effective capacity for a cohort (GET /api/v1/mentors/:id/capacity).
-// A single flat number shared across every track the mentor covers.
-export interface MentorCapacitySummary {
-  mentorId: string;
-  /** Applies until an admin sets a capacity — the same number for everyone. */
-  defaultCapacity: number;
-  override: number | null;
-  effectiveTotal: number;
 }
 
 // One row per mentor for the admin's bulk capacity table (GET /api/v1/mentors/capacity)

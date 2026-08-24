@@ -182,6 +182,8 @@ interface RawMyCohort {
   name?: string | null;
   sessionTerm: SemesterSession;
   allowedBatches?: string[];
+  startDate: string;
+  endDate: string;
 }
 
 interface RawMyTeamStatus {
@@ -327,6 +329,8 @@ export async function apiGetMyCohort(): Promise<MyCohort> {
       name: res.name ?? null,
       sessionTerm: res.sessionTerm,
       allowedBatches: res.allowedBatches ?? [],
+      startDate: res.startDate,
+      endDate: res.endDate,
     };
   });
 }

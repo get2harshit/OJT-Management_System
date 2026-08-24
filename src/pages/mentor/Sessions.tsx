@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -20,10 +20,10 @@ import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
 import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
-import type { Cohort } from '../../lib/types';
 import {
-  apiListMyCohorts,
   apiGetMySessions,
+  apiGetMySessionStats,
+  type ApiMentorSessionStats,
   apiCreateSession,
   apiRescheduleSession,
   apiCancelSession,
@@ -37,7 +37,6 @@ import {
   type ApiMentorWorkspaceTeam,
   type ApiMentorGroup,
 } from '../../lib/api';
-import { buildCohortOptions } from '../../lib/cohortLabel';
 import { formatMeetingPattern } from '../../lib/meetingPattern';
 import { DEFAULT_SESSION_LOCATION, PST_CAMPUS_ROOM_OPTIONS, defaultSessionTitle } from '../../lib/sessionLocation';
 import { useToast } from '../../toast';
@@ -78,11 +77,14 @@ export default function MentorSessions() {
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
 
-  const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [selectedCohortId, setSelectedCohortId] = useState('');
+  // The OJT comes from the route — MentorOjtLayout owns the picker above
+  // this page, so there is no second one here to drift out of step with it.
+  const { cohortId: routeCohortId } = useParams<{ cohortId: string }>();
+  const selectedCohortId = routeCohortId ?? '';
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [canSelfSchedule, setCanSelfSchedule] = useState(false);
+  const [sessionStats, setSessionStats] = useState<ApiMentorSessionStats | null>(null);
 
   const visibleRange = useRef<{ from: string; to: string } | null>(null);
 
@@ -117,22 +119,26 @@ export default function MentorSessions() {
   );
 
   useEffect(() => {
-    apiListMyCohorts()
-      .then(setCohorts)
-      .catch(() => setCohorts([]));
-  }, []);
-
-  useEffect(() => {
-    if (cohorts.length === 0) return;
-    setSelectedCohortId((prev) => prev || cohorts.find((c) => c.isActive)?.id || cohorts[0]?.id || prev);
-  }, [cohorts]);
-
-  useEffect(() => {
     if (!selectedCohortId || !user) return;
     apiGetSelfSchedulePermission(selectedCohortId, user.id)
       .then(setCanSelfSchedule)
       .catch(() => setCanSelfSchedule(false));
   }, [selectedCohortId, user]);
+
+  // Counts for the whole cohort, not just the weeks currently on screen —
+  // aggregated server-side, so this stays one request however many sessions
+  // the mentor has.
+  useEffect(() => {
+    if (!selectedCohortId) {
+      setSessionStats(null);
+      return;
+    }
+    let cancelled = false;
+    apiGetMySessionStats(selectedCohortId)
+      .then((data) => { if (!cancelled) setSessionStats(data); })
+      .catch(() => { if (!cancelled) setSessionStats(null); });
+    return () => { cancelled = true; };
+  }, [selectedCohortId, sessions]);
 
   const loadSessions = useCallback(async () => {
     if (!selectedCohortId || !visibleRange.current) return;
@@ -547,7 +553,6 @@ export default function MentorSessions() {
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <Select value={selectedCohortId} onChange={setSelectedCohortId} variant="filter" placeholder="Select cohort" className="w-[200px]" options={buildCohortOptions(cohorts)} />
           <button
             onClick={() =>
               canSelfSchedule &&
@@ -562,6 +567,15 @@ export default function MentorSessions() {
           </button>
         </div>
       </div>
+
+      {sessionStats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <SessionCountTile label="Scheduled" value={sessionStats.scheduled} tone="text-blue-400" />
+          <SessionCountTile label="Rescheduled" value={sessionStats.rescheduled} tone="text-yellow-400" />
+          <SessionCountTile label="Completed" value={sessionStats.completed} tone="text-green-400" />
+          <SessionCountTile label="Cancelled" value={sessionStats.cancelled} tone="text-red-400" />
+        </div>
+      )}
 
       <div className="flex items-center gap-4 flex-wrap px-1">
         {(Object.entries(STATUS_COLORS) as [ApiSessionStatus, string][]).map(([status, color]) => (
@@ -772,5 +786,15 @@ export default function MentorSessions() {
         />
       )}
     </PageLayout>
+  );
+}
+
+/** One count in the strip above the calendar — whole-cohort, not just the visible weeks. */
+function SessionCountTile({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="bg-zinc-850 border border-zinc-750 rounded-lg px-3 py-2.5">
+      <p className="text-[11px] uppercase tracking-wide font-semibold text-gray-400">{label}</p>
+      <p className={`text-xl font-bold mt-0.5 ${tone}`}>{value}</p>
+    </div>
   );
 }

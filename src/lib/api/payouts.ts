@@ -81,9 +81,9 @@ export async function apiListPayouts(filter: PayoutListFilter): Promise<PayoutsP
   return fetchPayoutsPage(`/api/v1/payouts?${toPayoutQuery(filter)}`);
 }
 
-export async function apiGetMyPayouts(filter: PayoutListFilter): Promise<PayoutsPage> {
-  return fetchPayoutsPage(`/api/v1/mentors/me/payouts?${toPayoutQuery(filter)}`);
-}
+// No apiGetMyPayouts here on purpose: the mentor-facing page shows work
+// delivered (sessions, hours, teams), never rates or amounts, so it reads
+// sessions instead. GET /mentors/me/payouts still exists server-side.
 
 export async function apiApprovePayout(id: string): Promise<ApiSessionPayout> {
   const res = await apiFetch<{ data: ApiSessionPayout }>(`/api/v1/payouts/${id}/approve`, { method: 'PATCH' });

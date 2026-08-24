@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { CheckSquare, FolderOpen, Cloud, CalendarCheck, TrendingUp, Clock, Briefcase, UserCheck, AlertCircle, ArrowUpRight, Megaphone, RefreshCw } from 'lucide-react';
 import StatCard from '../../components/StatCard';
+import PeerTeamsPanel from '../../components/PeerTeamsPanel';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import Modal from '../../components/Modal';
-import type { Credit, PrdSubmission, PrdStatus, MyTeamStatus } from '../../lib/types';
+import OjtWeekBadge from '../../components/OjtWeekBadge';
+import type { Credit, PrdSubmission, PrdStatus, MyTeamStatus, MyCohort } from '../../lib/types';
 import { apiGetMySubmissions, apiGetMyCohort, apiGetMyTeamStatus, apiGetMyAttendance } from '../../lib/api';
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask } from '../../lib/api/tasks';
@@ -54,6 +56,7 @@ export default function StudentDashboard({
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [submissions, setSubmissions] = useState<PrdSubmission[]>([]);
   const [teamStatus, setTeamStatus] = useState<MyTeamStatus | null>(null);
+  const [myCohort, setMyCohort] = useState<MyCohort | null>(null);
   const [loading, setLoading] = useState(true);
   const [announcements, setAnnouncements] = useState<AppNotification[]>([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(true);
@@ -78,7 +81,10 @@ export default function StudentDashboard({
       apiListTasks(),
       apiGetMySubmissions(),
       apiGetMyCohort()
-        .then((c) => apiGetMyTeamStatus(c.cohortId))
+        .then((c) => {
+          setMyCohort(c);
+          return apiGetMyTeamStatus(c.cohortId);
+        })
         .catch(() => null),
     ])
       .then(([taskRes, mySubs, statusRes]) => {
@@ -155,9 +161,12 @@ export default function StudentDashboard({
       {/* Personalized Greeting Header */}
       <div className="flex items-center justify-between flex-wrap gap-4 bg-zinc-850 border border-zinc-750 p-6 rounded-2xl shadow-sm">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            Welcome back, <span className="text-gold">{userName}</span> 👋
-          </h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              Welcome back, <span className="text-gold">{userName}</span> 👋
+            </h1>
+            <OjtWeekBadge startDate={myCohort?.startDate} endDate={myCohort?.endDate} />
+          </div>
           <p className="text-gray-400 text-sm mt-1">Here is a summary of your active OJT project, tasks, and progress.</p>
         </div>
         <button
@@ -414,6 +423,8 @@ export default function StudentDashboard({
           </div>
         </div>
       </div>
+
+      <PeerTeamsPanel />
     </div>
   );
 }

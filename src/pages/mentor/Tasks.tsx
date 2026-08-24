@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Calendar, Loader2, Eye } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
@@ -18,8 +18,7 @@ import {
 } from '../../lib/api/tasks';
 import type { ApiTask, ApiTaskCategory, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
 import { apiListMyTeams } from '../../lib/api/teams';
-import { apiListMyCohorts } from '../../lib/api/cohorts';
-import type { Team, Cohort } from '../../lib/types';
+import type { Team } from '../../lib/types';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useTracks } from '../../hooks/useTracks';
@@ -71,11 +70,12 @@ interface Props {
 
 export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   const navigate = useNavigate();
+  // The OJT this page is scoped to, from the route.
+  const { cohortId } = useParams<{ cohortId: string }>();
   const { showSuccess, showError } = useToast();
   const { options: trackOptions } = useTracks();
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [myTeams, setMyTeams] = useState<Team[]>([]);
-  const [myCohorts, setMyCohorts] = useState<Cohort[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [bucket, setBucket] = useState<TaskBucket>('to-me');
@@ -112,29 +112,28 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
     }
   };
 
-  const loadAll = () => {
-    return Promise.all([apiListTasks(), apiListMyTeams(), apiListMyCohorts()])
-      .then(([tasksRes, teamsRes, cohortsRes]) => {
+  const loadAll = useCallback(() => {
+    if (!cohortId) return Promise.resolve();
+    return Promise.all([apiListTasks({ cohort_id: cohortId }), apiListMyTeams()])
+      .then(([tasksRes, teamsRes]) => {
         setTasks(tasksRes.data || []);
         setMyTeams(teamsRes);
-        setMyCohorts(cohortsRes);
       })
       .catch(console.error);
-  };
+  }, [cohortId]);
 
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [loadAll]);
 
   usePageRefresh(loadAll);
 
-  // A task must belong to exactly one cohort (backend requirement), and the
-  // system only ever allows one active cohort at a time — so the mentor's
-  // active membership is the one, unambiguous cohort any task they create
-  // right now can belong to. The backend rejects creation entirely if this
-  // is missing or inactive, so this is resolved once here instead of adding
-  // a picker for a choice that never actually has more than one valid answer.
-  const activeCohortId = myCohorts.find(c => c.isActive)?.id;
+  // A task belongs to exactly one OJT, and that OJT is the one this page is
+  // open on — the URL, not a separately-resolved "active" membership, so a
+  // mentor cannot be reading one OJT's tasks while creating into another.
+  // The backend still rejects creation into an OJT that is not active, and
+  // remains the authority on that.
+  const activeCohortId = cohortId;
 
   // Unpublished teams used to be filtered out here, from a cohort-level
   // allocationPublishedAt. /teams/my-teams now excludes them outright — and

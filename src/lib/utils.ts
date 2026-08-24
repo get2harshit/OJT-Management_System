@@ -87,6 +87,87 @@ export const formatInIST = (iso: string, opts?: Intl.DateTimeFormatOptions): str
   return date.toLocaleString('en-IN', { ...opts, timeZone: IST_ZONE });
 };
 
+const MS_PER_DAY = 86_400_000;
+
+export type OjtWeekStatus = 'not_started' | 'running' | 'ended';
+
+export interface OjtWeek {
+  status: OjtWeekStatus;
+  /** 1-based once running; 0 before the OJT starts. */
+  weekNumber: number;
+  totalWeeks: number;
+  /** Ready to render, e.g. "Week 6 of 24". */
+  label: string;
+}
+
+/** Reads a YYYY-MM-DD (or ISO) string as a UTC-midnight timestamp for day math. */
+const utcMidnightOf = (dateStr: string): number | null => {
+  const [year, month, day] = toDateOnly(dateStr).split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return Date.UTC(year, month - 1, day);
+};
+
+/**
+ * Today's calendar date in IST, as a UTC-midnight timestamp. The programme
+ * runs on the org's calendar, so deriving "today" from the viewer's own clock
+ * would put someone abroad — or anyone in the late-evening IST window, where
+ * IST and UTC are already on different dates — in the wrong week.
+ */
+const todayInIST = (now: Date): number => {
+  // en-CA formats as YYYY-MM-DD, which is what toDateOnly's parser expects.
+  const istDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: IST_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  return utcMidnightOf(istDate) ?? 0;
+};
+
+/**
+ * Which week of an OJT a given moment falls in, for the "Week 6 of 24" badge
+ * every role sees.
+ *
+ * Weeks are anchored to the OJT's own start date — days 1-7 are Week 1
+ * whatever weekday it began on. That's what a curriculum means by "week 3 of
+ * the programme", and it stops Week 1 from being a 2-day stub when an OJT
+ * starts on a Friday.
+ *
+ * Deliberately a different notion of "week" from the session cadence tracker
+ * (backend `weekRange.ts`), which buckets by calendar Mon-Sun because it
+ * answers a different question — how many sessions happened this calendar
+ * week. The two can disagree by a few days; that is expected, not a bug.
+ *
+ * Returns null if the dates are missing or inverted, so a caller can simply
+ * render nothing rather than a misleading week number.
+ */
+export const getOjtWeek = (startDate: string, endDate: string, now: Date = new Date()): OjtWeek | null => {
+  const start = utcMidnightOf(startDate);
+  const end = utcMidnightOf(endDate);
+  if (start === null || end === null || end < start) return null;
+
+  const totalDays = Math.floor((end - start) / MS_PER_DAY) + 1; // inclusive of both ends
+  const totalWeeks = Math.max(1, Math.ceil(totalDays / 7));
+  const today = todayInIST(now);
+
+  if (today < start) {
+    const daysToStart = Math.round((start - today) / MS_PER_DAY);
+    return {
+      status: 'not_started',
+      weekNumber: 0,
+      totalWeeks,
+      label: daysToStart === 1 ? 'Starts tomorrow' : `Starts in ${daysToStart} days`,
+    };
+  }
+
+  if (today > end) {
+    return { status: 'ended', weekNumber: totalWeeks, totalWeeks, label: 'OJT complete' };
+  }
+
+  const weekNumber = Math.floor((today - start) / MS_PER_DAY / 7) + 1;
+  return { status: 'running', weekNumber, totalWeeks, label: `Week ${weekNumber} of ${totalWeeks}` };
+};
+
 /**
  * Serializes rows into CSV text and triggers a browser download. Values are
  * quoted and escaped so commas, quotes, and newlines inside a cell can't

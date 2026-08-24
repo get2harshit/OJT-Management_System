@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import { ArrowLeft, Eye, Loader2, Users } from 'lucide-react';
 import SplitPane from '../../components/SplitPane';
 import RosterList from '../../components/RosterList';
@@ -7,13 +8,12 @@ import ReviewActions from '../../components/ReviewActions';
 import type { PrdSubmission, SubmissionKind } from '../../lib/types';
 import { DOCUMENT_TYPE_LABELS } from '../../lib/types';
 import { apiGetSubmissionsByStudent, apiGetPrdDownloadUrl, apiReviewPrdSubmission } from '../../lib/api';
-import { apiListMyTeamsDetailed } from '../../lib/api/teams';
+import { apiGetMyRoster } from '../../lib/api/teamRoster';
 import { statusDotClass } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 interface Props {
-  mentorId: string;
   // Set by the Tasks tab's "View Submission" action to jump straight to a
   // specific student's submission for a given task, instead of the mentor
   // having to find it manually. onFocusHandled clears it once consumed so a
@@ -33,12 +33,15 @@ interface Mentee {
   pendingReviewCount: number;
 }
 
+// mentorId is gone as a prop: the roster read is scoped to the authenticated
+// caller and the OJT in the URL, so there is no id for a parent to pass in.
 export default function MentorSubmissions({
-  mentorId,
   focusStudentId,
   focusTaskId,
   onFocusHandled,
-}: Partial<Props> & { mentorId: string }) {
+}: Partial<Props>) {
+  // The OJT this review roster is scoped to, from the route.
+  const { cohortId } = useParams<{ cohortId: string }>();
   const { showSuccess, showError } = useToast();
 
   const [mentees, setMentees] = useState<Mentee[]>([]);
@@ -62,40 +65,40 @@ export default function MentorSubmissions({
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
-  // The mentee roster with each one's pending-review badge count attached
-  // server-side (withPendingReviewCounts) — no bulk submissions fetch.
-  const loadRoster = async () => {
+  // The mentee roster for this OJT, with each one's pending-review count,
+  // from the same roster read the rest of My OJT uses. It used to call
+  // /teams/my-teams/detailed, which spans every OJT the mentor has ever had
+  // and resolves teams by a different rule — two sources for "my students"
+  // on one hub is exactly how the roster and Teams sections once ended up
+  // contradicting each other on screen.
+  const loadRoster = useCallback(async () => {
+    if (!cohortId) return;
     setLoading(true);
     setError(null);
     try {
-      const teams = await apiListMyTeamsDetailed(true);
-
-      const menteeMap = new Map<string, Mentee>();
-      teams.forEach((team) => {
-        team.members.forEach((m) => {
-          if (!menteeMap.has(m.studentId)) {
-            menteeMap.set(m.studentId, {
-              studentId: m.studentId,
-              fullName: m.fullName || m.studentId,
-              rollNumber: m.rollNumber || '-',
-              track: team.track,
-              pendingReviewCount: m.pendingReviewCount ?? 0,
-            });
-          }
-        });
-      });
-      setMentees(Array.from(menteeMap.values()).sort((a, b) => a.fullName.localeCompare(b.fullName)));
+      const roster = await apiGetMyRoster(cohortId);
+      const trackByTeam = new Map(roster.teams.map((t) => [t.id, t.track]));
+      setMentees(
+        roster.students
+          .map((student) => ({
+            studentId: student.id,
+            fullName: student.fullName || student.id,
+            rollNumber: student.rollNumber || '-',
+            track: (student.teamId ? trackByTeam.get(student.teamId) : null) ?? '-',
+            pendingReviewCount: student.submissionsPending,
+          }))
+          .sort((a, b) => a.fullName.localeCompare(b.fullName))
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load submissions');
     } finally {
       setLoading(false);
     }
-  };
+  }, [cohortId]);
 
   useEffect(() => {
     loadRoster();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mentorId]);
+  }, [loadRoster]);
 
   usePageRefresh(() => Promise.all([
     loadRoster(),
