@@ -433,6 +433,8 @@ export interface ApiWeeklyReportTeam {
   /** Reported on here, but the team has since moved to another mentor — shown as history, not editable. */
   isFormerTeam?: boolean;
   students: ApiWeeklyReportStudent[];
+  /** Only set on the admin's collated cross-mentor view — a mentor's own grid never needs to say whose it is. */
+  mentorName?: string;
 }
 
 export interface ApiNoShowStudent {
@@ -459,7 +461,6 @@ export interface ApiMyWeeklyReport {
 
 export interface ApiAllWeeklyReports {
   task: { id: string; title: string; description: string | null; week: string; start_date: string; deadline: string };
-  summary: ApiWeeklyReportSummary;
   mentors: {
     assignmentId: string;
     mentorId: string;
@@ -468,6 +469,8 @@ export interface ApiAllWeeklyReports {
     teamCount: number;
     /** Teams this mentor has actually put something in — not just teams that have a row. */
     filledTeams: number;
+    /** This mentor's own strip, scoped to only the teams they hold now. */
+    summary: ApiWeeklyReportSummary;
     teams: ApiWeeklyReportTeam[];
   }[];
 }
