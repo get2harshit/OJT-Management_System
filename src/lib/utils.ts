@@ -74,6 +74,24 @@ export const getDurationString = (startDate: string, endDate: string): string =>
 const IST_ZONE = 'Asia/Kolkata';
 
 /**
+ * A span of minutes spelled out exactly, as hours and minutes.
+ *
+ * Never a rounded decimal: "12.6h" is an approximation of 12h36m that reads
+ * as if it doesn't quite add up against a session-by-session total, and a
+ * 57-minute session shown as "0.9" reads as a number nobody measured.
+ * "12h 36m" is the same figure, spelled out, and it reconciles by eye against
+ * the rows it summarises.
+ */
+export const formatExactDuration = (minutes: number): string => {
+  if (minutes <= 0) return '0m';
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return hours > 0
+    ? `${hours}h${remainingMinutes > 0 ? ` ${remainingMinutes}m` : ''}`
+    : `${remainingMinutes}m`;
+};
+
+/**
  * Formats an ISO datetime in IST (Asia/Kolkata) regardless of the viewer's
  * own browser timezone, or which zone the session itself was scheduled
  * under — a student must always see session times in IST. Same options

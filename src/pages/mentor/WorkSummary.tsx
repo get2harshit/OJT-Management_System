@@ -4,6 +4,7 @@ import PageLayout from '../../components/PageLayout';
 import DataTable from '../../components/DataTable';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import SummaryTile from '../../components/SummaryTile';
 import {
   apiGetMySessions,
   apiGetMySessionStats,
@@ -13,7 +14,7 @@ import {
 } from '../../lib/api';
 import type { Cohort } from '../../lib/types';
 import { buildCohortOptions } from '../../lib/cohortLabel';
-import { formatInIST } from '../../lib/utils';
+import { formatExactDuration, formatInIST } from '../../lib/utils';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useToast } from '../../toast';
 
@@ -135,8 +136,8 @@ export default function MentorWorkSummary() {
             />
             <SummaryTile
               icon={Timer}
-              label="Hours delivered"
-              value={formatHours(stats.deliveredMinutes)}
+              label="Time delivered"
+              value={formatExactDuration(stats.deliveredMinutes)}
               tone="text-gold"
             />
             <SummaryTile icon={Users} label="Teams mentored" value={stats.teamsMentored} tone="text-white" />
@@ -180,28 +181,6 @@ export default function MentorWorkSummary() {
   );
 }
 
-function SummaryTile({
-  icon: Icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: typeof Users;
-  label: string;
-  value: string | number;
-  tone: string;
-}) {
-  return (
-    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-4">
-      <div className="flex items-center gap-2 text-gray-400">
-        <Icon size={15} />
-        <p className="text-xs uppercase tracking-wider font-bold">{label}</p>
-      </div>
-      <p className={`text-3xl font-bold mt-2 ${tone}`}>{value}</p>
-    </div>
-  );
-}
-
 function BreakdownCell({
   icon: Icon,
   label,
@@ -224,13 +203,6 @@ function BreakdownCell({
   );
 }
 
-function formatHours(minutes: number): string {
-  if (minutes <= 0) return '0';
-  const hours = minutes / 60;
-  // Whole hours read better than "12.0" for the common case.
-  return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
-}
-
 function formatSessionWhen(session: ApiSession): string {
   const date = formatInIST(session.start_time, { day: '2-digit', month: 'short', year: 'numeric' });
   const time = formatInIST(session.start_time, { hour: '2-digit', minute: '2-digit' });
@@ -238,10 +210,7 @@ function formatSessionWhen(session: ApiSession): string {
 }
 
 function formatDuration(session: ApiSession): string {
-  const minutes = session.actual_duration_minutes ?? session.duration_minutes;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m}m`;
+  return formatExactDuration(session.actual_duration_minutes ?? session.duration_minutes);
 }
 
 function teamNames(session: ApiSession): string {
