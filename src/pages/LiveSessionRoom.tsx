@@ -17,9 +17,11 @@ import {
   selectIsPeerAudioEnabled,
   selectIsPeerVideoEnabled,
   selectRoomStartTime,
+  selectHMSMessages,
+  selectUnreadHMSMessagesCount,
   type HMSPeer,
 } from '@100mslive/react-sdk';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, ScreenShare, ScreenShareOff, Users, X } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, ScreenShare, ScreenShareOff, Users, X, MessageSquare, Send, UserX, VolumeX } from 'lucide-react';
 import SpinnerSquare from '../components/SpinnerSquare';
 import { apiEndLiveSession } from '../lib/api';
 import { useToast } from '../toast';
@@ -189,6 +191,8 @@ export default function LiveSessionRoom() {
   const sharingPeers = useHMSStore(selectPeersScreenSharing);
   const dominantSpeaker = useHMSStore(selectDominantSpeaker);
   const roomStartTime = useHMSStore(selectRoomStartTime);
+  const messages = useHMSStore(selectHMSMessages);
+  const unreadMessageCount = useHMSStore(selectUnreadHMSMessagesCount);
 
   // join() must fire exactly once. Under StrictMode the effect runs twice, and
   // a second join on the same token puts the room into a state it never
@@ -200,7 +204,10 @@ export default function LiveSessionRoom() {
   const [ended, setEnded] = useState(false);
   const [endingForAll, setEndingForAll] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const [showParticipants, setShowParticipants] = useState(false);
+  // One side panel slot shared by the participant list and chat — the Meet/
+  // Zoom convention (never both open side by side in a call this narrow).
+  const [activePanel, setActivePanel] = useState<'participants' | 'chat' | null>(null);
+  const [chatText, setChatText] = useState('');
 
   useEffect(() => {
     connectedRef.current = !!isConnected;
@@ -271,9 +278,15 @@ export default function LiveSessionRoom() {
     setEndingForAll(true);
     leavingSelf.current = true;
     try {
-      // Our backend closes the room and marks the session ended; leaving alone
-      // would drop the host out while everyone else carried on without them.
+      // Our backend first, so live_ended_at/token cleanup happens regardless
+      // of how the 100ms call below goes. Then hmsActions.endRoom — NOT just
+      // leave() — is what actually drops every other peer too: leave() only
+      // ever disconnected the host's own connection, which is why "End for
+      // all" used to leave students sitting in the room by themselves. Every
+      // student's client is already listening for ROOM_ENDED (see the
+      // notification handler above) and reacts on its own once this fires.
       await apiEndLiveSession(state.sessionId);
+      await hmsActions.endRoom(true, 'Session ended by host').catch(() => {});
       await hmsActions.leave().catch(() => {});
       navigate(-1);
     } catch (err) {
@@ -292,6 +305,25 @@ export default function LiveSessionRoom() {
       showError(err instanceof Error ? err.message : 'Could not share your screen');
     }
   }, [hmsActions, sharing, showError]);
+
+  // Chat is live-only — 100ms's own broadcast channel, nothing persisted on
+  // our side. It exists only for the length of this call, same as the room.
+  const sendChatMessage = useCallback(async () => {
+    const text = chatText.trim();
+    if (!text) return;
+    setChatText('');
+    try {
+      await hmsActions.sendBroadcastMessage(text);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Could not send that message');
+    }
+  }, [chatText, hmsActions, showError]);
+
+  // Opening the panel marks everything read; nothing to do while it's closed
+  // besides showing the count via selectUnreadHMSMessagesCount on the toggle.
+  useEffect(() => {
+    if (activePanel === 'chat') hmsActions.setMessageRead(true);
+  }, [activePanel, messages.length, hmsActions]);
 
   if (!state?.authToken) {
     return (
@@ -342,15 +374,31 @@ export default function LiveSessionRoom() {
             {roomStartTime && <LiveTimer roomStartTime={roomStartTime} />}
           </div>
         </div>
-        <button
-          onClick={() => setShowParticipants((v) => !v)}
-          className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors shrink-0 ${
-            showParticipants ? 'bg-gold text-black' : 'bg-zinc-800 text-gray-300 hover:bg-zinc-750'
-          }`}
-        >
-          <Users size={13} />
-          {peers.length} {peers.length === 1 ? 'person' : 'people'}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setActivePanel((p) => (p === 'chat' ? null : 'chat'))}
+            className={`relative flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors ${
+              activePanel === 'chat' ? 'bg-gold text-black' : 'bg-zinc-800 text-gray-300 hover:bg-zinc-750'
+            }`}
+          >
+            <MessageSquare size={13} />
+            Chat
+            {activePanel !== 'chat' && unreadMessageCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {unreadMessageCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActivePanel((p) => (p === 'participants' ? null : 'participants'))}
+            className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors ${
+              activePanel === 'participants' ? 'bg-gold text-black' : 'bg-zinc-800 text-gray-300 hover:bg-zinc-750'
+            }`}
+          >
+            <Users size={13} />
+            {peers.length} {peers.length === 1 ? 'person' : 'people'}
+          </button>
+        </div>
       </header>
 
       <div className="relative flex-1 min-h-0 flex">
@@ -380,19 +428,82 @@ export default function LiveSessionRoom() {
           )}
         </main>
 
-        {showParticipants && (
+        {activePanel === 'participants' && (
           <aside className="w-64 shrink-0 border-l border-zinc-800 bg-zinc-925 flex flex-col">
             <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800">
               <p className="text-xs font-semibold text-gray-300">In this session ({peers.length})</p>
-              <button onClick={() => setShowParticipants(false)} className="text-gray-500 hover:text-gray-300">
+              <button onClick={() => setActivePanel(null)} className="text-gray-500 hover:text-gray-300">
                 <X size={14} />
               </button>
             </div>
             <ul className="flex-1 overflow-y-auto p-2 space-y-1">
               {peers.map((peer) => (
-                <ParticipantRow key={peer.id} peer={peer} />
+                <ParticipantRow key={peer.id} peer={peer} isHost={!!state.isHost} />
               ))}
             </ul>
+          </aside>
+        )}
+
+        {activePanel === 'chat' && (
+          <aside className="w-72 shrink-0 border-l border-zinc-800 bg-zinc-925 flex flex-col">
+            <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800">
+              <p className="text-xs font-semibold text-gray-300">Chat</p>
+              <button onClick={() => setActivePanel(null)} className="text-gray-500 hover:text-gray-300">
+                <X size={14} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+              {messages.length === 0 ? (
+                <p className="text-xs text-gray-500 text-center mt-6">
+                  No messages yet — say hi. Nothing here is saved once the session ends.
+                </p>
+              ) : (
+                messages.map((m) => {
+                  // The store's own HMSMessage only carries `sender` as a
+                  // peer id + `senderName`, not a full HMSPeer — comparing
+                  // against our own local peer's id is how "was this mine"
+                  // actually gets answered here.
+                  const isMine = m.sender === localPeer?.id;
+                  return (
+                    <div key={m.id} className={isMine ? 'text-right' : 'text-left'}>
+                      <p className="text-[10px] text-gray-500">
+                        {isMine ? 'You' : m.senderName ?? 'Someone'} ·{' '}
+                        {m.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                      <p
+                        className={`inline-block mt-0.5 px-2.5 py-1.5 rounded-lg text-xs max-w-[85%] break-words ${
+                          isMine ? 'bg-gold text-black' : 'bg-zinc-800 text-gray-200'
+                        }`}
+                      >
+                        {m.message}
+                      </p>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                sendChatMessage();
+              }}
+              className="flex items-center gap-2 p-2.5 border-t border-zinc-800"
+            >
+              <input
+                value={chatText}
+                onChange={(e) => setChatText(e.target.value)}
+                placeholder="Message everyone…"
+                maxLength={1000}
+                className="flex-1 bg-zinc-900 border border-zinc-750 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-gold/60"
+              />
+              <button
+                type="submit"
+                disabled={!chatText.trim()}
+                className="p-1.5 rounded-lg bg-gold text-black disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Send size={14} />
+              </button>
+            </form>
           </aside>
         )}
       </div>
@@ -433,11 +544,38 @@ export default function LiveSessionRoom() {
   );
 }
 
-function ParticipantRow({ peer }: { peer: HMSPeer }) {
+/**
+ * Host controls — mute and remove — only render for the host, and never on
+ * the host's own row. Kicking only disconnects the peer (the 100ms default);
+ * they can rejoin with a fresh link if the mentor lets them back in, so this
+ * needs no confirmation dialog and no backend bookkeeping.
+ */
+function ParticipantRow({ peer, isHost }: { peer: HMSPeer; isHost: boolean }) {
+  const hmsActions = useHMSActions();
+  const { showError } = useToast();
   const audioEnabled = useHMSStore(selectIsPeerAudioEnabled(peer.id));
   const videoEnabled = useHMSStore(selectIsPeerVideoEnabled(peer.id));
+  const showHostControls = isHost && !peer.isLocal;
+
+  const muteRemote = async () => {
+    if (!peer.audioTrack) return;
+    try {
+      await hmsActions.setRemoteTrackEnabled(peer.audioTrack, false);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : `Could not mute ${peer.name}`);
+    }
+  };
+
+  const kick = async () => {
+    try {
+      await hmsActions.removePeer(peer.id, 'Removed by the host');
+    } catch (err) {
+      showError(err instanceof Error ? err.message : `Could not remove ${peer.name}`);
+    }
+  };
+
   return (
-    <li className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-850">
+    <li className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-850 group">
       <div className="h-7 w-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[10px] font-semibold text-gray-300 shrink-0">
         {initials(peer.name)}
       </div>
@@ -447,6 +585,18 @@ function ParticipantRow({ peer }: { peer: HMSPeer }) {
       </span>
       {audioEnabled ? <Mic size={12} className="text-emerald-400 shrink-0" /> : <MicOff size={12} className="text-gray-600 shrink-0" />}
       {videoEnabled ? <Video size={12} className="text-emerald-400 shrink-0" /> : <VideoOff size={12} className="text-gray-600 shrink-0" />}
+      {showHostControls && (
+        <span className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          {audioEnabled && (
+            <button onClick={muteRemote} title={`Mute ${peer.name}`} className="p-1 rounded text-gray-500 hover:text-white hover:bg-zinc-700">
+              <VolumeX size={12} />
+            </button>
+          )}
+          <button onClick={kick} title={`Remove ${peer.name}`} className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-zinc-700">
+            <UserX size={12} />
+          </button>
+        </span>
+      )}
     </li>
   );
 }
