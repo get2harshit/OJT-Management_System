@@ -29,8 +29,10 @@ export interface TeamsForCohortPage {
 }
 
 interface GetTeamsForCohortParams {
-  track?: string;
-  batch?: string;
+  /** A single slug or several — several is an OR match, any listed track qualifies. */
+  track?: string | string[];
+  /** A single batch or several — several is an OR match, any listed batch qualifies. */
+  batch?: string | string[];
   search?: string;
   status?: 'pending' | 'allocated' | 'overridden' | 'published';
   page?: number;
@@ -53,8 +55,13 @@ export async function apiGetTeamsForCohortDetailed(
   params: GetTeamsForCohortParams = {}
 ): Promise<TeamsForCohortPage> {
   const query = new URLSearchParams();
-  if (params.track) query.set('track', params.track);
-  if (params.batch) query.set('batch', params.batch);
+  // append (not set) for the array case — a repeated key is how the backend
+  // tells an OR-list apart from one value; a single string still takes the
+  // plain set() path so existing single-select callers are untouched.
+  if (Array.isArray(params.track)) params.track.forEach((t) => query.append('track', t));
+  else if (params.track) query.set('track', params.track);
+  if (Array.isArray(params.batch)) params.batch.forEach((b) => query.append('batch', b));
+  else if (params.batch) query.set('batch', params.batch);
   if (params.search) query.set('search', params.search);
   if (params.status) query.set('status', params.status);
   if (params.page) query.set('page', String(params.page));

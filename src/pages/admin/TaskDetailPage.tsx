@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, CheckCircle2, Circle, Clock, ClipboardList, Eye, Loader2 } from 'lucide-react';
+import { ArrowLeft, Calendar, CheckCircle2, Circle, Clock, ClipboardList, Eye, Loader2, Table2 } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import DataTable from '../../components/DataTable';
 import Button from '../../components/Button';
@@ -104,13 +104,22 @@ export default function TaskDetailPage({ onViewSubmission }: Props) {
               {task.description && <p className="text-sm text-gray-400 mt-1 max-w-2xl">{task.description}</p>}
             </div>
             {isWeeklyReport && (
-              <Button
-                variant="secondary"
-                leftIcon={<ClipboardList size={15} />}
-                onClick={() => navigate(`/admin/dashboard/tasks/${task.id}/weekly-report`)}
-              >
-                View Weekly Reports
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  leftIcon={<ClipboardList size={15} />}
+                  onClick={() => navigate(`/admin/dashboard/tasks/${task.id}/weekly-report`)}
+                >
+                  View Weekly Reports
+                </Button>
+                <Button
+                  variant="secondary"
+                  leftIcon={<Table2 size={15} />}
+                  onClick={() => navigate(`/admin/dashboard/tasks/${task.id}/weekly-report?view=collated`)}
+                >
+                  Collated
+                </Button>
+              </div>
             )}
           </div>
         )}

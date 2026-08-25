@@ -1,13 +1,46 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, ChevronDown, ChevronRight, Loader2, Search } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Calendar, ChevronDown, ChevronRight, Download, Loader2, Rows3, Search, Table2 } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import Button from '../../components/Button';
 import Select from '../../components/Select';
-import WeeklyReportGrid, { WeeklyReportSummaryStrip } from '../../components/WeeklyReportGrid';
+import WeeklyReportGrid, {
+  PROJECT_STATUS_OPTIONS,
+  TEAM_HEALTH_OPTIONS,
+  WeeklyReportSummaryStrip,
+} from '../../components/WeeklyReportGrid';
 import { apiApproveTask, apiGetAllWeeklyReports, apiRequestResubmit } from '../../lib/api/tasks';
-import type { ApiAllWeeklyReports, ApiAssignmentStatus } from '../../lib/api/tasks';
+import type { ApiAllWeeklyReports, ApiAssignmentStatus, ApiWeeklyReportSummary } from '../../lib/api/tasks';
+import { exportToCSV } from '../../lib/csvExport';
 import { useToast } from '../../toast';
+
+const PROJECT_STATUS_LABEL = Object.fromEntries(PROJECT_STATUS_OPTIONS.map((o) => [o.value, o.label]));
+const TEAM_HEALTH_LABEL = Object.fromEntries(TEAM_HEALTH_OPTIONS.map((o) => [o.value, o.label]));
+
+// Every mentor's own strip is scoped to just their teams — combining several
+// means adding the counts together, not re-deriving them, since the server
+// is still the source of truth for each one. A team belongs to exactly one
+// mentor's current roster, so nothing here can double-count.
+function aggregateSummaries(summaries: ApiWeeklyReportSummary[]): ApiWeeklyReportSummary {
+  const weeksByNumber = new Map<number, { week: number; label: string; onTrack: number; total: number }>();
+  for (const s of summaries) {
+    for (const w of s.weeks) {
+      const existing = weeksByNumber.get(w.week);
+      if (existing) {
+        existing.onTrack += w.onTrack;
+        existing.total += w.total;
+      } else {
+        weeksByNumber.set(w.week, { ...w });
+      }
+    }
+  }
+  return {
+    teamCount: summaries.reduce((sum, s) => sum + s.teamCount, 0),
+    studentCount: summaries.reduce((sum, s) => sum + s.studentCount, 0),
+    weeks: Array.from(weeksByNumber.values()).sort((a, b) => a.week - b.week),
+    noShowStudents: summaries.flatMap((s) => s.noShowStudents),
+  };
+}
 
 const STATUS_LABEL: Record<ApiAssignmentStatus, string> = {
   pending: 'Not started',
@@ -44,6 +77,19 @@ export default function WeeklyReportOverview() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Kept in the URL rather than plain state so the Collated button on the
+  // task page can land directly on that view, and the toggle itself is
+  // shareable/back-button-safe.
+  const view = searchParams.get('view') === 'collated' ? 'collated' : 'grouped';
+  const setView = (next: 'grouped' | 'collated') => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      if (next === 'collated') params.set('view', 'collated');
+      else params.delete('view');
+      return params;
+    });
+  };
 
   const [data, setData] = useState<ApiAllWeeklyReports | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,6 +140,63 @@ export default function WeeklyReportOverview() {
     () => (data?.mentors ?? []).filter((m) => m.status === 'review' || m.status === 'approved').length,
     [data]
   );
+
+  // Every mentor's teams in one table, read-only — the same search/status
+  // filters as the grouped view apply here too, so switching views never
+  // changes what's in scope, only how it's laid out.
+  const collatedTeams = useMemo(
+    () =>
+      [...mentors]
+        .sort((a, b) => a.mentorName.localeCompare(b.mentorName))
+        .flatMap((mentor) => mentor.teams.map((team) => ({ ...team, mentorName: mentor.mentorName }))),
+    [mentors]
+  );
+
+  const collatedSummary = useMemo(() => aggregateSummaries(mentors.map((m) => m.summary)), [mentors]);
+
+  // One row per student, team/mentor fields repeated on every member's row —
+  // a CSV has no equivalent to the grid's rowSpan, and repeating is the
+  // convention every spreadsheet tool expects for this shape of data.
+  const handleExportCsv = () => {
+    const rows = collatedTeams.flatMap((team) => {
+      const base = {
+        Mentor: team.mentorName ?? '',
+        Team: team.teamName,
+        Track: team.trackName,
+        Project: team.projectTitle ?? '',
+        'Project Status': team.projectStatus ? PROJECT_STATUS_LABEL[team.projectStatus] : '',
+        'Tech Stack': team.techStack.join(', '),
+        'Weekly Feedback': team.weeklyFeedback ?? '',
+        'Team Health': team.teamHealth ? TEAM_HEALTH_LABEL[team.teamHealth] : '',
+      };
+      if (team.students.length === 0) {
+        return [{ ...base, Student: '', 'Registration Number': '', 'Tech Skill': '', Communication: '', 'Overall OJT': '' }];
+      }
+      return team.students.map((student) => ({
+        ...base,
+        Student: student.name,
+        'Registration Number': student.registrationNumber ?? '',
+        'Tech Skill': student.techSkill ?? '',
+        Communication: student.communication ?? '',
+        'Overall OJT': student.overallPerformance ?? '',
+      }));
+    });
+    exportToCSV(`${data?.task.title ?? 'weekly-report'} - ${data?.task.week ?? ''} - collated`, rows, [
+      { key: 'Mentor', header: 'Mentor' },
+      { key: 'Team', header: 'Team' },
+      { key: 'Student', header: 'Student' },
+      { key: 'Registration Number', header: 'Registration Number' },
+      { key: 'Track', header: 'Track' },
+      { key: 'Project', header: 'Project' },
+      { key: 'Project Status', header: 'Project Status' },
+      { key: 'Tech Stack', header: 'Tech Stack' },
+      { key: 'Tech Skill', header: 'Tech Skill' },
+      { key: 'Communication', header: 'Communication' },
+      { key: 'Overall OJT', header: 'Overall OJT' },
+      { key: 'Weekly Feedback', header: 'Weekly Feedback' },
+      { key: 'Team Health', header: 'Team Health' },
+    ]);
+  };
 
   const handleApprove = async (assignmentId: string) => {
     if (!taskId) return;
@@ -181,8 +284,6 @@ export default function WeeklyReportOverview() {
         </div>
       </div>
 
-      <WeeklyReportSummaryStrip summary={data.summary} />
-
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -200,9 +301,39 @@ export default function WeeklyReportOverview() {
           variant="filter"
           className="w-44"
         />
+        <div className="flex items-center gap-1 bg-zinc-850 border border-zinc-750 rounded-lg p-1 ml-auto">
+          <button
+            type="button"
+            onClick={() => setView('grouped')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              view === 'grouped' ? 'bg-gold/15 text-gold' : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <Rows3 size={13} /> Grouped
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('collated')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              view === 'collated' ? 'bg-gold/15 text-gold' : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <Table2 size={13} /> Collated
+          </button>
+        </div>
+        {view === 'collated' && (
+          <Button variant="secondary" size="sm" leftIcon={<Download size={14} />} onClick={handleExportCsv}>
+            Export CSV
+          </Button>
+        )}
       </div>
 
-      {mentors.length === 0 ? (
+      {view === 'collated' ? (
+        <div className="space-y-3">
+          <WeeklyReportSummaryStrip summary={collatedSummary} />
+          <WeeklyReportGrid teams={collatedTeams} readOnly showMentorColumn />
+        </div>
+      ) : mentors.length === 0 ? (
         <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-8 text-center">
           <p className="text-sm text-gray-400">
             {data.mentors.length === 0 ? 'This report has not been sent to any mentor.' : 'No mentor matches those filters.'}
@@ -246,6 +377,7 @@ export default function WeeklyReportOverview() {
 
                 {isOpen && (
                   <div className="border-t border-zinc-750 p-3 space-y-3">
+                    <WeeklyReportSummaryStrip summary={mentor.summary} />
                     <WeeklyReportGrid teams={mentor.teams} readOnly />
 
                     {/* Acting on the report belongs here, next to the grid

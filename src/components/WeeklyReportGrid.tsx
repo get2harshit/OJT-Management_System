@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ChevronDown, X } from 'lucide-react';
+import { X } from 'lucide-react';
+import Select from './Select';
 import type {
   ApiNoShowStudent,
   ApiReportProjectStatus,
@@ -8,13 +9,16 @@ import type {
   ApiWeeklyReportTeam,
 } from '../lib/api/tasks';
 
-const PROJECT_STATUS_OPTIONS: { value: ApiReportProjectStatus; label: string }[] = [
+// Exported so the collated CSV export (WeeklyReportOverview) can turn a raw
+// status code back into the same label shown on screen, instead of a second
+// copy of this list drifting out of step with it.
+export const PROJECT_STATUS_OPTIONS: { value: ApiReportProjectStatus; label: string }[] = [
   { value: 'on_track', label: 'On track' },
   { value: 'delayed', label: 'Delayed' },
   { value: 'ahead', label: 'Ahead' },
 ];
 
-const TEAM_HEALTH_OPTIONS: { value: ApiReportTeamHealth; label: string }[] = [
+export const TEAM_HEALTH_OPTIONS: { value: ApiReportTeamHealth; label: string }[] = [
   { value: 'positive', label: 'Positive' },
   { value: 'neutral', label: 'Neutral' },
   { value: 'negative', label: 'Negative' },
@@ -115,13 +119,15 @@ function NoShowNamesCard({ students }: { students: ApiNoShowStudent[] }) {
   );
 }
 
-/**
- * A bare <select> rather than the app's Select component, on purpose: this
- * grid puts one control in every cell of a wide, scrollable table, and
- * Select renders its menu through a portal anchored to the trigger — which
- * detaches from the cell the moment the table scrolls sideways underneath
- * an open menu. A native select stays with its cell.
- */
+// A thin wrapper around the app's own Select, typed the way this grid's
+// callers already expect: a nullable value, with "" standing for "nothing
+// chosen" at the Select boundary. This used to render a bare native
+// <select> instead — out of a worry that Select's portal-rendered menu
+// would detach from its trigger the moment this wide table scrolled
+// sideways underneath an open one. Select already re-anchors itself on
+// scroll (see useAnchoredPosition), so that no longer applies, and a native
+// select's own dropdown list ignores app CSS entirely — it renders with
+// whatever the OS looks like, not the app's theme.
 function CellSelect<T extends string>({
   value,
   onChange,
@@ -129,7 +135,7 @@ function CellSelect<T extends string>({
   disabled,
   placeholder,
   tone,
-  className = '',
+  className,
 }: {
   value: T | null;
   onChange: (value: T | null) => void;
@@ -140,24 +146,15 @@ function CellSelect<T extends string>({
   className?: string;
 }) {
   return (
-    <div className="relative">
-      <select
-        value={value ?? ''}
-        disabled={disabled}
-        onChange={(e) => onChange((e.target.value === '' ? null : (e.target.value as T)))}
-        className={`w-full appearance-none bg-zinc-900 border border-zinc-750 rounded-lg pl-2.5 pr-7 py-1.5 text-xs focus:outline-none focus:border-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-          value ? tone ?? 'text-white' : 'text-gray-500'
-        } ${className}`}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value} className="text-white bg-zinc-900">
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
-    </div>
+    <Select
+      value={value ?? ''}
+      onChange={(next) => onChange(next === '' ? null : (next as T))}
+      options={options}
+      placeholder={placeholder}
+      disabled={disabled}
+      tone={tone}
+      className={className}
+    />
   );
 }
 
@@ -186,10 +183,13 @@ export interface WeeklyReportGridChange {
 export default function WeeklyReportGrid({
   teams,
   readOnly = false,
+  showMentorColumn = false,
   onChange,
 }: {
   teams: ApiWeeklyReportTeam[];
   readOnly?: boolean;
+  /** The admin's collated view mixes every mentor's teams into one table — this names whose row it is. */
+  showMentorColumn?: boolean;
   onChange?: (change: WeeklyReportGridChange) => void;
 }) {
   if (teams.length === 0) {
@@ -209,9 +209,10 @@ export default function WeeklyReportGrid({
           Scrolling it inside its own container keeps the page from
           scrolling sideways as a whole. */}
       <div className="overflow-x-auto scrollbar-thin">
-        <table className="w-full min-w-[1440px] border-collapse text-sm">
+        <table className={`w-full border-collapse text-sm ${showMentorColumn ? 'min-w-[1580px]' : 'min-w-[1440px]'}`}>
           <thead>
             <tr className="bg-zinc-900 border-b border-zinc-750">
+              {showMentorColumn && <Th className="w-[140px]">Mentor</Th>}
               <Th className="w-[140px]">Team</Th>
               <Th className="w-[180px]">Student</Th>
               <Th className="w-[120px]">Track</Th>
@@ -242,6 +243,11 @@ export default function WeeklyReportGrid({
                 >
                   {studentIndex === 0 && (
                     <>
+                      {showMentorColumn && (
+                        <Td rowSpan={rows.length} className="align-top text-gray-400">
+                          {team.mentorName}
+                        </Td>
+                      )}
                       <Td rowSpan={rows.length} className="align-top font-medium text-white">
                         {team.teamName}
                         {team.isFormerTeam && (
@@ -517,7 +523,6 @@ function RatingCell({
         value={value === null ? null : String(value)}
         options={RATING_VALUES.map((n) => ({ value: String(n), label: String(n) }))}
         placeholder="&mdash;"
-        className="text-center pl-2 pr-6"
         onChange={(next) => onChange(next === null ? null : Number(next))}
       />
     </Td>

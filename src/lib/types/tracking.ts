@@ -90,6 +90,9 @@ export interface PrdSubmission {
   studentId?: string;
   primaryMentorId?: string;
   secondaryMentorId?: string;
+  // Also only on the "review everything" list — the mentor's display name,
+  // denormalized so an export/review table can show it without a second lookup.
+  mentorName?: string;
   cohortId?: string;
   // Also only present on the "review everything" list — the task's title is
   // what identifies a submission now (tasks no longer declare a document
@@ -105,9 +108,18 @@ export interface PrdSubmission {
   // belongs to the shared team scope.
   submitterName?: string;
   isTeam?: boolean;
+  // The team this submission was made under. teamName is for display; this
+  // is the stable identity to group/dedupe a team's shared work by, since
+  // team names carry no uniqueness constraint.
+  teamId?: string;
   // The team's name/number (e.g. "G1") for a team submission — shown to the
   // student and the assigned mentor.
   teamName?: string;
+  // A real, clickable signed download link for a document-type submission —
+  // only present when the caller opted into includeDownloadUrls (the CSV
+  // export). Valid for 7 days from when the export was generated, unlike
+  // documentLink (a raw gs:// URI, never directly openable).
+  downloadUrl?: string;
 }
 
 export interface StudentAllocation {
