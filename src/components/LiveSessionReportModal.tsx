@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle, Clock, Users, XCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, Users, XCircle } from 'lucide-react';
 import Modal from './Modal';
 import SpinnerSquare from './SpinnerSquare';
 import {
@@ -89,7 +89,17 @@ export default function LiveSessionReportModal({ sessionId, sessionTitle, open, 
           <SpinnerSquare size={32} />
         </div>
       ) : errorMessage ? (
-        <p className="text-sm text-gray-400 py-6 text-center">{errorMessage}</p>
+        // An unavailable report is not a broken screen: this data is derived
+        // from the live room, and marking attendance by hand never needed it.
+        // Say that here, so nobody sits waiting for a retry to start working.
+        <div className="py-8 px-4 flex flex-col items-center text-center gap-2">
+          <AlertCircle size={24} className="text-amber-400" />
+          <p className="text-sm text-gray-300 max-w-md">{errorMessage}</p>
+          <p className="text-xs text-gray-500 max-w-md">
+            This report is derived from the live room’s own join/leave logs. Attendance for this
+            session can still be marked by hand from the Attendance page — nothing here blocks it.
+          </p>
+        </div>
       ) : report ? (
         <div className="space-y-5">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
