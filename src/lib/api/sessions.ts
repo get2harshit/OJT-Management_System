@@ -180,6 +180,45 @@ export async function apiGetMySessionStats(cohortId?: string): Promise<ApiMentor
   return res.data;
 }
 
+/**
+ * What a mentor actually delivered — no rate, no amount.
+ *
+ * Separate from payouts on purpose: a mentor who has never had a rate set
+ * generates no payout row at all, and their delivered work must still be
+ * visible to an admin.
+ */
+export interface ApiMentorDeliveryStats {
+  sessionsDelivered: number;
+  sessionsUpcoming: number;
+  sessionsCancelled: number;
+  deliveredMinutes: number;
+  teamsMentored: number;
+  studentsMentored: number;
+}
+
+export interface MentorDeliveryFilter {
+  cohortId?: string;
+  /** YYYY-MM-DD, both inclusive. */
+  from?: string;
+  to?: string;
+}
+
+/** One request for a whole roster page, keyed by mentor id — never a call per mentor. */
+export async function apiGetMentorDeliveryStats(
+  mentorIds: string[],
+  filter: MentorDeliveryFilter = {}
+): Promise<Record<string, ApiMentorDeliveryStats>> {
+  if (mentorIds.length === 0) return {};
+  const query = new URLSearchParams({ mentorIds: mentorIds.join(',') });
+  if (filter.cohortId) query.set('cohortId', filter.cohortId);
+  if (filter.from) query.set('from', filter.from);
+  if (filter.to) query.set('to', filter.to);
+  const res = await apiFetch<{ data: Record<string, ApiMentorDeliveryStats> }>(
+    `/api/v1/mentors/delivery-stats?${query.toString()}`
+  );
+  return res.data;
+}
+
 export interface RescheduleSessionBody {
   scheduledDate: string;
   startTime: string;
