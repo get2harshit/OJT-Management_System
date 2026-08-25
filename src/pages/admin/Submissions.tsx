@@ -363,6 +363,9 @@ export default function AdminSubmissions({
   // deep-link (jump from Tasks) can land on a submission this would
   // otherwise hide, and it should still open correctly.
   const visibleSubmissions = studentSubmissions.filter((r) => !!r.isTeam === (rosterMode === 'team'));
+  // What the mode split is holding back — drives the empty state's "it's
+  // over in the other mode" hint instead of implying there's nothing.
+  const hiddenByModeCount = studentSubmissions.length - visibleSubmissions.length;
   const taskFilterOptions = useMemo(() => {
     const seen = new Map<string, string>();
     for (const r of visibleSubmissions) {
@@ -762,9 +765,22 @@ export default function AdminSubmissions({
                 <Loader2 size={22} className="animate-spin text-gray-500" />
               </div>
             ) : studentRows.length === 0 ? (
-              <p className="text-gray-500 text-sm text-center py-10">
-                {rosterMode === 'team' ? 'No team submissions from this team yet.' : 'No individual submissions from this student yet.'}
-              </p>
+              <div className="text-center py-10 space-y-1">
+                <p className="text-gray-500 text-sm">
+                  {rosterMode === 'team' ? 'No team submissions from this team yet.' : 'No individual submissions from this student yet.'}
+                </p>
+                {/* Work does exist, it just belongs to the other mode — say so
+                    rather than leaving "nothing here" to imply there's nothing
+                    at all. Reachable from the Tasks deep-link, which lands in
+                    student mode and can focus a team submission. */}
+                {hiddenByModeCount > 0 && (
+                  <p className="text-gray-600 text-xs">
+                    {rosterMode === 'team'
+                      ? `${hiddenByModeCount} individual ${hiddenByModeCount === 1 ? 'submission' : 'submissions'} from its members — switch to By Student to see ${hiddenByModeCount === 1 ? 'it' : 'them'}.`
+                      : `${hiddenByModeCount} team ${hiddenByModeCount === 1 ? 'submission' : 'submissions'} — switch to By Team to see ${hiddenByModeCount === 1 ? 'it' : 'them'}.`}
+                  </p>
+                )}
+              </div>
             ) : (
               <div className="space-y-2">
                 {studentRows.map((row) => {
