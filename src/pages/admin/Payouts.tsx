@@ -29,6 +29,7 @@ import {
   type ApiRateType,
 } from '../../lib/api';
 import { getCohortLabel } from '../../lib/cohortLabel';
+import { formatDuration } from '../../lib/utils';
 import { useToast } from '../../toast';
 
 const STATUS_STYLES: Record<ApiPayoutStatus, string> = {
@@ -54,13 +55,6 @@ function formatSessionWhen(session: ApiSessionPayout['session']): string {
   const date = new Date(session.scheduled_date).toLocaleDateString();
   const start = new Date(session.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   return `${date}, ${start}`;
-}
-
-function formatDuration(session: ApiSessionPayout['session']): string {
-  const minutes = session.actual_duration_minutes ?? Math.round((new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 60_000);
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m}m`;
 }
 
 const RATE_TYPE_OPTIONS = (Object.keys(RATE_TYPE_LABELS) as ApiRateType[]).map((value) => ({

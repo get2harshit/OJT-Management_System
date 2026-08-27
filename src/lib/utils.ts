@@ -23,6 +23,17 @@ export const formatDateDisplay = (dateStr: string): string => {
   return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' });
 };
 
+export const formatDuration = (session: {
+  actual_duration_minutes?: number | null;
+  start_time: string;
+  end_time: string;
+}): string => {
+  const minutes = session.actual_duration_minutes ?? Math.round((new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return hours > 0 ? `${hours}h${remainingMinutes > 0 ? ` ${remainingMinutes}m` : ''}` : `${remainingMinutes}m`;
+};
+
 /**
  * Calculates a user-friendly duration string between two dates.
  * E.g., "3 Months", "1 Month, 15 Days", "14 Days"
