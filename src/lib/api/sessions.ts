@@ -79,6 +79,8 @@ export interface ApiSession {
   source_request_id: string | null;
   mentor_hourly_rate_snapshot: string | null;
   mentor_rate_currency_snapshot: string | null;
+  /** Ties together sessions booked in one recurring (one-week) submission. Null for an ordinary single-session booking. */
+  recurrence_group_id: string | null;
   created_at: string;
   updated_at: string;
   mentor: ApiSessionMentorRef;
@@ -141,6 +143,69 @@ export interface CreateSessionBody {
 
 export async function apiCreateSession(body: CreateSessionBody): Promise<ApiSession> {
   const res = await apiFetch<{ data: ApiSession }>('/api/v1/sessions', { method: 'POST', body: JSON.stringify(body) });
+  invalidateCached('sessions');
+  return res.data;
+}
+
+export interface RecurringSessionOccurrence {
+  scheduledDate: string; // YYYY-MM-DD
+  startTime: string; // ISO datetime
+  endTime: string; // ISO datetime
+}
+
+export interface CreateRecurringSessionsBody {
+  cohortId: string;
+  trackId?: string;
+  sessionType?: ApiSessionType;
+  title?: string;
+  locationOrLink?: string;
+  mentorId: string;
+  teamIds: string[];
+  /** One per selected weekday, at most 7, all within the same 7-day week. */
+  occurrences: RecurringSessionOccurrence[];
+}
+
+export interface RecurringSessionSkip {
+  scheduledDate: string;
+  startTime: string;
+  endTime: string;
+  reason: string;
+}
+
+export interface CreateRecurringSessionsResult {
+  recurrenceGroupId: string;
+  created: ApiSession[];
+  skipped: RecurringSessionSkip[];
+}
+
+/**
+ * Books several occurrences in one submission — a day that conflicts is
+ * skipped, not fatal to the rest of the week. Inspect `skipped` to tell the
+ * caller which days didn't make it and why.
+ */
+export async function apiCreateRecurringSessions(body: CreateRecurringSessionsBody): Promise<CreateRecurringSessionsResult> {
+  const res = await apiFetch<{ data: CreateRecurringSessionsResult }>('/api/v1/sessions/recurring', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  invalidateCached('sessions');
+  return res.data;
+}
+
+export interface CancelRecurringRemainingResult {
+  cancelled: ApiSession[];
+  skipped: { sessionId: string; reason: string }[];
+}
+
+/** Cancels every still-pending (scheduled/rescheduled) session left in a recurring booking's batch. */
+export async function apiCancelRecurringRemaining(
+  recurrenceGroupId: string,
+  reason: string
+): Promise<CancelRecurringRemainingResult> {
+  const res = await apiFetch<{ data: CancelRecurringRemainingResult }>(
+    `/api/v1/sessions/recurring/${recurrenceGroupId}/cancel-remaining`,
+    { method: 'POST', body: JSON.stringify({ reason }) }
+  );
   invalidateCached('sessions');
   return res.data;
 }

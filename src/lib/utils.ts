@@ -205,3 +205,37 @@ export const downloadCsv = (fileName: string, headers: string[], rows: (string |
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 };
+
+/**
+ * One calendar date (local, "YYYY-MM-DD") per requested weekday, each falling
+ * within the 7-day window that starts at `startDateLocal` — inclusive of it
+ * and the 6 days after. Every weekday (0=Sun..6=Sat) appears exactly once in
+ * any 7 consecutive days, so this always returns exactly one date per
+ * weekday asked for, sorted ascending.
+ *
+ * Stays entirely in local-date arithmetic (`new Date("YYYY-MM-DDT00:00:00")`
+ * parses as local midnight, not UTC) so the weekday a user sees checked on
+ * screen is the weekday the resulting session actually lands on — the same
+ * discipline the single-session form already relies on by reading
+ * datetime-local inputs as local time rather than doing its own UTC math.
+ */
+export const computeWeekOccurrenceDates = (startDateLocal: string, weekdays: number[]): string[] => {
+  const anchor = new Date(`${startDateLocal}T00:00:00`);
+  const anchorWeekday = anchor.getDay();
+
+  const dateKey = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  return weekdays
+    .map((weekday) => {
+      const offsetDays = (weekday - anchorWeekday + 7) % 7;
+      const occurrence = new Date(anchor);
+      occurrence.setDate(occurrence.getDate() + offsetDays);
+      return dateKey(occurrence);
+    })
+    .sort();
+};
