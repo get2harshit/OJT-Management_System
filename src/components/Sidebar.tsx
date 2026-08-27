@@ -9,7 +9,6 @@ import {
   CheckSquare,
   LogOut,
   Upload,
-  CreditCard,
   Briefcase,
   ClipboardCheck,
   ShieldCheck,
@@ -52,6 +51,7 @@ const adminTabs = [
   // section — so they are not duplicated here as a second door in. Same
   // move Sessions/Attendance/Allocations already made.
   { id: 'credits', label: 'Cloud Credits', icon: Cloud },
+  { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   // Cross-cohort admin queues — deliberately not nested under OJT Setup like
   // Sessions/Attendance were, since "all cohorts" is a real, load-bearing
   // view for both (a company-wide pending queue), not a state that should be
@@ -90,7 +90,6 @@ const studentTabs = [
   { id: 'projects', label: 'Select Project', icon: Briefcase },
   { id: 'tasks', label: 'My Tasks', icon: CheckSquare },
   { id: 'submissions', label: 'My Submissions', icon: Upload },
-  { id: 'credits', label: 'Cloud Credits', icon: CreditCard },
   { id: 'sessions', label: 'Sessions', icon: CalendarClock },
   { id: 'doubt-requests', label: 'Ask for a Session', icon: HelpCircle },
   { id: 'resources', label: 'Resources', icon: Share2 },

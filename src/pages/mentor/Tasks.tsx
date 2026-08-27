@@ -149,7 +149,11 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   // track is picked, every published team/student still shows, same as
   // before.
   const trackFilteredTeams = form.tracks.length > 0
-    ? publishedTeams.filter(team => form.tracks.includes(team.track))
+    ? publishedTeams.filter(team =>
+        form.tracks.includes(team.track) ||
+        form.teamIds.includes(team.id) ||
+        team.members.some(member => form.assignees.includes(member.studentId))
+      )
     : publishedTeams;
 
   // Only the tracks this mentor actually has a team in — not every track in
@@ -527,7 +531,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
             <Select
               isMulti
               value={form.tracks}
-              onChange={v => setForm({ ...form, tracks: v as string[], teamIds: [], assignees: [] })}
+              onChange={v => setForm({ ...form, tracks: v as string[] })}
               placeholder="Select track(s)..."
               options={myTrackOptions}
               className="w-full"
