@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import PageLayout from '../../../components/PageLayout';
+import OjtWeekBadge from '../../../components/OjtWeekBadge';
 import { apiGetCohort, apiGetCohortTabCounts, type ApiCohortTabCounts } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 
@@ -22,6 +23,8 @@ const SECTIONS: { path: string; label: string; external?: boolean; countKey?: ke
   { path: 'projects', label: 'Projects', countKey: 'projects' },
   { path: 'teams', label: 'Teams & Roster', countKey: 'teams' },
   { path: 'allocations', label: 'Allocations', countKey: 'allocations' },
+  { path: 'tasks', label: 'Tasks' },
+  { path: 'submissions', label: 'Submissions' },
   { path: 'sessions', label: 'Sessions', countKey: 'sessions' },
   { path: 'session-requests', label: 'Session Requests', external: true, countKey: 'sessionRequests' },
   { path: 'attendance', label: 'Attendance' },
@@ -47,13 +50,20 @@ export default function CohortDetailLayout() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
   const [cohortLabel, setCohortLabel] = useState('');
+  const [cohortDates, setCohortDates] = useState<{ startDate: string; endDate: string } | null>(null);
   const [tabCounts, setTabCounts] = useState<ApiCohortTabCounts | null>(null);
 
   useEffect(() => {
     if (!cohortId) return;
     apiGetCohort(cohortId)
-      .then((cohort) => setCohortLabel(getCohortLabel(cohort)))
-      .catch(() => setCohortLabel(''));
+      .then((cohort) => {
+        setCohortLabel(getCohortLabel(cohort));
+        setCohortDates({ startDate: cohort.startDate, endDate: cohort.endDate });
+      })
+      .catch(() => {
+        setCohortLabel('');
+        setCohortDates(null);
+      });
     apiGetCohortTabCounts(cohortId)
       .then(setTabCounts)
       .catch(() => setTabCounts(null));
@@ -71,6 +81,7 @@ export default function CohortDetailLayout() {
             <ArrowLeft size={18} />
           </button>
           <h1 className="text-base font-semibold text-white truncate">{cohortLabel || 'Loading…'}</h1>
+          <OjtWeekBadge startDate={cohortDates?.startDate} endDate={cohortDates?.endDate} />
         </div>
 
         <nav className="flex items-center gap-1 overflow-x-auto scrollbar-thin border-b border-zinc-750">

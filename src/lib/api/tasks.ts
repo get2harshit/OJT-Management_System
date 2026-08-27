@@ -101,7 +101,12 @@ export interface ApiTask {
   title: string;
   description: string;
   week: string;
-  track: string;
+  // A task now carries a set of tracks — `tracks` is the real field.
+  // `track` is transitional (first of `tracks`, or null) — kept only so a
+  // not-yet-redeployed page reading the old single-value shape doesn't
+  // break during the gap between a backend and frontend deploy.
+  tracks: string[];
+  track?: string | null;
   start_date?: string | null;
   deadline: string;
   target_role: 'student' | 'mentor' | 'batch_manager';
@@ -135,10 +140,13 @@ export interface ApiTask {
 }
 
 export type ApiTaskType = 'prd' | 'db_schema' | 'hld' | 'lld' | 'api_contract' | 'others';
-export type ApiTaskCategory = 'document_submission' | 'general' | 'link_submission';
+// 'weekly_report' is mentor-only and admin-only (backend enforces both) —
+// it makes the mentor's task page render the weekly report grid instead of
+// a submit box. See ojt_mentor_weekly_reports.
+export type ApiTaskCategory = 'document_submission' | 'general' | 'link_submission' | 'weekly_report';
 export type ApiTaskAssignMode = 'team' | 'individual';
 
-// Backend requires week/track/start_date/deadline/target_role/category/
+// Backend requires week/tracks/start_date/deadline/target_role/category/
 // assign_mode unconditionally now (only `title` used to be required) — see
 // createTaskSchema in task.routes.ts. task_type is no longer set at
 // creation — the task's title already conveys what deliverable is expected,
@@ -148,7 +156,7 @@ export interface CreateTaskPayload {
   title: string;
   description?: string;
   week: string; // e.g. "Week 1"
-  track: string; // e.g. "product_development" (will be mapped automatically)
+  tracks: string[]; // e.g. ["product_development", "gen_ai"] (slugs, mapped automatically)
   start_date: string; // ISO datetime string, must be before deadline
   deadline: string; // ISO datetime string
   target_role: 'student' | 'mentor' | 'batch_manager';
@@ -159,21 +167,31 @@ export interface CreateTaskPayload {
   assignees?: string[];
   // Required by the backend — every task belongs to exactly one cohort.
   cohort_id: string;
-  // Admin-only, mentor-target-only (backend enforces both) — omit entirely
-  // for a plain task with neither structure.
-  checklist_items?: { label: string }[];
-  qna_questions?: { question: string }[];
+  // checklist_items/qna_questions used to be settable here. A mentor task
+  // is now created with category: 'weekly_report' instead, and the answers
+  // live in their own tables rather than a JSON blob. The backend no longer
+  // accepts either field on create.
 }
 
 // Backend's PUT /tasks/:id only persists these fields (see updateTaskSchema in
-// task.routes.ts and TaskService.updateTask) — reassigning assignees/
-// targetRole/batch isn't supported on update, only at creation time.
+// task.routes.ts and TaskService.updateTask) — reassigning target_role/batch
+// isn't supported on update; assignees are added/removed via the dedicated
+// apiAddTaskAssignees/apiRemoveTaskAssignment endpoints instead.
 export interface UpdateTaskPayload {
   title?: string;
   description?: string;
   week?: string;
-  track?: string;
+  tracks?: string[];
   deadline?: string;
+}
+
+// Shared shape for a batch mutation that can partially fail — one bad id
+// (not yet published, already assigned, wrong status, out of quota) is
+// reported per-item instead of failing the whole request.
+export interface ApiBatchSkip {
+  assigneeId?: string;
+  assignmentId?: string;
+  reason: string;
 }
 
 export interface ApiTaskPagination {
@@ -207,13 +225,9 @@ export interface ApiTaskListFilter {
 }
 
 export async function apiCreateTask(payload: CreateTaskPayload): Promise<{ success: boolean; message: string; data: ApiTask }> {
-  const body: Record<string, unknown> = { ...payload } as Record<string, unknown>;
-  if (payload.track) {
-    body.track = payload.track;
-  }
   const res = await apiFetch<{ success: boolean; message: string; data: ApiTask }>('/api/v1/tasks', {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
   invalidateCached('tasks:list');
   return res;
@@ -242,33 +256,6 @@ export async function apiListTasks(filter: ApiTaskListFilter = {}): Promise<{ su
   });
 }
 
-export interface ApiAssigneeProgressTask {
-  taskId: string;
-  taskTitle: string;
-  week: string | null;
-  status: ApiAssignmentStatus;
-  deadline: string | null;
-}
-
-export interface ApiAssigneeProgress {
-  id: string;
-  name: string | null;
-  role: string;
-  tasks: ApiAssigneeProgressTask[];
-}
-
-// One row per assignee with every task assigned to them in the cohort —
-// computed server-side so the Progress Board doesn't need to pull every
-// task's full record (description, category, statusHistory, etc.) via
-// apiListTasks({ limit: 1000 }) just to throw most of it away client-side.
-export async function apiGetAssigneeProgress(cohortId: string): Promise<ApiAssigneeProgress[]> {
-  const res = await apiFetch<{ success: boolean; data: ApiAssigneeProgress[] }>(
-    `/api/v1/tasks/assignee-progress?cohort_id=${cohortId}`,
-    { method: 'GET' }
-  );
-  return res.data;
-}
-
 export async function apiGetTask(id: string): Promise<{ success: boolean; data: ApiTask }> {
   return cachedFetch(`tasks:get:${id}`, TASKS_TTL, () =>
     apiFetch<{ success: boolean; data: ApiTask }>(`/api/v1/tasks/${id}`, { method: 'GET' })
@@ -276,16 +263,37 @@ export async function apiGetTask(id: string): Promise<{ success: boolean; data: 
 }
 
 export async function apiUpdateTask(id: string, payload: UpdateTaskPayload): Promise<{ success: boolean; message: string; data: ApiTask }> {
-  const body: Record<string, unknown> = { ...payload } as Record<string, unknown>;
-  if (payload.track) {
-    body.track = payload.track;
-  }
   const res = await apiFetch<{ success: boolean; message: string; data: ApiTask }>(`/api/v1/tasks/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
   invalidateCached('tasks:list');
   invalidateCached(`tasks:get:${id}`);
+  return res;
+}
+
+// Additive only — never touches an existing assignment. See
+// removeTaskAssignment/addTaskAssignments in TaskRepository.ts for why.
+export async function apiAddTaskAssignees(
+  taskId: string,
+  assigneeIds: string[]
+): Promise<{ success: boolean; message: string; data: { added: string[]; skipped: ApiBatchSkip[] } }> {
+  const res = await apiFetch<{ success: boolean; message: string; data: { added: string[]; skipped: ApiBatchSkip[] } }>(
+    `/api/v1/tasks/${taskId}/assignees`,
+    { method: 'POST', body: JSON.stringify({ assigneeIds }) }
+  );
+  invalidateTaskCaches(taskId);
+  return res;
+}
+
+// Soft-removes one assignee — their submission/status history is kept, they
+// just stop seeing this task and drop out of active listings.
+export async function apiRemoveTaskAssignment(taskId: string, assignmentId: string): Promise<{ success: boolean; message: string }> {
+  const res = await apiFetch<{ success: boolean; message: string }>(
+    `/api/v1/tasks/${taskId}/assignments/${assignmentId}`,
+    { method: 'DELETE' }
+  );
+  invalidateTaskCaches(taskId);
   return res;
 }
 
@@ -366,4 +374,148 @@ export async function apiRequestResubmit(taskId: string, assignmentId: string, c
   });
   invalidateTaskCaches(taskId);
   return res;
+}
+
+// Same rules as apiRequestResubmit, run across a hand-picked batch with one
+// shared comment — an assignee still at 'pending' (never submitted) or out
+// of resubmit quota comes back in `skipped` rather than failing the request.
+export async function apiBulkRequestResubmit(
+  taskId: string,
+  assignmentIds: string[],
+  comment: string
+): Promise<{ success: boolean; message: string; data: { succeeded: string[]; skipped: ApiBatchSkip[] } }> {
+  const res = await apiFetch<{ success: boolean; message: string; data: { succeeded: string[]; skipped: ApiBatchSkip[] } }>(
+    `/api/v1/tasks/${taskId}/assignments/bulk-resubmit`,
+    { method: 'POST', body: JSON.stringify({ assignmentIds, comment }) }
+  );
+  invalidateTaskCaches(taskId);
+  return res;
+}
+
+
+// ---------------------------------------------------------------------------
+// Mentor weekly report
+//
+// Replaces the checklist/Q&A shape a mentor task used to come back in: a
+// grid of the mentor's teams, each with a per-team judgement and a row of
+// 0-5 ratings per student, plus the summary strip across the top. Lives
+// under the task's own URL because a report is always one week's task.
+// ---------------------------------------------------------------------------
+
+export type ApiReportProjectStatus = 'on_track' | 'delayed' | 'ahead';
+export type ApiReportTeamHealth = 'positive' | 'neutral' | 'negative';
+
+export interface ApiWeeklyReportStudent {
+  studentId: string;
+  name: string;
+  registrationNumber: string | null;
+  batch: string | null;
+  /** Rated here, but has since left the team — read-only history. */
+  isFormerMember?: boolean;
+  // null means "not rated yet", which is deliberately not the same as 0 —
+  // an unfilled cell must stay visibly unfilled.
+  techSkill: number | null;
+  communication: number | null;
+  overallPerformance: number | null;
+}
+
+export interface ApiWeeklyReportTeam {
+  teamId: string;
+  teamName: string;
+  trackName: string;
+  /** null when the team has no allocated project yet — a real state, not an error. */
+  projectTitle: string | null;
+  projectStatus: ApiReportProjectStatus | null;
+  teamHealth: ApiReportTeamHealth | null;
+  weeklyFeedback: string | null;
+  /** What the project is built with this week — one list per team; everyone on it works the same project. Empty, never missing. */
+  techStack: string[];
+  /** Reported on here, but the team has since moved to another mentor — shown as history, not editable. */
+  isFormerTeam?: boolean;
+  students: ApiWeeklyReportStudent[];
+  /** Only set on the admin's collated cross-mentor view — a mentor's own grid never needs to say whose it is. */
+  mentorName?: string;
+}
+
+export interface ApiNoShowStudent {
+  studentId: string;
+  name: string;
+  batch: string | null;
+}
+
+export interface ApiWeeklyReportSummary {
+  teamCount: number;
+  studentCount: number;
+  /** One entry per week up to and including this task's, W1..Wn. */
+  weeks: { week: number; label: string; onTrack: number; total: number }[];
+  /** Students marked absent on a session inside this task's window — who, not just how many. */
+  noShowStudents: ApiNoShowStudent[];
+}
+
+export interface ApiMyWeeklyReport {
+  task: { id: string; title: string; description: string | null; week: string; start_date: string; deadline: string };
+  assignment: { id: string; status: ApiAssignmentStatus };
+  summary: ApiWeeklyReportSummary;
+  teams: ApiWeeklyReportTeam[];
+}
+
+export interface ApiAllWeeklyReports {
+  task: { id: string; title: string; description: string | null; week: string; start_date: string; deadline: string };
+  mentors: {
+    assignmentId: string;
+    mentorId: string;
+    mentorName: string;
+    status: ApiAssignmentStatus;
+    teamCount: number;
+    /** Teams this mentor has actually put something in — not just teams that have a row. */
+    filledTeams: number;
+    /** This mentor's own strip, scoped to only the teams they hold now. */
+    summary: ApiWeeklyReportSummary;
+    teams: ApiWeeklyReportTeam[];
+  }[];
+}
+
+/** Partial by design — send only what changed, everything omitted is left alone. */
+export interface SaveWeeklyReportTeamPayload {
+  projectStatus?: ApiReportProjectStatus | null;
+  teamHealth?: ApiReportTeamHealth | null;
+  weeklyFeedback?: string | null;
+  techStack?: string[];
+  students?: {
+    studentId: string;
+    techSkill?: number | null;
+    communication?: number | null;
+    overallPerformance?: number | null;
+  }[];
+}
+
+export async function apiGetMyWeeklyReport(taskId: string): Promise<ApiMyWeeklyReport> {
+  const res = await apiFetch<{ success: boolean; data: ApiMyWeeklyReport }>(
+    `/api/v1/tasks/${taskId}/weekly-report`,
+    { method: 'GET' }
+  );
+  return res.data;
+}
+
+// Returns the refreshed grid, so the caller never has to re-fetch to stay
+// in step with what the server now holds.
+export async function apiSaveWeeklyReportTeam(
+  taskId: string,
+  teamId: string,
+  payload: SaveWeeklyReportTeamPayload
+): Promise<ApiMyWeeklyReport> {
+  const res = await apiFetch<{ success: boolean; message: string; data: ApiMyWeeklyReport }>(
+    `/api/v1/tasks/${taskId}/weekly-report/${teamId}`,
+    { method: 'PUT', body: JSON.stringify(payload) }
+  );
+  invalidateTaskCaches(taskId);
+  return res.data;
+}
+
+export async function apiGetAllWeeklyReports(taskId: string): Promise<ApiAllWeeklyReports> {
+  const res = await apiFetch<{ success: boolean; data: ApiAllWeeklyReports }>(
+    `/api/v1/tasks/${taskId}/weekly-report/all`,
+    { method: 'GET' }
+  );
+  return res.data;
 }

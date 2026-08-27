@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, StrictMode, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
@@ -41,32 +41,50 @@ export default function App() {
             <ErrorBoundary>
               <Suspense fallback={<PanelLoader />}>
                 <Routes>
-                  <Route path="/" element={<Login />} />
+                  {/* StrictMode wraps every route's element individually here,
+                      not the app as a whole — deliberately excluding
+                      /live-session below. React double-invokes effects under
+                      StrictMode to surface non-idempotent ones, which is
+                      exactly what HMSRoomProvider is: its store doesn't
+                      survive the synthetic mount→cleanup→mount cleanly, so the
+                      real join succeeds at the SDK level (audio/video
+                      actually connects) while the React-facing isConnected
+                      flag never catches up — a live session was stuck on
+                      "Joining…" forever, silently connected underneath. Every
+                      other route has no such live external connection to
+                      desynchronize, so they keep StrictMode's benefit. */}
+                  <Route path="/" element={<StrictMode><Login /></StrictMode>} />
 
                   <Route
                     path="/admin/dashboard/*"
                     element={
-                      <ProtectedRoute role="admin">
-                        <AdminPanel />
-                      </ProtectedRoute>
+                      <StrictMode>
+                        <ProtectedRoute role="admin">
+                          <AdminPanel />
+                        </ProtectedRoute>
+                      </StrictMode>
                     }
                   />
 
                   <Route
                     path="/mentor/dashboard/*"
                     element={
-                      <ProtectedRoute role="mentor">
-                        <MentorPanel />
-                      </ProtectedRoute>
+                      <StrictMode>
+                        <ProtectedRoute role="mentor">
+                          <MentorPanel />
+                        </ProtectedRoute>
+                      </StrictMode>
                     }
                   />
 
                   <Route
                     path="/student/dashboard/*"
                     element={
-                      <ProtectedRoute role="student">
-                        <StudentPanel />
-                      </ProtectedRoute>
+                      <StrictMode>
+                        <ProtectedRoute role="student">
+                          <StudentPanel />
+                        </ProtectedRoute>
+                      </StrictMode>
                     }
                   />
 
@@ -81,14 +99,16 @@ export default function App() {
                          provider at the root can take everything down with it —
                          this one did, throwing on mount and blanking the login
                          page. Scoped to the one route that needs it, the worst
-                         it can do is break itself. */
+                         it can do is break itself. Deliberately NOT inside
+                         StrictMode — see the comment at the top of this
+                         Routes block. */
                       <HMSRoomProvider>
                         <LiveSessionRoom />
                       </HMSRoomProvider>
                     }
                   />
 
-                  <Route path="*" element={<Navigate to="/" replace />} />
+                  <Route path="*" element={<StrictMode><Navigate to="/" replace /></StrictMode>} />
                 </Routes>
               </Suspense>
             </ErrorBoundary>

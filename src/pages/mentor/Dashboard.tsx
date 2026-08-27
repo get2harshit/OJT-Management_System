@@ -1,13 +1,14 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Users, CheckSquare, FolderOpen, CalendarClock, ClipboardList, TrendingUp } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Users, GraduationCap, Layers, CalendarClock, FolderOpen, CheckSquare, Route } from 'lucide-react';
 import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
-import type { ApiStudent, Team, PrdSubmission, PrdStatus } from '../../lib/types';
-import { apiListMyTeams, apiListStudents, apiGetAllPrdSubmissions, apiGetMySessions } from '../../lib/api';
-import { apiListTasks } from '../../lib/api/tasks';
-import type { ApiTask } from '../../lib/api/tasks';
-
+import OjtWeekBadge from '../../components/OjtWeekBadge';
+import type { Cohort } from '../../lib/types';
+import { apiListMyCohorts } from '../../lib/api';
+import { apiGetMyOjtOverview, type ApiMentorOjtOverview } from '../../lib/api/teamRoster';
+import { buildCohortOptions } from '../../lib/cohortLabel';
+import { useAuth } from '../../context/useAuth';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 interface Props {
@@ -15,195 +16,235 @@ interface Props {
   onNavigateToSection: (tab: string) => void;
 }
 
-interface MentorStudent {
-  id: string;
-  name: string;
-  rollNumber: string;
-  batch: string | null;
-  track: string;
-}
-
-// Draft submissions aren't a mentor's concern yet (still being edited by the
-// student) — only these three are meaningful review-status buckets.
-const SUBMISSION_STATUS_BUCKETS: { label: string; statuses: PrdStatus[]; barClass: string }[] = [
-  { label: 'Pending Review', statuses: ['submitted', 'under_review'], barClass: 'bg-yellow-500' },
-  { label: 'Approved', statuses: ['approved'], barClass: 'bg-green-500' },
-  { label: 'Changes Requested', statuses: ['changes_requested'], barClass: 'bg-red-500' },
-];
-
+/**
+ * The mentor's headline view of one OJT.
+ *
+ * Every figure comes from a single aggregate read. The previous version
+ * fetched every student and every submission in the system and filtered them
+ * in the browser to find this mentor's own — over-fetching of exactly the
+ * kind this codebase forbids, and it grew with the institution rather than
+ * with the mentor's roster.
+ */
 export default function MentorDashboard({
   onNavigateToSection,
 }: Partial<Props> & Pick<Props, 'mentorId' | 'onNavigateToSection'>) {
-  // mentorId is no longer needed here — GET /tasks and the submissions list
-  // both scope to the authenticated caller server-side, not a passed id.
-  // Attendance has no real backend endpoint anywhere in this app yet — still
-  // the localStorage/DataContext mock until that module exists for real.
+  const { user } = useAuth();
+  const mentorName = user?.fullName || (user?.email ? user.email.split('@')[0] : 'Mentor');
 
-  // Real roster: teams this mentor is actually allocated to (primary or
-  // secondary), joined against the student profile list for batch/roll
-  // number. Track comes from the team, not the student — the backend has no
-  // per-student track field, only a per-team one.
-  const [myTeams, setMyTeams] = useState<Team[]>([]);
-  const [apiStudents, setApiStudents] = useState<ApiStudent[]>([]);
-  // GET /tasks already scopes to "assigned to me or created by me" for a
-  // mentor caller server-side — no client-side filtering needed.
-  const [tasks, setTasks] = useState<ApiTask[]>([]);
-  // apiGetAllPrdSubmissions has no mentor-scoping param (matches the same
-  // fetch-all-then-filter-by-mentee pattern mentor/Submissions.tsx already
-  // uses) — filtered below via studentIds once the roster is known.
-  const [submissions, setSubmissions] = useState<PrdSubmission[]>([]);
-  // Real session counts, replacing a card that counted localStorage mock rows
-  // and another that was the literal string "72%".
-  const [upcomingSessions, setUpcomingSessions] = useState(0);
-  const [sessionsHeld, setSessionsHeld] = useState(0);
-  const [loadingRoster, setLoadingRoster] = useState(true);
-
-  const loadDashboardData = useCallback(() => {
-    return Promise.all([apiListMyTeams(), apiListStudents(), apiListTasks(), apiGetAllPrdSubmissions()])
-      .then(([teams, students, taskRes, submissionRes]) => {
-        setMyTeams(teams);
-        setApiStudents(students);
-        setTasks(taskRes.data);
-        setSubmissions(submissionRes);
-      })
-      .catch((err) => console.error('Mentor dashboard failed to load', err))
-      .finally(() => setLoadingRoster(false));
-  }, []);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [cohortId, setCohortId] = useState('');
+  const [overview, setOverview] = useState<ApiMentorOjtOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    loadDashboardData();
-    // from/to are date-only (YYYY-MM-DD) — they filter scheduled_date, not the
-    // start instant, so passing a full ISO string here would be comparing a
-    // timestamp against a date column.
-    const dateKey = (d: Date) => d.toISOString().slice(0, 10);
-    const now = new Date();
-    const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60_000);
-    // Counted server-side — limit 1, and the pagination total is what's read,
-    // rather than pulling every session down to measure the array's length.
-    apiGetMySessions({ from: dateKey(now), to: dateKey(weekAhead), status: 'scheduled', page: 1, limit: 1 })
-      .then((res) => setUpcomingSessions(res.pagination.total))
-      .catch(() => setUpcomingSessions(0));
-    // Completed sessions are past by definition, so no date bound is needed.
-    apiGetMySessions({ status: 'completed', page: 1, limit: 1 })
-      .then((res) => setSessionsHeld(res.pagination.total))
-      .catch(() => setSessionsHeld(0));
-  }, [loadDashboardData]);
+    apiListMyCohorts()
+      .then(setCohorts)
+      .catch(() => setCohorts([]));
+  }, []);
 
-  usePageRefresh(loadDashboardData);
+  // Defaults to the running OJT, but never overwrites a manual pick — the
+  // same resolution every other cohort-scoped screen in this app uses.
+  useEffect(() => {
+    if (cohorts.length === 0) {
+      setLoading(false);
+      return;
+    }
+    setCohortId((prev) => prev || cohorts.find((c) => c.isActive)?.id || cohorts[0]?.id || prev);
+  }, [cohorts]);
 
-  const myStudents = useMemo<MentorStudent[]>(() => {
-    const profileById = new Map(apiStudents.map(s => [s.id, s]));
-    return myTeams.flatMap(team =>
-      team.members
-        .map((m): MentorStudent | null => {
-          const profile = profileById.get(m.studentId);
-          if (!profile) return null;
-          return {
-            id: m.studentId,
-            name: profile.fullName ?? m.fullName ?? '-',
-            rollNumber: profile.rollNumber ?? '-',
-            batch: profile.batch ?? null,
-            track: team.track,
-          };
-        })
-        .filter((s): s is MentorStudent => s !== null)
-    );
-  }, [myTeams, apiStudents]);
+  const load = useCallback(() => {
+    if (!cohortId) return Promise.resolve();
+    setLoading(true);
+    setFailed(false);
+    return apiGetMyOjtOverview(cohortId)
+      .then(setOverview)
+      .catch(() => {
+        setOverview(null);
+        setFailed(true);
+      })
+      .finally(() => setLoading(false));
+  }, [cohortId]);
 
-  const [batchFilter, setBatchFilter] = useState('');
-  const [trackFilter, setTrackFilter] = useState('');
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const distinctBatches = useMemo(() => {
-    const vals = myStudents.map(s => s.batch).filter((b): b is string => !!b);
-    return Array.from(new Set(vals)).sort();
-  }, [myStudents]);
+  usePageRefresh(load);
 
-  const distinctTracks = useMemo(() => {
-    return Array.from(new Set(myStudents.map(s => s.track).filter(Boolean)));
-  }, [myStudents]);
-
-  const filteredStudents = useMemo(() => {
-    return myStudents.filter(s => {
-      if (batchFilter && s.batch !== batchFilter) return false;
-      if (trackFilter && s.track !== trackFilter) return false;
-      return true;
-    });
-  }, [myStudents, batchFilter, trackFilter]);
-
-  const studentIds = new Set(filteredStudents.map(s => s.id));
-
-  const mySubmissions = submissions.filter(s => s.studentId && studentIds.has(s.studentId));
-  const pendingSubmissions = mySubmissions.filter(s => s.status === 'submitted' || s.status === 'under_review').length;
-
-  if (loadingRoster) {
-    return (
-      <div className="min-h-[50vh] flex items-center justify-center">
-        <SpinnerSquare size={48} />
-      </div>
-    );
-  }
+  const selectedCohort = cohorts.find((c) => c.id === cohortId) ?? null;
 
   return (
     <div className="space-y-4 sm:space-y-6 lg:space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Mentor Dashboard</h1>
-        <p className="text-gray-400 text-sm mt-1">Overview of your assigned students and tasks</p>
-      </div>
-
-      {/* Filter Bar */}
-      <div className="flex flex-wrap gap-3">
-        <Select
-          variant="filter"
-          className="min-w-[160px]"
-          value={batchFilter}
-          onChange={setBatchFilter}
-          placeholder="All Batches"
-          options={distinctBatches.map(b => ({ value: b, label: b }))}
-        />
-        <Select
-          variant="filter"
-          className="min-w-[160px]"
-          value={trackFilter}
-          onChange={setTrackFilter}
-          placeholder="All Tracks"
-          options={distinctTracks.map(t => ({ value: t, label: t }))}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-6">
-        <StatCard title="My Teams" value={myTeams.length} icon={Users} onClick={() => onNavigateToSection('ojts')} />
-        <StatCard title="My Tasks" value={tasks.length} icon={CheckSquare} onClick={() => onNavigateToSection('tasks')} />
-        <StatCard title="Pending Reviews" value={pendingSubmissions} icon={FolderOpen} trend="Needs review" onClick={() => onNavigateToSection('submissions')} />
-        <StatCard title="Sessions This Week" value={upcomingSessions} icon={CalendarClock} onClick={() => onNavigateToSection('sessions')} />
-        <StatCard title="Sessions Held" value={sessionsHeld} icon={ClipboardList} onClick={() => onNavigateToSection('attendance')} />
-      </div>
-
-      <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white">Submission Status</h3>
-          <TrendingUp size={18} className="text-gold" />
+      <div className="bg-zinc-850 border border-zinc-750 p-6 rounded-2xl shadow-sm">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                Welcome back, <span className="text-gold">{mentorName}</span> 👋
+              </h1>
+              <OjtWeekBadge startDate={selectedCohort?.startDate} endDate={selectedCohort?.endDate} />
+            </div>
+            <p className="text-gray-400 text-sm mt-1">Your teams, sessions and reviews in this OJT.</p>
+          </div>
+          <Select
+            variant="filter"
+            className="min-w-[220px]"
+            value={cohortId}
+            onChange={setCohortId}
+            placeholder="Select OJT"
+            options={buildCohortOptions(cohorts)}
+          />
         </div>
+      </div>
+
+      {loading ? (
+        <div className="min-h-[40vh] flex items-center justify-center">
+          <SpinnerSquare size={48} />
+        </div>
+      ) : !cohortId ? (
+        <EmptyState message="You're not part of an active OJT yet." />
+      ) : failed || !overview ? (
+        <EmptyState message="Couldn't load this OJT's numbers. Try refreshing." />
+      ) : (
+        <>
+          <TracksStrip tracks={overview.tracks} />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-6">
+            <StatCard title="My Teams" value={overview.teamCount} icon={Users} onClick={() => onNavigateToSection('ojts')} />
+            <StatCard title="My Students" value={overview.studentCount} icon={GraduationCap} onClick={() => onNavigateToSection('ojts')} />
+            <StatCard title="Groups" value={overview.groupCount} icon={Layers} onClick={() => onNavigateToSection('ojts')} />
+            <StatCard title="Sessions" value={overview.sessions.total} icon={CalendarClock} onClick={() => onNavigateToSection('sessions')} />
+            <StatCard title="Pending Reviews" value={overview.submissionsPending} icon={FolderOpen} onClick={() => onNavigateToSection('submissions')} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <TaskCompletionCard approved={overview.tasksApproved} total={overview.tasksTotal} />
+            <SessionBreakdownCard sessions={overview.sessions} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-10 text-center">
+      <p className="text-gray-400 text-sm">{message}</p>
+    </div>
+  );
+}
+
+/**
+ * The tracks this mentor covers in this OJT.
+ *
+ * A track can appear here two ways — an admin staffed them on it, or a team
+ * on it was reassigned to them — and the two genuinely disagree in live data.
+ * Both are shown, labelled, rather than one source quietly winning.
+ */
+function TracksStrip({ tracks }: { tracks: ApiMentorOjtOverview['tracks'] }) {
+  if (tracks.length === 0) return null;
+  return (
+    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
+      <h2 className="text-base font-semibold text-white flex items-center gap-2 mb-3">
+        <Route size={17} className="text-gold" />
+        Tracks you&apos;re mentoring
+      </h2>
+      <div className="flex flex-wrap gap-2">
+        {tracks.map((track) => (
+          <span
+            key={track.id}
+            className="inline-flex items-baseline gap-2 text-xs px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-750"
+            title={track.staffed ? 'You are staffed on this track for this OJT' : 'A team on this track reports to you, though you were not staffed on it'}
+          >
+            <span className="text-white font-medium">{track.name}</span>
+            <span className="text-gray-400 tabular-nums">
+              {track.teamCount} {track.teamCount === 1 ? 'team' : 'teams'}
+            </span>
+            {!track.staffed && (
+              <span className="text-[10px] uppercase tracking-wide text-gray-500">not staffed</span>
+            )}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Task progress, always with its denominator visible — "100%" over two
+ * assignments and over two hundred are very different facts, and a bare
+ * percentage hides which one you're looking at.
+ */
+function TaskCompletionCard({ approved, total }: { approved: number; total: number }) {
+  const pct = total > 0 ? Math.round((approved / total) * 100) : 0;
+  return (
+    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-base font-semibold text-white flex items-center gap-2">
+          <CheckSquare size={17} className="text-gold" />
+          Task completion
+        </h3>
+        <span className="text-sm text-gray-300 tabular-nums">
+          {approved}<span className="text-gray-500">/{total}</span>
+          {total > 0 && <span className="text-gray-400"> · {pct}%</span>}
+        </span>
+      </div>
+      <p className="text-xs text-gray-500 mb-3">Approved assignments across your students in this OJT.</p>
+      {total === 0 ? (
+        <p className="text-sm text-gray-500">No task assignments in this OJT yet.</p>
+      ) : (
+        <div className="h-2 bg-zinc-750 rounded-full overflow-hidden">
+          <div className="h-full rounded-full bg-gold transition-all duration-500" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Status carries an icon-free label and a number, never colour alone — the
+// four states have to survive greyscale and colour-blindness.
+const SESSION_STATES: { key: 'scheduled' | 'completed' | 'rescheduled' | 'cancelled'; label: string; barClass: string }[] = [
+  { key: 'completed', label: 'Completed', barClass: 'bg-green-500' },
+  { key: 'scheduled', label: 'Scheduled', barClass: 'bg-gold' },
+  { key: 'rescheduled', label: 'Rescheduled', barClass: 'bg-yellow-500' },
+  { key: 'cancelled', label: 'Cancelled', barClass: 'bg-red-500' },
+];
+
+function SessionBreakdownCard({ sessions }: { sessions: ApiMentorOjtOverview['sessions'] }) {
+  const { total } = sessions;
+  return (
+    <div className="bg-zinc-850 border border-zinc-750 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-base font-semibold text-white flex items-center gap-2">
+          <CalendarClock size={17} className="text-gold" />
+          Sessions
+        </h3>
+        <span className="text-sm text-gray-300 tabular-nums">{total} total</span>
+      </div>
+      <p className="text-xs text-gray-500 mb-3">Sessions you host in this OJT, by status.</p>
+      {total === 0 ? (
+        <p className="text-sm text-gray-500">No sessions scheduled in this OJT yet.</p>
+      ) : (
         <div className="space-y-3">
-          {SUBMISSION_STATUS_BUCKETS.map(({ label, statuses, barClass }) => {
-            const count = mySubmissions.filter(s => statuses.includes(s.status)).length;
-            const pct = mySubmissions.length ? Math.round((count / mySubmissions.length) * 100) : 0;
+          {SESSION_STATES.map(({ key, label, barClass }) => {
+            const count = sessions[key];
+            const pct = total > 0 ? Math.round((count / total) * 100) : 0;
             return (
-              <div key={label}>
+              <div key={key}>
                 <div className="flex justify-between text-sm mb-1">
                   <span className="text-gray-300">{label}</span>
-                  <span className="text-gray-400">{count} ({pct}%)</span>
+                  <span className="text-gray-400 tabular-nums">{count} ({pct}%)</span>
                 </div>
                 <div className="h-2 bg-zinc-750 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${barClass}`}
-                    style={{ width: `${pct}%` }}
-                  />
+                  <div className={`h-full rounded-full transition-all duration-500 ${barClass}`} style={{ width: `${pct}%` }} />
                 </div>
               </div>
             );
           })}
         </div>
-      </div>
+      )}
     </div>
   );
 }

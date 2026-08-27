@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Video } from 'lucide-react';
+import { Clock, MapPin, Video } from 'lucide-react';
 import type { ApiSession } from '../lib/api/sessions';
 import { apiGetSessionJoinToken } from '../lib/api/sessions';
 import { classifySessionLocation, isJoinable, isWithinJoinWindow } from '../lib/sessionLocation';
@@ -100,7 +100,17 @@ export default function SessionJoinLink({ session, variant = 'detail', isHost = 
 
   const location = classifySessionLocation(session.location_or_link);
 
-  if (location.kind === 'none') return <span className="text-gray-500">—</span>;
+  // No pasted link, and not hosted here yet either — say so plainly instead of
+  // a bare "—" that reads the same as "there was never going to be a way in".
+  if (location.kind === 'none') {
+    if (!isJoinable(session.status)) return <span className="text-gray-500">—</span>;
+    return (
+      <span className={`flex items-center gap-1.5 text-gray-500 ${compact ? 'text-xs' : ''}`}>
+        <Clock size={iconSize} className="shrink-0" />
+        Not started yet
+      </span>
+    );
+  }
 
   if (location.kind === 'place') {
     return (

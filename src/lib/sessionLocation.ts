@@ -84,3 +84,33 @@ export function isWithinJoinWindow(startTime: string, endTime: string, now: Date
   if (Number.isNaN(start) || Number.isNaN(end)) return false;
   return now.getTime() >= start - JOIN_WINDOW_OPENS_MINUTES * 60_000 && now.getTime() <= end;
 }
+
+/**
+ * PST Campus's physical rooms, for the "pick a room" quick-fill next to the
+ * Location / Link field — floor by floor, ground floor first. This is a
+ * fixed convenience list, not the only thing the field accepts: a mentor
+ * hosting elsewhere still pastes a link or types a room this list doesn't
+ * have, and the plain text input underneath still takes that.
+ */
+export const PST_CAMPUS_ROOM_OPTIONS: { value: string; label: string }[] = [
+  { value: 'PST Campus Ground Floor RC', label: 'PST Campus Ground Floor RC' },
+  { value: 'PST Campus Floor 1 CR1', label: 'PST Campus Floor 1 CR1' },
+  { value: 'PST Campus Floor 1 CR2', label: 'PST Campus Floor 1 CR2' },
+  { value: 'PST Campus Floor 1 CR3', label: 'PST Campus Floor 1 CR3' },
+  { value: 'PST Campus Floor 1 CR4', label: 'PST Campus Floor 1 CR4' },
+  { value: 'PST Campus Floor 1 Cohort-1', label: 'PST Campus Floor 1 Cohort-1' },
+  { value: 'PST Campus Floor 1 Cohort-2', label: 'PST Campus Floor 1 Cohort-2' },
+  { value: 'PST Campus Floor 1 Cohort-3', label: 'PST Campus Floor 1 Cohort-3' },
+  { value: 'PST Campus Floor 1 Cohort-4', label: 'PST Campus Floor 1 Cohort-4' },
+  { value: 'PST Campus Floor 1 Cohort-5', label: 'PST Campus Floor 1 Cohort-5' },
+  { value: 'PST Campus Floor 2 Cohort-1', label: 'PST Campus Floor 2 Cohort-1' },
+  { value: 'PST Campus Floor 2 Cohort-2', label: 'PST Campus Floor 2 Cohort-2' },
+];
+
+/** The room a new session's Location field starts on, until changed. */
+export const DEFAULT_SESSION_LOCATION = 'PST Campus Floor 1 Cohort-5';
+
+/** A new session's Title field starts on this, until edited. */
+export function defaultSessionTitle(mentorFullName: string | null | undefined): string {
+  return `OJT Session with ${mentorFullName || 'Mentor'}`;
+}

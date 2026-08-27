@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -8,22 +8,26 @@ import listPlugin from '@fullcalendar/list';
 // the two were imported from each other's package.
 import interactionPlugin, { type EventResizeDoneArg } from '@fullcalendar/interaction';
 import type { EventClickArg, DateSelectArg, EventContentArg, EventDropArg, EventHoveringArg } from '@fullcalendar/core';
-import { CalendarClock, Plus, Users2, XCircle, CheckCircle2, RefreshCw, Lock, Radio, Square } from 'lucide-react';
+import { CalendarClock, Plus, Users2, XCircle, CheckCircle2, RefreshCw, Lock, Radio, Square, BarChart3 } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import SessionHoverPreview from '../../components/SessionHoverPreview';
 import SessionJoinLink from '../../components/SessionJoinLink';
+import LiveSessionReportModal from '../../components/LiveSessionReportModal';
+import RecurringSchedulePicker, { EMPTY_RECURRING_SCHEDULE, type RecurringScheduleValue } from '../../components/RecurringSchedulePicker';
 import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
 import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
 import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
-import type { Cohort } from '../../lib/types';
 import {
-  apiListMyCohorts,
   apiGetMySessions,
+  apiGetMySessionStats,
+  type ApiMentorSessionStats,
   apiCreateSession,
+  apiCreateRecurringSessions,
+  apiCancelRecurringRemaining,
   apiRescheduleSession,
   apiCancelSession,
   apiCompleteSession,
@@ -34,8 +38,12 @@ import {
   type ApiSession,
   type ApiSessionStatus,
   type ApiMentorWorkspaceTeam,
+  type ApiMentorGroup,
+  type CreateRecurringSessionsResult,
 } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { formatMeetingPattern } from '../../lib/meetingPattern';
+import { DEFAULT_SESSION_LOCATION, PST_CAMPUS_ROOM_OPTIONS, defaultSessionTitle } from '../../lib/sessionLocation';
+import { computeWeekOccurrenceDates } from '../../lib/utils';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useAuth } from '../../context/useAuth';
@@ -53,36 +61,49 @@ function toLocalInputValue(iso: string | Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function formatGroupOptionLabel(group: ApiMentorGroup): string {
+  const pattern = formatMeetingPattern(group);
+  return pattern ? `${group.name} (${pattern})` : group.name;
+}
+
 interface SessionFormState {
   teamIds: string[];
   title: string;
   locationOrLink: string;
   startLocal: string;
   endLocal: string;
+  groupHint: string;
 }
 
-const EMPTY_FORM: SessionFormState = { teamIds: [], title: '', locationOrLink: '', startLocal: '', endLocal: '' };
+const EMPTY_FORM: SessionFormState = { teamIds: [], title: '', locationOrLink: '', startLocal: '', endLocal: '', groupHint: '' };
 
 export default function MentorSessions() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
 
-  const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [selectedCohortId, setSelectedCohortId] = useState('');
+  // The OJT comes from the route — MentorOjtLayout owns the picker above
+  // this page, so there is no second one here to drift out of step with it.
+  const { cohortId: routeCohortId } = useParams<{ cohortId: string }>();
+  const selectedCohortId = routeCohortId ?? '';
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [canSelfSchedule, setCanSelfSchedule] = useState(false);
+  const [sessionStats, setSessionStats] = useState<ApiMentorSessionStats | null>(null);
 
   const visibleRange = useRef<{ from: string; to: string } | null>(null);
 
   const [createForm, setCreateForm] = useState<SessionFormState | null>(null);
   const [creating, setCreating] = useState(false);
+  const [recurring, setRecurring] = useState(false);
+  const [recurringSchedule, setRecurringSchedule] = useState<RecurringScheduleValue>(EMPTY_RECURRING_SCHEDULE);
+  const [recurringResult, setRecurringResult] = useState<CreateRecurringSessionsResult | null>(null);
 
   const [selected, setSelected] = useState<ApiSession | null>(null);
   const [rescheduleForm, setRescheduleForm] = useState<SessionFormState | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [showCancelPrompt, setShowCancelPrompt] = useState(false);
+  const [showCancelRecurringPrompt, setShowCancelRecurringPrompt] = useState(false);
   const [actualMinutes, setActualMinutes] = useState('');
   const [showCompletePrompt, setShowCompletePrompt] = useState(false);
   const [deciding, setDeciding] = useState(false);
@@ -107,22 +128,26 @@ export default function MentorSessions() {
   );
 
   useEffect(() => {
-    apiListMyCohorts()
-      .then(setCohorts)
-      .catch(() => setCohorts([]));
-  }, []);
-
-  useEffect(() => {
-    if (cohorts.length === 0) return;
-    setSelectedCohortId((prev) => prev || cohorts.find((c) => c.isActive)?.id || cohorts[0]?.id || prev);
-  }, [cohorts]);
-
-  useEffect(() => {
     if (!selectedCohortId || !user) return;
     apiGetSelfSchedulePermission(selectedCohortId, user.id)
       .then(setCanSelfSchedule)
       .catch(() => setCanSelfSchedule(false));
   }, [selectedCohortId, user]);
+
+  // Counts for the whole cohort, not just the weeks currently on screen —
+  // aggregated server-side, so this stays one request however many sessions
+  // the mentor has.
+  useEffect(() => {
+    if (!selectedCohortId) {
+      setSessionStats(null);
+      return;
+    }
+    let cancelled = false;
+    apiGetMySessionStats(selectedCohortId)
+      .then((data) => { if (!cancelled) setSessionStats(data); })
+      .catch(() => { if (!cancelled) setSessionStats(null); });
+    return () => { cancelled = true; };
+  }, [selectedCohortId, sessions]);
 
   const loadSessions = useCallback(async () => {
     if (!selectedCohortId || !visibleRange.current) return;
@@ -150,15 +175,31 @@ export default function MentorSessions() {
   // can be picked at a glance instead of hunting for them by name. The
   // Select component's own "Select All" already covers "every team".
   const [workspaceTeams, setWorkspaceTeams] = useState<ApiMentorWorkspaceTeam[]>([]);
+  const [groups, setGroups] = useState<ApiMentorGroup[]>([]);
   useEffect(() => {
     if (!selectedCohortId || !user) {
       setWorkspaceTeams([]);
+      setGroups([]);
       return;
     }
     apiGetMentorWorkspace(selectedCohortId, user.id)
-      .then((workspace) => setWorkspaceTeams(workspace.teams))
-      .catch(() => setWorkspaceTeams([]));
+      .then((workspace) => {
+        setWorkspaceTeams(workspace.teams);
+        setGroups(workspace.groups);
+      })
+      .catch(() => {
+        setWorkspaceTeams([]);
+        setGroups([]);
+      });
   }, [selectedCohortId, user]);
+
+  // Filling teamIds from a chosen group's *current* team list — a one-shot
+  // convenience, not a lasting link, mirroring the admin create-session
+  // picker's own group shortcut. Still fully editable in Team(s) right below.
+  const applyGroupHint = (form: SessionFormState, setForm: (f: SessionFormState) => void, groupId: string) => {
+    const teamIds = groupId ? workspaceTeams.filter((t) => t.groupId === groupId).map((t) => t.id) : form.teamIds;
+    setForm({ ...form, groupHint: groupId, teamIds });
+  };
 
   const teamOptions = useMemo(
     () =>
@@ -206,9 +247,18 @@ export default function MentorSessions() {
     const session = arg.event.extendedProps.session as ApiSession | undefined;
     if (!session) return null;
     const teamNames = session.teams.map((t) => t.team.name).join(', ') || '—';
+    const isLiveNow = !!session.live_session_id && !session.live_ended_at;
     return (
       <div className="px-1 py-0.5 overflow-hidden leading-tight">
-        {arg.timeText && <div className="text-[10px] font-bold truncate">{arg.timeText}</div>}
+        <div className="flex items-center gap-1">
+          {arg.timeText && <div className="text-[10px] font-bold truncate">{arg.timeText}</div>}
+          {isLiveNow && (
+            <span className="flex items-center gap-0.5 text-[9px] font-bold text-red-600 shrink-0">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse" />
+              LIVE
+            </span>
+          )}
+        </div>
         <div className="text-[11px] font-semibold truncate">{session.title || teamNames}</div>
         <div className="text-[10px] truncate opacity-75 flex items-center gap-1">
           <Users2 size={9} className="shrink-0" />
@@ -267,9 +317,15 @@ export default function MentorSessions() {
   const handleSelect = useCallback(
     (arg: DateSelectArg) => {
       if (!canSelfSchedule) return;
-      setCreateForm({ ...EMPTY_FORM, startLocal: toLocalInputValue(arg.start), endLocal: toLocalInputValue(arg.end) });
+      setCreateForm({
+        ...EMPTY_FORM,
+        title: defaultSessionTitle(user?.fullName),
+        locationOrLink: DEFAULT_SESSION_LOCATION,
+        startLocal: toLocalInputValue(arg.start),
+        endLocal: toLocalInputValue(arg.end),
+      });
     },
-    [canSelfSchedule]
+    [canSelfSchedule, user?.fullName]
   );
 
   const handleEventClick = useCallback((arg: EventClickArg) => {
@@ -290,12 +346,63 @@ export default function MentorSessions() {
     setHoverSession(null);
   }, []);
 
-  const closeCreate = () => setCreateForm(null);
+  const closeCreate = () => {
+    setCreateForm(null);
+    setRecurring(false);
+    setRecurringSchedule(EMPTY_RECURRING_SCHEDULE);
+    setRecurringResult(null);
+  };
 
   const submitCreate = async () => {
     if (!createForm || !selectedCohortId || !user) return;
-    if (createForm.teamIds.length === 0 || !createForm.startLocal || !createForm.endLocal) {
-      showError('At least one team and a time range are required');
+    if (createForm.teamIds.length === 0) {
+      showError('At least one team is required');
+      return;
+    }
+
+    if (recurring) {
+      const { startDate, startTimeOfDay, endTimeOfDay, weekdays } = recurringSchedule;
+      if (!startDate || !startTimeOfDay || !endTimeOfDay || weekdays.length === 0) {
+        showError('Week start date, a time range, and at least one weekday are required');
+        return;
+      }
+      setCreating(true);
+      try {
+        const occurrenceDates = computeWeekOccurrenceDates(startDate, weekdays);
+        const occurrences = occurrenceDates.map((date) => {
+          const start = new Date(`${date}T${startTimeOfDay}`);
+          const end = new Date(`${date}T${endTimeOfDay}`);
+          return { scheduledDate: date, startTime: start.toISOString(), endTime: end.toISOString() };
+        });
+        const result = await apiCreateRecurringSessions({
+          cohortId: selectedCohortId,
+          mentorId: user.id,
+          teamIds: createForm.teamIds,
+          title: createForm.title || undefined,
+          locationOrLink: createForm.locationOrLink || undefined,
+          occurrences,
+        });
+        setRecurringResult(result);
+        if (result.created.length > 0) {
+          showSuccess(
+            result.skipped.length === 0
+              ? `${result.created.length} session(s) scheduled`
+              : `${result.created.length} of ${result.created.length + result.skipped.length} session(s) scheduled — see details below`
+          );
+          loadSessions();
+        } else {
+          showError('None of the requested sessions could be scheduled — see details below');
+        }
+      } catch (err) {
+        showError(err instanceof Error ? err.message : 'Failed to schedule recurring sessions');
+      } finally {
+        setCreating(false);
+      }
+      return;
+    }
+
+    if (!createForm.startLocal || !createForm.endLocal) {
+      showError('A time range is required');
       return;
     }
     setCreating(true);
@@ -322,10 +429,26 @@ export default function MentorSessions() {
     }
   };
 
+  const submitCancelRecurring = async () => {
+    if (!selected?.recurrence_group_id || !cancelReason.trim()) return;
+    setDeciding(true);
+    try {
+      const result = await apiCancelRecurringRemaining(selected.recurrence_group_id, cancelReason.trim());
+      showSuccess(`${result.cancelled.length} session(s) cancelled`);
+      closeDetail();
+      loadSessions();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to cancel the remaining sessions');
+    } finally {
+      setDeciding(false);
+    }
+  };
+
   const closeDetail = () => {
     setSelected(null);
     setRescheduleForm(null);
     setShowCancelPrompt(false);
+    setShowCancelRecurringPrompt(false);
     setShowCompletePrompt(false);
     setCancelReason('');
     setActualMinutes('');
@@ -336,6 +459,7 @@ export default function MentorSessions() {
   // faculty is, which session — are the server's to supply from the token and
   // the row; nothing about them is sent from here.
   const [liveBusy, setLiveBusy] = useState(false);
+  const [showLiveReport, setShowLiveReport] = useState(false);
 
   const startLive = async (session: ApiSession) => {
     setLiveBusy(true);
@@ -384,6 +508,7 @@ export default function MentorSessions() {
       locationOrLink: selected.location_or_link ?? '',
       startLocal: toLocalInputValue(selected.start_time),
       endLocal: toLocalInputValue(selected.end_time),
+      groupHint: '',
     });
   };
 
@@ -440,29 +565,71 @@ export default function MentorSessions() {
     }
   };
 
-  const sessionForm = (form: SessionFormState, setForm: (f: SessionFormState) => void) => (
+  const sessionForm = (form: SessionFormState, setForm: (f: SessionFormState) => void, allowRecurring: boolean = false) => (
     <div className="space-y-3">
+      {groups.length > 0 && (
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">Schedule for group (optional)</label>
+          <Select
+            value={form.groupHint}
+            onChange={(v) => applyGroupHint(form, setForm, v)}
+            options={[{ value: '', label: 'Custom selection' }, ...groups.map((g) => ({ value: g.id, label: formatGroupOptionLabel(g) }))]}
+          />
+          <p className="text-[11px] text-gray-500 mt-1">Fills Team(s) below with this group's current teams — still editable.</p>
+        </div>
+      )}
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Team(s)</label>
         <Select isMulti value={form.teamIds} onChange={(v) => setForm({ ...form, teamIds: v })} options={teamOptions} placeholder="Select team(s)" isSearchable />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs text-gray-400 mb-1 block">Start</label>
-          <input type="datetime-local" value={form.startLocal} onChange={(e) => setForm({ ...form, startLocal: e.target.value })} className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
+      {allowRecurring && (
+        <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={recurring}
+            onChange={(e) => {
+              setRecurring(e.target.checked);
+              setRecurringResult(null);
+            }}
+            className="accent-gold"
+          />
+          Book recurring sessions for one week
+        </label>
+      )}
+      {allowRecurring && recurring ? (
+        <RecurringSchedulePicker value={recurringSchedule} onChange={setRecurringSchedule} />
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">Start</label>
+            <input type="datetime-local" value={form.startLocal} onChange={(e) => setForm({ ...form, startLocal: e.target.value })} className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">End</label>
+            <input type="datetime-local" value={form.endLocal} onChange={(e) => setForm({ ...form, endLocal: e.target.value })} className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
+          </div>
         </div>
-        <div>
-          <label className="text-xs text-gray-400 mb-1 block">End</label>
-          <input type="datetime-local" value={form.endLocal} onChange={(e) => setForm({ ...form, endLocal: e.target.value })} className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
-        </div>
-      </div>
+      )}
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Title (optional)</label>
         <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
       </div>
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Location / Link (optional)</label>
-        <input value={form.locationOrLink} onChange={(e) => setForm({ ...form, locationOrLink: e.target.value })} className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
+        <Select
+          value={PST_CAMPUS_ROOM_OPTIONS.some((o) => o.value === form.locationOrLink) ? form.locationOrLink : ''}
+          onChange={(v) => setForm({ ...form, locationOrLink: v })}
+          options={PST_CAMPUS_ROOM_OPTIONS}
+          placeholder="Pick a PST Campus room…"
+          isSearchable
+          className="w-full mb-2"
+        />
+        <input
+          value={form.locationOrLink}
+          onChange={(e) => setForm({ ...form, locationOrLink: e.target.value })}
+          placeholder="…or paste a meeting link / type a custom location"
+          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+        />
       </div>
     </div>
   );
@@ -480,9 +647,11 @@ export default function MentorSessions() {
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <Select value={selectedCohortId} onChange={setSelectedCohortId} variant="filter" placeholder="Select cohort" className="w-[200px]" options={cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }))} />
           <button
-            onClick={() => canSelfSchedule && setCreateForm({ ...EMPTY_FORM })}
+            onClick={() =>
+              canSelfSchedule &&
+              setCreateForm({ ...EMPTY_FORM, title: defaultSessionTitle(user?.fullName), locationOrLink: DEFAULT_SESSION_LOCATION })
+            }
             disabled={!canSelfSchedule}
             title={canSelfSchedule ? undefined : 'Self-schedule permission required'}
             className="flex items-center gap-1.5 text-xs px-3 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -492,6 +661,15 @@ export default function MentorSessions() {
           </button>
         </div>
       </div>
+
+      {sessionStats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <SessionCountTile label="Scheduled" value={sessionStats.scheduled} tone="text-blue-400" />
+          <SessionCountTile label="Rescheduled" value={sessionStats.rescheduled} tone="text-yellow-400" />
+          <SessionCountTile label="Completed" value={sessionStats.completed} tone="text-green-400" />
+          <SessionCountTile label="Cancelled" value={sessionStats.cancelled} tone="text-red-400" />
+        </div>
+      )}
 
       <div className="flex items-center gap-4 flex-wrap px-1">
         {(Object.entries(STATUS_COLORS) as [ApiSessionStatus, string][]).map(([status, color]) => (
@@ -548,13 +726,23 @@ export default function MentorSessions() {
       <Modal open={!!createForm} onClose={closeCreate} title="Schedule a Session" size="lg">
         {createForm && (
           <div className="space-y-4">
-            {sessionForm(createForm, setCreateForm)}
+            {sessionForm(createForm, setCreateForm, true)}
+            {recurringResult && (
+              <div className="space-y-1.5 border-t border-zinc-800 pt-3 text-xs">
+                {recurringResult.created.map((s) => (
+                  <p key={s.id} className="text-green-400">✓ {s.scheduled_date} scheduled</p>
+                ))}
+                {recurringResult.skipped.map((s, i) => (
+                  <p key={i} className="text-red-400">✗ {s.scheduledDate}: {s.reason}</p>
+                ))}
+              </div>
+            )}
             <div className="flex items-center gap-2 border-t border-zinc-800 pt-4">
               <button onClick={submitCreate} disabled={creating} className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50">
-                {creating ? 'Scheduling...' : 'Schedule'}
+                {creating ? 'Scheduling...' : recurring ? 'Schedule week' : 'Schedule'}
               </button>
               <button onClick={closeCreate} disabled={creating} className="text-xs px-3 py-1.5 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50">
-                Cancel
+                {recurringResult ? 'Done' : 'Cancel'}
               </button>
             </div>
           </div>
@@ -568,6 +756,7 @@ export default function MentorSessions() {
               <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider" style={{ backgroundColor: `${STATUS_COLORS[selected.status]}25`, color: STATUS_COLORS[selected.status] }}>
                 {selected.status}
               </span>
+              {selected.recurrence_group_id && <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-zinc-750 text-gray-400 font-bold uppercase tracking-wider">Part of a recurring booking</span>}
             </div>
             <div className="space-y-2 text-sm text-gray-300">
               <p className="flex items-center gap-1.5">
@@ -584,9 +773,18 @@ export default function MentorSessions() {
                 </div>
               )}
               {selected.cancellation_reason && <p className="text-red-400">Cancelled: {selected.cancellation_reason}</p>}
+              {selected.live_session_id && (
+                <button
+                  onClick={() => setShowLiveReport(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors"
+                >
+                  <BarChart3 size={14} />
+                  View report
+                </button>
+              )}
             </div>
 
-            {(selected.status === 'scheduled' || selected.status === 'rescheduled') && !rescheduleForm && !showCancelPrompt && !showCompletePrompt && (
+            {(selected.status === 'scheduled' || selected.status === 'rescheduled') && !rescheduleForm && !showCancelPrompt && !showCancelRecurringPrompt && !showCompletePrompt && (
               <div className="flex items-center gap-2 border-t border-zinc-800 pt-4 flex-wrap">
                 {/* Hosting the session here, rather than on a pasted link.
                     Start is what creates the room; until it is pressed there is
@@ -626,6 +824,12 @@ export default function MentorSessions() {
                   <XCircle size={14} />
                   Cancel Session
                 </button>
+                {selected.recurrence_group_id && (
+                  <button onClick={() => setShowCancelRecurringPrompt(true)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 font-semibold rounded-lg hover:bg-red-500/20 transition-colors">
+                    <XCircle size={14} />
+                    Cancel Remaining in Booking
+                  </button>
+                )}
               </div>
             )}
 
@@ -664,6 +868,30 @@ export default function MentorSessions() {
               </div>
             )}
 
+            {showCancelRecurringPrompt && (
+              <div className="space-y-3 border-t border-zinc-800 pt-4">
+                <p className="text-xs text-gray-400">
+                  Cancels every still-pending session in this recurring booking — sessions already completed or cancelled are left as they are.
+                </p>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="Reason for cancelling (required)"
+                  rows={3}
+                  autoFocus
+                  className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
+                />
+                <div className="flex items-center gap-2">
+                  <button onClick={submitCancelRecurring} disabled={deciding || !cancelReason.trim()} className="text-xs px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 font-semibold rounded-lg hover:bg-red-500/20 transition-colors disabled:opacity-50">
+                    {deciding ? 'Cancelling...' : 'Confirm Cancel Remaining'}
+                  </button>
+                  <button onClick={() => setShowCancelRecurringPrompt(false)} disabled={deciding} className="text-xs px-3 py-1.5 bg-zinc-750 text-gray-300 font-semibold rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50">
+                    Back
+                  </button>
+                </div>
+              </div>
+            )}
+
             {showCompletePrompt && (
               <div className="space-y-3 border-t border-zinc-800 pt-4">
                 <div>
@@ -683,6 +911,25 @@ export default function MentorSessions() {
           </div>
         )}
       </Modal>
+
+      {selected && (
+        <LiveSessionReportModal
+          sessionId={selected.id}
+          sessionTitle={selected.title ?? undefined}
+          open={showLiveReport}
+          onClose={() => setShowLiveReport(false)}
+        />
+      )}
     </PageLayout>
+  );
+}
+
+/** One count in the strip above the calendar — whole-cohort, not just the visible weeks. */
+function SessionCountTile({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="bg-zinc-850 border border-zinc-750 rounded-lg px-3 py-2.5">
+      <p className="text-[11px] uppercase tracking-wide font-semibold text-gray-400">{label}</p>
+      <p className={`text-xl font-bold mt-0.5 ${tone}`}>{value}</p>
+    </div>
   );
 }

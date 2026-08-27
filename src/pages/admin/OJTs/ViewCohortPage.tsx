@@ -1,7 +1,7 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, Megaphone, X, type LucideIcon } from 'lucide-react';
+import { Calendar, Users, Briefcase, UserCog, Upload, ArrowLeft, Megaphone, X, Lightbulb, type LucideIcon } from 'lucide-react';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import DataTable from '../../../components/DataTable';
@@ -15,6 +15,7 @@ import { apiCreateAnnouncement } from '../../../lib/api/notifications';
 import PastAnnouncements from '../../../components/PastAnnouncements';
 import { usePageRefresh } from '../../../context/RefreshContext';
 import { useTracks } from '../../../hooks/useTracks';
+import { submittedPreferences } from '../../../lib/preferences';
 
 type PanelView = '' | 'students' | 'projects' | 'mentors';
 
@@ -55,7 +56,10 @@ function resolveTeamAssignment(team: TeamAllocationDetail, projectsById: Map<str
       allocated: true,
       branches: [{
         label: 'Allocated',
-        projectTitle: project?.title ?? fromPref.projectTitle,
+        // Neither preference matches when an admin reassigned the team to a
+        // catalog project that was never one of its choices, and a team that
+        // submitted only preference 1 has nothing in the second slot at all.
+        projectTitle: project?.title ?? fromPref.projectTitle ?? '—',
         projectTrack: project?.track ?? team.track,
         mentorName: team.allocatedMentorName,
       }],
@@ -63,20 +67,16 @@ function resolveTeamAssignment(team: TeamAllocationDetail, projectsById: Map<str
   }
   return {
     allocated: false,
-    branches: [
-      {
-        label: 'Preference 1',
-        projectTitle: team.preference1.projectTitle,
-        projectTrack: trackFor(team.preference1.projectId),
-        mentorName: team.preference1.mentorName,
-      },
-      {
-        label: 'Preference 2',
-        projectTitle: team.preference2.projectTitle,
-        projectTrack: trackFor(team.preference2.projectId),
-        mentorName: team.preference2.mentorName,
-      },
-    ],
+    // A slot the team never filled is left out rather than drawn empty — see
+    // lib/preferences.submittedPreferences.
+    branches: submittedPreferences(team.preference1, team.preference2).map(({ pref, slot }) => ({
+      label: `Preference ${slot}`,
+      // A filled slot always joins a real project, so the fallback is only
+      // here because the shared slot type allows a null title.
+      projectTitle: pref.projectTitle ?? '—',
+      projectTrack: trackFor(pref.projectId),
+      mentorName: pref.mentorName,
+    })),
   };
 }
 
@@ -830,6 +830,13 @@ export default function ViewCohortPage() {
             Create Announcement
           </button>
           <button
+            onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/self-proposed-projects`)}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"
+          >
+            <Lightbulb size={16} />
+            Student Proposed Projects
+          </button>
+          <button
             onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/projects`)}
             className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"
           >
@@ -1046,7 +1053,7 @@ export default function ViewCohortPage() {
 
       {panelView === '' && (
         <div className="border border-dashed border-zinc-800 rounded-xl py-20 flex flex-col items-center justify-center gap-2">
-          <p className="text-gray-500 text-sm">Select Students, Projects, or Mentors from the dropdown above to view details.</p>
+          <p className="text-gray-500 text-sm">Select a view from the dropdown above to see this OJT's students, projects or mentors.</p>
         </div>
       )}
 

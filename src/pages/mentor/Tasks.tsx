@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Calendar, Loader2, Eye } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
@@ -17,15 +18,14 @@ import {
 } from '../../lib/api/tasks';
 import type { ApiTask, ApiTaskCategory, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
 import { apiListMyTeams } from '../../lib/api/teams';
-import { apiListMyCohorts } from '../../lib/api/cohorts';
-import type { Team, Cohort } from '../../lib/types';
+import type { Team } from '../../lib/types';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useTracks } from '../../hooks/useTracks';
 
 const CATEGORY_OPTIONS: { value: ApiTaskCategory; label: string }[] = [
   { value: 'document_submission', label: 'Document Submission' },
-  { value: 'general', label: 'General (no submission)' },
+  { value: 'general', label: 'General (Text Response)' },
   { value: 'link_submission', label: 'Link Submission' },
 ];
 
@@ -69,11 +69,13 @@ interface Props {
 }
 
 export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
+  const navigate = useNavigate();
+  // The OJT this page is scoped to, from the route.
+  const { cohortId } = useParams<{ cohortId: string }>();
   const { showSuccess, showError } = useToast();
   const { options: trackOptions } = useTracks();
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [myTeams, setMyTeams] = useState<Team[]>([]);
-  const [myCohorts, setMyCohorts] = useState<Cohort[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [bucket, setBucket] = useState<TaskBucket>('to-me');
@@ -110,29 +112,28 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
     }
   };
 
-  const loadAll = () => {
-    return Promise.all([apiListTasks(), apiListMyTeams(), apiListMyCohorts()])
-      .then(([tasksRes, teamsRes, cohortsRes]) => {
+  const loadAll = useCallback(() => {
+    if (!cohortId) return Promise.resolve();
+    return Promise.all([apiListTasks({ cohort_id: cohortId }), apiListMyTeams()])
+      .then(([tasksRes, teamsRes]) => {
         setTasks(tasksRes.data || []);
         setMyTeams(teamsRes);
-        setMyCohorts(cohortsRes);
       })
       .catch(console.error);
-  };
+  }, [cohortId]);
 
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [loadAll]);
 
   usePageRefresh(loadAll);
 
-  // A task must belong to exactly one cohort (backend requirement), and the
-  // system only ever allows one active cohort at a time — so the mentor's
-  // active membership is the one, unambiguous cohort any task they create
-  // right now can belong to. The backend rejects creation entirely if this
-  // is missing or inactive, so this is resolved once here instead of adding
-  // a picker for a choice that never actually has more than one valid answer.
-  const activeCohortId = myCohorts.find(c => c.isActive)?.id;
+  // A task belongs to exactly one OJT, and that OJT is the one this page is
+  // open on — the URL, not a separately-resolved "active" membership, so a
+  // mentor cannot be reading one OJT's tasks while creating into another.
+  // The backend still rejects creation into an OJT that is not active, and
+  // remains the authority on that.
+  const activeCohortId = cohortId;
 
   // Unpublished teams used to be filtered out here, from a cohort-level
   // allocationPublishedAt. /teams/my-teams now excludes them outright — and
@@ -189,7 +190,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
         start_date: new Date(form.startDate).toISOString(),
         deadline: new Date(form.dueDate).toISOString(),
         week: `Week ${form.week}`,
-        track: form.track,
+        tracks: [form.track],
         cohort_id: activeCohortId,
       });
 
@@ -338,7 +339,15 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   const handleRowClick = (row: (typeof tableData)[number]) => {
     if (bucket === 'to-me') {
       const task = tasks.find(t => t.id === row.id);
-      if (task) setStatusTask(task);
+      if (!task) return;
+      // A weekly report is a full grid of teams and students — far more
+      // than a side drawer holds — so it gets its own page rather than
+      // being squeezed into the status panel the other task shapes use.
+      if (task.category === 'weekly_report') {
+        navigate(`/mentor/dashboard/tasks/${task.id}/weekly-report`);
+        return;
+      }
+      setStatusTask(task);
     } else {
       openReviewModal(row.id);
     }

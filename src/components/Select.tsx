@@ -18,6 +18,10 @@ interface SelectBaseProps {
   variant?: 'field' | 'filter';
   isSearchable?: boolean;
   isCreatable?: boolean;
+  /** Overrides the trigger's text colour once something is selected — e.g.
+   * a status select whose value should read green/red/amber rather than
+   * the variant's plain text colour. Ignored while showing the placeholder. */
+  tone?: string;
 }
 
 // value/onChange are typed off isMulti rather than being one loose
@@ -50,7 +54,7 @@ const VARIANT_STYLES: Record<'field' | 'filter', string> = {
 // up with the OS's default highlight color instead of the app's theme).
 // This renders its own portal-based list instead, styled to match.
 export default function Select(props: SelectProps) {
-  const { options, placeholder, disabled, className = '', variant = 'field', isMulti = false, isSearchable = false, isCreatable = false } = props;
+  const { options, placeholder, disabled, className = '', variant = 'field', isMulti = false, isSearchable = false, isCreatable = false, tone } = props;
   // The union is enforced at the call boundary above; inside, the body handles
   // both shapes and needs the widened form. One cast here replaces the one
   // every caller used to write.
@@ -92,7 +96,7 @@ export default function Select(props: SelectProps) {
       );
     }
     if (singleSelected) {
-      return <span className="truncate">{singleSelected.label}</span>;
+      return <span className={`truncate ${tone ?? ''}`}>{singleSelected.label}</span>;
     }
     return <span className="text-gray-500 truncate">{placeholder || 'Select...'}</span>;
   };

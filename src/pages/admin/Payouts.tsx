@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Wallet, Check, DollarSign, PackagePlus, Download, Tag, X, Eye } from 'lucide-react';
+import { Wallet, Check, DollarSign, PackagePlus, Download, Tag, X, Eye, CalendarClock, Timer, AlertTriangle, Users, GraduationCap } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
+import SummaryTile from '../../components/SummaryTile';
 import type { Cohort, ApiMentor } from '../../lib/types';
+import { formatExactDuration } from '../../lib/utils';
 import {
   apiListCohorts,
   apiListMentorsPage,
@@ -19,6 +21,7 @@ import {
   apiGetCurrentRatesForMentors,
   apiListMentorRates,
   apiSetMentorRate,
+  apiGetMentorDeliveryStats,
   RATE_TYPE_LABELS,
   RATE_TYPE_UNITS,
   type ApiSessionPayout,
@@ -26,10 +29,10 @@ import {
   type ApiPayoutBatchSummary,
   type ApiPayoutBatch,
   type ApiMentorRate,
+  type ApiMentorDeliveryStats,
   type ApiRateType,
 } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
-import { formatDuration } from '../../lib/utils';
+import { buildCohortOptions } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
 
 const STATUS_STYLES: Record<ApiPayoutStatus, string> = {
@@ -57,6 +60,39 @@ function formatSessionWhen(session: ApiSessionPayout['session']): string {
   return `${date}, ${start}`;
 }
 
+/**
+ * Today as a value an <input type="date"> accepts. Built from local calendar
+ * parts, not toISOString(), which would shift the date across the UTC
+ * boundary for anyone east or west of it — an admin in IST setting a rate
+ * late in the evening would otherwise see tomorrow's date pre-filled.
+ */
+function todayDateInput(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function formatDuration(session: ApiSessionPayout['session']): string {
+  const minutes = session.actual_duration_minutes ?? Math.round((new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 60_000);
+  return formatExactDuration(minutes);
+}
+
+const FLAG_REASON_LABELS: Record<string, string> = {
+  mentor_low_presence: 'Mentor was active for only a small share of the session',
+  no_students_attended: 'No students attended this session',
+};
+
+/** A flag is advisory only — this never blocks approve/paid, it just gives the admin something to look at first. */
+function flagTooltip(row: ApiSessionPayout): string | null {
+  if (row.flag_reasons.length === 0) return null;
+  const parts = row.flag_reasons.map((r) => FLAG_REASON_LABELS[r] ?? r);
+  if (row.mentor_presence_percent !== null) {
+    parts.push(`Mentor present for ${Number(row.mentor_presence_percent)}% of the session`);
+  }
+  return parts.join(' · ');
+}
+
 const RATE_TYPE_OPTIONS = (Object.keys(RATE_TYPE_LABELS) as ApiRateType[]).map((value) => ({
   value,
   label: RATE_TYPE_LABELS[value],
@@ -74,7 +110,7 @@ function describeRate(rate: ApiMentorRate): string {
 export default function AdminPayouts() {
   const { showSuccess, showError } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<'payouts' | 'batches' | 'rates'>('payouts');
+  const [activeTab, setActiveTab] = useState<'payouts' | 'batches' | 'rates' | 'delivery'>('payouts');
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   // Seeded from a ?cohortId= link (e.g. the OJT Setup Payouts tab) so
@@ -91,6 +127,7 @@ export default function AdminPayouts() {
 
   const [payouts, setPayouts] = useState<ApiSessionPayout[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
+  const [payoutsSummary, setPayoutsSummary] = useState({ totalSessions: 0, totalMinutes: 0 });
   const [loading, setLoading] = useState(true);
 
   const [batches, setBatches] = useState<ApiPayoutBatchSummary[]>([]);
@@ -108,6 +145,9 @@ export default function AdminPayouts() {
   const [rateType, setRateType] = useState<ApiRateType>('per_hour');
   const [rateCurrency, setRateCurrency] = useState('INR');
   const [rateNote, setRateNote] = useState('');
+  const [rateEffectiveFrom, setRateEffectiveFrom] = useState(todayDateInput());
+  const [deliveryStats, setDeliveryStats] = useState<Record<string, ApiMentorDeliveryStats>>({});
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [rateHistory, setRateHistory] = useState<ApiMentorRate[]>([]);
   const [savingRate, setSavingRate] = useState(false);
 
@@ -137,6 +177,7 @@ export default function AdminPayouts() {
         });
         setPayouts(res.data);
         setPagination({ page: res.pagination.page, limit: res.pagination.limit, total: res.pagination.total, totalPages: res.pagination.totalPages });
+        setPayoutsSummary(res.summary);
         // Every row shares the same mentor while this filter is active, so
         // the first row's name is enough — no separate mentor fetch needed.
         setMentorFilterName(mentorId ? res.data[0]?.mentor.full_name ?? '' : '');
@@ -200,6 +241,44 @@ export default function AdminPayouts() {
     if (activeTab === 'rates') loadRates();
   }, [activeTab, loadRates]);
 
+  // Same shape as loadRates: one mentor list, then a single bulk call for the
+  // whole visible roster rather than one request per row.
+  // Derived from the exact map the table below renders, so the tiles and the
+  // rows can never disagree — the same badge-equals-query discipline the
+  // payouts summary follows. Teams and students are summed across mentors,
+  // not de-duplicated globally: two mentors sharing a team is two mentoring
+  // relationships, which is what this column is counting.
+  const deliveryTotals = useMemo(() => {
+    return Object.values(deliveryStats).reduce(
+      (acc, stat) => ({
+        sessions: acc.sessions + stat.sessionsDelivered,
+        minutes: acc.minutes + stat.deliveredMinutes,
+        teams: acc.teams + stat.teamsMentored,
+        students: acc.students + stat.studentsMentored,
+      }),
+      { sessions: 0, minutes: 0, teams: 0, students: 0 }
+    );
+  }, [deliveryStats]);
+
+  const loadDelivery = useCallback(async () => {
+    setDeliveryLoading(true);
+    try {
+      const mentorsRes = await apiListMentorsPage({ page: 1, limit: 200, cohortId: cohortId || undefined });
+      setMentors(mentorsRes.data);
+      setDeliveryStats(
+        await apiGetMentorDeliveryStats(mentorsRes.data.map((m) => m.id), { cohortId: cohortId || undefined })
+      );
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to load mentor delivery');
+    } finally {
+      setDeliveryLoading(false);
+    }
+  }, [cohortId, showError]);
+
+  useEffect(() => {
+    if (activeTab === 'delivery') loadDelivery();
+  }, [activeTab, loadDelivery]);
+
   const openRateModal = async (mentor: ApiMentor) => {
     const existing = currentRates[mentor.id];
     setRateTarget(mentor);
@@ -209,6 +288,7 @@ export default function AdminPayouts() {
     setRateType(existing?.rate_type ?? 'per_hour');
     setRateCurrency(existing?.currency ?? 'INR');
     setRateNote('');
+    setRateEffectiveFrom(todayDateInput());
     setRateHistory([]);
     try {
       setRateHistory(await apiListMentorRates(mentor.id));
@@ -231,6 +311,7 @@ export default function AdminPayouts() {
         rateAmount: amount,
         rateType,
         currency: rateCurrency as 'INR' | 'USD',
+        effectiveFrom: rateEffectiveFrom || undefined,
         note: rateNote.trim() || undefined,
       });
       setCurrentRates((prev) => ({ ...prev, [rateTarget.id]: saved }));
@@ -310,7 +391,7 @@ export default function AdminPayouts() {
     }
   };
 
-  const cohortOptions = useMemo(() => cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) })), [cohorts]);
+  const cohortOptions = useMemo(() => buildCohortOptions(cohorts), [cohorts]);
 
   // Batches is the only tab that stacks content below its table, so it's the
   // only one that scrolls as a whole; the others hand their leftover height
@@ -359,7 +440,31 @@ export default function AdminPayouts() {
         >
           Mentor Rates
         </button>
+        <button
+          onClick={() => setActiveTab('delivery')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all ${
+            activeTab === 'delivery' ? 'border-gold text-gold' : 'border-transparent text-gray-400 hover:text-white'
+          }`}
+        >
+          Work Delivered
+        </button>
       </div>
+
+      {activeTab === 'delivery' && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl">
+          <SummaryTile icon={CalendarClock} label="Sessions" value={deliveryTotals.sessions} tone="text-white" />
+          <SummaryTile icon={Timer} label="Time delivered" value={formatExactDuration(deliveryTotals.minutes)} tone="text-gold" />
+          <SummaryTile icon={Users} label="Teams" value={deliveryTotals.teams} tone="text-white" />
+          <SummaryTile icon={GraduationCap} label="Students" value={deliveryTotals.students} tone="text-white" />
+        </div>
+      )}
+
+      {activeTab === 'payouts' && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-xl">
+          <SummaryTile icon={CalendarClock} label="Sessions" value={payoutsSummary.totalSessions} tone="text-white" />
+          <SummaryTile icon={Timer} label="Total duration" value={formatExactDuration(payoutsSummary.totalMinutes)} tone="text-gold" />
+        </div>
+      )}
 
       {activeTab === 'payouts' && mentorId && (
         <div className="flex items-center gap-2 text-xs bg-gold/10 border border-gold/20 text-gold rounded-lg px-3 py-2 w-fit">
@@ -384,9 +489,14 @@ export default function AdminPayouts() {
         <DataTable
           columns={[
             { key: 'mentorName', header: 'Mentor', render: (row) => (
-              <span>
+              <span className="inline-flex items-center gap-1.5">
                 {row.mentor.full_name}
-                {row.mentor.is_external && <span className="text-[10px] text-gray-500 ml-1">(External)</span>}
+                {row.mentor.is_external && <span className="text-[10px] text-gray-500">(External)</span>}
+                {flagTooltip(row) && (
+                  <span title={flagTooltip(row)!} className="shrink-0">
+                    <AlertTriangle size={12} className="text-yellow-400" />
+                  </span>
+                )}
               </span>
             ) },
             { key: 'sessionWhen', header: 'Session', render: (row) => formatSessionWhen(row.session) },
@@ -431,6 +541,47 @@ export default function AdminPayouts() {
               )}
             </>
           )}
+        />
+      ) : activeTab === 'delivery' ? (
+        <DataTable
+          columns={[
+            { key: 'mentorName', header: 'Mentor', render: (row) => (
+              <span>
+                {row.fullName ?? row.email}
+                {row.isExternal && <span className="text-[10px] text-gray-500 ml-1">(External)</span>}
+              </span>
+            ) },
+            { key: 'sessionsDelivered', header: 'Sessions', render: (row) => (
+              <span className="text-white font-medium tabular-nums">{deliveryStats[row.id]?.sessionsDelivered ?? 0}</span>
+            ) },
+            { key: 'deliveredMinutes', header: 'Time Delivered', render: (row) => (
+              <span className="text-gold font-medium tabular-nums">
+                {formatExactDuration(deliveryStats[row.id]?.deliveredMinutes ?? 0)}
+              </span>
+            ) },
+            { key: 'teamsMentored', header: 'Teams', render: (row) => (
+              <span className="tabular-nums">{deliveryStats[row.id]?.teamsMentored ?? 0}</span>
+            ) },
+            { key: 'studentsMentored', header: 'Students', render: (row) => (
+              <span className="tabular-nums">{deliveryStats[row.id]?.studentsMentored ?? 0}</span>
+            ) },
+            { key: 'sessionsUpcoming', header: 'Upcoming', render: (row) => {
+              const upcoming = deliveryStats[row.id]?.sessionsUpcoming ?? 0;
+              return upcoming > 0
+                ? <span className="text-gray-300 tabular-nums">{upcoming}</span>
+                : <span className="text-gray-600">—</span>;
+            } },
+            { key: 'sessionsCancelled', header: 'Cancelled', render: (row) => {
+              const cancelled = deliveryStats[row.id]?.sessionsCancelled ?? 0;
+              return cancelled > 0
+                ? <span className="text-red-400/80 tabular-nums">{cancelled}</span>
+                : <span className="text-gray-600">—</span>;
+            } },
+          ]}
+          data={mentors.map((m) => ({ ...m, mentorName: m.fullName ?? m.email ?? '' }))}
+          searchKeys={['mentorName']}
+          searchPlaceholder="Search mentors..."
+          loading={deliveryLoading}
         />
       ) : activeTab === 'rates' ? (
         <DataTable
@@ -604,6 +755,20 @@ export default function AdminPayouts() {
                 <label className="text-xs text-gray-400 mb-1 block">Currency</label>
                 <Select value={rateCurrency} onChange={setRateCurrency} options={CURRENCY_OPTIONS} />
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Effective from</label>
+              <input
+                type="date"
+                value={rateEffectiveFrom}
+                onChange={(e) => setRateEffectiveFrom(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+              />
+              <p className="text-[11px] text-gray-500 mt-1">
+                Sessions are paid at the rate in effect on the day they ran. Backdate this to cover
+                sessions already delivered; leave it at today to price only what comes next.
+              </p>
             </div>
 
             <div>

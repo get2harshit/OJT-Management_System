@@ -1,9 +1,14 @@
-import type { ApiMentor, MentorCapacityListRow, MentorCapacitySummary } from '../types';
+import type { ApiMentor, MentorCapacityListRow } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
 
-export async function apiListMentors(type?: 'internal' | 'external'): Promise<ApiMentor[]> {
-  const url = type ? `/api/v1/mentors?type=${type}` : '/api/v1/mentors';
-  return cachedFetch(`mentors:list:${type || 'all'}`, 15_000, () => apiFetch<ApiMentor[]>(url));
+export async function apiListMentors(type?: 'internal' | 'external', track?: string): Promise<ApiMentor[]> {
+  const params = new URLSearchParams();
+  if (type) params.set('type', type);
+  if (track) params.set('track', track);
+  const qs = params.toString();
+  return cachedFetch(`mentors:list:${type || 'all'}:${track || 'all'}`, 15_000, () =>
+    apiFetch<ApiMentor[]>(`/api/v1/mentors${qs ? `?${qs}` : ''}`)
+  );
 }
 
 // Single mentor, for a detail-card view — avoids pulling every mentor just
@@ -84,10 +89,6 @@ export async function apiUpdateMentor(
   });
   invalidateCached('mentors:list');
   return mentor;
-}
-
-export async function apiGetMentorCapacity(mentorId: string, cohortId: string): Promise<MentorCapacitySummary> {
-  return apiFetch<MentorCapacitySummary>(`/api/v1/mentors/${mentorId}/capacity?cohortId=${cohortId}`);
 }
 
 // Admin-only — every mentor matching search/type, with their capacity. Backs

@@ -39,6 +39,16 @@ export interface ApiSessionPayout {
   mentor: ApiPayoutMentorRef;
   session: ApiPayoutSessionRef;
   approver: { id: string; full_name: string } | null;
+  /**
+   * The "was the mentor actually here" advisory signal — only set for a
+   * session that was actually hosted live on this platform; null for a
+   * manually-logged one, or if Polaris's analytics couldn't be reached when
+   * the session completed. A flag, never a block — the admin still decides
+   * during the normal approve/paid review.
+   */
+  mentor_presence_percent: string | null;
+  attendee_count: number | null;
+  flag_reasons: string[];
 }
 
 export interface PayoutListFilter {
@@ -56,6 +66,8 @@ export interface PayoutListFilter {
 export interface PayoutsPage {
   data: ApiSessionPayout[];
   pagination: { page: number; limit: number; total: number; totalPages: number };
+  /** Sessions/hours for the exact filter this page was fetched with — always agrees with the rows above it. */
+  summary: { totalSessions: number; totalMinutes: number };
 }
 
 function toPayoutQuery(filter: PayoutListFilter): string {
@@ -73,17 +85,21 @@ function toPayoutQuery(filter: PayoutListFilter): string {
 }
 
 async function fetchPayoutsPage(path: string): Promise<PayoutsPage> {
-  const body = await apiFetch<{ data: ApiSessionPayout[]; pagination: { page: number; limit: number; total: number; pages: number } }>(path);
-  return { data: body.data, pagination: { ...body.pagination, totalPages: body.pagination.pages } };
+  const body = await apiFetch<{
+    data: ApiSessionPayout[];
+    pagination: { page: number; limit: number; total: number; pages: number };
+    summary: { totalSessions: number; totalMinutes: number };
+  }>(path);
+  return { data: body.data, pagination: { ...body.pagination, totalPages: body.pagination.pages }, summary: body.summary };
 }
 
 export async function apiListPayouts(filter: PayoutListFilter): Promise<PayoutsPage> {
   return fetchPayoutsPage(`/api/v1/payouts?${toPayoutQuery(filter)}`);
 }
 
-export async function apiGetMyPayouts(filter: PayoutListFilter): Promise<PayoutsPage> {
-  return fetchPayoutsPage(`/api/v1/mentors/me/payouts?${toPayoutQuery(filter)}`);
-}
+// No apiGetMyPayouts here on purpose: the mentor-facing page shows work
+// delivered (sessions, hours, teams), never rates or amounts, so it reads
+// sessions instead. GET /mentors/me/payouts still exists server-side.
 
 export async function apiApprovePayout(id: string): Promise<ApiSessionPayout> {
   const res = await apiFetch<{ data: ApiSessionPayout }>(`/api/v1/payouts/${id}/approve`, { method: 'PATCH' });

@@ -5,7 +5,7 @@ import SpinnerSquare from '../../components/SpinnerSquare';
 import Select from '../../components/Select';
 import type { Cohort } from '../../lib/types';
 import { apiListMyCohorts, apiGetMyAvailability, apiSetMyAvailability } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
 
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -111,7 +111,7 @@ export default function MentorAvailability() {
     }
   };
 
-  const cohortOptions = cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }));
+  const cohortOptions = buildCohortOptions(cohorts);
 
   return (
     <PageLayout mode="scroll" className="space-y-6">

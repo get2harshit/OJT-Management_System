@@ -109,6 +109,15 @@ interface GetCohortProjectsPageParams {
   track?: string;
   /** Catalog id, matched as a prefix — "PST_ADS" narrows to that block. */
   projectId?: string;
+  /**
+   * The track variant this page is showing, when it is showing one.
+   *
+   * A track can carry one configuration per admission year, while a project
+   * belongs to the track and lists its years separately — so filtering by track
+   * alone puts both years' catalogs on a single variant's page. The server
+   * turns this id into that variant's years; nothing here computes a year.
+   */
+  configId?: string;
 }
 
 // Same project list as apiGetProjectsForCohort, but server-paginated with
@@ -122,6 +131,11 @@ export async function apiGetProjectsForCohortPage(cohortId: string, params: GetC
   if (params.search) query.set('search', params.search);
   if (params.track) query.set('track', params.track);
   if (params.projectId) query.set('projectId', params.projectId);
+  // The track variant being viewed. Sent so the server can scope the list to
+  // that variant's admission years — a track can be configured once per year,
+  // so the track alone shows both years' catalogs. The years are never
+  // computed here.
+  if (params.configId) query.set('configId', params.configId);
   const res = await apiFetch<{ success: boolean; data: RawCohortProject[]; pagination: CohortProjectsPage['pagination'] }>(
     `/api/v1/cohorts/${cohortId}/projects?${query.toString()}`
   );

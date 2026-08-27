@@ -189,6 +189,8 @@ export interface MyCohort {
   name: string | null;
   sessionTerm: SemesterSession;
   allowedBatches: string[];
+  startDate: string;
+  endDate: string;
 }
 
 export interface TeamMemberInfo {
@@ -323,16 +325,6 @@ export interface PendingProposal {
   };
 }
 
-// A mentor's computed/effective capacity for a cohort (GET /api/v1/mentors/:id/capacity).
-// A single flat number shared across every track the mentor covers.
-export interface MentorCapacitySummary {
-  mentorId: string;
-  /** Applies until an admin sets a capacity — the same number for everyone. */
-  defaultCapacity: number;
-  override: number | null;
-  effectiveTotal: number;
-}
-
 // One row per mentor for the admin's bulk capacity table (GET /api/v1/mentors/capacity)
 // — cohort-agnostic, since capacityOverride is one flat number per mentor.
 export interface MentorCapacityListRow {
@@ -350,17 +342,37 @@ export interface MentorCapacityListRow {
 export interface MentorLoadSummaryRow {
   mentorId: string;
   mentorName: string | null;
+  /** Track slugs — resolve against useTracks() for display names. */
   tracks: string[];
+  /** Industry mentor rather than internal. */
+  isExternal: boolean;
+  organization: string | null;
+  /**
+   * Teams that named this mentor in either preference slot, whatever became
+   * of it — the demand behind every other count. Counted per team, not per
+   * slot, so a team naming the same mentor twice still counts once.
+   */
+  preferredCount: number;
   /** Teams the allocation run has already placed with this mentor. */
   allocatedCount: number;
   /**
-   * Teams holding this mentor in a submitted-but-unallocated preference.
+   * Of allocatedCount, the ones students can actually see — committed before
+   * the cohort's last publish. Zero across the board until the cohort is
+   * published, which is itself the useful signal.
+   */
+  publishedCount: number;
+  /**
+   * Preference slots still holding this mentor unallocated.
+   *
    * allocatedCount is zero for everybody until a run has happened, so it says
    * nothing about whether students can still pick this mentor — this is the
-   * number that does.
+   * number that does, and the one softCap is measured against. Slot-counted,
+   * unlike preferredCount, because that is what the picker's soft cap counts.
    */
   pendingCount: number;
   threshold: number;
+  /** The pendingCount at which the student picker stops offering this mentor. */
+  softCap: number;
   /** At the soft cap — the student picker will not let a team select them. */
   isFull: boolean;
   /** At nominal capacity but still selectable. */
@@ -383,7 +395,13 @@ export interface TeamAllocationDetail {
   tier: string;
   submittedAt: string;
   preference1: { projectId: string; projectTitle: string; mentorId: string | null; mentorName: string | null };
-  preference2: { projectId: string; projectTitle: string; mentorId: string | null; mentorName: string | null };
+  /**
+   * Null across the board for a team that submitted only preference 1 — the
+   * schema allows it ('1_own'/'1_recommended' submission modes) and the API
+   * still returns the object, so every reader has to handle the empty slot.
+   * See lib/preferences.submittedPreferences.
+   */
+  preference2: { projectId: string | null; projectTitle: string | null; mentorId: string | null; mentorName: string | null };
   preference1ReviewStatus: PreferenceReviewStatus;
   preference1ReviewNote: string | null;
   allocationStatus: TeamAllocationStatus;
@@ -418,7 +436,8 @@ export interface AllocationPreviewEntry {
   // The team's own 2 submitted preferences — lets Reallocate offer "assign
   // from student preference" alongside a fully freeform pick.
   preference1: { projectId: string; projectTitle: string | null; mentorId: string | null; mentorName: string | null };
-  preference2: { projectId: string; projectTitle: string | null; mentorId: string | null; mentorName: string | null };
+  /** Null throughout when the team submitted only preference 1 — see TeamAllocationDetail.preference2. */
+  preference2: { projectId: string | null; projectTitle: string | null; mentorId: string | null; mentorName: string | null };
 }
 
 // Cohort student not yet in any team (GET /api/v1/teams/cohort/:cohortId/students-without-team)

@@ -32,11 +32,26 @@ export async function apiGetMySubmissions(): Promise<MySubmissions> {
 // Mentor/Admin/Batch Manager — every PRD submission across all allocations,
 // for review dashboards. Kept for callers that genuinely need the whole set;
 // the admin/mentor review roster now fetches per-student on click instead
-// (apiGetSubmissionsByStudent) rather than pulling everything up front.
-export async function apiGetAllPrdSubmissions(status?: PrdStatus): Promise<PrdSubmission[]> {
-  const qs = status ? `?status=${status}` : '';
-  return cachedFetch(`submissions:all:${status || 'all'}`, SUBMISSIONS_TTL, () =>
-    apiFetch<PrdSubmission[]>(`/api/v1/submissions${qs}`)
+// (apiGetSubmissionsByStudent) rather than pulling everything up front. The
+// admin Submissions page's CSV export is the one caller that still wants the
+// whole set — scoped down to one cohort so it isn't the whole system's.
+export async function apiGetAllPrdSubmissions(
+  status?: PrdStatus,
+  cohortId?: string,
+  includeDownloadUrls?: boolean
+): Promise<PrdSubmission[]> {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (cohortId) params.set('cohortId', cohortId);
+  // Opt-in only — signs a 7-day download link per document submission
+  // server-side, so skip it (and its cache) unless the caller (the CSV
+  // export) actually wants it.
+  if (includeDownloadUrls) params.set('includeDownloadUrls', 'true');
+  const qs = params.toString();
+  return cachedFetch(
+    `submissions:all:${status || 'all'}:${cohortId || 'any'}:${includeDownloadUrls ? 'withUrls' : 'noUrls'}`,
+    SUBMISSIONS_TTL,
+    () => apiFetch<PrdSubmission[]>(`/api/v1/submissions${qs ? `?${qs}` : ''}`)
   );
 }
 

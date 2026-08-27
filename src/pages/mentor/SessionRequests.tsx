@@ -16,7 +16,7 @@ import {
   type ApiSessionRequestStatus,
   type ApiSessionRequestType,
 } from '../../lib/api';
-import { getCohortLabel } from '../../lib/cohortLabel';
+import { buildCohortOptions } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
 import { useAuth } from '../../context/useAuth';
 
@@ -174,7 +174,7 @@ export default function MentorSessionRequests() {
           <p className="text-gray-400 text-sm mt-1">Request a combined or on-demand session for admin approval</p>
         </div>
         <div className="flex items-center gap-2.5">
-          <Select value={cohortId} onChange={setCohortId} variant="filter" placeholder="Select cohort" className="w-[200px]" options={cohorts.map((c) => ({ value: c.id, label: getCohortLabel(c) }))} />
+          <Select value={cohortId} onChange={setCohortId} variant="filter" placeholder="Select cohort" className="w-[200px]" options={buildCohortOptions(cohorts)} />
           <button
             onClick={() => setForm({ ...EMPTY_FORM })}
             disabled={!cohortId}

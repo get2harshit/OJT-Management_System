@@ -79,6 +79,8 @@ export interface ApiSession {
   source_request_id: string | null;
   mentor_hourly_rate_snapshot: string | null;
   mentor_rate_currency_snapshot: string | null;
+  /** Ties together sessions booked in one recurring (one-week) submission. Null for an ordinary single-session booking. */
+  recurrence_group_id: string | null;
   created_at: string;
   updated_at: string;
   mentor: ApiSessionMentorRef;
@@ -145,6 +147,69 @@ export async function apiCreateSession(body: CreateSessionBody): Promise<ApiSess
   return res.data;
 }
 
+export interface RecurringSessionOccurrence {
+  scheduledDate: string; // YYYY-MM-DD
+  startTime: string; // ISO datetime
+  endTime: string; // ISO datetime
+}
+
+export interface CreateRecurringSessionsBody {
+  cohortId: string;
+  trackId?: string;
+  sessionType?: ApiSessionType;
+  title?: string;
+  locationOrLink?: string;
+  mentorId: string;
+  teamIds: string[];
+  /** One per selected weekday, at most 7, all within the same 7-day week. */
+  occurrences: RecurringSessionOccurrence[];
+}
+
+export interface RecurringSessionSkip {
+  scheduledDate: string;
+  startTime: string;
+  endTime: string;
+  reason: string;
+}
+
+export interface CreateRecurringSessionsResult {
+  recurrenceGroupId: string;
+  created: ApiSession[];
+  skipped: RecurringSessionSkip[];
+}
+
+/**
+ * Books several occurrences in one submission — a day that conflicts is
+ * skipped, not fatal to the rest of the week. Inspect `skipped` to tell the
+ * caller which days didn't make it and why.
+ */
+export async function apiCreateRecurringSessions(body: CreateRecurringSessionsBody): Promise<CreateRecurringSessionsResult> {
+  const res = await apiFetch<{ data: CreateRecurringSessionsResult }>('/api/v1/sessions/recurring', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  invalidateCached('sessions');
+  return res.data;
+}
+
+export interface CancelRecurringRemainingResult {
+  cancelled: ApiSession[];
+  skipped: { sessionId: string; reason: string }[];
+}
+
+/** Cancels every still-pending (scheduled/rescheduled) session left in a recurring booking's batch. */
+export async function apiCancelRecurringRemaining(
+  recurrenceGroupId: string,
+  reason: string
+): Promise<CancelRecurringRemainingResult> {
+  const res = await apiFetch<{ data: CancelRecurringRemainingResult }>(
+    `/api/v1/sessions/recurring/${recurrenceGroupId}/cancel-remaining`,
+    { method: 'POST', body: JSON.stringify({ reason }) }
+  );
+  invalidateCached('sessions');
+  return res.data;
+}
+
 // Admin-scoped, arbitrary filters.
 export async function apiListSessions(filter: SessionListFilter): Promise<SessionsPage> {
   return fetchSessionsPage(`/api/v1/sessions?${toQuery(filter)}`);
@@ -156,6 +221,67 @@ export async function apiGetMySessions(filter: SessionListFilter): Promise<Sessi
 
 export async function apiGetMyUpcomingSessions(filter: SessionListFilter): Promise<SessionsPage> {
   return fetchSessionsPage(`/api/v1/students/me/sessions?${toQuery(filter)}`);
+}
+
+/**
+ * The calling mentor's session record in aggregate. Carries no rate or
+ * amount by design — it describes work delivered, not money.
+ */
+export interface ApiMentorSessionStats {
+  scheduled: number;
+  rescheduled: number;
+  completed: number;
+  cancelled: number;
+  total: number;
+  /** Actual duration where the mentor recorded one, else the scheduled duration. */
+  deliveredMinutes: number;
+  /** Distinct teams this mentor has actually completed a session with. */
+  teamsMentored: number;
+}
+
+export async function apiGetMySessionStats(cohortId?: string): Promise<ApiMentorSessionStats> {
+  const query = cohortId ? `?cohortId=${encodeURIComponent(cohortId)}` : '';
+  const res = await apiFetch<{ data: ApiMentorSessionStats }>(`/api/v1/mentors/me/session-stats${query}`);
+  return res.data;
+}
+
+/**
+ * What a mentor actually delivered — no rate, no amount.
+ *
+ * Separate from payouts on purpose: a mentor who has never had a rate set
+ * generates no payout row at all, and their delivered work must still be
+ * visible to an admin.
+ */
+export interface ApiMentorDeliveryStats {
+  sessionsDelivered: number;
+  sessionsUpcoming: number;
+  sessionsCancelled: number;
+  deliveredMinutes: number;
+  teamsMentored: number;
+  studentsMentored: number;
+}
+
+export interface MentorDeliveryFilter {
+  cohortId?: string;
+  /** YYYY-MM-DD, both inclusive. */
+  from?: string;
+  to?: string;
+}
+
+/** One request for a whole roster page, keyed by mentor id — never a call per mentor. */
+export async function apiGetMentorDeliveryStats(
+  mentorIds: string[],
+  filter: MentorDeliveryFilter = {}
+): Promise<Record<string, ApiMentorDeliveryStats>> {
+  if (mentorIds.length === 0) return {};
+  const query = new URLSearchParams({ mentorIds: mentorIds.join(',') });
+  if (filter.cohortId) query.set('cohortId', filter.cohortId);
+  if (filter.from) query.set('from', filter.from);
+  if (filter.to) query.set('to', filter.to);
+  const res = await apiFetch<{ data: Record<string, ApiMentorDeliveryStats> }>(
+    `/api/v1/mentors/delivery-stats?${query.toString()}`
+  );
+  return res.data;
 }
 
 export interface RescheduleSessionBody {
@@ -341,5 +467,60 @@ export async function apiGetSessionJoinToken(sessionId: string): Promise<Session
     method: 'POST',
     body: JSON.stringify({}),
   });
+  return res.data;
+}
+
+// ── What actually happened in the room — pulled from Polaris's own join/leave
+// logs, not our own database. Read-only; the attendance sync below is the
+// only thing here that writes anything.
+
+export interface ApiLiveStudentReport {
+  studentId: string;
+  fullName: string;
+  email: string;
+  joined: boolean;
+  joinedAt: string | null;
+  leftAt: string | null;
+  durationSeconds: number;
+  percentPresent: number;
+  meetsAttendanceThreshold: boolean;
+}
+
+export interface ApiLiveOtherParticipant {
+  userId: string;
+  name: string;
+  roles: string[];
+  joinedAt: string | null;
+  leftAt: string | null;
+  durationSeconds: number;
+}
+
+export interface ApiLiveSessionReport {
+  sessionId: string;
+  totalDurationSeconds: number;
+  sessionStart: string | null;
+  sessionEnd: string | null;
+  attendanceThresholdPercent: number;
+  totalExpected: number;
+  presentCount: number;
+  students: ApiLiveStudentReport[];
+  otherParticipants: ApiLiveOtherParticipant[];
+}
+
+export async function apiGetLiveSessionReport(sessionId: string): Promise<ApiLiveSessionReport> {
+  const res = await apiFetch<{ data: ApiLiveSessionReport }>(`/api/v1/sessions/${sessionId}/live-report`);
+  return res.data;
+}
+
+/**
+ * Fills in real attendance from the report above, for students still
+ * 'not_marked' only — never overwrites a mentor's own mark. Safe to call more
+ * than once; called automatically whenever the report is opened.
+ */
+export async function apiSyncLiveAttendance(sessionId: string): Promise<{ updatedCount: number }> {
+  const res = await apiFetch<{ data: { updatedCount: number } }>(`/api/v1/sessions/${sessionId}/live-report/sync-attendance`, {
+    method: 'POST',
+  });
+  invalidateCached('sessions');
   return res.data;
 }

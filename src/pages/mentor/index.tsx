@@ -4,13 +4,21 @@ import { useLegacyTabRedirect } from '../../hooks/useLegacyTabRedirect';
 import AppShell from '../../components/AppShell';
 import Dashboard from './Dashboard';
 import OJTs from './OJTs';
+import MentorTeams from './ojt/MentorTeams';
+import MentorStudents from './ojt/MentorStudents';
+import MentoredStudents from './MentoredStudents';
+import MentorOjtLayout from './ojt/MentorOjtLayout';
+import MentorOjtRedirect from './ojt/MentorOjtRedirect';
 import ProjectProposals from './ProjectProposals';
 import Tasks from './Tasks';
+import WeeklyReport from './WeeklyReport';
 import Submissions from './Submissions';
 import Attendance from './Attendance';
 import Sessions from './Sessions';
-import Payouts from './Payouts';
+import WorkSummary from './WorkSummary';
 import SessionRequests from './SessionRequests';
+import DoubtRequests from './DoubtRequests';
+import Chat from './Chat';
 import Availability from './Availability';
 import EvaluationTracker from './EvaluationTracker';
 import Credits from './Credits';
@@ -76,7 +84,7 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
         goToSection('sessions');
         break;
       case 'payout':
-        goToSection('payouts');
+        goToSection('work-summary');
         break;
       default:
         break;
@@ -87,38 +95,72 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
     <AppShell panel="mentor" onLogout={onLogout}>
       <Routes>
         <Route index element={<Dashboard mentorId={mentorId} onNavigateToSection={goToSection} />} />
-        <Route path="ojts" element={<OJTs />} />
+
+        {/* Everything a mentor does inside one OJT lives under its id, so the
+            OJT is bookmarkable and every tab agrees on which one is open. */}
+        <Route path="ojts/:cohortId" element={<MentorOjtLayout />}>
+          <Route index element={<Navigate to="overview" replace />} />
+          <Route path="overview" element={<OJTs />} />
+          <Route path="teams" element={<MentorTeams />} />
+          {/* Teams and Projects used to be separate tabs; a team card already
+              opens the same TeamProjectDetail modal a Projects list would
+              have, so this bookmark just lands on the merged tab instead. */}
+          <Route path="projects" element={<Navigate to="../teams" replace />} />
+          <Route path="students" element={<MentorStudents />} />
+          <Route
+            path="tasks"
+            element={
+              <Tasks
+                mentorId={mentorId}
+                onViewSubmission={(studentId, taskId) => {
+                  setSubmissionFocus({ studentId, taskId });
+                  goToSection('submissions');
+                }}
+              />
+            }
+          />
+          <Route
+            path="submissions"
+            element={
+              <Submissions
+                focusStudentId={submissionFocus?.studentId ?? null}
+                focusTaskId={submissionFocus?.taskId ?? null}
+                onFocusHandled={() => setSubmissionFocus(null)}
+              />
+            }
+          />
+          <Route path="sessions" element={<Sessions />} />
+          <Route path="attendance" element={<Attendance />} />
+          <Route path="evaluation" element={<EvaluationTracker />} />
+        </Route>
+
+        {/* The flat section URLs every existing bookmark and every
+            notification click-handler still uses. They resolve an OJT and
+            hand off, so nothing that names a bare section had to change. */}
+        <Route path="ojts" element={<MentorOjtRedirect section="overview" />} />
+        <Route path="tasks" element={<MentorOjtRedirect section="tasks" />} />
+        <Route path="submissions" element={<MentorOjtRedirect section="submissions" />} />
+        <Route path="sessions" element={<MentorOjtRedirect section="sessions" />} />
+        <Route path="attendance" element={<MentorOjtRedirect section="attendance" />} />
+        <Route path="evaluation" element={<MentorOjtRedirect section="evaluation" />} />
+
+        <Route path="mentored-students" element={<MentoredStudents />} />
         <Route path="proposals" element={<ProjectProposals />} />
-        <Route
-          path="tasks"
-          element={
-            <Tasks
-              mentorId={mentorId}
-              onViewSubmission={(studentId, taskId) => {
-                setSubmissionFocus({ studentId, taskId });
-                goToSection('submissions');
-              }}
-            />
-          }
-        />
-        <Route
-          path="submissions"
-          element={
-            <Submissions
-              mentorId={mentorId}
-              focusStudentId={submissionFocus?.studentId ?? null}
-              focusTaskId={submissionFocus?.taskId ?? null}
-              onFocusHandled={() => setSubmissionFocus(null)}
-            />
-          }
-        />
+        {/* Its own route rather than a drawer on the Tasks page: the grid
+            is ten columns wide and as tall as the mentor has teams. Flat,
+            like the other mentored-students/proposals routes below — it only
+            needs the taskId, and the back link sends it to the flat /tasks
+            redirect above rather than an OJT-scoped path. */}
+        <Route path="tasks/:taskId/weekly-report" element={<WeeklyReport />} />
         <Route path="credits" element={<Credits mentorId={mentorId} />} />
-        <Route path="sessions" element={<Sessions />} />
-        <Route path="attendance" element={<Attendance />} />
-        <Route path="payouts" element={<Payouts />} />
+        <Route path="work-summary" element={<WorkSummary />} />
+        {/* Payout notifications and any old link still say "payouts" — the
+            mentor-side page is now about work delivered, not money. */}
+        <Route path="payouts" element={<Navigate to={`${BASE_PATH}/work-summary`} replace />} />
         <Route path="session-requests" element={<SessionRequests />} />
+        <Route path="doubt-requests" element={<DoubtRequests />} />
+        <Route path="chat" element={<Chat />} />
         <Route path="availability" element={<Availability />} />
-        <Route path="evaluation" element={<EvaluationTracker />} />
         {/* An unknown section is a bad link, not a blank screen — send it to
             the panel's own front page rather than rendering nothing. */}
         <Route path="*" element={<Navigate to={BASE_PATH} replace />} />
