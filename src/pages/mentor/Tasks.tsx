@@ -39,12 +39,12 @@ const EMPTY_FORM = {
   teamIds: [] as string[],
   assignees: [] as string[],
   week: '1',
-  track: '',
+  tracks: [] as string[],
   startDate: '',
   dueDate: '',
 };
 
-type TaskBucket = 'to-me' | 'to-others';
+type TaskBucket = 'all' | 'to-me' | 'to-others';
 
 const STATUS_LABEL: Record<ApiAssignmentStatus, string> = {
   pending: 'Pending',
@@ -78,7 +78,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   const [myTeams, setMyTeams] = useState<Team[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
-  const [bucket, setBucket] = useState<TaskBucket>('to-me');
+  const [bucket, setBucket] = useState<TaskBucket>('all');
   const [assignedByFilter, setAssignedByFilter] = useState('all');
   const [statusTask, setStatusTask] = useState<ApiTask | null>(null);
   // The list only carries assignmentsSummary (a capped preview), never the
@@ -142,18 +142,26 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   // publish passed it. Nothing to filter here any more.
   const publishedTeams = myTeams;
 
-  // A task's track is a hard requirement (see canSave below), so once the
-  // mentor picks one, only teams/students actually on that track should be
-  // selectable — otherwise a track-specific task could get assigned to a
-  // student working a completely different track. Before a track is picked,
-  // every published team/student still shows, same as before.
-  const trackFilteredTeams = form.track
-    ? publishedTeams.filter(team => team.track === form.track)
+  // A task's track(s) are a hard requirement (see canSave below), so once the
+  // mentor picks at least one, only teams/students on one of those tracks
+  // should be selectable — otherwise a track-specific task could get
+  // assigned to a student working a completely different track. Before any
+  // track is picked, every published team/student still shows, same as
+  // before.
+  const trackFilteredTeams = form.tracks.length > 0
+    ? publishedTeams.filter(team => form.tracks.includes(team.track))
     : publishedTeams;
 
+  // Only the tracks this mentor actually has a team in — not every track in
+  // the system, most of which they have nothing to do with.
+  const myTrackSlugs = Array.from(new Set(myTeams.map(team => team.track)));
+  const myTrackOptions = trackOptions.filter(opt => myTrackSlugs.includes(opt.value as string));
+
+  // Team name/number first, then who's on it — a bare list of student names
+  // gave no way to tell teams apart when picking among several.
   const teamOptions = trackFilteredTeams.map(team => ({
     value: team.id,
-    label: team.members.map(m => m.fullName || 'Unnamed').join(', ') || team.track,
+    label: `${team.name ?? team.track}: ${team.members.map(m => m.fullName || 'Unnamed').join(', ') || 'No members yet'}`,
   }));
 
   const studentOptions = Array.from(
@@ -162,7 +170,6 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
 
   const canSave =
     !!form.title &&
-    !!form.track &&
     !!form.startDate &&
     !!form.dueDate &&
     new Date(form.startDate) < new Date(form.dueDate) &&
@@ -190,7 +197,9 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
         start_date: new Date(form.startDate).toISOString(),
         deadline: new Date(form.dueDate).toISOString(),
         week: `Week ${form.week}`,
-        tracks: [form.track],
+        // Picking a track narrows who's selectable; skipping it means "every
+        // track I have" rather than blocking the save on an unnecessary choice.
+        tracks: form.tracks.length > 0 ? form.tracks : myTrackSlugs,
         cohort_id: activeCohortId,
       });
 
@@ -213,7 +222,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   // creations and my students' admin-assigned work land in the latter).
   const assignedToMe = tasks.filter(t => t.myAssignment != null);
   const studentTasks = tasks.filter(t => t.myAssignment == null);
-  const bucketTasks = bucket === 'to-me' ? assignedToMe : studentTasks;
+  const bucketTasks = bucket === 'all' ? tasks : bucket === 'to-me' ? assignedToMe : studentTasks;
 
   // Independent of the bucket toggle above — narrows either bucket down to
   // just what I created myself vs. what admin handed down. Within this
@@ -246,6 +255,10 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
 
     return {
       id: t.id,
+      // Row-level truth, not the page-level bucket toggle — the "All Tasks"
+      // view mixes both kinds of row in one table, so each row has to carry
+      // which kind it is itself rather than the whole table assuming one.
+      isMyTask: t.myAssignment != null,
       title: t.title,
       description: t.description || '-',
       type: t.target_role === 'student' ? 'Student' : 'Mentor',
@@ -276,68 +289,82 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
     );
   };
 
+  const renderMyStatus = (row: (typeof tableData)[number]) => {
+    const status = row.myStatus || 'pending';
+    return (
+      <span className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap flex items-center gap-1.5 w-fit">
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[status]}`} />
+        {STATUS_LABEL[status]}
+      </span>
+    );
+  };
+
+  const renderTargetRole = (row: (typeof tableData)[number]) => (
+    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${row.type === 'Student' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/25' : 'bg-purple-500/10 text-purple-400 border border-purple-500/25'}`}>
+      {row.type}
+    </span>
+  );
+
+  const renderAssignees = (row: (typeof tableData)[number]) => (
+    <div className="max-w-[250px] flex flex-wrap gap-1.5 py-1">
+      {row.assignees.map((a: { name: string; status?: ApiAssignmentStatus }, i: number) => (
+        <span
+          key={i}
+          title={a.status ? STATUS_LABEL[a.status] : undefined}
+          className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap flex items-center gap-1"
+        >
+          {a.status && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[a.status]}`} />}
+          {a.name}
+        </span>
+      ))}
+      {row.extraCount > 0 && (
+        <span className="text-[10px] bg-zinc-800/50 text-gray-400 px-2 py-0.5 rounded border border-zinc-800 whitespace-nowrap">
+          +{row.extraCount} more
+        </span>
+      )}
+    </div>
+  );
+
   const toMeColumns = [
     { key: 'title', header: 'Title' },
     { key: 'description', header: 'Description' },
     { key: 'assignedBy', header: 'Assigned By', render: renderAssignedBy },
-    {
-      key: 'myStatus',
-      header: 'My Status',
-      render: (row: (typeof tableData)[number]) => {
-        const status = row.myStatus || 'pending';
-        return (
-          <span className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap flex items-center gap-1.5 w-fit">
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[status]}`} />
-            {STATUS_LABEL[status]}
-          </span>
-        );
-      },
-    },
+    { key: 'myStatus', header: 'My Status', render: renderMyStatus },
     { key: 'due_date', header: 'Due Date' },
   ];
 
   const toOthersColumns = [
     { key: 'title', header: 'Title' },
     { key: 'description', header: 'Description' },
-    {
-      key: 'type',
-      header: 'Target Role',
-      render: (row: (typeof tableData)[number]) => (
-        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${row.type === 'Student' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/25' : 'bg-purple-500/10 text-purple-400 border border-purple-500/25'}`}>
-          {row.type}
-        </span>
-      ),
-    },
+    { key: 'type', header: 'Target Role', render: renderTargetRole },
     { key: 'assignedBy', header: 'Assigned By', render: renderAssignedBy },
-    {
-      key: 'assignees',
-      header: 'Assigned To',
-      render: (row: (typeof tableData)[number]) => (
-        <div className="max-w-[250px] flex flex-wrap gap-1.5 py-1">
-          {row.assignees.map((a: { name: string; status?: ApiAssignmentStatus }, i: number) => (
-            <span
-              key={i}
-              title={a.status ? STATUS_LABEL[a.status] : undefined}
-              className="text-[10px] bg-zinc-800 text-gray-300 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap flex items-center gap-1"
-            >
-              {a.status && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[a.status]}`} />}
-              {a.name}
-            </span>
-          ))}
-          {row.extraCount > 0 && (
-            <span className="text-[10px] bg-zinc-800/50 text-gray-400 px-2 py-0.5 rounded border border-zinc-800 whitespace-nowrap">
-              +{row.extraCount} more
-            </span>
-          )}
-        </div>
-      ),
-    },
+    { key: 'assignees', header: 'Assigned To', render: renderAssignees },
     { key: 'start_date', header: 'Start Date' },
     { key: 'due_date', header: 'Due Date' },
   ];
 
+  // The combined view mixes a row that's mine (has a status of my own) with
+  // a row that's my students' (has a set of assignees instead) — one column
+  // that renders whichever of those actually applies to that row, rather
+  // than two columns each half-empty depending on the row.
+  const allColumns = [
+    { key: 'title', header: 'Title' },
+    { key: 'description', header: 'Description' },
+    { key: 'type', header: 'Target Role', render: renderTargetRole },
+    { key: 'assignedBy', header: 'Assigned By', render: renderAssignedBy },
+    {
+      key: 'status',
+      header: 'Status / Assigned To',
+      render: (row: (typeof tableData)[number]) => (row.isMyTask ? renderMyStatus(row) : renderAssignees(row)),
+    },
+    { key: 'due_date', header: 'Due Date' },
+  ];
+
   const handleRowClick = (row: (typeof tableData)[number]) => {
-    if (bucket === 'to-me') {
+    // Row-level, not the bucket toggle — the "All Tasks" view mixes both
+    // kinds of row, so which click behaviour applies has to come from the
+    // row itself.
+    if (row.isMyTask) {
       const task = tasks.find(t => t.id === row.id);
       if (!task) return;
       // A weekly report is a full grid of teams and students — far more
@@ -367,6 +394,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
             variant="filter"
             className="w-[180px]"
             options={[
+              { value: 'all', label: `All Tasks (${tasks.length})` },
               { value: 'to-others', label: `Students' Tasks (${studentTasks.length})` },
               { value: 'to-me', label: `My Tasks (${assignedToMe.length})` },
             ]}
@@ -389,7 +417,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
       </div>
 
       <DataTable
-        columns={bucket === 'to-me' ? toMeColumns : toOthersColumns}
+        columns={bucket === 'all' ? allColumns : bucket === 'to-me' ? toMeColumns : toOthersColumns}
         data={tableData}
         searchPlaceholder="Search tasks..."
         onRowClick={handleRowClick}
@@ -466,26 +494,29 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Week</label>
-              <Select
-                value={form.week}
-                onChange={v => setForm({ ...form, week: v as string })}
-                options={WEEKS.map(w => ({ value: w, label: `Week ${w}` }))}
-                className="w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Track</label>
-              <Select
-                value={form.track}
-                onChange={v => setForm({ ...form, track: v as string, teamIds: [], assignees: [] })}
-                placeholder="Select track..."
-                options={trackOptions}
-                className="w-full"
-              />
-            </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Week</label>
+            <Select
+              value={form.week}
+              onChange={v => setForm({ ...form, week: v as string })}
+              options={WEEKS.map(w => ({ value: w, label: `Week ${w}` }))}
+              className="w-full"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Track</label>
+            <Select
+              isMulti
+              value={form.tracks}
+              onChange={v => setForm({ ...form, tracks: v as string[], teamIds: [], assignees: [] })}
+              placeholder="Select track(s)..."
+              options={myTrackOptions}
+              className="w-full"
+            />
+            <p className="text-[11px] text-gray-500 mt-1.5">
+              Leave empty to include every track you have.
+            </p>
           </div>
 
           <div>
