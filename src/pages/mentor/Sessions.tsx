@@ -147,7 +147,7 @@ export default function MentorSessions() {
       .then((data) => { if (!cancelled) setSessionStats(data); })
       .catch(() => { if (!cancelled) setSessionStats(null); });
     return () => { cancelled = true; };
-  }, [selectedCohortId, sessions]);
+  }, [selectedCohortId]);
 
   const loadSessions = useCallback(async () => {
     if (!selectedCohortId || !visibleRange.current) return;
