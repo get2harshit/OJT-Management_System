@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Calendar, Loader2, Eye } from 'lucide-react';
+import { Plus, Calendar, Loader2, Eye, UserX } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import Drawer from '../../components/Drawer';
@@ -248,9 +248,18 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   const tableData = visibleTasks.map(t => {
     const summary = t.assignmentsSummary;
     const preview = summary?.preview ?? [];
+    // Only meaningful on a task I assigned myself, to a student: the roster
+    // moves on (reassignments happen), but a task's assignment list never
+    // does — it's history. Flag anyone the preview still lists who's since
+    // left my current roster, instead of silently showing a "ghost" student.
+    const isMine = t.assigned_by_id === mentorId;
     const assignees = preview.length > 0
-      ? preview.map(a => ({ name: a.fullName || a.assigneeId, status: a.status }))
-      : [{ name: 'All', status: undefined as ApiAssignmentStatus | undefined }];
+      ? preview.map(a => ({
+          name: a.fullName || a.assigneeId,
+          status: a.status,
+          movedAway: isMine && t.target_role === 'student' && !myStudentIds.has(a.assigneeId),
+        }))
+      : [{ name: 'All', status: undefined as ApiAssignmentStatus | undefined, movedAway: false }];
     const extraCount = (summary?.total ?? 0) - preview.length;
 
     return {
@@ -307,7 +316,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
 
   const renderAssignees = (row: (typeof tableData)[number]) => (
     <div className="max-w-[250px] flex flex-wrap gap-1.5 py-1">
-      {row.assignees.map((a: { name: string; status?: ApiAssignmentStatus }, i: number) => (
+      {row.assignees.map((a: { name: string; status?: ApiAssignmentStatus; movedAway?: boolean }, i: number) => (
         <span
           key={i}
           title={a.status ? STATUS_LABEL[a.status] : undefined}
@@ -315,6 +324,15 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
         >
           {a.status && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[a.status]}`} />}
           {a.name}
+          {a.movedAway && (
+            <span
+              title="No longer under you — reassigned to another mentor"
+              className="inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase text-amber-400 bg-amber-500/10 border border-amber-500/25 rounded-full px-1.5 py-0.5 ml-0.5"
+            >
+              <UserX size={9} />
+              Moved
+            </span>
+          )}
         </span>
       ))}
       {row.extraCount > 0 && (
@@ -898,6 +916,12 @@ function AssigneeReviewPanel({
       <div className="space-y-3">
         {assignments.map(assignment => {
           const canReview = canReviewAssignment(assignment);
+          // Same "left the roster since this task was assigned" signal as the
+          // list view — only meaningful for a task I assigned myself.
+          const movedAway = isTaskAssigner && task.target_role === 'student' && !myStudentIds.has(assignment.assignee_id);
+          // Checklist/Q&A content only exists on mentor-targeted tasks (see
+          // ojt_tasks.checklist_items's own comment) — "moved to another
+          // mentor" is a student-roster concept, so it never applies here.
           return hasStructuredContent ? (
             <StructuredAssignmentReviewRow
               key={assignment.id}
@@ -909,7 +933,18 @@ function AssigneeReviewPanel({
           ) : (
             <div key={assignment.id} className="bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-3 space-y-2.5">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-gray-200 truncate">{assignment.assignee?.full_name || assignment.assignee_id}</span>
+                <span className="text-sm text-gray-200 truncate flex items-center gap-1.5">
+                  {assignment.assignee?.full_name || assignment.assignee_id}
+                  {movedAway && (
+                    <span
+                      title="No longer under you — reassigned to another mentor"
+                      className="inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase text-amber-400 bg-amber-500/10 border border-amber-500/25 rounded-full px-1.5 py-0.5 shrink-0"
+                    >
+                      <UserX size={9} />
+                      Moved
+                    </span>
+                  )}
+                </span>
                 <StatusBadge status={assignment.status} />
               </div>
 
