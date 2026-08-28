@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CheckCircle2, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, Search } from 'lucide-react';
 
 export interface RosterItem {
   id: string;
@@ -19,6 +19,10 @@ interface RosterListProps {
   onSelect: (id: string) => void;
   searchPlaceholder?: string;
   emptyMessage?: string;
+  // Shows a spinner in place of the list/empty-message while the caller's
+  // fetch is in flight — callers used to bake "Loading…" into emptyMessage
+  // instead, which is silent, static text with no actual spinner.
+  loading?: boolean;
   // When provided, `items` is assumed already filtered server-side (e.g. a
   // paginated roster) and rendered as-is instead of being filtered again
   // client-side. Every keystroke is still reported here immediately —
@@ -45,6 +49,7 @@ export default function RosterList({
   onSelect,
   searchPlaceholder = 'Search...',
   emptyMessage = 'Nothing to show.',
+  loading = false,
   onSearchChange,
   pagination,
 }: RosterListProps) {
@@ -136,7 +141,11 @@ export default function RosterList({
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 size={20} className="animate-spin text-gray-500" />
+          </div>
+        ) : filtered.length === 0 ? (
           <p className="text-gray-500 text-xs text-center py-6 px-2">{emptyMessage}</p>
         ) : (
           sections.map((sec, i) => (

@@ -46,8 +46,12 @@ export default function StudentTasks({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
+  // Drives DataTable's own overlay spinner — the list used to swap silently
+  // on load/page/search/filter with no feedback at all.
+  const [tasksLoading, setTasksLoading] = useState(true);
 
   const loadTasks = useCallback(() => {
+    setTasksLoading(true);
     return apiListTasks({
       page,
       limit,
@@ -56,7 +60,7 @@ export default function StudentTasks({
     }).then(res => {
       setTasks(Array.isArray(res.data) ? res.data : []);
       setPagination(res.pagination);
-    }).catch(console.error);
+    }).catch(console.error).finally(() => setTasksLoading(false));
   }, [page, limit, search, statusFilter]);
 
   useEffect(() => {
@@ -164,6 +168,7 @@ export default function StudentTasks({
           onPageChange: setPage,
           onLimitChange: (l) => { setPage(1); setLimit(l); },
         }}
+        loading={tasksLoading}
         actions={(row) => {
           const canAct = row.assignmentStatus === 'pending' || row.assignmentStatus === 'resubmit';
           const isResubmit = row.assignmentStatus === 'resubmit';
