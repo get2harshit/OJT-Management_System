@@ -27,15 +27,12 @@ import { useToast } from '../../toast';
 import { useConfirm } from '../../confirm';
 import { apiListCohorts } from '../../lib/api';
 import type { Cohort } from '../../lib/types';
-import { useAuth } from '../../context/useAuth';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
 export default function AdminTasks() {
-  const { user } = useAuth();
-  const myId = user?.id;
   const { tracks, options: trackOptions } = useTracks();
   const trackNameBySlug = useMemo(() => new Map(tracks.map(t => [t.slug, t.name])), [tracks]);
   const [tasks, setTasks] = useState<ApiTask[]>([]);
@@ -44,6 +41,9 @@ export default function AdminTasks() {
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [search, setSearch] = useState('');
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
+  // Drives DataTable's own overlay spinner — the list used to swap silently
+  // on load/page/search/filter with no feedback at all.
+  const [tasksLoading, setTasksLoading] = useState(true);
   // roleFilter/statusFilter apply client-side, over whatever page is
   // currently loaded — the backend has no target_role filter, and
   // statusFilter is an aggregate rolled up across *all* of a task's
@@ -54,10 +54,14 @@ export default function AdminTasks() {
   // aggregate itself.
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  // 'me' = tasks this admin personally created, 'mentor' = created by any
-  // mentor (mentors can create tasks for their own students too) — same
-  // client-side-over-current-page approach as roleFilter/statusFilter above.
-  const [assignedByFilter, setAssignedByFilter] = useState('me');
+  // 'admin' = created by any admin/batch_manager (not just this one — the
+  // dropdown literally says "By Admin", so it has to mean the role, the same
+  // way 'mentor' already means any mentor, not just one), 'mentor' = created
+  // by any mentor (mentors can create tasks for their own students too) —
+  // same client-side-over-current-page approach as roleFilter/statusFilter
+  // above. Defaults to 'all' — the page should open showing every task, not
+  // pre-narrowed to one creator.
+  const [assignedByFilter, setAssignedByFilter] = useState('all');
   const [searchParams, setSearchParams] = useSearchParams();
   // Set only via a ?assignedById= link (e.g. the Mentor Workspace's "tasks
   // created by this mentor" link) — no picker in this UI for it, since the
@@ -118,6 +122,7 @@ export default function AdminTasks() {
   );
 
   const fetchTasksOnly = useCallback(async () => {
+    setTasksLoading(true);
     try {
       const res = await apiListTasks({
         page,
@@ -133,6 +138,8 @@ export default function AdminTasks() {
       setAssignedByName(assignedById ? res.data[0]?.assigner?.full_name ?? '' : '');
     } catch (e) {
       console.error(e);
+    } finally {
+      setTasksLoading(false);
     }
   }, [page, limit, search, activeCohort, assignedById]);
 
@@ -414,7 +421,7 @@ export default function AdminTasks() {
     .filter(t => {
       if (roleFilter !== 'all' && t.target_role !== roleFilter) return false;
       if (statusFilter !== 'all' && t.aggregateStatus !== statusFilter) return false;
-      if (assignedByFilter === 'me' && t.assigned_by_id !== myId) return false;
+      if (assignedByFilter === 'admin' && t.assigner?.role !== 'admin' && t.assigner?.role !== 'batch_manager') return false;
       if (assignedByFilter === 'mentor' && t.assigner?.role !== 'mentor') return false;
       return true;
     });
@@ -483,7 +490,7 @@ export default function AdminTasks() {
             className="w-[160px]"
             options={[
               { value: 'all', label: 'By All' },
-              { value: 'me', label: 'By Admin' },
+              { value: 'admin', label: 'By Admin' },
               { value: 'mentor', label: 'By Mentor' },
             ]}
           />
@@ -646,6 +653,7 @@ export default function AdminTasks() {
           onPageChange: setPage,
           onLimitChange: handleLimitChange,
         }}
+        loading={tasksLoading}
         actions={(row) => (
           <ActionsMenu
             items={[
