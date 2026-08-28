@@ -6,6 +6,14 @@ import { useAnchoredPosition } from '../hooks/useAnchoredPosition';
 export interface SelectOption {
   value: string;
   label: string;
+  // Optional second line shown under an option's label in the open list only
+  // (the closed trigger stays single-line — no room, and it's not needed
+  // once something's already picked) — a colour-dot tag, e.g. an Internal/
+  // Industry mentor split, using the same dot+text shape status badges use
+  // elsewhere (see statusDotClass) rather than inventing a new one.
+  sublabel?: string;
+  // Tailwind bg-* class for the dot. Defaults to a neutral gray.
+  sublabelDotClass?: string;
 }
 
 interface SelectBaseProps {
@@ -133,6 +141,10 @@ export default function Select(props: SelectProps) {
         type="button"
         ref={triggerRef}
         disabled={disabled}
+        // The trigger truncates long labels with an ellipsis — a native
+        // tooltip is the only way to recover the full text without opening
+        // the list, e.g. a name cut off mid-word in a narrow filter chip.
+        title={!isMulti ? singleSelected?.label : undefined}
         onClick={() => setOpen(prev => {
           if (!prev) setSearchQuery('');
           return !prev;
@@ -232,6 +244,7 @@ export default function Select(props: SelectProps) {
               <button
                 key={opt.value}
                 type="button"
+                title={opt.sublabel ? `${opt.label} — ${opt.sublabel}` : opt.label}
                 onClick={() => {
                   if (isMulti) {
                     const valArr = value as string[];
@@ -249,7 +262,15 @@ export default function Select(props: SelectProps) {
                   isSelected ? 'text-gold bg-gold/10' : 'text-gray-300 hover:bg-zinc-750 hover:text-white'
                 }`}
               >
-                <span className="truncate">{opt.label}</span>
+                <div className="min-w-0 flex-1">
+                  <span className="truncate block">{opt.label}</span>
+                  {opt.sublabel && (
+                    <span className="flex items-center gap-1.5 text-[11px] text-gray-500 mt-0.5">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${opt.sublabelDotClass ?? 'bg-gray-500'}`} />
+                      <span className="truncate">{opt.sublabel}</span>
+                    </span>
+                  )}
+                </div>
                 {isSelected && <Check size={14} className="shrink-0" />}
               </button>
             );
