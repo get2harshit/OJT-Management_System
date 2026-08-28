@@ -18,11 +18,12 @@ import {
   apiListCohorts,
   apiReviewPrdSubmission,
 } from '../../lib/api';
-import { statusDotClass } from '../../lib/submissionDisplay';
+import { statusDotClass, submissionStatusLabel } from '../../lib/submissionDisplay';
 import { exportToCSV } from '../../lib/csvExport';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
-import { useTracks } from '../../hooks/useTracks';
+import { apiGetCohortTrackConfig } from '../../lib/api/tracks';
+import type { ApiCohortTrackConfig } from '../../lib/api/tracks';
 
 type Row = PrdSubmission & { studentId: string; mentorId?: string };
 
@@ -65,7 +66,6 @@ export default function AdminSubmissions({
   onFocusHandled,
 }: Props = {}) {
   const { showSuccess, showError } = useToast();
-  const { options: trackOptions } = useTracks();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // The cohort this page is scoped to comes from the OJT Setup shell's own
@@ -74,6 +74,11 @@ export default function AdminSubmissions({
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [cohortsLoaded, setCohortsLoaded] = useState(false);
   const [globalMentors, setGlobalMentors] = useState<ApiMentor[]>([]);
+  // This cohort's own track config, not every track in the system — a track
+  // configured only for a different cohort has nothing to filter here, the
+  // same reason the Batch filter above reads selectedCohort.allowedBatches
+  // instead of a global batch list.
+  const [cohortTracks, setCohortTracks] = useState<ApiCohortTrackConfig[]>([]);
 
   const [page, setPage] = useState(1);
   const [rosterSearch, setRosterSearch] = useState('');
@@ -96,6 +101,29 @@ export default function AdminSubmissions({
   const [batchFilter, setBatchFilter] = useState<string[]>([]);
   const [trackFilter, setTrackFilter] = useState<string[]>([]);
   const [mentorFilter, setMentorFilter] = useState(searchParams.get('mentorId') || 'ALL');
+
+  // Internal mentors first, then Industry (external) — both blocks
+  // alphabetical — instead of one flat A-Z mix. With 60+ mentors, a bare
+  // name list also made same-first-name rows (seed/test accounts especially)
+  // indistinguishable once the filter chip truncated them, so every row
+  // gets its type as a dot+label second line (Select's sublabel), colour
+  // matching the sky-400/gray-400 pair CohortMentorsPage/TrackMentorsPage
+  // already use for isExternal — same convention, not a new one.
+  const mentorOptions = useMemo(() => {
+    const sorted = [...globalMentors].sort((a, b) => {
+      if (a.isExternal !== b.isExternal) return a.isExternal ? 1 : -1;
+      return (a.fullName || a.email || '').localeCompare(b.fullName || b.email || '');
+    });
+    return [
+      { value: 'ALL', label: 'All Mentors' },
+      ...sorted.map((m) => ({
+        value: m.id,
+        label: m.fullName || m.email || m.id,
+        sublabel: m.isExternal ? 'Industry' : 'Internal',
+        sublabelDotClass: m.isExternal ? 'bg-sky-400' : 'bg-gray-500',
+      })),
+    ];
+  }, [globalMentors]);
   // Keyed by taskId when a submission is linked to one, else a synthetic
   // `type:<documentType>` key for older/unlinked submissions — a task's
   // title is what identifies a submission now, not a fixed document-type
@@ -130,6 +158,29 @@ export default function AdminSubmissions({
   useEffect(() => {
     loadGlobalMentors();
   }, [loadGlobalMentors]);
+
+  const loadCohortTracks = useCallback(() => {
+    if (!cohortFilter) return Promise.resolve();
+    return apiGetCohortTrackConfig(cohortFilter).then(setCohortTracks).catch(() => setCohortTracks([]));
+  }, [cohortFilter]);
+
+  useEffect(() => {
+    loadCohortTracks();
+  }, [loadCohortTracks]);
+
+  // A track can have several configured variants (different admission years,
+  // individual vs team) — each its own row here, same trackSlug repeated.
+  // The filter matches submissions by track, not by variant, so the dropdown
+  // needs one entry per distinct track, not one per variant.
+  const cohortTrackOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const c of cohortTracks) {
+      if (!seen.has(c.trackSlug)) seen.set(c.trackSlug, c.trackName);
+    }
+    return Array.from(seen.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ value, label }));
+  }, [cohortTracks]);
 
   const selectedCohort = cohorts.find((c) => c.id === cohortFilter);
   const isPublished = !!selectedCohort?.allocationPublishedAt;
@@ -251,13 +302,14 @@ export default function AdminSubmissions({
   usePageRefresh(useCallback(() => Promise.all([
     loadCohorts(),
     loadGlobalMentors(),
+    loadCohortTracks(),
     cohortsLoaded && cohortFilter ? loadRoster() : Promise.resolve(),
     selectedStudentId
       ? loadStudentSubmissions(selectedStudentId)
       : selectedTeamId
       ? loadTeamSubmissions(selectedTeamId)
       : Promise.resolve(),
-  ]), [loadCohorts, loadGlobalMentors, loadRoster, cohortsLoaded, cohortFilter, selectedStudentId, selectedTeamId, loadStudentSubmissions, loadTeamSubmissions]));
+  ]), [loadCohorts, loadGlobalMentors, loadCohortTracks, loadRoster, cohortsLoaded, cohortFilter, selectedStudentId, selectedTeamId, loadStudentSubmissions, loadTeamSubmissions]));
 
   // Resets every roster filter and switches cohort if needed, so the target
   // student is never hidden by a stale batch/track/mentor/search filter or
@@ -418,7 +470,7 @@ export default function AdminSubmissions({
     setReviewing(true);
     try {
       await apiReviewPrdSubmission(activeSub.id, status, feedback);
-      showSuccess(status === 'approved' ? 'Submission approved.' : 'Changes requested — the student has been notified.');
+      showSuccess(status === 'approved' ? 'Submission approved.' : 'Resubmit requested — the student has been notified.');
       // Refresh just what's on screen (the reviewed status) and the roster
       // (its pending-review badge) — not the whole cohort.
       await Promise.all([
@@ -542,7 +594,7 @@ export default function AdminSubmissions({
               Track: info.track,
               'Task Title': s.taskTitle || DOCUMENT_TYPE_LABELS[s.documentType],
               Version: s.versionNumber,
-              Status: s.status.replace(/_/g, ' '),
+              Status: submissionStatusLabel(s.status),
               'Submission Type': s.submissionType || 'document',
               // A real signed link for a document submission (7-day expiry,
               // resolved server-side via includeDownloadUrls); text/link
@@ -615,16 +667,22 @@ export default function AdminSubmissions({
             onChange={handleTrackFilterChange}
             variant="filter"
             placeholder="All Tracks"
-            options={trackOptions}
+            // The open list's width is anchored to this trigger (see
+            // useAnchoredPosition in Select.tsx) — left at auto width, it
+            // matched the short "All Tracks" placeholder and cut every real
+            // track name down to a few letters, "Data Science" and "Data
+            // Science - Research Publications" both truncating to
+            // indistinguishable "Data Scien…" rows.
+            className="w-[220px]"
+            options={cohortTrackOptions}
           />
           <Select
             value={mentorFilter}
             onChange={(v) => handleMentorFilterChange(v as string)}
             variant="filter"
-            options={[
-              { value: 'ALL', label: 'All Mentors' },
-              ...globalMentors.map((m) => ({ value: m.id, label: m.fullName || m.email || m.id })),
-            ]}
+            isSearchable
+            className="w-[200px]"
+            options={mentorOptions}
           />
           <Button
             variant="secondary"
@@ -653,10 +711,9 @@ export default function AdminSubmissions({
             onSearchChange={handleRosterSearchChange}
             pagination={{ page: rosterPagination.page, totalPages: rosterPagination.totalPages, onPageChange: setPage }}
             searchPlaceholder={rosterMode === 'student' ? 'Search students...' : 'Search teams...'}
+            loading={loading}
             emptyMessage={
-              loading
-                ? 'Loading…'
-                : !isPublished
+              !isPublished
                 ? "This cohort's allocation hasn't been published yet."
                 : rosterMode === 'student'
                 ? 'No students match these filters.'
@@ -812,7 +869,7 @@ export default function AdminSubmissions({
                       <div className="flex items-center gap-3 shrink-0">
                         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                          {row.status.replace(/_/g, ' ').toUpperCase()}
+                          {submissionStatusLabel(row.status).toUpperCase()}
                         </span>
                         <Eye size={16} className="text-gray-500" />
                       </div>
