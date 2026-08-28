@@ -9,7 +9,7 @@ import type { PrdSubmission, SubmissionKind } from '../../lib/types';
 import { DOCUMENT_TYPE_LABELS } from '../../lib/types';
 import { apiGetSubmissionsByStudent, apiGetPrdDownloadUrl, apiReviewPrdSubmission } from '../../lib/api';
 import { apiGetMyRoster } from '../../lib/api/teamRoster';
-import { statusDotClass } from '../../lib/submissionDisplay';
+import { statusDotClass, submissionStatusLabel } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 
@@ -209,7 +209,7 @@ export default function MentorSubmissions({
     setReviewing(true);
     try {
       await apiReviewPrdSubmission(activeSub.id, status, feedback);
-      showSuccess(status === 'approved' ? 'Submission approved.' : 'Changes requested — the student has been notified.');
+      showSuccess(status === 'approved' ? 'Submission approved.' : 'Resubmit requested — the student has been notified.');
       // Refresh this student's submissions and the roster badge — not everyone's.
       await Promise.all([
         selectedStudentId ? loadStudentSubmissions(selectedStudentId) : Promise.resolve(),
@@ -249,7 +249,8 @@ export default function MentorSubmissions({
             selectedId={selectedStudentId}
             onSelect={selectStudent}
             searchPlaceholder="Search your students..."
-            emptyMessage={loading ? 'Loading students…' : 'No students assigned to you yet.'}
+            loading={loading}
+            emptyMessage="No students assigned to you yet."
           />
         }
       >
@@ -356,7 +357,7 @@ export default function MentorSubmissions({
                       <div className="flex items-center gap-3 shrink-0">
                         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                          {row.status.replace(/_/g, ' ').toUpperCase()}
+                          {submissionStatusLabel(row.status).toUpperCase()}
                         </span>
                         <Eye size={16} className="text-gray-500" />
                       </div>
