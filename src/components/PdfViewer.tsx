@@ -32,7 +32,7 @@ const COMPACT_BOTTOM_RESERVE = 120;
 interface PdfViewerProps {
   url: string;
   // Rendered below the page only in fullscreen mode (e.g. the mentor's
-  // feedback box + Approve/Request Changes controls) — the compact view
+  // feedback box + Approve/Resubmit controls) — the compact view
   // already has this content right below it in the page layout, so it
   // isn't duplicated there.
   fullscreenExtra?: ReactNode;

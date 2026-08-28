@@ -101,7 +101,7 @@ export interface PrdSubmission {
   taskTitle?: string;
   // The task's assigner role ('mentor' | 'admin' | 'batch_manager') —
   // admin/batch_manager get view-only on a mentor-assigned task's
-  // submission, so the review UI needs this to hide Approve/Request Changes.
+  // submission, so the review UI needs this to hide Approve/Resubmit.
   taskAssignedByRole?: string;
   // Only on the student's own "my submissions" fetch — who uploaded this
   // version (for team submissions, could be a teammate) and whether it

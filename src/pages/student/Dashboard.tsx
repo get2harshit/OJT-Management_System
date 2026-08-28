@@ -37,7 +37,7 @@ const ANNOUNCEMENT_TONE: Record<AppNotification['priority'], string> = {
 const SUBMISSION_STATUS_BUCKETS: { label: string; statuses: PrdStatus[]; barClass: string }[] = [
   { label: 'Pending Review', statuses: ['submitted', 'under_review'], barClass: 'bg-gold' },
   { label: 'Approved', statuses: ['approved'], barClass: 'bg-green-500' },
-  { label: 'Changes Requested', statuses: ['changes_requested'], barClass: 'bg-red-500' },
+  { label: 'Resubmit', statuses: ['changes_requested'], barClass: 'bg-red-500' },
 ];
 
 export default function StudentDashboard({

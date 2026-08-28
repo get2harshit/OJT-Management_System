@@ -10,8 +10,10 @@ interface ReviewActionsProps {
 // Lives inline inside SubmissionDetail's persistent feedback panel (always
 // visible next to the document), not behind a button — so feedback is
 // written right where the mentor is looking at the doc, not in a separate
-// overlay. Request Changes still requires non-empty feedback before it can
-// be sent.
+// overlay. Resubmit still requires non-empty feedback before it can be sent.
+// Labeled "Resubmit", not "Request Changes"/"Reject" — see
+// feedback_task_ui_naming; onRequestChanges/the API's `changes_requested`
+// value are internal names only, this is purely the display text.
 export default function ReviewActions({ onApprove, onRequestChanges, disabled }: ReviewActionsProps) {
   const [feedback, setFeedback] = useState('');
 
@@ -29,7 +31,7 @@ export default function ReviewActions({ onApprove, onRequestChanges, disabled }:
         <textarea
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
-          placeholder="What needs to be changed? (required to request changes)"
+          placeholder="What needs to be changed? (required to resubmit)"
           rows={4}
           className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold transition-colors resize-none"
         />
@@ -41,7 +43,7 @@ export default function ReviewActions({ onApprove, onRequestChanges, disabled }:
           className="w-full py-2.5 flex items-center justify-center gap-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors text-sm font-medium disabled:opacity-50 border border-red-500/20"
         >
           <RotateCcw size={16} />
-          Request Changes
+          Resubmit
         </button>
         <button
           onClick={onApprove}

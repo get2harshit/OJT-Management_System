@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Download, Loader2, ExternalLink } from 'lucide-react';
 import PdfViewer from './PdfViewer';
-import { statusDotClass } from '../lib/submissionDisplay';
+import { statusDotClass, submissionStatusLabel } from '../lib/submissionDisplay';
 import type { SubmissionKind } from '../lib/types';
 
 interface SubmissionDetailProps {
@@ -108,7 +108,7 @@ export default function SubmissionDetail({
           <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
             <span className={`inline-flex items-center gap-1.5 text-xs font-medium shrink-0 ${statusStyle.text}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
-              {status.replace(/_/g, ' ').toUpperCase()}
+              {submissionStatusLabel(status).toUpperCase()}
             </span>
             {submissionKind === 'document' && documentLink && (
               <div className="flex items-center gap-2">
@@ -137,7 +137,7 @@ export default function SubmissionDetail({
             <h3 className="text-sm font-semibold text-white mb-2 uppercase tracking-wider">Review & Feedback</h3>
             {(status === 'approved' || status === 'changes_requested') && reviewedByName && (
               <p className="text-xs text-gray-500 mb-2">
-                {status === 'approved' ? 'Approved' : 'Changes requested'} by{' '}
+                {status === 'approved' ? 'Approved' : 'Resubmit requested'} by{' '}
                 <span className="text-gray-300 font-medium">{reviewedByName}</span>
               </p>
             )}
@@ -147,7 +147,9 @@ export default function SubmissionDetail({
               <p className="text-gray-500 text-sm">
                 {reviewControls
                   ? 'Provide feedback to the student regarding their submission.'
-                  : `No feedback yet — your submission is currently ${status.replace(/_/g, ' ')}.`}
+                  : status === 'changes_requested'
+                    ? 'No feedback yet — your submission needs to be resubmitted.'
+                    : `No feedback yet — your submission is currently ${submissionStatusLabel(status).toLowerCase()}.`}
               </p>
             )}
           </div>

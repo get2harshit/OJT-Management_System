@@ -13,7 +13,7 @@ import {
 } from '../../lib/api';
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask, ApiTaskCategory } from '../../lib/api/tasks';
-import { statusDotClass } from '../../lib/submissionDisplay';
+import { statusDotClass, submissionStatusLabel } from '../../lib/submissionDisplay';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 // A task's category maps to how its deliverable is submitted/rendered.
@@ -371,7 +371,7 @@ export default function StudentSubmissions({
                       </div>
                       <span className={`inline-flex items-center gap-1.5 text-xs font-medium shrink-0 ${style.text}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                        {sub.status.replace(/_/g, ' ').toUpperCase()}
+                        {submissionStatusLabel(sub.status).toUpperCase()}
                       </span>
                     </button>
                   );
