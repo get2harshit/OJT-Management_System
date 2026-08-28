@@ -31,6 +31,9 @@ const CATEGORY_OPTIONS: { value: ApiTaskCategory; label: string }[] = [
 
 const WEEKS = Array.from({ length: 12 }, (_, i) => String(i + 1));
 
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 400;
+
 const EMPTY_FORM = {
   title: '',
   description: '',
@@ -80,6 +83,20 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [bucket, setBucket] = useState<TaskBucket>('all');
   const [assignedByFilter, setAssignedByFilter] = useState('all');
+  // Real backend pagination + search (mirrors admin/Tasks.tsx) — the list
+  // used to be fetched with no page/limit at all, which meant the backend's
+  // own default (limit 20) silently capped it with no page control, so any
+  // mentor with more than 20 visible tasks lost the rest with no sign they
+  // were missing. `bucket`/`assignedByFilter` below still split whatever
+  // page is currently loaded client-side (same accepted tradeoff as admin's
+  // roleFilter/statusFilter) — only the base fetch itself needed fixing.
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [search, setSearch] = useState('');
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
+  // Drives DataTable's own overlay spinner — the list used to swap silently
+  // on load/page/search/filter with no feedback at all.
+  const [tasksLoading, setTasksLoading] = useState(true);
   const [statusTask, setStatusTask] = useState<ApiTask | null>(null);
   // The list only carries assignmentsSummary (a capped preview), never the
   // full per-assignee list — reviewTaskId drives the modal's open state,
@@ -88,14 +105,24 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   const [reviewTask, setReviewTask] = useState<ApiTask | null>(null);
   const [reviewTaskLoading, setReviewTaskLoading] = useState(false);
 
-  const fetchTasksOnly = async () => {
+  // Used to refresh the list in place after create/approve/resubmit — must
+  // carry the same cohort_id + page/limit/search as loadAll below, or a
+  // refresh right after acting on a task can silently swap in a different
+  // cohort's tasks (no cohort_id was ever passed here before) and reset back
+  // to an unpaginated, uncapped page 1.
+  const fetchTasksOnly = useCallback(async () => {
+    if (!cohortId) return;
+    setTasksLoading(true);
     try {
-      const res = await apiListTasks();
+      const res = await apiListTasks({ cohort_id: cohortId, page, limit, search: search || undefined });
       setTasks(res.data || []);
+      setPagination(res.pagination);
     } catch (e) {
       console.error(e);
+    } finally {
+      setTasksLoading(false);
     }
-  };
+  }, [cohortId, page, limit, search]);
 
   const openReviewModal = async (taskId: string) => {
     setReviewTaskId(taskId);
@@ -114,19 +141,39 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
 
   const loadAll = useCallback(() => {
     if (!cohortId) return Promise.resolve();
-    return Promise.all([apiListTasks({ cohort_id: cohortId }), apiListMyTeams()])
+    setTasksLoading(true);
+    return Promise.all([
+      apiListTasks({ cohort_id: cohortId, page, limit, search: search || undefined }),
+      apiListMyTeams(),
+    ])
       .then(([tasksRes, teamsRes]) => {
         setTasks(tasksRes.data || []);
+        setPagination(tasksRes.pagination);
         setMyTeams(teamsRes);
       })
-      .catch(console.error);
-  }, [cohortId]);
+      .catch(console.error)
+      .finally(() => setTasksLoading(false));
+  }, [cohortId, page, limit, search]);
 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
 
   usePageRefresh(loadAll);
+
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const handleSearchChange = (value: string) => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1);
+      setSearch(value);
+    }, SEARCH_DEBOUNCE_MS);
+  };
+
+  const handleLimitChange = (value: number) => {
+    setPage(1);
+    setLimit(value);
+  };
 
   // A task belongs to exactly one OJT, and that OJT is the one this page is
   // open on — the URL, not a separately-resolved "active" membership, so a
@@ -220,6 +267,11 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   // already exactly this set, so the two buckets below just split "my own
   // assignment" from "everything else I'm allowed to see" (both my own
   // creations and my students' admin-assigned work land in the latter).
+  // Same tradeoff as admin/Tasks.tsx's roleFilter/statusFilter: this split
+  // (and assignedByFilter below) applies client-side over whatever page is
+  // currently loaded, not the mentor's full task set — the backend has no
+  // "assignee is me" filter for a mentor to split on server-side. The counts
+  // in the bucket dropdown below are per-page counts for the same reason.
   const assignedToMe = tasks.filter(t => t.myAssignment != null);
   const studentTasks = tasks.filter(t => t.myAssignment == null);
   const bucketTasks = bucket === 'all' ? tasks : bucket === 'to-me' ? assignedToMe : studentTasks;
@@ -439,6 +491,16 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
         data={tableData}
         searchPlaceholder="Search tasks..."
         onRowClick={handleRowClick}
+        onSearchChange={handleSearchChange}
+        serverPagination={{
+          page: pagination.page,
+          limit: pagination.limit,
+          total: pagination.total,
+          totalPages: pagination.pages,
+          onPageChange: setPage,
+          onLimitChange: handleLimitChange,
+        }}
+        loading={tasksLoading}
         hideExport
       />
 
@@ -462,6 +524,21 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
                 Individual
               </Button>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Track</label>
+            <Select
+              isMulti
+              value={form.tracks}
+              onChange={v => setForm({ ...form, tracks: v as string[], teamIds: [], assignees: [] })}
+              placeholder="Select track(s)..."
+              options={myTrackOptions}
+              className="w-full"
+            />
+            <p className="text-[11px] text-gray-500 mt-1.5">
+              Leave empty to include every track you have.
+            </p>
           </div>
 
           {form.assignMode === 'team' ? (
@@ -523,21 +600,6 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Track</label>
-            <Select
-              isMulti
-              value={form.tracks}
-              onChange={v => setForm({ ...form, tracks: v as string[], teamIds: [], assignees: [] })}
-              placeholder="Select track(s)..."
-              options={myTrackOptions}
-              className="w-full"
-            />
-            <p className="text-[11px] text-gray-500 mt-1.5">
-              Leave empty to include every track you have.
-            </p>
-          </div>
-
-          <div>
             <label className="block text-sm text-gray-400 mb-1">Task Title</label>
             <input
               type="text"
@@ -569,7 +631,16 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
                 type="date"
                 style={{ colorScheme: 'dark' }}
                 value={form.startDate}
-                onChange={e => setForm({ ...form, startDate: e.target.value })}
+                onChange={e => {
+                  const startDate = e.target.value;
+                  // End date must always be after start date — if the
+                  // already-picked end date no longer qualifies, clear it
+                  // instead of leaving a silently-invalid value in place.
+                  const dueDate = form.dueDate && startDate && new Date(form.dueDate) <= new Date(startDate)
+                    ? ''
+                    : form.dueDate;
+                  setForm({ ...form, startDate, dueDate });
+                }}
                 className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
               />
             </div>
@@ -582,6 +653,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
                 type="date"
                 style={{ colorScheme: 'dark' }}
                 value={form.dueDate}
+                min={form.startDate || undefined}
                 onChange={e => setForm({ ...form, dueDate: e.target.value })}
                 className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
               />
