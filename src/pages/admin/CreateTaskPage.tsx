@@ -18,6 +18,8 @@ import AssigneePickerTable, { dedupeStudentRows } from '../../components/Assigne
 import type { AssigneePickerStudentRow, AssigneePickerTeamRow } from '../../components/AssigneePickerTable';
 import WeeklyReportGrid, { WeeklyReportSummaryStrip } from '../../components/WeeklyReportGrid';
 import { useTracks } from '../../hooks/useTracks';
+import { apiGetCohortTrackConfig } from '../../lib/api/tracks';
+import type { ApiCohortTrackConfig } from '../../lib/api/tracks';
 import { apiCreateTask } from '../../lib/api/tasks';
 import type { ApiTaskCategory, ApiWeeklyReportSummary, ApiWeeklyReportTeam } from '../../lib/api/tasks';
 import { apiListMentors } from '../../lib/api/mentors';
@@ -113,8 +115,11 @@ function buildSampleWeeklySummary(uptoWeek: number): ApiWeeklyReportSummary {
 export default function CreateTaskPage() {
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
-  const { tracks, options: trackOptions } = useTracks();
-  const mentorTrackFilterOptions = useMemo(() => [{ value: '', label: 'All tracks' }, ...trackOptions], [trackOptions]);
+  // Name lookups (Filed under: ..., the assignee table's Track column) fall
+  // back to every system track, not just this cohort's — a mentor's own
+  // declared track (mentorTaskTracks below) doesn't have to be one this
+  // cohort has configured to still deserve a readable name.
+  const { tracks } = useTracks();
   const trackNameBySlug = useMemo(() => new Map(tracks.map((t) => [t.slug, t.name])), [tracks]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
@@ -197,6 +202,44 @@ export default function CreateTaskPage() {
   // candidate pool regardless of which track(s) are selected.
   const uniqueBatches = activeCohort?.allowedBatches || [];
   const batchOptions = [{ value: '', label: 'All Batches' }, ...uniqueBatches.map(b => ({ value: b, label: b }))];
+
+  // The Track picker (student mode) and the Track filter on the Mentors
+  // picker (mentor mode) both need to offer only this cohort's own
+  // configured tracks, not every track in the system — same reasoning as
+  // the Batch options above, and the same pattern admin/Submissions.tsx
+  // uses for its own Track filter.
+  const [cohortTracks, setCohortTracks] = useState<ApiCohortTrackConfig[]>([]);
+
+  const loadCohortTracks = useCallback(() => {
+    if (!activeCohort) {
+      setCohortTracks([]);
+      return Promise.resolve();
+    }
+    return apiGetCohortTrackConfig(activeCohort.id).then(setCohortTracks).catch(() => setCohortTracks([]));
+  }, [activeCohort]);
+
+  useEffect(() => {
+    loadCohortTracks();
+  }, [loadCohortTracks]);
+
+  // A track can have several configured variants (different admission
+  // years, individual vs team) — each its own row here, same trackSlug
+  // repeated. The picker offers one entry per distinct track, not one per
+  // variant.
+  const cohortTrackOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const c of cohortTracks) {
+      if (!seen.has(c.trackSlug)) seen.set(c.trackSlug, c.trackName);
+    }
+    return Array.from(seen.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ value, label }));
+  }, [cohortTracks]);
+
+  const mentorTrackFilterOptions = useMemo(
+    () => [{ value: '', label: 'All tracks' }, ...cohortTrackOptions],
+    [cohortTrackOptions]
+  );
 
   // The assignable student pool for the picker table — one apiListStudents
   // call per selected track (the endpoint takes a single track), merged and
@@ -284,8 +327,8 @@ export default function CreateTaskPage() {
 
   usePageRefresh(
     useCallback(
-      () => Promise.all([loadCohorts(), loadMentors(), loadStudentCandidates(), loadTeamCandidates()]),
-      [loadCohorts, loadMentors, loadStudentCandidates, loadTeamCandidates]
+      () => Promise.all([loadCohorts(), loadMentors(), loadStudentCandidates(), loadTeamCandidates(), loadCohortTracks()]),
+      [loadCohorts, loadMentors, loadStudentCandidates, loadTeamCandidates, loadCohortTracks]
     )
   );
 
@@ -520,7 +563,7 @@ export default function CreateTaskPage() {
                 }}
                 className="w-full"
                 placeholder="Select track(s)..."
-                options={trackOptions}
+                options={cohortTrackOptions}
               />
               <p className="text-[11px] text-gray-500">
                 A task can span more than one track — the list below fills with every matching track&rsquo;s students or teams.
@@ -709,6 +752,7 @@ export default function CreateTaskPage() {
                   type="date"
                   style={{ colorScheme: 'dark' }}
                   value={form.due_date}
+                  min={form.start_date || undefined}
                   onChange={e => setForm(prev => ({ ...prev, due_date: e.target.value }))}
                   className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
                 />
