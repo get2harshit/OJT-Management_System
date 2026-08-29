@@ -351,7 +351,16 @@ export function AddEvaluationModal({
                 <input
                   type="date"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  onChange={(e) => {
+                    const newStart = e.target.value;
+                    // End date must always be after start date — if the
+                    // already-picked end date no longer qualifies, clear it
+                    // instead of leaving a silently-invalid value in place.
+                    setStartDate(newStart);
+                    if (endDate && newStart && new Date(endDate) <= new Date(newStart)) {
+                      setEndDate('');
+                    }
+                  }}
                   className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
                 />
               </div>
@@ -360,6 +369,7 @@ export function AddEvaluationModal({
                 <input
                   type="date"
                   value={endDate}
+                  min={startDate || undefined}
                   onChange={(e) => setEndDate(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
                 />
