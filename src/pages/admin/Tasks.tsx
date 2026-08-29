@@ -32,7 +32,20 @@ import { usePageRefresh } from '../../context/RefreshContext';
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
-export default function AdminTasks() {
+interface Props {
+  // A student-targeted task is always a plain document/general/link
+  // submission task (weekly_report and checklist/Q&A content only ever
+  // exist on mentor-targeted tasks) — so clicking one jumps straight to the
+  // Submissions tab scoped to this task's own assignees instead of the
+  // per-task detail page, which the mentor-targeted shapes still need for
+  // their own specialised (non-submission) review UI. cohortId is threaded
+  // through rather than resolved by the caller — same reason
+  // TaskDetailPage's onViewSubmission does it: the page that already has
+  // the param from its own route is the simplest place to get it from.
+  onViewTaskSubmissions?: (taskId: string, cohortId: string) => void;
+}
+
+export default function AdminTasks({ onViewTaskSubmissions }: Props) {
   const { tracks, options: trackOptions } = useTracks();
   const trackNameBySlug = useMemo(() => new Map(tracks.map(t => [t.slug, t.name])), [tracks]);
   const [tasks, setTasks] = useState<ApiTask[]>([]);
@@ -501,15 +514,27 @@ export default function AdminTasks() {
       </div>
 
       <DataTable
-        onRowClick={(row) => navigate(`/admin/dashboard/ojts/${cohortId}/tasks/${row.id}`)}
+        onRowClick={(row) =>
+          row.target_role === 'student' && row.category !== 'weekly_report' && cohortId
+            ? onViewTaskSubmissions?.(row.id, cohortId)
+            : navigate(`/admin/dashboard/ojts/${cohortId}/tasks/${row.id}`)
+        }
         columns={[
           {
-            key: 'week', header: 'Timeline', render: (row) => (
-              <span className="text-xs font-bold text-gold flex items-center gap-1">
-                <Calendar size={13} />
-                {row.week || '-'}
-              </span>
-            )
+            key: 'week', header: 'Timeline', render: (row) => {
+              // Backend data is inconsistent about the "Week " prefix and
+              // its spacing ("Week 1", "Week3", ...) — pull out just the
+              // number and show it as a compact W1/W2/W3, same shorthand
+              // used in the Create Task form's own week picker.
+              const match = row.week?.match(/\d+/);
+              const label = match ? `W${match[0]}` : row.week || '-';
+              return (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-300 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 whitespace-nowrap">
+                  <Calendar size={11} className="text-gray-500" />
+                  {label}
+                </span>
+              );
+            }
           },
           {
             key: 'track', header: 'Tech Stack/Track', render: (row) => {
@@ -547,7 +572,7 @@ export default function AdminTasks() {
             render: (row) => {
               const isStudent = row.target_role === 'student';
               return (
-                <span className={`inline-flex items-center gap-1.5 text-[11px] uppercase font-bold ${isStudent ? 'text-blue-400' : 'text-purple-400'}`}>
+                <span className="inline-flex items-center gap-1.5 text-[11px] uppercase font-bold text-gray-200">
                   <span className={`w-1.5 h-1.5 rounded-full ${isStudent ? 'bg-blue-400' : 'bg-purple-400'}`} />
                   {isStudent ? 'Student' : 'Mentor'}
                 </span>
@@ -557,21 +582,27 @@ export default function AdminTasks() {
           {
             key: 'status', header: 'Status', render: (row) => {
               const statusDots = {
-                pending: { dot: 'bg-zinc-400', text: 'text-zinc-400' },
-                submitted: { dot: 'bg-blue-400', text: 'text-blue-400' },
-                resubmit: { dot: 'bg-orange-400', text: 'text-orange-400' },
-                approved: { dot: 'bg-green-500', text: 'text-green-500' },
+                pending: 'bg-zinc-400',
+                submitted: 'bg-blue-400',
+                resubmit: 'bg-orange-400',
+                approved: 'bg-green-500',
               };
-              const style = statusDots[row.aggregateStatus as keyof typeof statusDots] || statusDots.pending;
+              const dot = statusDots[row.aggregateStatus as keyof typeof statusDots] || statusDots.pending;
               const label = row.aggregateStatus.replace('_', ' ');
               return (
                 <div className="flex flex-col gap-1 items-start">
-                  <span className={`inline-flex items-center gap-1.5 text-[11px] whitespace-nowrap uppercase font-bold ${style.text}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                  <span className="inline-flex items-center gap-1.5 text-[11px] whitespace-nowrap uppercase font-bold text-gray-200">
+                    <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
                     {label}
                   </span>
+                  {/* progressText counts approved assignments specifically
+                      (completedAssignments above), not submitted ones — "done"
+                      read as a contradiction next to a SUBMITTED badge (0/1
+                      "done" looks like nothing happened even though one
+                      assignee did submit). Spelling out what's actually being
+                      counted removes that ambiguity. */}
                   {row.progressText !== '-' && (
-                    <span className="text-[11px] text-gray-500 font-mono pl-1">{row.progressText} done</span>
+                    <span className="text-[11px] text-gray-500 font-mono pl-1">{row.progressText} approved</span>
                   )}
                 </div>
               );
@@ -584,8 +615,7 @@ export default function AdminTasks() {
               if (!row.assigner) return <span className="text-xs text-gray-500">-</span>;
               const isMentor = row.assigner.role === 'mentor';
               return (
-                <span className="inline-flex items-center gap-1.5 text-xs text-gray-200 whitespace-nowrap">
-                  {row.assigner.full_name}
+                <div className="flex flex-col items-start gap-1">
                   <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${
                     isMentor
                       ? 'bg-purple-500/10 text-purple-400 border-purple-500/25'
@@ -593,7 +623,8 @@ export default function AdminTasks() {
                   }`}>
                     {isMentor ? 'Mentor' : 'Admin'}
                   </span>
-                </span>
+                  <span className="text-xs text-gray-200 whitespace-nowrap">{row.assigner.full_name}</span>
+                </div>
               );
             },
           },
@@ -748,6 +779,7 @@ export default function AdminTasks() {
                 <input
                   type="date"
                   value={editForm.deadline}
+                  min={editTaskDetail?.start_date ? editTaskDetail.start_date.split('T')[0] : undefined}
                   onChange={e => setEditForm(prev => ({ ...prev, deadline: e.target.value }))}
                   className="w-full bg-zinc-800 text-white text-sm border border-zinc-700 rounded-lg px-3 py-2 focus:outline-none focus:border-gold"
                 />
