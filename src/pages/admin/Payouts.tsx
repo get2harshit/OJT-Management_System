@@ -697,11 +697,31 @@ export default function AdminPayouts() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-gray-400 mb-1 block">Period Start</label>
-              <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
+              <input
+                type="date"
+                value={periodStart}
+                onChange={(e) => {
+                  const newStart = e.target.value;
+                  // Period end must always be after period start — if the
+                  // already-picked end no longer qualifies, clear it instead
+                  // of leaving a silently-invalid value in place.
+                  setPeriodStart(newStart);
+                  if (periodEnd && newStart && new Date(periodEnd) <= new Date(newStart)) {
+                    setPeriodEnd('');
+                  }
+                }}
+                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+              />
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">Period End</label>
-              <input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold" />
+              <input
+                type="date"
+                value={periodEnd}
+                min={periodStart || undefined}
+                onChange={(e) => setPeriodEnd(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+              />
             </div>
           </div>
           <div>
