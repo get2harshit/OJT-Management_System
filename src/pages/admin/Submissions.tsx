@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, Eye, Loader2, Users, X } from 'lucide-react';
 import Button from '../../components/Button';
 import SplitPane from '../../components/SplitPane';
@@ -24,6 +24,8 @@ import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { apiGetCohortTrackConfig } from '../../lib/api/tracks';
 import type { ApiCohortTrackConfig } from '../../lib/api/tracks';
+import { apiGetTask } from '../../lib/api/tasks';
+import type { ApiTask, ApiAssignmentStatus } from '../../lib/api/tasks';
 
 type Row = PrdSubmission & { studentId: string; mentorId?: string };
 
@@ -48,6 +50,13 @@ interface RosterStudent {
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
+const ASSIGNMENT_STATUS_LABEL: Record<ApiAssignmentStatus, string> = {
+  pending: 'Pending',
+  review: 'In Review',
+  resubmit: 'Resubmit',
+  approved: 'Approved',
+};
+
 interface Props {
   // Set by the Tasks tab's "View Submission" action to jump straight to a
   // specific student's submission for a given task — resets the roster
@@ -57,16 +66,22 @@ interface Props {
   // it once consumed so a later manual visit to this tab doesn't re-trigger it.
   focusStudentId?: string | null;
   focusTaskId?: string | null;
+  // Set by Tasks' row click on a student-targeted task (just the task, no
+  // specific student) — scopes the roster below to that task's own
+  // assignees instead of the normal Batch/Track/Mentor-filtered roster.
+  focusTaskOnly?: string | null;
   onFocusHandled?: () => void;
 }
 
 export default function AdminSubmissions({
   focusStudentId,
   focusTaskId,
+  focusTaskOnly,
   onFocusHandled,
 }: Props = {}) {
   const { showSuccess, showError } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // The cohort this page is scoped to comes from the OJT Setup shell's own
   // route (ojts/:cohortId/submissions) — same treatment as Tasks.tsx.
@@ -133,6 +148,14 @@ export default function AdminSubmissions({
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
+
+  // Set once from focusTaskOnly and then lives on its own — not derived from
+  // that prop on every render, since the parent nulls it out right after
+  // (via onFocusHandled) so a later manual tab visit doesn't re-trigger it,
+  // and re-deriving from a nulled prop would clear this the moment it did.
+  // "Back to full roster" clears it directly.
+  const [taskScope, setTaskScope] = useState<ApiTask | null>(null);
+  const [taskScopeLoading, setTaskScopeLoading] = useState(false);
 
   const [reviewing, setReviewing] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -309,7 +332,8 @@ export default function AdminSubmissions({
       : selectedTeamId
       ? loadTeamSubmissions(selectedTeamId)
       : Promise.resolve(),
-  ]), [loadCohorts, loadGlobalMentors, loadCohortTracks, loadRoster, cohortsLoaded, cohortFilter, selectedStudentId, selectedTeamId, loadStudentSubmissions, loadTeamSubmissions]));
+    taskScope ? apiGetTask(taskScope.id).then((res) => setTaskScope(res.data)) : Promise.resolve(),
+  ]), [loadCohorts, loadGlobalMentors, loadCohortTracks, loadRoster, cohortsLoaded, cohortFilter, selectedStudentId, selectedTeamId, loadStudentSubmissions, loadTeamSubmissions, taskScope]));
 
   // Resets every roster filter and switches cohort if needed, so the target
   // student is never hidden by a stale batch/track/mentor/search filter or
@@ -348,6 +372,44 @@ export default function AdminSubmissions({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusStudentId, focusTaskId]);
+
+  // Loads the task itself (title + every one of its assignees, with each
+  // one's own status) so the sidebar can list just this task's assignees
+  // instead of the normal Batch/Track/Mentor-filtered roster.
+  useEffect(() => {
+    if (!focusTaskOnly) return;
+    let cancelled = false;
+    setTaskScopeLoading(true);
+    setSelectedStudentId(null);
+    setSelectedTeamId(null);
+    setSelectedSubId(null);
+    setStudentSubmissions([]);
+    apiGetTask(focusTaskOnly)
+      .then((res) => { if (!cancelled) setTaskScope(res.data); })
+      .catch(() => { if (!cancelled) setError('Failed to load that task'); })
+      .finally(() => {
+        if (cancelled) return;
+        setTaskScopeLoading(false);
+        // Only now, not before starting the fetch — onFocusHandled nulls
+        // focusTaskOnly in the parent, which re-runs this same effect and
+        // sets `cancelled` on this run via the cleanup below. Calling it
+        // any earlier would cancel the very fetch it's meant to follow.
+        onFocusHandled?.();
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTaskOnly]);
+
+  const taskScopeRosterItems = useMemo(
+    () =>
+      (taskScope?.assignments ?? []).map((a) => ({
+        id: a.assignee_id,
+        primaryLabel: a.assignee?.full_name || a.assignee_id,
+        secondaryLabel: ASSIGNMENT_STATUS_LABEL[a.status],
+        done: a.status === 'approved',
+      })),
+    [taskScope]
+  );
 
   const rosterItems = useMemo(
     () =>
@@ -406,6 +468,11 @@ export default function AdminSubmissions({
 
   const selectedStudent = rosterStudents.find((s) => s.studentId === selectedStudentId);
   const selectedTeam = rosterTeams.find((t) => t.teamId === selectedTeamId);
+  // Falls back to the task-scope assignee's own name when the selected
+  // person isn't on the current Batch/Track/Mentor-filtered roster page —
+  // the task's own assignee list still has it even when the roster doesn't.
+  const selectedTaskAssignee = taskScope?.assignments?.find((a) => a.assignee_id === selectedStudentId);
+  const selectedName = selectedStudent?.fullName ?? selectedTaskAssignee?.assignee?.full_name ?? selectedStudentId ?? '';
   const submissionTaskKey = (r: Row) => r.taskId ?? `type:${r.documentType}`;
   const submissionTaskLabel = (r: Row) => r.taskTitle ?? DOCUMENT_TYPE_LABELS[r.documentType];
   // Same split as the CSV export: Student mode browses individual work,
@@ -413,11 +480,14 @@ export default function AdminSubmissions({
   // Browse and Export always agree. activeSub below deliberately still
   // resolves off the full, unfiltered studentSubmissions — a focused
   // deep-link (jump from Tasks) can land on a submission this would
-  // otherwise hide, and it should still open correctly.
-  const visibleSubmissions = studentSubmissions.filter((r) => !!r.isTeam === (rosterMode === 'team'));
+  // otherwise hide, and it should still open correctly. Task scope bypasses
+  // the mode split entirely — every row is already this one task's, team or not.
+  const visibleSubmissions = taskScope
+    ? studentSubmissions.filter((r) => r.taskId === taskScope.id)
+    : studentSubmissions.filter((r) => !!r.isTeam === (rosterMode === 'team'));
   // What the mode split is holding back — drives the empty state's "it's
   // over in the other mode" hint instead of implying there's nothing.
-  const hiddenByModeCount = studentSubmissions.length - visibleSubmissions.length;
+  const hiddenByModeCount = taskScope ? 0 : studentSubmissions.length - visibleSubmissions.length;
   const taskFilterOptions = useMemo(() => {
     const seen = new Map<string, string>();
     for (const r of visibleSubmissions) {
@@ -427,9 +497,11 @@ export default function AdminSubmissions({
     return Array.from(seen.entries()).map(([key, label]) => ({ key, label }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleSubmissions]);
-  const studentRows = visibleSubmissions.filter(
-    (r) => taskFilter === 'ALL' || submissionTaskKey(r) === taskFilter
-  );
+  // In task scope, every row is already this one task's — the normal
+  // taskFilter pills would be redundant (taskFilter itself stays 'ALL').
+  const studentRows = taskScope
+    ? visibleSubmissions
+    : visibleSubmissions.filter((r) => taskFilter === 'ALL' || submissionTaskKey(r) === taskFilter);
   const activeSub = studentSubmissions.find((r) => r.id === selectedSubId);
   const activeSubKind: SubmissionKind = activeSub?.submissionType ?? 'document';
   // Whoever this specific submission belongs to — in student mode that's
@@ -494,7 +566,9 @@ export default function AdminSubmissions({
     setSelectedSubId(null);
     setTaskFilter('ALL');
     setStudentSubmissions([]);
-    if (rosterMode === 'student') {
+    // Task scope's roster is always assignees (individuals), never teams —
+    // even a team-assigned task's assignments are one row per member.
+    if (taskScope || rosterMode === 'student') {
       setSelectedStudentId(id);
       loadStudentSubmissions(id);
     } else {
@@ -630,9 +704,18 @@ export default function AdminSubmissions({
     <div className="space-y-6 h-full flex flex-col">
       <div className="shrink-0 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Submissions</h1>
-          <p className="text-gray-400 text-sm mt-1">Review and manage student submissions</p>
-          {mentorFilter !== 'ALL' && (
+          {taskScope ? (
+            <>
+              <h1 className="text-2xl font-bold text-white">{taskScope.title}</h1>
+              <p className="text-gray-400 text-sm mt-1">Everyone assigned this task — click a name to review their submission.</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-white">Submissions</h1>
+              <p className="text-gray-400 text-sm mt-1">Review and manage student submissions</p>
+            </>
+          )}
+          {!taskScope && mentorFilter !== 'ALL' && (
             <div className="flex items-center gap-2 text-xs bg-gold/10 border border-gold/20 text-gold rounded-lg px-3 py-2 w-fit mt-2">
               <span>
                 Showing only {globalMentors.find((m) => m.id === mentorFilter)?.fullName || 'this mentor'}&apos;s students
@@ -643,58 +726,68 @@ export default function AdminSubmissions({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Select
-            value={rosterMode}
-            onChange={(v) => handleRosterModeChange(v as string)}
-            variant="filter"
-            options={[
-              { value: 'student', label: 'By Student' },
-              { value: 'team', label: 'By Team' },
-            ]}
-          />
-          <Select
-            isMulti
-            value={batchFilter}
-            onChange={handleBatchFilterChange}
-            variant="filter"
-            placeholder="All Batches"
-            options={(selectedCohort?.allowedBatches ?? []).map((b) => ({ value: b, label: b }))}
-          />
-          <Select
-            isMulti
-            value={trackFilter}
-            onChange={handleTrackFilterChange}
-            variant="filter"
-            placeholder="All Tracks"
-            // The open list's width is anchored to this trigger (see
-            // useAnchoredPosition in Select.tsx) — left at auto width, it
-            // matched the short "All Tracks" placeholder and cut every real
-            // track name down to a few letters, "Data Science" and "Data
-            // Science - Research Publications" both truncating to
-            // indistinguishable "Data Scien…" rows.
-            className="w-[220px]"
-            options={cohortTrackOptions}
-          />
-          <Select
-            value={mentorFilter}
-            onChange={(v) => handleMentorFilterChange(v as string)}
-            variant="filter"
-            isSearchable
-            className="w-[200px]"
-            options={mentorOptions}
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            leftIcon={<Download size={14} />}
-            onClick={handleExportCsv}
-            isLoading={exporting}
-            disabled={!isPublished}
+        {taskScope ? (
+          <button
+            onClick={() => navigate(`/admin/dashboard/ojts/${cohortFilter}/tasks`)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-850 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-750 transition-all text-sm font-semibold border border-zinc-700 shrink-0"
           >
-            Export CSV
-          </Button>
-        </div>
+            <ArrowLeft size={16} />
+            Back to Task
+          </button>
+        ) : (
+          <div className="flex items-center gap-3 flex-wrap">
+            <Select
+              value={rosterMode}
+              onChange={(v) => handleRosterModeChange(v as string)}
+              variant="filter"
+              options={[
+                { value: 'student', label: 'By Student' },
+                { value: 'team', label: 'By Team' },
+              ]}
+            />
+            <Select
+              isMulti
+              value={batchFilter}
+              onChange={handleBatchFilterChange}
+              variant="filter"
+              placeholder="All Batches"
+              options={(selectedCohort?.allowedBatches ?? []).map((b) => ({ value: b, label: b }))}
+            />
+            <Select
+              isMulti
+              value={trackFilter}
+              onChange={handleTrackFilterChange}
+              variant="filter"
+              placeholder="All Tracks"
+              // The open list's width is anchored to this trigger (see
+              // useAnchoredPosition in Select.tsx) — left at auto width, it
+              // matched the short "All Tracks" placeholder and cut every real
+              // track name down to a few letters, "Data Science" and "Data
+              // Science - Research Publications" both truncating to
+              // indistinguishable "Data Scien…" rows.
+              className="w-[220px]"
+              options={cohortTrackOptions}
+            />
+            <Select
+              value={mentorFilter}
+              onChange={(v) => handleMentorFilterChange(v as string)}
+              variant="filter"
+              isSearchable
+              className="w-[200px]"
+              options={mentorOptions}
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<Download size={14} />}
+              onClick={handleExportCsv}
+              isLoading={exporting}
+              disabled={!isPublished}
+            >
+              Export CSV
+            </Button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -704,27 +797,40 @@ export default function AdminSubmissions({
       <SplitPane
         sidebarCollapsed={!!activeSub}
         sidebar={
-          <RosterList
-            items={rosterItems}
-            selectedId={rosterMode === 'student' ? selectedStudentId : selectedTeamId}
-            onSelect={selectRosterItem}
-            onSearchChange={handleRosterSearchChange}
-            pagination={{ page: rosterPagination.page, totalPages: rosterPagination.totalPages, onPageChange: setPage }}
-            searchPlaceholder={rosterMode === 'student' ? 'Search students...' : 'Search teams...'}
-            loading={loading}
-            emptyMessage={
-              !isPublished
-                ? "This cohort's allocation hasn't been published yet."
-                : rosterMode === 'student'
-                ? 'No students match these filters.'
-                : 'No teams match these filters.'
-            }
-          />
+          taskScope ? (
+            <RosterList
+              items={taskScopeRosterItems}
+              selectedId={selectedStudentId}
+              onSelect={selectRosterItem}
+              searchPlaceholder="Search assignees..."
+              loading={taskScopeLoading}
+              emptyMessage="No one has been assigned this task yet."
+            />
+          ) : (
+            <RosterList
+              items={rosterItems}
+              selectedId={rosterMode === 'student' ? selectedStudentId : selectedTeamId}
+              onSelect={selectRosterItem}
+              onSearchChange={handleRosterSearchChange}
+              pagination={{ page: rosterPagination.page, totalPages: rosterPagination.totalPages, onPageChange: setPage }}
+              searchPlaceholder={rosterMode === 'student' ? 'Search students...' : 'Search teams...'}
+              loading={loading}
+              emptyMessage={
+                !isPublished
+                  ? "This cohort's allocation hasn't been published yet."
+                  : rosterMode === 'student'
+                  ? 'No students match these filters.'
+                  : 'No teams match these filters.'
+              }
+            />
+          )
         }
       >
         {!selectedStudentId && !selectedTeamId ? (
           <div className="h-full flex items-center justify-center text-gray-500 text-sm text-center px-6">
-            {isPublished
+            {taskScope
+              ? 'Select an assignee to view their submission.'
+              : isPublished
               ? `Select a ${rosterMode} to view ${rosterMode === 'student' ? 'their' : 'its'} submissions.`
               : "This cohort's allocation hasn't been published yet — students only appear here once their project and mentor are live."}
           </div>
@@ -736,7 +842,7 @@ export default function AdminSubmissions({
                 className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-700 transition-all text-sm font-semibold border border-zinc-700"
               >
                 <ArrowLeft size={16} />
-                {selectedStudent || selectedTeam ? `Back to ${selectedStudent?.fullName || selectedTeam?.teamName}'s submissions` : 'Back to submissions'}
+                {taskScope || selectedStudent || selectedTeam ? `Back to ${selectedName || selectedTeam?.teamName}'s submissions` : 'Back to submissions'}
               </button>
             </div>
             <SubmissionDetail
@@ -762,6 +868,8 @@ export default function AdminSubmissions({
                   <p className="text-xs text-gray-500 mt-1">
                     {activeSubStudent.fullName} ({activeSubStudent.rollNumber}) · {activeSubStudent.track}
                   </p>
+                ) : selectedName ? (
+                  <p className="text-xs text-gray-500 mt-1">{selectedName}</p>
                 ) : undefined
               }
               reviewControls={
@@ -791,31 +899,38 @@ export default function AdminSubmissions({
                 </>
               ) : (
                 <>
-                  <h2 className="text-lg font-bold text-white">{selectedStudent?.fullName || 'Student'}</h2>
-                  <p className="text-xs text-gray-500">
-                    {selectedStudent ? `${selectedStudent.rollNumber} · ${selectedStudent.track} · ${selectedStudent.batch}` : ' '}
-                  </p>
+                  <h2 className="text-lg font-bold text-white">{selectedName || 'Student'}</h2>
+                  {selectedStudent && (
+                    <p className="text-xs text-gray-500">
+                      {selectedStudent.rollNumber} · {selectedStudent.track} · {selectedStudent.batch}
+                    </p>
+                  )}
                 </>
               )}
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                onClick={() => setTaskFilter('ALL')}
-                className={`text-xs px-3 py-1 rounded-full border transition-colors ${taskFilter === 'ALL' ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
-              >
-                All
-              </button>
-              {taskFilterOptions.map(({ key, label }) => (
+            {/* Only meaningful when browsing someone's whole submission
+                history — every row is already this one task's in task
+                scope, so the filter would just be a single redundant pill. */}
+            {!taskScope && (
+              <div className="flex flex-wrap gap-1.5">
                 <button
-                  key={key}
-                  onClick={() => setTaskFilter(key)}
-                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${taskFilter === key ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
+                  onClick={() => setTaskFilter('ALL')}
+                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${taskFilter === 'ALL' ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
                 >
-                  {label}
+                  All
                 </button>
-              ))}
-            </div>
+                {taskFilterOptions.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setTaskFilter(key)}
+                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${taskFilter === key ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {submissionsLoading ? (
               <div className="flex items-center justify-center py-10">
@@ -824,12 +939,15 @@ export default function AdminSubmissions({
             ) : studentRows.length === 0 ? (
               <div className="text-center py-10 space-y-1">
                 <p className="text-gray-500 text-sm">
-                  {rosterMode === 'team' ? 'No team submissions from this team yet.' : 'No individual submissions from this student yet.'}
+                  {taskScope
+                    ? 'No submission from this assignee yet.'
+                    : rosterMode === 'team' ? 'No team submissions from this team yet.' : 'No individual submissions from this student yet.'}
                 </p>
                 {/* Work does exist, it just belongs to the other mode — say so
                     rather than leaving "nothing here" to imply there's nothing
                     at all. Reachable from the Tasks deep-link, which lands in
-                    student mode and can focus a team submission. */}
+                    student mode and can focus a team submission. Never fires
+                    in task scope — hiddenByModeCount is forced to 0 there. */}
                 {hiddenByModeCount > 0 && (
                   <p className="text-gray-600 text-xs">
                     {rosterMode === 'team'

@@ -47,6 +47,11 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
   // panel, which stays mounted while its routes change underneath it, so the
   // value survives the navigation that follows it.
   const [submissionFocus, setSubmissionFocus] = useState<{ studentId: string; taskId?: string } | null>(null);
+  // Set by Tasks' row click on a student-targeted task (not a specific
+  // student — just the task) to scope Submissions' roster down to that
+  // task's own assignees instead of the mentor's full mentee list. Cleared
+  // the same way submissionFocus above is.
+  const [taskRosterFocus, setTaskRosterFocus] = useState<string | null>(null);
   const { showError } = useToast();
 
   useNotificationNavigate((n) => {
@@ -112,8 +117,8 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
             element={
               <Tasks
                 mentorId={mentorId}
-                onViewSubmission={(studentId, taskId) => {
-                  setSubmissionFocus({ studentId, taskId });
+                onViewTaskSubmissions={(taskId) => {
+                  setTaskRosterFocus(taskId);
                   goToSection('submissions');
                 }}
               />
@@ -125,7 +130,11 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
               <Submissions
                 focusStudentId={submissionFocus?.studentId ?? null}
                 focusTaskId={submissionFocus?.taskId ?? null}
-                onFocusHandled={() => setSubmissionFocus(null)}
+                focusTaskOnly={taskRosterFocus}
+                onFocusHandled={() => {
+                  setSubmissionFocus(null);
+                  setTaskRosterFocus(null);
+                }}
               />
             }
           />

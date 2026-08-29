@@ -73,6 +73,10 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
   // the right one; see the 'submission' notification case below for why
   // that has to be a direct navigate rather than goToSection.
   const [submissionFocus, setSubmissionFocus] = useState<{ studentId: string; taskId: string } | null>(null);
+  // Set by Tasks' row click on a student-targeted task (not a specific
+  // student — just the task) to scope Submissions' roster down to that
+  // task's own assignees. Cleared the same way submissionFocus above is.
+  const [taskRosterFocus, setTaskRosterFocus] = useState<string | null>(null);
   const { showError } = useToast();
 
   useNotificationNavigate((n) => {
@@ -184,14 +188,28 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
           <Route path="track-config" element={<CohortTrackConfigPage />} />
           <Route path="teams" element={<CohortRosterPage />} />
           <Route path="allocations" element={<CohortAllocationsPage />} />
-          <Route path="tasks" element={<Tasks />} />
+          <Route
+            path="tasks"
+            element={
+              <Tasks
+                onViewTaskSubmissions={(taskId, taskCohortId) => {
+                  setTaskRosterFocus(taskId);
+                  navigate(`/admin/dashboard/ojts/${taskCohortId}/submissions`);
+                }}
+              />
+            }
+          />
           <Route
             path="submissions"
             element={
               <Submissions
                 focusStudentId={submissionFocus?.studentId ?? null}
                 focusTaskId={submissionFocus?.taskId ?? null}
-                onFocusHandled={() => setSubmissionFocus(null)}
+                focusTaskOnly={taskRosterFocus}
+                onFocusHandled={() => {
+                  setSubmissionFocus(null);
+                  setTaskRosterFocus(null);
+                }}
               />
             }
           />

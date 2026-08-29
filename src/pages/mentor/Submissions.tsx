@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Eye, Loader2, Users } from 'lucide-react';
 import SplitPane from '../../components/SplitPane';
 import RosterList from '../../components/RosterList';
@@ -9,9 +9,18 @@ import type { PrdSubmission, SubmissionKind } from '../../lib/types';
 import { DOCUMENT_TYPE_LABELS } from '../../lib/types';
 import { apiGetSubmissionsByStudent, apiGetPrdDownloadUrl, apiReviewPrdSubmission } from '../../lib/api';
 import { apiGetMyRoster } from '../../lib/api/teamRoster';
+import { apiGetTask } from '../../lib/api/tasks';
+import type { ApiTask, ApiAssignmentStatus } from '../../lib/api/tasks';
 import { statusDotClass, submissionStatusLabel } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
+
+const ASSIGNMENT_STATUS_LABEL: Record<ApiAssignmentStatus, string> = {
+  pending: 'Pending',
+  review: 'In Review',
+  resubmit: 'Resubmit',
+  approved: 'Approved',
+};
 
 interface Props {
   // Set by the Tasks tab's "View Submission" action to jump straight to a
@@ -20,6 +29,12 @@ interface Props {
   // later manual visit to this tab (via the sidebar) doesn't re-trigger it.
   focusStudentId?: string | null;
   focusTaskId?: string | null;
+  // Set by Tasks' row click on a student-targeted task (just the task, no
+  // specific student) — scopes the roster below to that task's own
+  // assignees instead of the mentor's full mentee list. Independent of
+  // focusStudentId/focusTaskId above: this is "browse everyone on this
+  // task", not "jump to one specific submission".
+  focusTaskOnly?: string | null;
   onFocusHandled?: () => void;
 }
 
@@ -38,10 +53,12 @@ interface Mentee {
 export default function MentorSubmissions({
   focusStudentId,
   focusTaskId,
+  focusTaskOnly,
   onFocusHandled,
 }: Partial<Props>) {
   // The OJT this review roster is scoped to, from the route.
   const { cohortId } = useParams<{ cohortId: string }>();
+  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
 
   const [mentees, setMentees] = useState<Mentee[]>([]);
@@ -59,6 +76,14 @@ export default function MentorSubmissions({
 
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
+
+  // Set once from focusTaskOnly and then lives on its own — not derived from
+  // that prop on every render, since the parent nulls it out right after
+  // (via onFocusHandled) so a later manual tab visit doesn't re-trigger it,
+  // and re-deriving from a nulled prop would clear this the moment it did.
+  // "Back to my roster" clears it directly.
+  const [taskScope, setTaskScope] = useState<ApiTask | null>(null);
+  const [taskScopeLoading, setTaskScopeLoading] = useState(false);
 
   const [reviewing, setReviewing] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -103,6 +128,7 @@ export default function MentorSubmissions({
   usePageRefresh(() => Promise.all([
     loadRoster(),
     selectedStudentId ? loadStudentSubmissions(selectedStudentId) : Promise.resolve(),
+    taskScope ? apiGetTask(taskScope.id).then((res) => setTaskScope(res.data)) : Promise.resolve(),
   ]));
 
   const loadStudentSubmissions = async (studentId: string) => {
@@ -147,6 +173,45 @@ export default function MentorSubmissions({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusStudentId, focusTaskId, loading, mentees]);
 
+  // Loads the task itself (title + every one of its assignees, with each
+  // one's own status) so the sidebar can list just this task's assignees —
+  // not filtered down to mentees, since a task's own assigner can review
+  // any of its assignees, not only the ones currently on this mentor's
+  // roster (e.g. a student reassigned to another mentor since).
+  useEffect(() => {
+    if (!focusTaskOnly) return;
+    let cancelled = false;
+    setTaskScopeLoading(true);
+    setSelectedStudentId(null);
+    setSelectedSubId(null);
+    setStudentSubmissions([]);
+    apiGetTask(focusTaskOnly)
+      .then((res) => { if (!cancelled) setTaskScope(res.data); })
+      .catch(() => { if (!cancelled) setError('Failed to load that task'); })
+      .finally(() => {
+        if (cancelled) return;
+        setTaskScopeLoading(false);
+        // Only now, not before starting the fetch — onFocusHandled nulls
+        // focusTaskOnly in the parent, which re-runs this same effect and
+        // sets `cancelled` on this run via the cleanup below. Calling it
+        // any earlier would cancel the very fetch it's meant to follow.
+        onFocusHandled?.();
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTaskOnly]);
+
+  const taskScopeRosterItems = useMemo(
+    () =>
+      (taskScope?.assignments ?? []).map((a) => ({
+        id: a.assignee_id,
+        primaryLabel: a.assignee?.full_name || a.assignee_id,
+        secondaryLabel: ASSIGNMENT_STATUS_LABEL[a.status],
+        done: a.status === 'approved',
+      })),
+    [taskScope]
+  );
+
   const rosterItems = useMemo(
     () =>
       mentees.map((m) => ({
@@ -159,6 +224,11 @@ export default function MentorSubmissions({
   );
 
   const selectedStudent = mentees.find((m) => m.studentId === selectedStudentId);
+  // Falls back to the task-scope assignee's own name when the selected
+  // person isn't (or isn't currently) one of this mentor's mentees — the
+  // task's own assignee list still has it even when the roster doesn't.
+  const selectedTaskAssignee = taskScope?.assignments?.find((a) => a.assignee_id === selectedStudentId);
+  const selectedName = selectedStudent?.fullName ?? selectedTaskAssignee?.assignee?.full_name ?? selectedStudentId ?? '';
   const submissionTaskKey = (r: Row) => r.taskId ?? `type:${r.documentType}`;
   const submissionTaskLabel = (r: Row) => r.taskTitle ?? DOCUMENT_TYPE_LABELS[r.documentType];
   const taskFilterOptions = useMemo(() => {
@@ -170,8 +240,11 @@ export default function MentorSubmissions({
     return Array.from(seen.entries()).map(([key, label]) => ({ key, label }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentSubmissions]);
+  // In task scope, every row already belongs to that one task — the normal
+  // taskFilter pills would be redundant (and taskFilter itself is left at
+  // 'ALL' when entering this mode).
   const studentRows = studentSubmissions.filter(
-    (r) => taskFilter === 'ALL' || submissionTaskKey(r) === taskFilter
+    (r) => (taskScope ? r.taskId === taskScope.id : taskFilter === 'ALL' || submissionTaskKey(r) === taskFilter)
   );
   const activeSub = studentSubmissions.find((r) => r.id === selectedSubId);
   const activeSubKind: SubmissionKind = activeSub?.submissionType ?? 'document';
@@ -233,8 +306,26 @@ export default function MentorSubmissions({
   return (
     <div className="space-y-6 h-full flex flex-col">
       <div className="shrink-0">
-        <h1 className="text-2xl font-bold text-white">Submissions</h1>
-        <p className="text-gray-400 text-sm mt-1">Review and manage your students' submissions</p>
+        {taskScope ? (
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h1 className="text-2xl font-bold text-white">{taskScope.title}</h1>
+              <p className="text-gray-400 text-sm mt-1">Everyone assigned this task — click a name to review their submission.</p>
+            </div>
+            <button
+              onClick={() => navigate(`/mentor/dashboard/ojts/${cohortId}/tasks`)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-zinc-850 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-750 transition-all text-sm font-semibold border border-zinc-700 shrink-0"
+            >
+              <ArrowLeft size={16} />
+              Back to Task
+            </button>
+          </div>
+        ) : (
+          <>
+            <h1 className="text-2xl font-bold text-white">Submissions</h1>
+            <p className="text-gray-400 text-sm mt-1">Review and manage your students' submissions</p>
+          </>
+        )}
       </div>
 
       {error && (
@@ -245,18 +336,18 @@ export default function MentorSubmissions({
         sidebarCollapsed={!!activeSub}
         sidebar={
           <RosterList
-            items={rosterItems}
+            items={taskScope ? taskScopeRosterItems : rosterItems}
             selectedId={selectedStudentId}
             onSelect={selectStudent}
-            searchPlaceholder="Search your students..."
-            loading={loading}
-            emptyMessage="No students assigned to you yet."
+            searchPlaceholder={taskScope ? 'Search assignees...' : 'Search your students...'}
+            loading={taskScope ? taskScopeLoading : loading}
+            emptyMessage={taskScope ? 'No one has been assigned this task yet.' : 'No students assigned to you yet.'}
           />
         }
       >
-        {!selectedStudent ? (
+        {!selectedStudentId ? (
           <div className="h-full flex items-center justify-center text-gray-500 text-sm">
-            Select a student to view their submissions.
+            {taskScope ? 'Select an assignee to view their submission.' : 'Select a student to view their submissions.'}
           </div>
         ) : activeSub ? (
           <div className="space-y-0">
@@ -266,7 +357,7 @@ export default function MentorSubmissions({
                 className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-700 transition-all text-sm font-semibold border border-zinc-700"
               >
                 <ArrowLeft size={16} />
-                Back to {selectedStudent.fullName}'s submissions
+                Back to {selectedName}'s submissions
               </button>
             </div>
             <SubmissionDetail
@@ -284,7 +375,8 @@ export default function MentorSubmissions({
               onDownload={handleDownload}
               headerExtra={
                 <p className="text-xs text-gray-500 mt-1">
-                  {selectedStudent.fullName} ({selectedStudent.rollNumber}) · {selectedStudent.track}
+                  {selectedName}
+                  {selectedStudent && <> ({selectedStudent.rollNumber}) · {selectedStudent.track}</>}
                 </p>
               }
               reviewControls={
@@ -299,29 +391,36 @@ export default function MentorSubmissions({
         ) : (
           <div className="p-6 space-y-4">
             <div>
-              <h2 className="text-lg font-bold text-white">{selectedStudent.fullName}</h2>
-              <p className="text-xs text-gray-500">
-                {selectedStudent.rollNumber} · {selectedStudent.track}
-              </p>
+              <h2 className="text-lg font-bold text-white">{selectedName}</h2>
+              {selectedStudent && (
+                <p className="text-xs text-gray-500">
+                  {selectedStudent.rollNumber} · {selectedStudent.track}
+                </p>
+              )}
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                onClick={() => setTaskFilter('ALL')}
-                className={`text-xs px-3 py-1 rounded-full border transition-colors ${taskFilter === 'ALL' ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
-              >
-                All
-              </button>
-              {taskFilterOptions.map(({ key, label }) => (
+            {/* Only meaningful when browsing a student's whole submission
+                history — every row is already this one task's in task
+                scope, so the filter would just be a single redundant pill. */}
+            {!taskScope && (
+              <div className="flex flex-wrap gap-1.5">
                 <button
-                  key={key}
-                  onClick={() => setTaskFilter(key)}
-                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${taskFilter === key ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
+                  onClick={() => setTaskFilter('ALL')}
+                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${taskFilter === 'ALL' ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
                 >
-                  {label}
+                  All
                 </button>
-              ))}
-            </div>
+                {taskFilterOptions.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setTaskFilter(key)}
+                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${taskFilter === key ? 'border-gold text-gold bg-gold/10' : 'border-zinc-700 text-gray-400 hover:border-zinc-600'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {submissionsLoading ? (
               <div className="flex items-center justify-center py-10">
