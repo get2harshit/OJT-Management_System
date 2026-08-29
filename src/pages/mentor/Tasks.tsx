@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Calendar, Loader2, Eye, UserX } from 'lucide-react';
+import { Plus, Calendar, Loader2, UserX } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import Drawer from '../../components/Drawer';
@@ -13,10 +13,8 @@ import {
   apiSubmitTask,
   apiResubmitTask,
   apiSaveStructuredResponse,
-  apiApproveTask,
-  apiRequestResubmit,
 } from '../../lib/api/tasks';
-import type { ApiTask, ApiTaskCategory, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
+import type { ApiTask, ApiTaskCategory, ApiAssignmentStatus } from '../../lib/api/tasks';
 import { apiListMyTeams } from '../../lib/api/teams';
 import type { Team } from '../../lib/types';
 import { useToast } from '../../toast';
@@ -65,13 +63,15 @@ const STATUS_DOT: Record<ApiAssignmentStatus, string> = {
 
 interface Props {
   mentorId: string;
-  // Jumps to the Submissions tab with this student+task pre-selected, so a
-  // document-task assignee row can be reviewed (Approve/Resubmit) from the
-  // real submission detail instead of dead-ending in this drawer.
-  onViewSubmission?: (studentId: string, taskId: string) => void;
+  // A student-targeted task is always a plain document/general/link
+  // submission task (weekly_report and checklist/Q&A content only ever
+  // exist on mentor-targeted tasks) — so clicking one jumps straight to the
+  // Submissions tab scoped to this task's own assignees, rather than
+  // opening a review drawer here first.
+  onViewTaskSubmissions?: (taskId: string) => void;
 }
 
-export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
+export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) {
   const navigate = useNavigate();
   // The OJT this page is scoped to, from the route.
   const { cohortId } = useParams<{ cohortId: string }>();
@@ -98,12 +98,6 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
   // on load/page/search/filter with no feedback at all.
   const [tasksLoading, setTasksLoading] = useState(true);
   const [statusTask, setStatusTask] = useState<ApiTask | null>(null);
-  // The list only carries assignmentsSummary (a capped preview), never the
-  // full per-assignee list — reviewTaskId drives the modal's open state,
-  // reviewTask holds the full detail fetched on demand via apiGetTask.
-  const [reviewTaskId, setReviewTaskId] = useState<string | null>(null);
-  const [reviewTask, setReviewTask] = useState<ApiTask | null>(null);
-  const [reviewTaskLoading, setReviewTaskLoading] = useState(false);
 
   // Used to refresh the list in place after create/approve/resubmit — must
   // carry the same cohort_id + page/limit/search as loadAll below, or a
@@ -123,21 +117,6 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
       setTasksLoading(false);
     }
   }, [cohortId, page, limit, search]);
-
-  const openReviewModal = async (taskId: string) => {
-    setReviewTaskId(taskId);
-    setReviewTask(null);
-    setReviewTaskLoading(true);
-    try {
-      const res = await apiGetTask(taskId);
-      setReviewTask(res.data);
-    } catch {
-      showError('Failed to load task assignments');
-      setReviewTaskId(null);
-    } finally {
-      setReviewTaskLoading(false);
-    }
-  };
 
   const loadAll = useCallback(() => {
     if (!cohortId) return Promise.resolve();
@@ -337,8 +316,7 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
     if (!row.assignerName) return <span className="text-xs text-gray-500">-</span>;
     const isAdmin = row.assignerRole === 'admin' || row.assignerRole === 'batch_manager';
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-gray-200 whitespace-nowrap">
-        {row.assignerName}
+      <div className="flex flex-col items-start gap-1">
         <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${
           isAdmin
             ? 'bg-gold/10 text-gold border-gold/25'
@@ -346,7 +324,8 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
         }`}>
           {isAdmin ? 'Admin' : 'Mentor'}
         </span>
-      </span>
+        <span className="text-xs text-gray-200 whitespace-nowrap">{row.assignerName}</span>
+      </div>
     );
   };
 
@@ -446,7 +425,9 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
       }
       setStatusTask(task);
     } else {
-      openReviewModal(row.id);
+      // A task assigned to students is always a plain submission task —
+      // straight to Submissions, scoped to this task's own assignees.
+      onViewTaskSubmissions?.(row.id);
     }
   };
 
@@ -675,29 +656,6 @@ export default function MentorTasks({ mentorId, onViewSubmission }: Props) {
             }}
           />
         )}
-      </Drawer>
-
-      <Drawer
-        open={!!reviewTaskId}
-        onClose={() => { setReviewTaskId(null); setReviewTask(null); }}
-        title="Review Assignments"
-      >
-        {reviewTaskLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 size={28} className="animate-spin text-gray-500" />
-          </div>
-        ) : reviewTask ? (
-          <AssigneeReviewPanel
-            task={reviewTask}
-            mentorId={mentorId}
-            myStudentIds={myStudentIds}
-            onViewSubmission={onViewSubmission}
-            onChanged={async () => {
-              await openReviewModal(reviewTask.id);
-              await fetchTasksOnly();
-            }}
-          />
-        ) : null}
       </Drawer>
     </PageLayout>
   );
@@ -933,242 +891,3 @@ function StatusBadge({ status }: { status: ApiAssignmentStatus }) {
   );
 }
 
-// Mentor-as-assigner review: every category (document/general/link) is now
-// submitted with real content through the Submissions tab (student's popup
-// picks the input by task.category, see submissionKindForCategory in
-// student/Submissions.tsx), and ReviewActions there drives the same
-// underlying assignment transition (SubmissionService.syncAssignmentStatus).
-// So this panel never approves/resubmits blind — it only routes to the
-// actual submission to review.
-function AssigneeReviewPanel({
-  task,
-  mentorId,
-  myStudentIds,
-  onViewSubmission,
-  onChanged,
-}: {
-  task: ApiTask;
-  mentorId: string;
-  // Mirrors the backend's approve/resubmit rule: the task's own assigner,
-  // or the assignee's own mentor, can act on a row — checked per-assignment
-  // (not per-task) since a batch-assigned task can mix students across
-  // different mentors.
-  myStudentIds: Set<string>;
-  onViewSubmission?: (studentId: string, taskId: string) => void;
-  onChanged?: () => Promise<void>;
-}) {
-  const assignments = task.assignments || [];
-  const isTaskAssigner = task.assigned_by_id === mentorId;
-  const canReviewAssignment = (assignment: ApiAssignment) => isTaskAssigner || myStudentIds.has(assignment.assignee_id);
-  // Checklist/Q&A tasks have no document/submission at all — this panel
-  // reviews them itself (checked-items + answers, then Approve/Resubmit)
-  // instead of the usual "open the Submissions tab" handoff, which has
-  // nothing to show for a task shaped like this.
-  const hasStructuredContent = (task.checklist_items?.length ?? 0) > 0 || (task.qna_questions?.length ?? 0) > 0;
-
-  return (
-    <div className="space-y-5">
-      <div>
-        <h4 className="text-white font-semibold">{task.title}</h4>
-        {task.description && <p className="text-gray-400 text-sm mt-1">{task.description}</p>}
-      </div>
-
-      {!hasStructuredContent && (
-        <p className="text-xs text-gray-400 bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-2">
-          Open a submitted row's submission below to approve or resubmit it.
-        </p>
-      )}
-
-      {!isTaskAssigner && (
-        <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-          Assigned by admin — as your students' mentor, you can still approve or request changes on their rows below.
-        </p>
-      )}
-
-      <div className="space-y-3">
-        {assignments.map(assignment => {
-          const canReview = canReviewAssignment(assignment);
-          // Same "left the roster since this task was assigned" signal as the
-          // list view — only meaningful for a task I assigned myself.
-          const movedAway = isTaskAssigner && task.target_role === 'student' && !myStudentIds.has(assignment.assignee_id);
-          // Checklist/Q&A content only exists on mentor-targeted tasks (see
-          // ojt_tasks.checklist_items's own comment) — "moved to another
-          // mentor" is a student-roster concept, so it never applies here.
-          return hasStructuredContent ? (
-            <StructuredAssignmentReviewRow
-              key={assignment.id}
-              task={task}
-              assignment={assignment}
-              canReview={canReview}
-              onChanged={onChanged}
-            />
-          ) : (
-            <div key={assignment.id} className="bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-3 space-y-2.5">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-gray-200 truncate flex items-center gap-1.5">
-                  {assignment.assignee?.full_name || assignment.assignee_id}
-                  {movedAway && (
-                    <span
-                      title="No longer under you — reassigned to another mentor"
-                      className="inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase text-amber-400 bg-amber-500/10 border border-amber-500/25 rounded-full px-1.5 py-0.5 shrink-0"
-                    >
-                      <UserX size={9} />
-                      Moved
-                    </span>
-                  )}
-                </span>
-                <StatusBadge status={assignment.status} />
-              </div>
-
-              {!canReview && assignment.status === 'review' && (
-                <p className="text-[11px] text-gray-500">Not one of your students — you can view this but can't review it.</p>
-              )}
-
-              {canReview && assignment.status !== 'pending' && (
-                <button
-                  onClick={() => onViewSubmission?.(assignment.assignee_id, task.id)}
-                  className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-gold hover:text-gold/80 bg-gold/10 hover:bg-gold/15 border border-gold/25 rounded-lg py-2 transition-colors"
-                >
-                  <Eye size={13} />
-                  View Submission
-                </button>
-              )}
-
-              {assignment.status === 'pending' && (
-                <p className="text-[11px] text-gray-500">Not submitted yet.</p>
-              )}
-
-              {assignment.status === 'resubmit' && (
-                <p className="text-[11px] text-gray-500">
-                  {assignment.resubmit_count} of {assignment.max_resubmit_count} resubmits used
-                </p>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// One assignee's row for a checklist/Q&A task — read-only view of their
-// saved answers (collapsed until the reviewer expands it), plus Approve/
-// Resubmit once it's actually in 'review'. Mirrors the shape of the
-// mentor's own TaskStatusPanel checklist/Q&A rendering, but never editable.
-function StructuredAssignmentReviewRow({
-  task,
-  assignment,
-  canReview,
-  onChanged,
-}: {
-  task: ApiTask;
-  assignment: ApiAssignment;
-  canReview: boolean;
-  onChanged?: () => Promise<void>;
-}) {
-  const { showError } = useToast();
-  const [expanded, setExpanded] = useState(false);
-  const [comment, setComment] = useState('');
-  const [saving, setSaving] = useState<'approve' | 'resubmit' | null>(null);
-
-  const checklistItems = task.checklist_items ?? [];
-  const qnaQuestions = task.qna_questions ?? [];
-  const checklistAnswers = assignment.structured_response?.checklist ?? {};
-  const qnaAnswers = assignment.structured_response?.qna ?? {};
-
-  const handleApprove = async () => {
-    setSaving('approve');
-    try {
-      await apiApproveTask(task.id, assignment.id, comment.trim() || undefined);
-      await onChanged?.();
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to approve');
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const handleResubmit = async () => {
-    if (!comment.trim()) {
-      showError('A comment is required when requesting a resubmit');
-      return;
-    }
-    setSaving('resubmit');
-    try {
-      await apiRequestResubmit(task.id, assignment.id, comment.trim());
-      await onChanged?.();
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to request resubmit');
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  return (
-    <div className="bg-zinc-800/60 border border-zinc-750 rounded-lg px-3 py-3 space-y-2.5">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between gap-3 text-left"
-      >
-        <span className="text-sm text-gray-200 truncate">{assignment.assignee?.full_name || assignment.assignee_id}</span>
-        <StatusBadge status={assignment.status} />
-      </button>
-
-      {assignment.status === 'pending' && (
-        <p className="text-[11px] text-gray-500">Not submitted yet.</p>
-      )}
-
-      {expanded && assignment.status !== 'pending' && (
-        <div className="space-y-3 pt-1">
-          {checklistItems.map(item => (
-            <label key={item.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-750">
-              <input type="checkbox" checked={!!checklistAnswers[item.id]} disabled className="accent-gold w-4 h-4 shrink-0 opacity-80" />
-              <span className="text-sm text-gray-300">{item.label}</span>
-            </label>
-          ))}
-          {qnaQuestions.map(q => (
-            <div key={q.id}>
-              <p className="text-xs text-gray-500 mb-1">{q.question}</p>
-              <p className="text-sm text-gray-200 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 whitespace-pre-wrap">
-                {qnaAnswers[q.id] || <span className="text-gray-600">No answer</span>}
-              </p>
-            </div>
-          ))}
-
-          {canReview && assignment.status === 'review' && (
-            <div className="space-y-2 pt-1">
-              <textarea
-                value={comment}
-                onChange={e => setComment(e.target.value)}
-                placeholder="Optional comment (required for resubmit)"
-                rows={2}
-                className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gold transition-colors resize-none placeholder-gray-500"
-              />
-              <div className="flex gap-2">
-                <Button onClick={handleApprove} disabled={saving !== null} size="sm" fullWidth>
-                  {saving === 'approve' ? <Loader2 size={14} className="animate-spin" /> : null}
-                  Approve
-                </Button>
-                <Button onClick={handleResubmit} disabled={saving !== null} variant="secondary" size="sm" fullWidth>
-                  {saving === 'resubmit' ? <Loader2 size={14} className="animate-spin" /> : null}
-                  Resubmit
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {!canReview && assignment.status === 'review' && (
-            <p className="text-[11px] text-gray-500">Not one of your students — you can view this but can't review it.</p>
-          )}
-
-          {assignment.status === 'resubmit' && (
-            <p className="text-[11px] text-gray-500">
-              {assignment.resubmit_count} of {assignment.max_resubmit_count} resubmits used
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
