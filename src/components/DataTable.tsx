@@ -370,8 +370,12 @@ export default function DataTable<T extends object>({
           </tbody>
         </table>
         {/* min-h so the message still has somewhere to centre itself when the
-            card is sized by its rows rather than by the space left on screen. */}
-        {paginated.length === 0 && (
+            card is sized by its rows rather than by the space left on screen.
+            Hidden while loading — otherwise this renders underneath the
+            spinner overlay above on a first load (nothing fetched yet, so
+            paginated is empty too), showing both stacked on top of each
+            other instead of just the spinner. */}
+        {paginated.length === 0 && !loading && (
           <div className="flex-1 min-h-[220px] flex items-center justify-center">{emptyState}</div>
         )}
       </div>
@@ -415,8 +419,12 @@ export default function DataTable<T extends object>({
           </div>
         ))}
         {/* min-h so the message still has somewhere to centre itself when the
-            card is sized by its rows rather than by the space left on screen. */}
-        {paginated.length === 0 && (
+            card is sized by its rows rather than by the space left on screen.
+            Hidden while loading — otherwise this renders underneath the
+            spinner overlay above on a first load (nothing fetched yet, so
+            paginated is empty too), showing both stacked on top of each
+            other instead of just the spinner. */}
+        {paginated.length === 0 && !loading && (
           <div className="flex-1 min-h-[220px] flex items-center justify-center">{emptyState}</div>
         )}
       </div>
