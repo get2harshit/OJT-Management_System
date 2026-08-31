@@ -162,7 +162,7 @@ export default function MentorWorkSummary() {
           { key: 'when', header: 'Session', render: (row) => formatSessionWhen(row) },
           { key: 'title', header: 'Title', render: (row) => row.title || row.kind_label },
           { key: 'teams', header: 'Teams', render: (row) => teamNames(row) },
-          { key: 'duration', header: 'Duration', render: (row) => formatDuration(row) },
+          { key: 'duration', header: 'Duration', render: (row) => formatExactDuration(row.actual_duration_minutes ?? row.duration_minutes) },
         ]}
         data={sessions.map((s) => ({ ...s, when: formatSessionWhen(s) }))}
         searchPlaceholder="Search delivered sessions..."
@@ -207,10 +207,6 @@ function formatSessionWhen(session: ApiSession): string {
   const date = formatInIST(session.start_time, { day: '2-digit', month: 'short', year: 'numeric' });
   const time = formatInIST(session.start_time, { hour: '2-digit', minute: '2-digit' });
   return `${date}, ${time}`;
-}
-
-function formatDuration(session: ApiSession): string {
-  return formatExactDuration(session.actual_duration_minutes ?? session.duration_minutes);
 }
 
 function teamNames(session: ApiSession): string {
