@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ClipboardList, Loader2, X, UserPlus, UserMinus, Send } from 'lucide-react';
+import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ClipboardList, Loader2, X, UserPlus, UserMinus, Send, Download } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
@@ -28,9 +28,17 @@ import { useConfirm } from '../../confirm';
 import { apiListCohorts } from '../../lib/api';
 import type { Cohort } from '../../lib/types';
 import { usePageRefresh } from '../../context/RefreshContext';
+import { exportToCSV } from '../../lib/csvExport';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
+
+// An external mentor is still a mentor for "who assigned this" purposes —
+// t.assigner.role comes back as 'mentor' or 'external_mentor' depending on
+// ojt_mentors.is_external (see resolveUserRole.ts), and a bare `=== 'mentor'`
+// check was quietly filing every external mentor's task under "Admin"
+// instead, both in the "By Mentor" filter and the Assigned By badge.
+const isMentorAssigner = (role: string | undefined): boolean => role === 'mentor' || role === 'external_mentor';
 
 interface Props {
   // A student-targeted task is always a plain document/general/link
@@ -57,6 +65,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
   // Drives DataTable's own overlay spinner — the list used to swap silently
   // on load/page/search/filter with no feedback at all.
   const [tasksLoading, setTasksLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   // roleFilter/statusFilter apply client-side, over whatever page is
   // currently loaded — the backend has no target_role filter, and
   // statusFilter is an aggregate rolled up across *all* of a task's
@@ -435,9 +444,92 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
       if (roleFilter !== 'all' && t.target_role !== roleFilter) return false;
       if (statusFilter !== 'all' && t.aggregateStatus !== statusFilter) return false;
       if (assignedByFilter === 'admin' && t.assigner?.role !== 'admin' && t.assigner?.role !== 'batch_manager') return false;
-      if (assignedByFilter === 'mentor' && t.assigner?.role !== 'mentor') return false;
+      if (assignedByFilter === 'mentor' && !isMentorAssigner(t.assigner?.role)) return false;
       return true;
     });
+
+  // DataTable's own built-in export only ever sees the one page currently
+  // loaded (this list is server-paginated) and reads raw `row[columnKey]` —
+  // several columns here (Status, Assigned By, Assigned To) are computed/
+  // joined values under different field names, so its export came out both
+  // truncated to one page and missing those three columns. This fetches
+  // every page under the same server-side filters this view already sends
+  // (search/cohort/assignedById), re-applies the same client-side filters
+  // tableData above does, and writes each row out under its real values —
+  // same shape the table renders, just not dependent on which page is open.
+  const handleExportTasksCsv = async () => {
+    if (!activeCohort) return;
+    setExporting(true);
+    try {
+      const EXPORT_PAGE_SIZE = 200;
+      const allTasks: ApiTask[] = [];
+      let exportPage = 1;
+      let totalExportPages = 1;
+      do {
+        const res = await apiListTasks({
+          page: exportPage,
+          limit: EXPORT_PAGE_SIZE,
+          search: search || undefined,
+          cohort_id: activeCohort.id,
+          assigned_by_id: assignedById || undefined,
+        });
+        allTasks.push(...res.data);
+        totalExportPages = res.pagination.pages;
+        exportPage += 1;
+      } while (exportPage <= totalExportPages);
+
+      const rows = allTasks
+        .map(t => {
+          const summary = t.assignmentsSummary;
+          const totalAssignments = summary?.total ?? 0;
+          const completedAssignments = summary?.byStatus.approved ?? 0;
+          let aggregateStatus = 'pending';
+          if (totalAssignments > 0) {
+            if (completedAssignments === totalAssignments) aggregateStatus = 'approved';
+            else if (summary!.byStatus.resubmit > 0) aggregateStatus = 'resubmit';
+            else if (summary!.byStatus.review > 0) aggregateStatus = 'submitted';
+          }
+          return { ...t, aggregateStatus, totalAssignments, completedAssignments };
+        })
+        .filter(t => {
+          if (roleFilter !== 'all' && t.target_role !== roleFilter) return false;
+          if (statusFilter !== 'all' && t.aggregateStatus !== statusFilter) return false;
+          if (assignedByFilter === 'admin' && t.assigner?.role !== 'admin' && t.assigner?.role !== 'batch_manager') return false;
+          if (assignedByFilter === 'mentor' && !isMentorAssigner(t.assigner?.role)) return false;
+          return true;
+        })
+        .map(t => {
+          const slugs = t.tracks && t.tracks.length > 0 ? t.tracks : (t.track ? [t.track] : []);
+          const trackLabel = slugs.length > 0 ? slugs.map(s => trackNameBySlug.get(s) ?? s).join(', ') : 'All';
+          const preview = t.assignmentsSummary?.preview ?? [];
+          const totalAssignees = t.assignmentsSummary?.total ?? 0;
+          const names = preview.map(a => a.fullName || a.assigneeId).join(', ');
+          const assignedTo = totalAssignees === 0 ? 'All' : totalAssignees > preview.length ? `${names} +${totalAssignees - preview.length} more` : names;
+          return {
+            Week: t.week || '-',
+            Track: trackLabel,
+            'Task Title': t.title,
+            Target: t.target_role === 'student' ? 'Student' : 'Mentor',
+            Status: t.aggregateStatus.replace('_', ' '),
+            Progress: t.totalAssignments > 0 ? `${t.completedAssignments}/${t.totalAssignments}` : '-',
+            'Assigned By': t.assigner ? `${isMentorAssigner(t.assigner.role) ? 'Mentor' : 'Admin'} - ${t.assigner.full_name}` : '-',
+            'Assigned To': assignedTo,
+            Deadline: t.deadline ? new Date(t.deadline).toLocaleDateString() : '-',
+          };
+        });
+
+      if (rows.length === 0) {
+        showError('No tasks match the current filters — nothing to export.');
+        return;
+      }
+
+      exportToCSV(`${activeCohort.name || 'tasks'} - tasks`, rows);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to export tasks');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // The edit modal's task may belong to a different cohort than whichever
   // one the list filter currently has selected, so its batch options are
@@ -507,6 +599,14 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
               { value: 'mentor', label: 'By Mentor' },
             ]}
           />
+          <Button
+            variant="secondary"
+            onClick={handleExportTasksCsv}
+            isLoading={exporting}
+            leftIcon={<Download size={16} />}
+          >
+            Export CSV
+          </Button>
           <Button onClick={() => navigate('/admin/dashboard/tasks/create')} leftIcon={<Plus size={18} />}>
             Create Task / Goal
           </Button>
@@ -613,7 +713,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
             header: 'Assigned By',
             render: (row) => {
               if (!row.assigner) return <span className="text-xs text-gray-500">-</span>;
-              const isMentor = row.assigner.role === 'mentor';
+              const isMentor = isMentorAssigner(row.assigner.role);
               return (
                 <div className="flex flex-col items-start gap-1">
                   <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${
@@ -673,6 +773,11 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
             )
           },
         ]}
+        // DataTable's own built-in export is superseded by the dedicated
+        // "Export CSV" button above — that one fetches every page and reads
+        // real field values instead of the raw (and here, mismatched)
+        // column keys this table's columns use for their custom renders.
+        hideExport
         data={tableData}
         searchPlaceholder="Search weekly goals..."
         onSearchChange={handleSearchChange}
