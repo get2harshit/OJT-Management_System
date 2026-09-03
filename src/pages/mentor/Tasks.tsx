@@ -259,7 +259,7 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
   // just what I created myself vs. what admin handed down. Within this
   // mentor's visible task set the assigner is always either me or an admin/
   // batch_manager (a mentor can only ever create tasks for their own teams),
-  // so a simple identity check is all "assigned by admin" needs.
+  // so a simple identity check is all "By Me" needs.
   const visibleTasks = bucketTasks.filter(t => {
     if (assignedByFilter === 'me') return t.assigned_by_id === mentorId;
     if (assignedByFilter === 'admin') return t.assigned_by_id !== mentorId;
@@ -456,9 +456,9 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
             variant="filter"
             className="w-[160px]"
             options={[
-              { value: 'all', label: 'Assigned by anyone' },
-              { value: 'me', label: 'Assigned by me' },
-              { value: 'admin', label: 'Assigned by admin' },
+              { value: 'all', label: 'By All' },
+              { value: 'admin', label: 'By Admin' },
+              { value: 'me', label: 'By Me' },
             ]}
           />
           <Button onClick={() => setDrawerOpen(true)} leftIcon={<Plus size={18} />} className="hover:scale-105">

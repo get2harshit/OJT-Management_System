@@ -33,6 +33,10 @@ export interface ApiAssignment {
   task_id: string;
   assignee_id: string;
   team_id?: string | null;
+  // The team's display name (e.g. "G1") — only present via GET /tasks/:id
+  // (apiGetTask), same as team_id already was; null for an individual
+  // assignment or one predating this field.
+  team_name?: string | null;
   status: ApiAssignmentStatus;
   resubmit_count: number;
   max_resubmit_count: number;
@@ -82,14 +86,22 @@ export interface ApiAssignmentPreview {
   fullName: string | null;
   role: string | null;
   status: ApiAssignmentStatus;
+  // Present whenever the assignment belongs to a team, regardless of the
+  // preview cap below — lets a team-assigned task's preview be grouped by
+  // team the same way the full apiGetTask assignments array already is.
+  teamId?: string | null;
+  teamName?: string | null;
 }
 
 // Per-task assignment aggregate for list views — a batch/track-wide task
-// can fan out to 100+ assignments, so GET /tasks never ships the full list;
-// `preview` is capped (currently 5) and just enough for a "name, name, +N
-// more" chip row. The full per-assignee list is only ever fetched via
-// GET /tasks/:id (apiGetTask), on demand, when something needs to act on
-// every assignee (e.g. a review panel).
+// can fan out to 100+ assignments, so by default GET /tasks never ships the
+// full list; `preview` is capped (currently 5), just enough for a "name,
+// name, +N more" chip row. Passing include_full_assignments: true on the
+// request (see ApiTaskListFilter) lifts the cap and returns everyone in
+// `preview` instead — the admin CSV export's way of getting every assignee's
+// name across every task in one page-sized round trip rather than one
+// GET /tasks/:id (apiGetTask) per task. Leave the flag off and this stays
+// the same capped shape it always was.
 export interface ApiAssignmentsSummary {
   total: number;
   byStatus: Record<ApiAssignmentStatus, number>;
@@ -222,6 +234,9 @@ export interface ApiTaskListFilter {
   // can't infer "their" cohort the way it does for students/mentors —
   // without this, an admin gets an empty list back.
   cohort_id?: string;
+  // Lifts assignmentsSummary.preview's 5-name cap to everyone on the task —
+  // see ApiAssignmentsSummary. Only the CSV export sets this.
+  include_full_assignments?: boolean;
 }
 
 export async function apiCreateTask(payload: CreateTaskPayload): Promise<{ success: boolean; message: string; data: ApiTask }> {

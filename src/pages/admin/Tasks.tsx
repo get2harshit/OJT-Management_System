@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ClipboardList, Loader2, X, UserPlus, UserMinus, Send, Download } from 'lucide-react';
+import { Plus, Trash2, Calendar, Edit2, User, CheckCircle2, Clock, Circle, ClipboardList, Loader2, X, UserPlus, UserMinus, Send, Download, Users } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
@@ -12,11 +12,12 @@ import {
   apiRemoveTaskAssignment,
   apiBulkRequestResubmit,
 } from '../../lib/api/tasks';
-import type { ApiTask, ApiAssignment, ApiAssignmentStatus } from '../../lib/api/tasks';
+import type { ApiTask, ApiAssignment, ApiAssignmentStatus, ApiAssignmentPreview } from '../../lib/api/tasks';
 import { apiListStudents } from '../../lib/api/students';
 import { apiGetTeamsForCohortDetailed } from '../../lib/api/allocations';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
+import Drawer from '../../components/Drawer';
 import Select from '../../components/Select';
 import ActionsMenu from '../../components/ActionsMenu';
 import AssigneePickerTable, { dedupeStudentRows } from '../../components/AssigneePickerTable';
@@ -39,6 +40,59 @@ const SEARCH_DEBOUNCE_MS = 400;
 // check was quietly filing every external mentor's task under "Admin"
 // instead, both in the "By Mentor" filter and the Assigned By badge.
 const isMentorAssigner = (role: string | undefined): boolean => role === 'mentor' || role === 'external_mentor';
+
+// For the CSV's Assigned By column — distinguishes internal from external
+// (industry) mentor rather than collapsing both into one "Mentor" label,
+// same "Internal"/"External" pairing the rest of the admin app already uses
+// (Mentors.tsx, CohortMentorsPage.tsx, etc.).
+function assignerRoleLabel(role: string | undefined): string {
+  switch (role) {
+    case 'admin': return 'Admin';
+    case 'batch_manager': return 'Batch Manager';
+    case 'mentor': return 'Internal Mentor';
+    case 'external_mentor': return 'External Mentor';
+    default: return 'Unknown';
+  }
+}
+
+// One status group's assignees, formatted for the breakdown drawer: a team
+// assignment reads as "G1(Name1,Name2)" (grouped by team_id, one name per
+// member), an individual one is just the bare name — matched comma-separated
+// into one line so it stays readable at a glance instead of a per-person list.
+interface AssigneeGroupEntry {
+  name: string;
+  teamId: string | null | undefined;
+  teamName: string | null | undefined;
+}
+
+function formatAssigneeGroup(entries: AssigneeGroupEntry[]): string {
+  if (entries.length === 0) return 'None';
+  const teamGroups = new Map<string, { name: string; members: string[] }>();
+  const individuals: string[] = [];
+  for (const e of entries) {
+    if (e.teamId) {
+      const group = teamGroups.get(e.teamId) ?? { name: e.teamName || 'Team', members: [] };
+      group.members.push(e.name);
+      teamGroups.set(e.teamId, group);
+    } else {
+      individuals.push(e.name);
+    }
+  }
+  const teamParts = Array.from(teamGroups.values()).map(g => `${g.name}(${g.members.join(',')})`);
+  return [...teamParts, ...individuals].join(', ');
+}
+
+const assignmentToGroupEntry = (a: ApiAssignment): AssigneeGroupEntry => ({
+  name: a.assignee?.full_name || a.assignee_id,
+  teamId: a.team_id,
+  teamName: a.team_name,
+});
+
+const previewToGroupEntry = (a: ApiAssignmentPreview): AssigneeGroupEntry => ({
+  name: a.fullName || a.assigneeId,
+  teamId: a.teamId,
+  teamName: a.teamName,
+});
 
 interface Props {
   // A student-targeted task is always a plain document/general/link
@@ -110,6 +164,12 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
   // array the assignee-management section below needs.
   const [editTaskDetail, setEditTaskDetail] = useState<ApiTask | null>(null);
   const [editLoading, setEditLoading] = useState(false);
+  // Assignee Breakdown drawer — the full per-status, per-team assignee list
+  // for one task (the list row only ever carries a 5-name preview), fetched
+  // on demand rather than upfront for every row on the page.
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [breakdownTask, setBreakdownTask] = useState<ApiTask | null>(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
   const [removingAssignmentId, setRemovingAssignmentId] = useState<string | null>(null);
   const [resubmitSelected, setResubmitSelected] = useState<Set<string>>(new Set());
   const [resubmitComment, setResubmitComment] = useState('');
@@ -244,6 +304,21 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
       setEditingTaskId(null);
     } finally {
       setEditLoading(false);
+    }
+  };
+
+  const handleViewBreakdown = async (taskId: string) => {
+    setBreakdownOpen(true);
+    setBreakdownTask(null);
+    setBreakdownLoading(true);
+    try {
+      const res = await apiGetTask(taskId);
+      setBreakdownTask(res.data);
+    } catch {
+      showError('Failed to load assignee breakdown');
+      setBreakdownOpen(false);
+    } finally {
+      setBreakdownLoading(false);
     }
   };
 
@@ -450,13 +525,17 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
 
   // DataTable's own built-in export only ever sees the one page currently
   // loaded (this list is server-paginated) and reads raw `row[columnKey]` —
-  // several columns here (Status, Assigned By, Assigned To) are computed/
-  // joined values under different field names, so its export came out both
-  // truncated to one page and missing those three columns. This fetches
+  // several columns here (Status, Assigned By, per-status breakdown) are
+  // computed/joined values under different field names, so its export came
+  // out both truncated to one page and missing those columns. This fetches
   // every page under the same server-side filters this view already sends
-  // (search/cohort/assignedById), re-applies the same client-side filters
-  // tableData above does, and writes each row out under its real values —
-  // same shape the table renders, just not dependent on which page is open.
+  // (search/cohort/assignedById), with include_full_assignments so each
+  // task's assignee list comes back complete instead of the normal 5-name
+  // preview — no per-task follow-up request needed, just a wider payload on
+  // the same page-sized calls this already made. (An earlier version of this
+  // fetched each task's full detail individually — correct, but on staging's
+  // real network latency, one round trip per task made a large cohort's
+  // export take minutes.)
   const handleExportTasksCsv = async () => {
     if (!activeCohort) return;
     setExporting(true);
@@ -472,6 +551,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
           search: search || undefined,
           cohort_id: activeCohort.id,
           assigned_by_id: assignedById || undefined,
+          include_full_assignments: true,
         });
         allTasks.push(...res.data);
         totalExportPages = res.pagination.pages;
@@ -489,7 +569,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
             else if (summary!.byStatus.resubmit > 0) aggregateStatus = 'resubmit';
             else if (summary!.byStatus.review > 0) aggregateStatus = 'submitted';
           }
-          return { ...t, aggregateStatus, totalAssignments, completedAssignments };
+          return { ...t, aggregateStatus };
         })
         .filter(t => {
           if (roleFilter !== 'all' && t.target_role !== roleFilter) return false;
@@ -502,18 +582,20 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
           const slugs = t.tracks && t.tracks.length > 0 ? t.tracks : (t.track ? [t.track] : []);
           const trackLabel = slugs.length > 0 ? slugs.map(s => trackNameBySlug.get(s) ?? s).join(', ') : 'All';
           const preview = t.assignmentsSummary?.preview ?? [];
-          const totalAssignees = t.assignmentsSummary?.total ?? 0;
-          const names = preview.map(a => a.fullName || a.assigneeId).join(', ');
-          const assignedTo = totalAssignees === 0 ? 'All' : totalAssignees > preview.length ? `${names} +${totalAssignees - preview.length} more` : names;
+          const byStatusNames = (status: ApiAssignmentStatus) =>
+            formatAssigneeGroup(preview.filter(a => a.status === status).map(previewToGroupEntry));
           return {
             Week: t.week || '-',
             Track: trackLabel,
             'Task Title': t.title,
             Target: t.target_role === 'student' ? 'Student' : 'Mentor',
             Status: t.aggregateStatus.replace('_', ' '),
-            Progress: t.totalAssignments > 0 ? `${t.completedAssignments}/${t.totalAssignments}` : '-',
-            'Assigned By': t.assigner ? `${isMentorAssigner(t.assigner.role) ? 'Mentor' : 'Admin'} - ${t.assigner.full_name}` : '-',
-            'Assigned To': assignedTo,
+            'Total Assignees': t.assignmentsSummary?.total ?? 0,
+            Pending: byStatusNames('pending'),
+            Submitted: byStatusNames('review'),
+            Resubmit: byStatusNames('resubmit'),
+            Approved: byStatusNames('approved'),
+            'Assigned By': t.assigner ? `${assignerRoleLabel(t.assigner.role)} - ${t.assigner.full_name}` : '-',
             Deadline: t.deadline ? new Date(t.deadline).toLocaleDateString() : '-',
           };
         });
@@ -803,12 +885,45 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
                     onClick: () => navigate(`/admin/dashboard/tasks/${row.id}/weekly-report`),
                   }]
                 : []),
+              { label: 'View Assignee Breakdown', icon: Users, onClick: () => handleViewBreakdown(row.id) },
               { label: 'Edit Task', icon: Edit2, onClick: () => handleEditClick(row) },
               { label: 'Delete Task', icon: Trash2, onClick: () => handleDelete(row.id), danger: true },
             ]}
           />
         )}
       />
+
+      <Drawer
+        open={breakdownOpen}
+        onClose={() => setBreakdownOpen(false)}
+        title={breakdownTask ? `Assignee Breakdown — ${breakdownTask.title}` : 'Assignee Breakdown'}
+      >
+        {breakdownLoading || !breakdownTask ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 size={28} className="animate-spin text-gray-500" />
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {([
+              { status: 'pending', label: 'Pending' },
+              { status: 'review', label: 'Submitted' },
+              { status: 'resubmit', label: 'Resubmit' },
+            ] as const).map(({ status, label }) => {
+              const group = (breakdownTask.assignments ?? []).filter(a => a.status === status);
+              return (
+                <div key={status}>
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-1.5">
+                    {label} ({group.length})
+                  </p>
+                  <p className="text-sm text-gray-200 leading-relaxed">
+                    {formatAssigneeGroup(group.map(assignmentToGroupEntry))}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Drawer>
 
       <Modal size="xl" open={!!editingTaskId} onClose={closeEditModal} title="Edit Task">
         {editLoading || !editTaskDetail ? (
