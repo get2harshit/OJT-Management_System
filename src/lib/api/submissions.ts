@@ -137,3 +137,20 @@ export async function apiGetPrdDownloadUrl(id: string): Promise<string> {
   const res = await apiFetch<{ url: string }>(`/api/v1/submissions/${id}/download-url`);
   return res.url;
 }
+
+// Admin-only — reopens an approved submission back to under_review.
+// 'approved' is otherwise a locked, one-way state; this is the only way to
+// undo a mentor's mistaken approval short of an engineer editing the
+// database directly.
+export async function apiRevertPrdApproval(id: string): Promise<PrdSubmission> {
+  const res = await apiFetch<PrdSubmission>(`/api/v1/submissions/${id}/revert-approval`, {
+    method: 'POST',
+  });
+  invalidateCached('submissions:all');
+  invalidateCached('submissions:byStudent');
+  invalidateCached('submissions:my');
+  invalidateCached('submissions:byAllocation');
+  invalidateCached('teams:mine:detailed');
+  invalidateCached('tasks:list');
+  return res;
+}

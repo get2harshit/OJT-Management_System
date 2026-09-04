@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, Eye, Loader2, Users, X } from 'lucide-react';
+import { ArrowLeft, Download, Eye, Loader2, RotateCcw, Users, X } from 'lucide-react';
 import Button from '../../components/Button';
 import SplitPane from '../../components/SplitPane';
 import RosterList from '../../components/RosterList';
@@ -17,11 +17,14 @@ import {
   apiGetPrdDownloadUrl,
   apiListCohorts,
   apiReviewPrdSubmission,
+  apiRevertPrdApproval,
 } from '../../lib/api';
 import { statusDotClass, submissionStatusLabel } from '../../lib/submissionDisplay';
 import { exportToCSV } from '../../lib/csvExport';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
+import { useAuth } from '../../context/useAuth';
+import { useConfirm } from '../../confirm';
 import { apiGetCohortTrackConfig } from '../../lib/api/tracks';
 import type { ApiCohortTrackConfig } from '../../lib/api/tracks';
 import { apiGetTask } from '../../lib/api/tasks';
@@ -80,6 +83,9 @@ export default function AdminSubmissions({
   onFocusHandled,
 }: Props = {}) {
   const { showSuccess, showError } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -539,6 +545,18 @@ export default function AdminSubmissions({
 
   const handleReview = async (status: 'changes_requested' | 'approved', feedback?: string) => {
     if (!activeSub) return;
+    if (status === 'approved') {
+      // Approved is a locked, one-way state (only an admin can revert it,
+      // and only by re-opening a separate action) — worth a deliberate
+      // confirmation given how often an accidental click here has happened.
+      const ok = await confirm({
+        title: 'Approve this submission?',
+        message: "Once approved, the student can't resubmit and only an admin can reopen it for review. This can't be undone from here.",
+        confirmLabel: 'Approve',
+        variant: 'default',
+      });
+      if (!ok) return;
+    }
     setReviewing(true);
     try {
       await apiReviewPrdSubmission(activeSub.id, status, feedback);
@@ -555,6 +573,37 @@ export default function AdminSubmissions({
       ]);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to update review');
+    } finally {
+      setReviewing(false);
+    }
+  };
+
+  // Admin-only escape hatch for a mistaken approve — see ReviewActions'
+  // disabled state once status is 'approved'. Reopens the submission (and,
+  // server-side, its task assignment) back to under_review/review.
+  const handleRevertApproval = async () => {
+    if (!activeSub) return;
+    const ok = await confirm({
+      title: 'Revert this approval?',
+      message: 'This reopens the submission for review and moves the task assignment back to review. The student keeps their approved work but the mentor will need to review it again.',
+      confirmLabel: 'Revert to Review',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setReviewing(true);
+    try {
+      await apiRevertPrdApproval(activeSub.id);
+      showSuccess('Approval reverted — back under review.');
+      await Promise.all([
+        selectedStudentId
+          ? loadStudentSubmissions(selectedStudentId)
+          : selectedTeamId
+          ? loadTeamSubmissions(selectedTeamId)
+          : Promise.resolve(),
+        loadRoster(),
+      ]);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to revert approval');
     } finally {
       setReviewing(false);
     }
@@ -873,7 +922,21 @@ export default function AdminSubmissions({
                 ) : undefined
               }
               reviewControls={
-                activeSub.taskAssignedByRole === 'mentor' ? (
+                // Admin's override always wins here, even on a mentor-assigned
+                // task — the whole point of this action is fixing a mentor's
+                // own mistaken approve, so the usual view-only carve-out
+                // below must not block it.
+                activeSub.status === 'approved' && isAdmin ? (
+                  <Button
+                    variant="danger"
+                    fullWidth
+                    isLoading={reviewing}
+                    leftIcon={<RotateCcw size={16} />}
+                    onClick={handleRevertApproval}
+                  >
+                    Revert to Review
+                  </Button>
+                ) : activeSub.taskAssignedByRole === 'mentor' ? (
                   <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
                     This task was assigned by a mentor — admin has view-only access here; only the assigning mentor or the student's own mentor can approve or request changes.
                   </p>

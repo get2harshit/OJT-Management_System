@@ -14,6 +14,7 @@ import type { ApiTask, ApiAssignmentStatus } from '../../lib/api/tasks';
 import { statusDotClass, submissionStatusLabel } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
+import { useConfirm } from '../../confirm';
 
 const ASSIGNMENT_STATUS_LABEL: Record<ApiAssignmentStatus, string> = {
   pending: 'Pending',
@@ -60,6 +61,7 @@ export default function MentorSubmissions({
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
+  const confirm = useConfirm();
 
   const [mentees, setMentees] = useState<Mentee[]>([]);
   // Only the clicked student's submissions — fetched per-student, backend
@@ -279,6 +281,18 @@ export default function MentorSubmissions({
 
   const handleReview = async (status: 'changes_requested' | 'approved', feedback?: string) => {
     if (!activeSub) return;
+    if (status === 'approved') {
+      // Approved is a locked, one-way state — only an admin can reopen it
+      // from here, and only via a separate action. Worth a deliberate
+      // confirmation given how often an accidental click here has happened.
+      const ok = await confirm({
+        title: 'Approve this submission?',
+        message: "Once approved, the student can't resubmit and only an admin can reopen it for review. This can't be undone from here.",
+        confirmLabel: 'Approve',
+        variant: 'default',
+      });
+      if (!ok) return;
+    }
     setReviewing(true);
     try {
       await apiReviewPrdSubmission(activeSub.id, status, feedback);
