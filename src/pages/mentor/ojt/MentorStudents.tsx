@@ -1,12 +1,14 @@
 import { useState, useMemo } from 'react';
 import { useParams, useOutletContext } from 'react-router-dom';
-import { Users, Loader2, Search, ChevronRight, Star } from 'lucide-react';
+import { Users, Loader2, Search, ChevronRight, ClipboardPlus } from 'lucide-react';
 import Select from '../../../components/Select';
 import PageLayout from '../../../components/PageLayout';
-import SkillAssessmentPanel from '../../../components/SkillAssessmentPanel';
+import SkillAssessmentPanel, { NewAssessmentModal } from '../../../components/SkillAssessmentPanel';
+import { apiCreateSkillAssessment } from '../../../lib/api/skillAssessments';
 import { taskCoveragePct, attendancePct } from '../../../lib/rosterMetrics';
 import type { ApiMentorRosterStudent } from '../../../lib/api/teamRoster';
 import type { MentorOjtOutletContext } from './MentorOjtLayout';
+import { useToast } from '../../../toast';
 
 type StudentSort = 'name' | 'attendance' | 'open';
 
@@ -113,8 +115,13 @@ export default function MentorStudents() {
  * A student's current standing. Task coverage, attendance and skill rating —
  * the three numbers a mentor actually glances at — sit right in the row,
  * never behind a click; expanding only surfaces the finer breakdown (exact
- * task counts, submissions awaiting review, email) and the skill-assessment
- * tool itself, which genuinely needs the room a row can't give it.
+ * task counts, submissions awaiting review, email) and the read-only
+ * assessment history, which genuinely needs the room a row can't give it.
+ *
+ * Recording a NEW assessment used to live one level deeper still — inside
+ * that expanded panel — which meant expanding a student just to rate them.
+ * The button now sits on the row itself, reachable in one click whether or
+ * not the row is expanded.
  */
 function StudentRow({
   student,
@@ -127,13 +134,28 @@ function StudentRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const { showSuccess, showError } = useToast();
   const attendance = attendancePct(student);
   const coverage = taskCoveragePct(student);
   const needsAttention = (attendance !== null && attendance < 75) || student.tasksNeedingResubmit > 0;
 
+  const [formOpen, setFormOpen] = useState(false);
+  // Bumped after a save so an already-open assessment panel (the row was
+  // expanded before the mentor clicked Assess) refetches immediately, rather
+  // than showing the new snapshot only after a collapse/re-expand.
+  const [refreshToken, setRefreshToken] = useState(0);
+
   return (
     <div className="bg-zinc-900 border border-zinc-750 rounded-lg">
-      <button onClick={onToggle} className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') onToggle();
+        }}
+        className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left cursor-pointer"
+      >
         <ChevronRight
           size={14}
           className={`text-gray-500 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
@@ -157,17 +179,29 @@ function StudentRow({
             {student.skillRatingAvg === null ? (
               <span className="text-gray-600">not rated</span>
             ) : (
-              <>
-                <Star size={11} className="text-gold fill-gold" />
-                <span className="text-white font-semibold">{student.skillRatingAvg}</span>
-              </>
+              <span className="tabular-nums">
+                <span className="text-white font-semibold">{student.skillRatingAvg.toFixed(2)}</span>
+                <span className="text-gray-500"> / 5</span>
+              </span>
             )}
           </span>
           {needsAttention && (
             <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 shrink-0" title="Needs attention" />
           )}
         </div>
-      </button>
+
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setFormOpen(true);
+          }}
+          title="New capability assessment"
+          className="shrink-0 flex items-center gap-1 text-[11px] px-2 py-1.5 rounded-md bg-zinc-800 text-gray-300 hover:text-gold hover:bg-zinc-750 transition-colors"
+        >
+          <ClipboardPlus size={13} />
+          <span className="hidden md:inline">Assess</span>
+        </button>
+      </div>
 
       {expanded && (
         <div className="px-3.5 pb-3 pt-1 border-t border-zinc-750/60">
@@ -191,9 +225,24 @@ function StudentRow({
             {student.email && <Detail label="Email" value={student.email} />}
           </div>
 
-          <SkillAssessmentPanel studentId={student.id} cohortId={cohortId} />
+          <SkillAssessmentPanel studentId={student.id} cohortId={cohortId} refreshToken={refreshToken} />
         </div>
       )}
+
+      <NewAssessmentModal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        onSubmit={async (scores, note) => {
+          try {
+            await apiCreateSkillAssessment(student.id, { cohortId, scores, note: note || undefined });
+            showSuccess('Assessment saved');
+            setFormOpen(false);
+            setRefreshToken((t) => t + 1);
+          } catch (err) {
+            showError(err instanceof Error ? err.message : 'Could not save that assessment');
+          }
+        }}
+      />
     </div>
   );
 }

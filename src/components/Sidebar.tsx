@@ -95,6 +95,7 @@ const studentTabs = [
   { id: 'doubt-requests', label: 'Ask for a Session', icon: HelpCircle },
   { id: 'resources', label: 'Resources', icon: Share2 },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
+  { id: 'assessments', label: 'My Assessments', icon: ClipboardList },
 ];
 
 export default function Sidebar({

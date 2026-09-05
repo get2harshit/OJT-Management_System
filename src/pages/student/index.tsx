@@ -11,6 +11,7 @@ import Attendance from './Attendance';
 import Sessions from './Sessions';
 import DoubtRequests from './DoubtRequests';
 import Resources from './Resources';
+import Assessments from './Assessments';
 import { useAuth } from '../../context/useAuth';
 import { useNotificationNavigate } from '../../context/NotificationNavigateContext';
 
@@ -99,6 +100,7 @@ function StudentPanelContent({ studentId, onLogout }: { studentId: string; onLog
         <Route path="doubt-requests" element={<DoubtRequests />} />
         <Route path="resources" element={<Resources />} />
         <Route path="attendance" element={<Attendance />} />
+        <Route path="assessments" element={<Assessments />} />
         {/* An unknown section is a bad link, not a blank screen — send it to
             the panel's own front page rather than rendering nothing. */}
         <Route path="*" element={<Navigate to={BASE_PATH} replace />} />

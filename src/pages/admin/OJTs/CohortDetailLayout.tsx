@@ -29,6 +29,7 @@ const SECTIONS: { path: string; label: string; external?: boolean; countKey?: ke
   { path: 'session-requests', label: 'Session Requests', external: true, countKey: 'sessionRequests' },
   { path: 'attendance', label: 'Attendance' },
   { path: 'payouts', label: 'Payouts', external: true, countKey: 'payouts' },
+  { path: 'assessments', label: 'Assessments', countKey: 'assessments' },
   { path: 'evaluation-summary', label: 'Evaluation', countKey: 'evaluationConfigs' },
 ];
 

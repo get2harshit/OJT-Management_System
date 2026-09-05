@@ -37,6 +37,8 @@ export interface ApiCohortTabCounts {
   sessionRequests: number;
   payouts: number;
   evaluationConfigs: number;
+  /** Students with at least one current-framework assessment — not the number of assessments. */
+  assessments: number;
 }
 
 /** Plain per-section counts for the OJT Setup tab badges — no rows, just numbers. */

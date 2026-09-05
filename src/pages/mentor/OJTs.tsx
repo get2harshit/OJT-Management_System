@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useParams, useOutletContext } from 'react-router-dom';
-import { Loader2, Briefcase, CalendarCheck, TrendingUp, Star, Users } from 'lucide-react';
+import { Loader2, Briefcase, CalendarCheck, TrendingUp, Users } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import SharedResourcesPanel from '../../components/SharedResourcesPanel';
 import WeeklyTrendChart, { TREND_MEASURES } from '../../components/WeeklyTrendChart';
@@ -168,15 +168,21 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Shared by the team and student overview rows — a star plus the average, or a plain dash before anyone's been assessed. */
+/**
+ * Shared by the team and student overview rows — the framework's final rating,
+ * or a plain dash before anyone's been assessed under it.
+ *
+ * The denominator is spelled out because this number used to be an average out
+ * of 5 under the previous rubric, and a bare "3.4" does not say which.
+ */
 function SkillRatingChip({ value }: { value: number | null }) {
   if (value === null) {
     return <span className="text-gray-600">not rated</span>;
   }
   return (
-    <span className="inline-flex items-center gap-1 text-gray-400">
-      <Star size={11} className="text-gold fill-gold" />
-      <span className="text-white font-semibold">{value}</span>
+    <span className="inline-flex items-center gap-1 text-gray-400 tabular-nums">
+      <span className="text-white font-semibold">{value.toFixed(2)}</span>
+      <span className="text-gray-500">/ 5</span>
     </span>
   );
 }

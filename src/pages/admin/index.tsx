@@ -38,6 +38,7 @@ import TrackMentorsPage from './OJTs/TrackMentorsPage';
 import CatalogProposalPage from './OJTs/CatalogProposalPage';
 import AllocationBlueprintPage from './OJTs/AllocationBlueprintPage';
 import EvaluationBlueprintPage from './OJTs/EvaluationBlueprintPage';
+import CohortAssessmentsPage from './OJTs/CohortAssessmentsPage';
 import CohortEvaluationSummaryPage from './OJTs/CohortEvaluationSummaryPage';
 import { useNotificationNavigate } from '../../context/NotificationNavigateContext';
 import { apiGetPrdSubmission } from '../../lib/api';
@@ -215,6 +216,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
           />
           <Route path="sessions" element={<Sessions />} />
           <Route path="attendance" element={<Attendance />} />
+          <Route path="assessments" element={<CohortAssessmentsPage />} />
           <Route path="evaluation-summary" element={<CohortEvaluationSummaryPage />} />
         </Route>
 
