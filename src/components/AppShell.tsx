@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Menu, Sun, Moon, User, LogOut, RefreshCw } from 'lucide-react';
 import Sidebar from './Sidebar';
 import NotificationCenter from './NotificationCenter';
+import StudentAttentionBar from './StudentAttentionBar';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/useAuth';
 import { useRefreshContext } from '../context/RefreshContext';
@@ -174,6 +175,8 @@ export default function AppShell({ panel, onLogout, children }: AppShellProps) {
             )}
           </div>
         </header>
+
+        {panel === 'student' && <StudentAttentionBar />}
 
         <main className="flex-1 min-h-0 p-4 sm:p-6 lg:p-8 overflow-y-auto scrollbar-thin flex flex-col">
           <div className="w-full flex-1 min-h-0 flex flex-col">
