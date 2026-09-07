@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ClipboardList, Loader2, ChevronDown, Info } from 'lucide-react';
 import Modal from './Modal';
 import RatingScaleInput, { RatingValue, ScoreBar } from './RatingScaleInput';
+import FrameworkExplainer from './FrameworkExplainer';
 import {
   apiListSkillAssessments,
   FRAMEWORK_PARAMETERS,
@@ -112,7 +113,7 @@ function AssessmentDetail({ assessment }: { assessment: ApiSkillAssessment }) {
 function MentorFeedback({ note }: { note: string }) {
   return (
     <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
-      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1.5">Feedback</p>
+      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1.5">Mentor Feedback</p>
       <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">{note}</p>
     </div>
   );
@@ -213,6 +214,10 @@ export default function SkillAssessmentPanel({
           )}
         </div>
       )}
+
+      <div className="mt-3">
+        <FrameworkExplainer />
+      </div>
     </div>
   );
 }
@@ -304,7 +309,7 @@ export function NewAssessmentModal({
         )}
 
         <div>
-          <label className="block text-xs text-gray-400 mb-1.5">Feedback (optional)</label>
+          <label className="block text-xs text-gray-400 mb-1.5">Mentor Feedback (optional)</label>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}

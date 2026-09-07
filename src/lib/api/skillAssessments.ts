@@ -19,7 +19,7 @@ export interface FrameworkParameter {
 export const FRAMEWORK_PARAMETERS: FrameworkParameter[] = [
   { key: 'techStackUnderstanding', label: 'Technical / Tech Stack Understanding', guidingQuestion: 'Can the student explain what they are using, how it works, and why it is appropriate?' },
   { key: 'architectureSystemUnderstanding', label: 'Architecture & System Understanding', guidingQuestion: 'Can the student explain how their work fits into and interacts with the overall system?' },
-  { key: 'problemSolvingDs', label: 'Problem Solving & DS', guidingQuestion: 'Can the student reason through a technical problem and arrive at a sound solution?' },
+  { key: 'problemSolvingDs', label: 'Problem Solving & DSA', guidingQuestion: 'Can the student reason through a technical problem and arrive at a sound solution?' },
   { key: 'problemDecomposition', label: 'Problem Decomposition', guidingQuestion: 'Can the student break a requirement or problem into clear, manageable engineering tasks?' },
   { key: 'codeQuality', label: 'Code Quality', guidingQuestion: 'Can the student produce code that another engineer can understand, maintain, and safely modify?' },
   { key: 'debugging', label: 'Debugging', guidingQuestion: 'Can the student systematically identify the root cause rather than rely on trial and error?' },

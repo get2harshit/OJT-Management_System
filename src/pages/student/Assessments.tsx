@@ -1,14 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ChevronDown, ClipboardList, Loader2, MessageSquareQuote } from 'lucide-react';
+import { ClipboardList, Loader2, MessageSquareQuote } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import Select from '../../components/Select';
+import FrameworkExplainer from '../../components/FrameworkExplainer';
 import {
   apiGetMySkillAssessments,
-  FRAMEWORK_PARAMETERS,
-  FRAMEWORK_DIMENSIONS,
   CURRENT_FRAMEWORK_VERSION,
   MAX_RATING,
-  RATING_LEVELS,
   type ApiMyAssessment,
 } from '../../lib/api/skillAssessments';
 import { apiListMyCohorts } from '../../lib/api';
@@ -38,9 +36,6 @@ import { usePageRefresh } from '../../context/RefreshContext';
  *    on the service). That is the whole reason this page cannot simply
  *    render ApiSkillAssessment with some fields left out.
  */
-
-/** Parameter definitions by key, so a dimension names its own without rescanning the list per row. */
-const PARAMETER_BY_KEY = new Map(FRAMEWORK_PARAMETERS.map((parameter) => [parameter.key, parameter]));
 
 const ratingDate = (isoTimestamp: string) =>
   formatInIST(isoTimestamp, { day: '2-digit', month: 'short', year: 'numeric' });
@@ -124,64 +119,6 @@ function EarlierAssessments({ assessments }: { assessments: ApiMyAssessment[] })
   );
 }
 
-/**
- * The rubric itself, and what the scale means — reference material, not a
- * result. Collapsed by default and visually separate from everything above:
- * the page's first screenful should be "how am I doing", not an explainer.
- * Same collapse pattern as the mentor panel's "All ten parameters".
- */
-function AboutTheFramework() {
-  return (
-    <details className="group bg-zinc-850 border border-zinc-750 rounded-2xl p-5">
-      <summary className="text-xs text-gray-400 uppercase tracking-wider font-medium cursor-pointer list-none flex items-center gap-1.5">
-        <ChevronDown size={14} className="transition-transform group-open:rotate-180" />
-        How this framework works
-      </summary>
-
-      <div className="mt-4 space-y-5">
-        <p className="text-xs text-gray-500 leading-relaxed">
-          Your mentor rates ten parameters, grouped into the three capability dimensions below. Each dimension is the
-          average of its own parameters, and your overall rating is the average of the three dimensions.
-        </p>
-
-        {FRAMEWORK_DIMENSIONS.map((dimension) => (
-          <div key={dimension.key} className="border-t border-zinc-800 pt-4">
-            <p className="text-sm font-semibold text-white">{dimension.label}</p>
-            <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{dimension.guidingQuestion}</p>
-
-            <ul className="mt-3 space-y-2.5">
-              {dimension.parameters.map((parameterKey) => {
-                const parameter = PARAMETER_BY_KEY.get(parameterKey);
-                if (!parameter) return null;
-                return (
-                  <li key={parameterKey} className="border-l-2 border-zinc-750 pl-3">
-                    <p className="text-xs text-gray-300">{parameter.label}</p>
-                    <p className="text-[11px] text-gray-500 leading-snug mt-0.5">{parameter.guidingQuestion}</p>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
-
-        <div className="border-t border-zinc-800 pt-4">
-          <p className="text-xs text-gray-400 uppercase tracking-wider font-medium mb-2.5">What the ratings mean</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5">
-            {RATING_LEVELS.map((level) => (
-              <p key={level.value} className="text-[11px] text-gray-500">
-                <span className="text-gray-300 font-semibold">
-                  {level.value} — {level.label}
-                </span>{' '}
-                {level.description}
-              </p>
-            ))}
-          </div>
-        </div>
-      </div>
-    </details>
-  );
-}
-
 export default function StudentAssessments() {
   const { showError } = useToast();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
@@ -255,7 +192,7 @@ export default function StudentAssessments() {
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <ClipboardList size={22} className="text-gold" />
-            My Assessments
+            My Feedback
           </h1>
           <p className="text-sm text-gray-400 mt-1">
             How your mentor reads your capability as a junior engineer, and what to work on next.
@@ -311,7 +248,7 @@ export default function StudentAssessments() {
             </div>
           )}
 
-          <AboutTheFramework />
+          <FrameworkExplainer />
         </>
       )}
     </PageLayout>
