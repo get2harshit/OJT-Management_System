@@ -328,6 +328,10 @@ export function NewAssessmentModal({
   const [noteEdited, setNoteEdited] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Which dimensions are collapsed — empty by default (everything open), so
+  // a fresh form hides nothing. A mentor can fold away a dimension they've
+  // finished rating to cut down how much they scroll past to reach the rest.
+  const [collapsedDimensions, setCollapsedDimensions] = useState<Set<string>>(new Set());
 
   // Reset to a blank form each time the modal opens, rather than carrying
   // over whatever a previous assessment (of possibly a different student)
@@ -338,8 +342,17 @@ export function NewAssessmentModal({
       setNote('');
       setNoteEdited(false);
       setConfirmed(false);
+      setCollapsedDimensions(new Set());
     }
   }, [open]);
+
+  const toggleDimension = (key: string) => {
+    setCollapsedDimensions((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   const allRated = FRAMEWORK_PARAMETERS.every((p) => typeof scores[p.key] === 'number');
 
@@ -374,7 +387,7 @@ export function NewAssessmentModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="New capability assessment" size="lg">
+    <Modal open={open} onClose={onClose} title="New capability assessment" size="xl">
       <div className="space-y-4">
         <p className="text-xs text-gray-500">
           Rate each parameter on what the student can demonstrate independently, using evidence from their actual OJT
@@ -382,33 +395,47 @@ export function NewAssessmentModal({
           visible.
         </p>
 
-        {FRAMEWORK_DIMENSIONS.map((dimension) => (
-          <div key={dimension.key} className="space-y-2">
-            <div className="flex items-baseline justify-between gap-3 border-b border-zinc-800 pb-1.5">
-              <div className="min-w-0">
-                <p className="text-sm text-white font-semibold">{dimension.label}</p>
-                <p className="text-[11px] text-gray-500">{dimension.guidingQuestion}</p>
-              </div>
-              <RatingValue value={previewDimension(scores, dimension.parameters)} className="shrink-0" />
-            </div>
-
-            {dimension.parameters.map((key) => {
-              const param = FRAMEWORK_PARAMETERS.find((p) => p.key === key)!;
-              return (
-                <div key={key} className="bg-zinc-900 border border-zinc-750 rounded-lg px-3.5 py-2.5 space-y-2">
-                  <div className="min-w-0">
-                    <p className="text-sm text-white font-medium">{param.label}</p>
-                    <p className="text-[11px] text-gray-500">{param.guidingQuestion}</p>
-                  </div>
-                  <RatingScaleInput
-                    value={scores[key]}
-                    onChange={(v) => setScores((s) => ({ ...s, [key]: v }))}
+        {FRAMEWORK_DIMENSIONS.map((dimension) => {
+          const isExpanded = !collapsedDimensions.has(dimension.key);
+          return (
+            <div key={dimension.key} className="space-y-2">
+              <button
+                type="button"
+                onClick={() => toggleDimension(dimension.key)}
+                className="w-full flex items-start justify-between gap-3 border-b border-zinc-800 pb-1.5 text-left"
+              >
+                <div className="min-w-0 flex items-start gap-2">
+                  <ChevronDown
+                    size={14}
+                    className={`shrink-0 mt-1 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                   />
+                  <div className="min-w-0">
+                    <p className="text-sm text-white font-semibold">{dimension.label}</p>
+                    <p className="text-[11px] text-gray-500">{dimension.guidingQuestion}</p>
+                  </div>
                 </div>
-              );
-            })}
-          </div>
-        ))}
+                <RatingValue value={previewDimension(scores, dimension.parameters)} className="shrink-0" />
+              </button>
+
+              {isExpanded &&
+                dimension.parameters.map((key) => {
+                  const param = FRAMEWORK_PARAMETERS.find((p) => p.key === key)!;
+                  return (
+                    <div key={key} className="bg-zinc-900 border border-zinc-750 rounded-lg px-3.5 py-2.5 space-y-2">
+                      <div className="min-w-0">
+                        <p className="text-sm text-white font-medium">{param.label}</p>
+                        <p className="text-[11px] text-gray-500">{param.guidingQuestion}</p>
+                      </div>
+                      <RatingScaleInput
+                        value={scores[key]}
+                        onChange={(v) => setScores((s) => ({ ...s, [key]: v }))}
+                      />
+                    </div>
+                  );
+                })}
+            </div>
+          );
+        })}
 
         {finalPreview !== null && (
           <div className="flex items-center justify-between bg-zinc-900 border border-gold/20 rounded-lg px-3.5 py-2.5">
