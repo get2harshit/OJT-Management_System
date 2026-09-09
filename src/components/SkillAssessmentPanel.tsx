@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ClipboardList, Loader2, ChevronDown, Info } from 'lucide-react';
+import { ClipboardList, Loader2, ChevronDown, Info, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import Modal from './Modal';
 import RatingScaleInput, { RatingValue, ScoreBar } from './RatingScaleInput';
 import FrameworkExplainer from './FrameworkExplainer';
@@ -89,6 +89,36 @@ function generateDefaultNote(scores: Record<string, number>): string {
   return sentences.join(' ');
 }
 
+const COMPARISON_BADGE_STYLES: Record<AssessmentComparison['relation'], string> = {
+  better_than: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  weaker_than: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  as_good_as: 'bg-zinc-750 text-gray-400 border-zinc-700',
+};
+
+const COMPARISON_BADGE_ICON: Record<AssessmentComparison['relation'], typeof TrendingUp> = {
+  better_than: TrendingUp,
+  weaker_than: TrendingDown,
+  as_good_as: Minus,
+};
+
+/**
+ * The execution-vs-understanding read, as a small callout rather than a line
+ * of plain text easy to skim past — this is the one comparison the framework
+ * itself draws, and a mentor scanning many students should be able to spot
+ * "needs attention here" at a glance rather than reading every caption.
+ */
+function ComparisonBadge({ comparison }: { comparison: AssessmentComparison }) {
+  const Icon = COMPARISON_BADGE_ICON[comparison.relation];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-md border ${COMPARISON_BADGE_STYLES[comparison.relation]}`}
+    >
+      <Icon size={12} />
+      {comparison.label}
+    </span>
+  );
+}
+
 /** One saved snapshot, rendered according to the rubric it was written under. */
 function AssessmentDetail({ assessment }: { assessment: ApiSkillAssessment }) {
   if (assessment.frameworkVersion !== CURRENT_FRAMEWORK_VERSION) {
@@ -112,9 +142,7 @@ function AssessmentDetail({ assessment }: { assessment: ApiSkillAssessment }) {
     <div className="space-y-3">
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3 space-y-2.5">
         <ScoreBar label="Overall rating" value={assessment.finalRating} emphasis />
-        {assessment.comparison && (
-          <p className="text-[11px] text-gold/90">{assessment.comparison.label}</p>
-        )}
+        {assessment.comparison && <ComparisonBadge comparison={assessment.comparison} />}
       </div>
 
       {/* Stacked, not three across. Every bar here is on the same 1-5 scale, so
@@ -397,10 +425,10 @@ export function NewAssessmentModal({
               setNote(e.target.value);
               setNoteEdited(true);
             }}
-            rows={3}
+            rows={5}
             maxLength={2000}
             placeholder="What they should work on next, and what evidence you are basing this on."
-            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-gold/60 resize-none"
+            className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-gold/60 resize-y"
           />
           <p className="mt-1.5 text-[11px] text-amber-400/90 flex items-start gap-1.5">
             <Info size={12} className="shrink-0 mt-0.5" />
@@ -413,6 +441,16 @@ export function NewAssessmentModal({
           )}
         </div>
 
+      </div>
+
+      {/* Sticky rather than part of the scrolling form above: ten parameters
+          plus the note make this a long form, and a mentor should never have
+          to hunt for Save (or lose sight of the confirmation they're about
+          to give) by scrolling all the way down. Negative margins bleed it
+          to the modal's own edges — Modal.tsx pads its scroll container, and
+          without this the footer's background and border would stop short
+          of that padding instead of spanning the full width. */}
+      <div className="sticky bottom-0 -mx-4 sm:-mx-6 -mb-5 mt-4 px-4 sm:px-6 pt-3 pb-4 bg-zinc-850 border-t border-zinc-750 space-y-3">
         <label className="flex items-start gap-2.5 text-xs text-gray-300 cursor-pointer select-none">
           <input
             type="checkbox"
@@ -423,7 +461,7 @@ export function NewAssessmentModal({
           I confirm these ratings and feedback are accurate and ready for the student to see.
         </label>
 
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="flex justify-end gap-2">
           <button onClick={onClose} className="text-xs px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-800 transition-colors">
             Cancel
           </button>

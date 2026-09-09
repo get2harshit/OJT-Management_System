@@ -75,6 +75,19 @@ export function RatingValue({ value, className = '' }: { value: number | null | 
 }
 
 /**
+ * Which tier a dimension value falls in, matching the framework's own scale:
+ * below 2.5 is "Not Ready" territory, 2.5-4 is "Developing", 4 and up is
+ * "Independent"/"Strong". Only used for the non-emphasis bars below — the
+ * headline "Overall rating" stays gold regardless, since it isn't one figure
+ * being scanned against others the way the three dimensions are.
+ */
+function scoreTier(value: number): { bar: string; text: string } {
+  if (value < 2.5) return { bar: 'bg-red-500/70', text: 'text-red-400' };
+  if (value < 4) return { bar: 'bg-amber-500/70', text: 'text-amber-400' };
+  return { bar: 'bg-gold/60', text: 'text-white' };
+}
+
+/**
  * A derived figure — a dimension average or a final rating — as a labelled bar.
  *
  * A bar rather than a bare number because the question a mentor asks of these
@@ -82,6 +95,10 @@ export function RatingValue({ value, className = '' }: { value: number | null | 
  * comparing decimals to answer it is work the screen should have done. The
  * denominator is always printed: 3.40 means nothing without knowing it is out
  * of 5.
+ *
+ * Non-emphasis bars are also colour-coded by tier (see scoreTier) — scanning
+ * a roster of students for "who needs attention" by reading every decimal is
+ * exactly the work a bar is supposed to save.
  */
 export function ScoreBar({
   label,
@@ -95,6 +112,7 @@ export function ScoreBar({
   emphasis?: boolean;
 }) {
   const pct = value === null ? 0 : (value / MAX_RATING) * 100;
+  const tier = value === null ? null : scoreTier(value);
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-2">
@@ -104,7 +122,7 @@ export function ScoreBar({
             <span className="text-[11px] text-gray-600">not rated</span>
           ) : (
             <>
-              <span className={emphasis ? 'text-sm font-bold text-gold' : 'text-xs font-semibold text-white'}>
+              <span className={emphasis ? 'text-sm font-bold text-gold' : `text-xs font-semibold ${tier!.text}`}>
                 {value.toFixed(2)}
               </span>
               <span className="text-[11px] text-gray-500"> / {MAX_RATING}</span>
@@ -114,7 +132,7 @@ export function ScoreBar({
       </div>
       <div className="h-1.5 rounded-full bg-zinc-750 overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${emphasis ? 'bg-gold' : 'bg-gold/50'}`}
+          className={`h-full rounded-full transition-all ${emphasis ? 'bg-gold' : tier?.bar ?? 'bg-gold/50'}`}
           style={{ width: `${pct}%` }}
         />
       </div>
