@@ -328,10 +328,12 @@ export function NewAssessmentModal({
   const [noteEdited, setNoteEdited] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
-  // Which dimensions are collapsed — empty by default (everything open), so
-  // a fresh form hides nothing. A mentor can fold away a dimension they've
-  // finished rating to cut down how much they scroll past to reach the rest.
-  const [collapsedDimensions, setCollapsedDimensions] = useState<Set<string>>(new Set());
+  // Which dimensions are collapsed — all three by default, so a mentor opens
+  // the form to three short headers rather than all ten parameter cards at
+  // once, and expands one dimension at a time to actually rate it.
+  const [collapsedDimensions, setCollapsedDimensions] = useState<Set<string>>(
+    () => new Set(FRAMEWORK_DIMENSIONS.map((d) => d.key))
+  );
 
   // Reset to a blank form each time the modal opens, rather than carrying
   // over whatever a previous assessment (of possibly a different student)
@@ -342,7 +344,7 @@ export function NewAssessmentModal({
       setNote('');
       setNoteEdited(false);
       setConfirmed(false);
-      setCollapsedDimensions(new Set());
+      setCollapsedDimensions(new Set(FRAMEWORK_DIMENSIONS.map((d) => d.key)));
     }
   }, [open]);
 
