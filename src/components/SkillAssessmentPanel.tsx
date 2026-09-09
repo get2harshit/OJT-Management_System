@@ -7,11 +7,13 @@ import {
   apiListSkillAssessments,
   FRAMEWORK_PARAMETERS,
   FRAMEWORK_DIMENSIONS,
+  RATING_LEVELS,
   CURRENT_FRAMEWORK_VERSION,
   COMMUNICATION_KEY,
   LEGACY_MAX_SCORE,
   legacyAverage,
   type ApiSkillAssessment,
+  type AssessmentComparison,
 } from '../lib/api/skillAssessments';
 import { formatInIST } from '../lib/utils';
 
@@ -26,6 +28,65 @@ function previewDimension(scores: Record<string, number>, parameters: string[]):
   const values = parameters.map((key) => scores[key]).filter((v): v is number => typeof v === 'number');
   if (values.length !== parameters.length) return null;
   return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+/** Mirrors the backend's own band — see skillAssessmentFramework.ts's COMPARISON_BAND. */
+const COMPARISON_BAND = 0.5;
+
+/**
+ * Preview-only mirror of the backend's compareDimensions, for the same
+ * reason previewDimension above exists: nothing is saved yet, so there is no
+ * server response to read this from. Once saved, every other screen renders
+ * the server's own computed comparison instead of this one.
+ */
+function previewComparison(technicalUnderstanding: number, engineeringExecution: number): AssessmentComparison {
+  const difference = engineeringExecution - technicalUnderstanding;
+  if (Math.abs(difference) <= COMPARISON_BAND) {
+    return { relation: 'as_good_as', label: 'Engineering Execution is as good as Technical Understanding' };
+  }
+  return difference > 0
+    ? { relation: 'better_than', label: 'Engineering Execution is better than Technical Understanding' }
+    : { relation: 'weaker_than', label: 'Engineering Execution is weaker than Technical Understanding' };
+}
+
+/**
+ * Preview-only mirror of the backend's generateDefaultNote (see
+ * skillAssessmentFramework.ts) — what a mentor sees pre-filled in the note
+ * field as they rate, so they know before saving what a student will read if
+ * they leave it as is. Only called once every parameter is rated; the
+ * backend runs the authoritative version of this same logic as a fallback
+ * for whatever ends up in the note field at save time.
+ */
+function generateDefaultNote(scores: Record<string, number>): string {
+  const technicalUnderstanding = previewDimension(scores, FRAMEWORK_DIMENSIONS[0].parameters)!;
+  const engineeringExecution = previewDimension(scores, FRAMEWORK_DIMENSIONS[1].parameters)!;
+  const comparison = previewComparison(technicalUnderstanding, engineeringExecution);
+
+  const levelLabel = (value: number): string => {
+    const rounded = Math.min(5, Math.max(1, Math.round(value)));
+    return RATING_LEVELS.find((level) => level.value === rounded)?.label ?? '';
+  };
+
+  const strongest = FRAMEWORK_PARAMETERS.reduce((a, b) => (scores[b.key] > scores[a.key] ? b : a));
+  const weakest = FRAMEWORK_PARAMETERS.reduce((a, b) => (scores[b.key] < scores[a.key] ? b : a));
+
+  const sentences: string[] = [
+    comparison.relation === 'as_good_as'
+      ? 'Technical understanding and engineering execution are evenly matched this cycle.'
+      : `${comparison.label} this cycle.`,
+  ];
+
+  sentences.push(
+    scores[strongest.key] === scores[weakest.key]
+      ? `Every parameter currently sits at the ${levelLabel(scores[strongest.key])} stage.`
+      : `Strongest: ${strongest.label} (${levelLabel(scores[strongest.key])}). Needs focus: ${weakest.label} (${levelLabel(scores[weakest.key])}).`
+  );
+
+  if (strongest.key !== COMMUNICATION_KEY && weakest.key !== COMMUNICATION_KEY) {
+    sentences.push(`Communication is at the ${levelLabel(scores[COMMUNICATION_KEY])} stage.`);
+  }
+
+  return sentences.join(' ');
 }
 
 /** One saved snapshot, rendered according to the rubric it was written under. */
@@ -233,6 +294,11 @@ export function NewAssessmentModal({
 }) {
   const [scores, setScores] = useState<Record<string, number>>({});
   const [note, setNote] = useState('');
+  // Once a mentor types their own words, the auto-generated draft below stops
+  // overwriting them — the whole point is a starting point they can keep or
+  // replace, never text that fights back against their own edit.
+  const [noteEdited, setNoteEdited] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Reset to a blank form each time the modal opens, rather than carrying
@@ -242,10 +308,25 @@ export function NewAssessmentModal({
     if (open) {
       setScores({});
       setNote('');
+      setNoteEdited(false);
+      setConfirmed(false);
     }
   }, [open]);
 
   const allRated = FRAMEWORK_PARAMETERS.every((p) => typeof scores[p.key] === 'number');
+
+  // Drafts a description from the ratings as soon as all ten are in, so a
+  // mentor sees — before saving — exactly what a student would read if they
+  // added nothing of their own. Stops the moment they start typing (see
+  // noteEdited above); a mentor who then clears the field entirely still gets
+  // this same text written for them at save time, from the same generator
+  // running server-side (see SkillAssessmentService.createAssessment).
+  useEffect(() => {
+    if (!allRated || noteEdited) return;
+    setNote(generateDefaultNote(scores));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scores, allRated, noteEdited]);
+
   const dimensionPreviews = FRAMEWORK_DIMENSIONS.map((d) => ({
     ...d,
     value: previewDimension(scores, d.parameters),
@@ -255,7 +336,7 @@ export function NewAssessmentModal({
     : null;
 
   const submit = async () => {
-    if (!allRated) return;
+    if (!allRated || !confirmed) return;
     setSaving(true);
     try {
       await onSubmit(scores, note.trim());
@@ -312,7 +393,10 @@ export function NewAssessmentModal({
           <label className="block text-xs text-gray-400 mb-1.5">Mentor Feedback (optional)</label>
           <textarea
             value={note}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={(e) => {
+              setNote(e.target.value);
+              setNoteEdited(true);
+            }}
             rows={3}
             maxLength={2000}
             placeholder="What they should work on next, and what evidence you are basing this on."
@@ -322,7 +406,22 @@ export function NewAssessmentModal({
             <Info size={12} className="shrink-0 mt-0.5" />
             The student reads this. Write it to them.
           </p>
+          {!noteEdited && allRated && (
+            <p className="mt-1 text-[11px] text-gray-500">
+              Drafted from the ratings above — edit it, or leave it as is.
+            </p>
+          )}
         </div>
+
+        <label className="flex items-start gap-2.5 text-xs text-gray-300 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.target.checked)}
+            className="mt-0.5 accent-gold shrink-0"
+          />
+          I confirm these ratings and feedback are accurate and ready for the student to see.
+        </label>
 
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} className="text-xs px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-800 transition-colors">
@@ -330,8 +429,8 @@ export function NewAssessmentModal({
           </button>
           <button
             onClick={submit}
-            disabled={saving || !allRated}
-            title={!allRated ? 'Rate every parameter before saving' : undefined}
+            disabled={saving || !allRated || !confirmed}
+            title={!allRated ? 'Rate every parameter before saving' : !confirmed ? 'Confirm the checkbox before saving' : undefined}
             className="text-xs px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving…' : 'Save assessment'}
