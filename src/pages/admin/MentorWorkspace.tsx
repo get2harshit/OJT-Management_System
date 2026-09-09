@@ -77,6 +77,7 @@ export default function MentorWorkspace() {
   // reload or a shared link always lands on the same cohort.
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [workspace, setWorkspace] = useState<ApiMentorWorkspace | null>(null);
+  const [mentorTeamDetails, setMentorTeamDetails] = useState<TeamAllocationDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [otherMentors, setOtherMentors] = useState<ApiMentor[]>([]);
 
@@ -132,9 +133,24 @@ export default function MentorWorkspace() {
     }
   }, [mentorId, cohortId, showError]);
 
+  const loadMentorStudents = useCallback(async () => {
+    if (!cohortId || !mentorId) {
+      setMentorTeamDetails([]);
+      return;
+    }
+
+    try {
+      const res = await apiGetTeamsForCohortDetailed(cohortId, { page: 1, limit: 200, mentorId });
+      setMentorTeamDetails(res.data);
+    } catch {
+      setMentorTeamDetails([]);
+    }
+  }, [cohortId, mentorId]);
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadMentorStudents();
+  }, [load, loadMentorStudents]);
 
   useEffect(() => {
     if (!cohortId) return;
@@ -177,6 +193,17 @@ export default function MentorWorkspace() {
     [workspace]
   );
   const teamsWithProject = useMemo(() => (workspace?.teams ?? []).filter((t) => t.allocatedProjectTitle).length, [workspace]);
+  const studentsByTeamId = useMemo(() => {
+    const map = new Map<string, TeamAllocationDetail['members']>();
+    for (const team of mentorTeamDetails) {
+      map.set(team.teamId, team.members);
+    }
+    return map;
+  }, [mentorTeamDetails]);
+  const totalAssignedStudents = useMemo(
+    () => [...studentsByTeamId.values()].reduce((sum, members) => sum + members.length, 0),
+    [studentsByTeamId]
+  );
   const saveCadence = async (teamId: string) => {
     const raw = cadenceDrafts[teamId] ?? '';
     const value = raw.trim() === '' ? null : Number(raw);
@@ -517,6 +544,29 @@ export default function MentorWorkspace() {
             </div>
           </div>
 
+          <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-gray-500">Assigned students</p>
+                <h2 className="text-lg font-semibold text-white">{totalAssignedStudents} student{totalAssignedStudents === 1 ? '' : 's'}</h2>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {totalAssignedStudents === 0 ? (
+                <span className="text-xs text-gray-500">No students are assigned to this mentor in this cohort yet.</span>
+              ) : (
+                [...studentsByTeamId.values()]
+                  .flatMap((members) => members)
+                  .filter((member, index, arr) => arr.findIndex((candidate) => candidate.studentId === member.studentId) === index)
+                  .map((student) => (
+                    <span key={student.studentId} className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs text-gray-200">
+                      {student.fullName || student.studentId}
+                    </span>
+                  ))
+              )}
+            </div>
+          </div>
+
           <div className="space-y-5">
             {[...teamsByGroup.entries()].map(([groupKey, teams]) => {
               const group = workspace.groups.find((g) => g.id === groupKey);
@@ -608,6 +658,24 @@ export default function MentorWorkspace() {
                           >
                             Manage members →
                           </button>
+                        </div>
+
+                        <div className="w-full pt-3 border-t border-zinc-800">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500 mb-2">Students</p>
+                          <div className="flex flex-wrap gap-2">
+                            {(studentsByTeamId.get(t.id) ?? []).length === 0 ? (
+                              <span className="text-xs text-gray-500">No students assigned to this team.</span>
+                            ) : (
+                              (studentsByTeamId.get(t.id) ?? []).map((student) => (
+                                <span
+                                  key={`${t.id}-${student.studentId}`}
+                                  className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-[11px] text-gray-200"
+                                >
+                                  {student.fullName || student.rollNumber || student.studentId}
+                                </span>
+                              ))
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
