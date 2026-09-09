@@ -19,10 +19,10 @@ export interface FrameworkParameter {
 export const FRAMEWORK_PARAMETERS: FrameworkParameter[] = [
   { key: 'techStackUnderstanding', label: 'Technical / Tech Stack Understanding', guidingQuestion: 'Can the student explain what they are using, how it works, and why it is appropriate?' },
   { key: 'architectureSystemUnderstanding', label: 'Architecture & System Understanding', guidingQuestion: 'Can the student explain how their work fits into and interacts with the overall system?' },
-  { key: 'problemSolvingDs', label: 'Problem Solving & DSA', guidingQuestion: 'Can the student reason through a technical problem and arrive at a sound solution?' },
+  { key: 'problemSolvingDs', label: 'Problem Solving & DSA / Data Engineering', guidingQuestion: 'Can the student reason through a technical problem and arrive at a sound solution?' },
   { key: 'problemDecomposition', label: 'Problem Decomposition', guidingQuestion: 'Can the student break a requirement or problem into clear, manageable engineering tasks?' },
   { key: 'codeQuality', label: 'Code Quality', guidingQuestion: 'Can the student produce code that another engineer can understand, maintain, and safely modify?' },
-  { key: 'debugging', label: 'Debugging', guidingQuestion: 'Can the student systematically identify the root cause rather than rely on trial and error?' },
+  { key: 'debugging', label: 'Debugging / Diagnostics & Guardrailing', guidingQuestion: 'Can the student systematically identify the root cause rather than rely on trial and error?' },
   { key: 'testingValidation', label: 'Testing & Validation', guidingQuestion: 'Can the student independently verify correctness and consider relevant edge cases?' },
   { key: 'engineeringWorkflow', label: 'Engineering Workflow', guidingQuestion: 'Can the student follow a professional workflow from issue to implementation, review, and completion?' },
   { key: 'ownershipIndependence', label: 'Ownership & Independence', guidingQuestion: 'Can the student make meaningful progress without continuous mentor intervention and seek help appropriately?' },
