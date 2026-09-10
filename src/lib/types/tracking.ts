@@ -155,6 +155,22 @@ export interface CreditRequest {
   created_at: string;
 }
 
+/**
+ * A partner org's committed cloud/software credit pool for the cohort — the
+ * source pool that individual student `Credit` vouchers get carved out of.
+ * From the "Partner Credit Allocation" sheet, not a per-student record.
+ */
+export interface PartnerPool {
+  id: string;
+  partner_organization: string;
+  partner_category: string;
+  total_committed_value: number;
+  pool_allocation: number;
+  dollar_value_per_semester: number;
+  unit_or_grant_offering: string;
+  target_tracks_covered: string;
+}
+
 export interface Attendance {
   id: string;
   student_id: string;
