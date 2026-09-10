@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import type {
   Profile, Semester, Batch, Student, Task, Submission, Credit, Attendance, Comment,
-  OJT, Project, CreditRequest
+  OJT, Project, CreditRequest, PartnerPool
 } from '../lib/types';
 
 // OJT Form mentors default
@@ -84,6 +84,27 @@ const defaultCreditRequests: CreditRequest[] = [
   { id: 'cr2', student_id: 's2', provider: 'GCP', amount: 50, reason: 'Need Google App Engine hosting for assignment.', mentor_status: 'PENDING', admin_status: 'PENDING', created_at: '2024-09-21' },
 ];
 
+// Source: Polaris_Master_Project_Catalog "Partner Credit Allocation (60%)" sheet.
+const defaultPartnerPools: PartnerPool[] = [
+  { id: 'pp1', partner_organization: 'Vultr', partner_category: 'Cloud & Infra', total_committed_value: 1500000, pool_allocation: 900000, dollar_value_per_semester: 225000, unit_or_grant_offering: '$300 / student', target_tracks_covered: 'App Dev, Prod Dev, AI Infrastructure' },
+  { id: 'pp2', partner_organization: 'Google', partner_category: 'Cloud & Infra', total_committed_value: 800000, pool_allocation: 480000, dollar_value_per_semester: 120000, unit_or_grant_offering: 'Cloud Compute Pool', target_tracks_covered: 'Cloud hosting across all tracks' },
+  { id: 'pp3', partner_organization: 'ClickHouse', partner_category: 'Data & Analytics', total_committed_value: 480000, pool_allocation: 288000, dollar_value_per_semester: 72000, unit_or_grant_offering: '$300 (+$100 extension)', target_tracks_covered: 'Data Science, Advanced DS' },
+  { id: 'pp4', partner_organization: 'Testmu.ai (LambdaTest)', partner_category: 'DevTools & Security', total_committed_value: 310000, pool_allocation: 186000, dollar_value_per_semester: 46500, unit_or_grant_offering: 'Kane CLI Credits', target_tracks_covered: 'App Dev, Prod Dev QA & Testing' },
+  { id: 'pp5', partner_organization: 'MongoDB', partner_category: 'Data & Analytics', total_committed_value: 240000, pool_allocation: 144000, dollar_value_per_semester: 36000, unit_or_grant_offering: '$50 Atlas + $150 Cert', target_tracks_covered: 'App Dev, Prod Dev (MERN/Fullstack)' },
+  { id: 'pp6', partner_organization: 'Microsoft Azure', partner_category: 'Cloud & Infra', total_committed_value: 225000, pool_allocation: 135000, dollar_value_per_semester: 33750, unit_or_grant_offering: '$100 / student', target_tracks_covered: 'General Cloud Compute & Hosting' },
+  { id: 'pp7', partner_organization: 'Apify', partner_category: 'DevTools & Security', total_committed_value: 220000, pool_allocation: 132000, dollar_value_per_semester: 33000, unit_or_grant_offering: 'Web Extraction Pool', target_tracks_covered: 'Applied AI, AI Agents, Data Science' },
+  { id: 'pp8', partner_organization: 'Simora.ai', partner_category: 'Ecosystem & Programs', total_committed_value: 96000, pool_allocation: 57600, dollar_value_per_semester: 14400, unit_or_grant_offering: '$15k–$30k / startup', target_tracks_covered: 'Capstone Product Dev Startups' },
+  { id: 'pp9', partner_organization: 'Smallest.ai', partner_category: 'AI & ML', total_committed_value: 72000, pool_allocation: 43200, dollar_value_per_semester: 10800, unit_or_grant_offering: 'Voice API + Grants', target_tracks_covered: 'Multimodal AI, Voice AI, GenAI' },
+  { id: 'pp10', partner_organization: 'Exa.ai', partner_category: 'AI & ML', total_committed_value: 64000, pool_allocation: 38400, dollar_value_per_semester: 9600, unit_or_grant_offering: '$20 / student', target_tracks_covered: 'Applied AI, AI Agents, GenAI RAG' },
+  { id: 'pp11', partner_organization: '.xyz Domains', partner_category: 'Domains & Web', total_committed_value: 64000, pool_allocation: 38400, dollar_value_per_semester: 9600, unit_or_grant_offering: '1 Domain / year', target_tracks_covered: 'Live Web App / Portfolio Deployment' },
+  { id: 'pp12', partner_organization: 'Anakin', partner_category: 'AI & No-Code', total_committed_value: 40000, pool_allocation: 24000, dollar_value_per_semester: 6000, unit_or_grant_offering: '1,200 Pool Credits', target_tracks_covered: 'GenAI Rapid App Prototyping' },
+  { id: 'pp13', partner_organization: 'WisprFlow', partner_category: 'AI & ML', total_committed_value: 13000, pool_allocation: 7800, dollar_value_per_semester: 1950, unit_or_grant_offering: '3 Months Pro Access', target_tracks_covered: 'Applied AI, Voice & Productivity' },
+  { id: 'pp14', partner_organization: 'GitHub Developer Pack', partner_category: 'Developer Tools', total_committed_value: 10600, pool_allocation: 6360, dollar_value_per_semester: 1590, unit_or_grant_offering: 'Developer Tool Packs', target_tracks_covered: 'Universal (All Tracks)' },
+  { id: 'pp15', partner_organization: 'Temporal', partner_category: 'Productivity & Comms', total_committed_value: 10000, pool_allocation: 6000, dollar_value_per_semester: 1500, unit_or_grant_offering: '$1,000 / startup', target_tracks_covered: 'Enterprise Software, AI Orchestration' },
+  { id: 'pp16', partner_organization: 'AWS for Startups', partner_category: 'Cloud & Infra', total_committed_value: 5000, pool_allocation: 3000, dollar_value_per_semester: 750, unit_or_grant_offering: '$5k–$100k Grants', target_tracks_covered: 'DPIIT Registered Capstone Startups' },
+  { id: 'pp17', partner_organization: 'Sarvam AI', partner_category: 'AI & ML', total_committed_value: 1000, pool_allocation: 600, dollar_value_per_semester: 150, unit_or_grant_offering: 'Year 1 API Credits', target_tracks_covered: 'GenAI, Multimodal AI (Indic AI)' },
+];
+
 const defaultAttendance: Attendance[] = [
   { id: 'att1', student_id: 's1', date: '2024-09-20', marked_at: '2024-09-20' },
   { id: 'att2', student_id: 's1', date: '2024-09-21', marked_at: '2024-09-21' },
@@ -126,6 +147,7 @@ interface StoredData {
   submissions: Submission[];
   credits: Credit[];
   creditRequests: CreditRequest[];
+  partnerPools: PartnerPool[];
   attendance: Attendance[];
   comments: Comment[];
   ojts: OJT[];
@@ -142,6 +164,7 @@ function loadData(): StoredData {
     submissions: defaultSubmissions,
     credits: defaultCredits,
     creditRequests: defaultCreditRequests,
+    partnerPools: defaultPartnerPools,
     attendance: defaultAttendance,
     comments: defaultComments,
     ojts: defaultOJTs,
@@ -153,6 +176,7 @@ function loadData(): StoredData {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<StoredData>;
       if (!parsed.creditRequests) parsed.creditRequests = defaultCreditRequests;
+      if (!parsed.partnerPools) parsed.partnerPools = defaultPartnerPools;
       if (!parsed.tasks) parsed.tasks = defaultTasks;
       if (!parsed.students) parsed.students = defaultStudents;
       if (!parsed.submissions) parsed.submissions = defaultSubmissions;

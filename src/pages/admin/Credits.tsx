@@ -4,7 +4,7 @@ import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
-import type { Credit, CreditRequest, Profile, Student, CloudProvider } from '../../lib/types';
+import type { Credit, CreditRequest, PartnerPool, Profile, Student, CloudProvider } from '../../lib/types';
 
 import { useCredits } from '../../hooks/useCredits';
 import { useData } from '../../context/DataContext';
@@ -26,7 +26,7 @@ export default function AdminCredits({
   addCredit: propAddCredit,
   approveCreditRequest: propApproveCreditRequest,
 }: Partial<Props> = {}) {
-  const { credits: hookCredits, creditRequests: hookCreditRequests, addCredit: hookAddCredit, approveCreditRequest: hookApproveCreditRequest } = useCredits();
+  const { credits: hookCredits, creditRequests: hookCreditRequests, partnerPools, addCredit: hookAddCredit, approveCreditRequest: hookApproveCreditRequest } = useCredits();
   const { profiles: hookProfiles, students: hookStudents } = useData();
 
   const credits = propCredits ?? hookCredits;
@@ -40,7 +40,14 @@ export default function AdminCredits({
   const [selectedReqId, setSelectedReqId] = useState<string | null>(null);
   const [voucherCode, setVoucherCode] = useState('');
   const [form, setForm] = useState({ student_id: '', provider: 'AWS', amount: '', code: '', expiry_date: '' });
-  const [activeSubTab, setActiveSubTab] = useState<'assigned' | 'requests'>('assigned');
+  const [activeSubTab, setActiveSubTab] = useState<'assigned' | 'requests' | 'pools'>('assigned');
+
+  const poolsData = partnerPools.map((p: PartnerPool) => ({
+    ...p,
+    total_committed_value: `$${p.total_committed_value.toLocaleString()}`,
+    pool_allocation: `$${p.pool_allocation.toLocaleString()}`,
+    dollar_value_per_semester: `$${p.dollar_value_per_semester.toLocaleString()}`,
+  }));
 
   const creditsData = credits.map((c) => {
     const student = profiles.find((p) => p.id === c.student_id);
@@ -111,6 +118,14 @@ export default function AdminCredits({
         >
           Incoming Requests ({vouchedRequests.length + unvouchedRequests.length})
         </button>
+        <button
+          onClick={() => setActiveSubTab('pools')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all ${
+            activeSubTab === 'pools' ? 'border-gold text-gold' : 'border-transparent text-gray-400 hover:text-white'
+          }`}
+        >
+          Partner Pools ({partnerPools.length})
+        </button>
       </div>
 
       {activeSubTab === 'assigned' ? (
@@ -124,6 +139,20 @@ export default function AdminCredits({
           ]}
           data={creditsData}
           searchPlaceholder="Search assigned vouchers..."
+        />
+      ) : activeSubTab === 'pools' ? (
+        <DataTable
+          columns={[
+            { key: 'partner_organization', header: 'Partner Organization' },
+            { key: 'partner_category', header: 'Category' },
+            { key: 'total_committed_value', header: 'Total Committed (USD)' },
+            { key: 'pool_allocation', header: '60% Pool Allocation (USD)' },
+            { key: 'dollar_value_per_semester', header: '$ Value / Sem' },
+            { key: 'unit_or_grant_offering', header: 'Unit / Grant Offering' },
+            { key: 'target_tracks_covered', header: 'Target Tracks Covered' },
+          ]}
+          data={poolsData}
+          searchPlaceholder="Search partner pools..."
         />
       ) : (
         <div className="space-y-8">
