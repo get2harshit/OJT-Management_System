@@ -42,12 +42,7 @@ export default function AdminCredits({
   const [form, setForm] = useState({ student_id: '', provider: 'AWS', amount: '', code: '', expiry_date: '' });
   const [activeSubTab, setActiveSubTab] = useState<'assigned' | 'requests' | 'pools'>('assigned');
 
-  const poolsData = partnerPools.map((p: PartnerPool) => ({
-    ...p,
-    total_committed_value: `$${p.total_committed_value.toLocaleString()}`,
-    pool_allocation: `$${p.pool_allocation.toLocaleString()}`,
-    dollar_value_per_semester: `$${p.dollar_value_per_semester.toLocaleString()}`,
-  }));
+  const poolsData: PartnerPool[] = partnerPools;
 
   const creditsData = credits.map((c) => {
     const student = profiles.find((p) => p.id === c.student_id);
@@ -145,10 +140,6 @@ export default function AdminCredits({
           columns={[
             { key: 'partner_organization', header: 'Partner Organization' },
             { key: 'partner_category', header: 'Category' },
-            { key: 'total_committed_value', header: 'Total Committed (USD)' },
-            { key: 'pool_allocation', header: '60% Pool Allocation (USD)' },
-            { key: 'dollar_value_per_semester', header: '$ Value / Sem' },
-            { key: 'unit_or_grant_offering', header: 'Unit / Grant Offering' },
             { key: 'target_tracks_covered', header: 'Target Tracks Covered' },
           ]}
           data={poolsData}
