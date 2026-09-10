@@ -34,6 +34,7 @@ interface DataTableProps<T> {
   leftHeaderContent?: React.ReactNode;
   pageSizeOptions?: number[];
   exportFilename?: string;
+  onExport?: () => void | Promise<void>;
   hideExport?: boolean;
   /**
    * Shows a spinner over the rows without unmounting the table.
@@ -97,6 +98,7 @@ export default function DataTable<T extends object>({
   leftHeaderContent,
   pageSizeOptions,
   exportFilename = 'export_data',
+  onExport,
   hideExport = false,
   loading = false,
   fullscreen,
@@ -284,7 +286,11 @@ export default function DataTable<T extends object>({
         </div>
         {showExportButton && (
           <button
-            onClick={() => {
+            onClick={async () => {
+              if (onExport) {
+                await onExport();
+                return;
+              }
               const exportCols = columns.map(c => ({
                 key: String(c.key),
                 header: c.header,
