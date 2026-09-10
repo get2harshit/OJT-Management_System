@@ -24,6 +24,7 @@ import {
 } from '../../../lib/api';
 import { formatDateDisplay } from '../../../lib/utils';
 import { submittedPreferences, allocatedPreferenceSlot } from '../../../lib/preferences';
+import { exportToCSV } from '../../../lib/csvExport';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
@@ -506,8 +507,10 @@ export default function CohortAllocationsPage() {
     submittedAt: formatDateDisplay(t.submittedAt),
     pref1Title: t.preference1.projectTitle,
     pref1Mentor: t.preference1.mentorName,
+    pref1: [t.preference1.projectTitle, t.preference1.mentorName].filter(Boolean).join(' - '),
     pref2Title: t.preference2.projectTitle,
     pref2Mentor: t.preference2.mentorName,
+    pref2: [t.preference2.projectTitle, t.preference2.mentorName].filter(Boolean).join(' - '),
     status: t.allocationStatus,
     // A self-proposed pref1's mentor-review state — surfaced as an extra tag
     // next to the allocation status (still under review, or rejected → the
@@ -523,7 +526,38 @@ export default function CohortAllocationsPage() {
         ? t.preference2.projectTitle
         : null,
     allocatedMentorName: t.allocatedMentorName,
+    allocated: [t.allocatedProjectTitle, t.allocatedMentorName].filter(Boolean).join(' - '),
   }));
+
+  const handleExportCSV = async () => {
+    if (!cohortId || pagination.total === 0) return;
+    try {
+      const result = await apiGetTeamsForCohortDetailed(cohortId, {
+        page: 1,
+        limit: pagination.total,
+        track: trackFilter || undefined,
+        batch: batchFilter || undefined,
+        status: statusFilter || undefined,
+        search: search || undefined,
+      });
+      const rows = result.data.map((t) => ({
+        members: t.members.map((m) => m.fullName || m.studentId).join(', '),
+        submittedAt: formatDateDisplay(t.submittedAt),
+        pref1: [t.preference1.projectTitle, t.preference1.mentorName].filter(Boolean).join(' - '),
+        pref2: [t.preference2.projectTitle, t.preference2.mentorName].filter(Boolean).join(' - '),
+        allocated: [t.allocatedProjectTitle, t.allocatedMentorName].filter(Boolean).join(' - '),
+      }));
+      exportToCSV(`allocations_${cohortId.replace(/\s+/g, '_')}`, rows, [
+        { key: 'members', header: 'Team' },
+        { key: 'submittedAt', header: 'Submitted' },
+        { key: 'pref1', header: 'Preference 1' },
+        { key: 'pref2', header: 'Preference 2' },
+        { key: 'allocated', header: 'Allocated' },
+      ]);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to export CSV');
+    }
+  };
 
   const needsReviewCount = teams.filter((t) => t.allocationStatus === 'needs_review').length;
   // Sticky — a cohort that already published one batch can still Run/
@@ -897,6 +931,7 @@ export default function CohortAllocationsPage() {
           searchPlaceholder="Search teams..."
           onRowClick={(row) => setDetailTeam(teams.find((t) => t.teamId === row.id) ?? null)}
           onSearchChange={handleSearchChange}
+          onExport={handleExportCSV}
           serverPagination={{
             page: pagination.page,
             limit: pagination.limit,
