@@ -36,6 +36,7 @@ const TASK_CATEGORY_OPTIONS: { value: ApiTaskCategory; label: string }[] = [
   { value: 'document_submission', label: 'Document Submission' },
   { value: 'general', label: 'General (Text Response)' },
   { value: 'link_submission', label: 'Link Submission' },
+  { value: 'video_submission', label: 'Video Submission' },
 ];
 
 const MENTOR_TYPE_FILTER_OPTIONS = [
@@ -691,6 +692,8 @@ export default function CreateTaskPage() {
                     ? 'Student submits a file via the Submissions tab.'
                     : form.category === 'link_submission'
                     ? 'Student submits a link via the Submissions tab.'
+                    : form.category === 'video_submission'
+                    ? 'Student submits an MP4 video (up to 100MB) via the Submissions tab.'
                     : 'Student writes a short text response via the Submissions tab — no file or link needed.'}
                 </p>
               </div>

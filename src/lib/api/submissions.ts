@@ -107,6 +107,95 @@ export async function apiSubmitTaskWork(params: {
   return res.submission;
 }
 
+interface VideoUploadInit {
+  uploadUrl: string;
+  gcsUri: string;
+  contentType: string;
+  expiresAt: string;
+}
+
+// Step 1 of a video submission: asks the backend for a short-lived signed
+// URL to PUT the file straight to Google Cloud Storage.
+async function apiInitiateVideoUpload(params: {
+  allocationId: string;
+  taskId: string;
+  fileSizeBytes: number;
+}): Promise<VideoUploadInit> {
+  return apiFetch<VideoUploadInit>('/api/v1/submissions/video/init', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+// Step 2: the browser PUTs the file directly to GCS — never through our own
+// backend, since proxying a 100MB body through it would mean buffering the
+// whole thing in server memory and risking the platform's own request-size
+// ceiling. Plain XMLHttpRequest, not fetch, because fetch has no upload
+// progress event. Only Content-Type is set: the signed URL's signature is
+// bound to exactly that header, and adding our usual auth header would just
+// be extra noise GCS never asked for.
+function putVideoToSignedUrl(
+  uploadUrl: string,
+  file: File,
+  contentType: string,
+  onProgress?: (percent: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', uploadUrl);
+    xhr.setRequestHeader('Content-Type', contentType);
+    xhr.upload.onprogress = (event) => {
+      if (onProgress && event.lengthComputable) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`Video upload failed (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error('Video upload failed — check your connection and try again'));
+    xhr.send(file);
+  });
+}
+
+// Step 3: tells the backend the upload finished so it can verify the object
+// actually in GCS (size, content type) and create the submission record.
+async function apiCompleteVideoUpload(params: {
+  allocationId: string;
+  taskId?: string;
+  gcsUri: string;
+}): Promise<PrdSubmission> {
+  const res = await apiFetch<{ message: string; submission: PrdSubmission }>('/api/v1/submissions/video/complete', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+  invalidateCached('submissions:all');
+  invalidateCached('submissions:byStudent');
+  invalidateCached('submissions:my');
+  invalidateCached(`submissions:byAllocation:${params.allocationId}`);
+  if (params.taskId) {
+    invalidateCached('tasks:list');
+    invalidateCached(`tasks:get:${params.taskId}`);
+  }
+  return res.submission;
+}
+
+// Student — submits a video task deliverable end to end: gets a signed
+// upload URL, PUTs the file straight to GCS, then confirms the upload.
+// `onProgress` (0-100) drives the upload progress bar — the confirm step
+// itself is fast, so the caller doesn't need its own separate indicator.
+export async function apiSubmitVideoTaskWork(params: {
+  allocationId: string;
+  taskId: string;
+  file: File;
+  onProgress?: (percent: number) => void;
+}): Promise<PrdSubmission> {
+  const { allocationId, taskId, file, onProgress } = params;
+  const init = await apiInitiateVideoUpload({ allocationId, taskId, fileSizeBytes: file.size });
+  await putVideoToSignedUrl(init.uploadUrl, file, init.contentType, onProgress);
+  return apiCompleteVideoUpload({ allocationId, taskId, gcsUri: init.gcsUri });
+}
+
 // Mentor/Admin — moves a PRD submission to under_review, changes_requested, or approved.
 export async function apiReviewPrdSubmission(
   id: string,
