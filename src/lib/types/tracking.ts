@@ -60,7 +60,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   others: 'Others',
 };
 
-export type SubmissionKind = 'document' | 'text' | 'link';
+export type SubmissionKind = 'document' | 'text' | 'link' | 'video';
 
 export interface PrdSubmission {
   id: string;

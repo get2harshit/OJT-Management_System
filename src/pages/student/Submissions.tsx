@@ -9,6 +9,7 @@ import {
   apiGetMyAllocation,
   apiGetMySubmissions,
   apiSubmitTaskWork,
+  apiSubmitVideoTaskWork,
   apiGetPrdDownloadUrl,
 } from '../../lib/api';
 import { apiListTasks } from '../../lib/api/tasks';
@@ -16,9 +17,20 @@ import type { ApiTask, ApiTaskCategory } from '../../lib/api/tasks';
 import { statusDotClass, submissionStatusLabel } from '../../lib/submissionDisplay';
 import { usePageRefresh } from '../../context/RefreshContext';
 
+// A hard cap on a video submission — enforced again server-side (the real
+// authority), checked here too so picking an oversized file fails instantly
+// instead of after a slow upload attempt.
+const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
+
 // A task's category maps to how its deliverable is submitted/rendered.
 const submissionKindForCategory = (category?: ApiTaskCategory | null): SubmissionKind =>
-  category === 'general' ? 'text' : category === 'link_submission' ? 'link' : 'document';
+  category === 'general'
+    ? 'text'
+    : category === 'link_submission'
+    ? 'link'
+    : category === 'video_submission'
+    ? 'video'
+    : 'document';
 
 interface Props {
   studentId: string;
@@ -47,9 +59,12 @@ export default function StudentSubmissions({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   // For general (text answer) and link (one URL per line) submissions.
   const [uploadText, setUploadText] = useState('');
   const [uploading, setUploading] = useState(false);
+  // Video only — 0-100, driven by the signed-URL PUT's own progress event.
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
@@ -82,7 +97,8 @@ export default function StudentSubmissions({
         (task) =>
           task.category === 'document_submission' ||
           task.category === 'general' ||
-          task.category === 'link_submission'
+          task.category === 'link_submission' ||
+          task.category === 'video_submission'
       ),
     [myTasks]
   );
@@ -171,9 +187,9 @@ export default function StudentSubmissions({
   const activeSubKind: SubmissionKind = activeSub?.submissionType ?? 'document';
 
   useEffect(() => {
-    // Only a document submission has a stored file to generate a viewer URL
-    // for — text/link submissions carry their content inline.
-    if (!activeSub || activeSubKind !== 'document') {
+    // Only document/video submissions have a stored file to generate a
+    // viewer URL for — text/link submissions carry their content inline.
+    if (!activeSub || (activeSubKind !== 'document' && activeSubKind !== 'video')) {
       setViewerUrl(null);
       return;
     }
@@ -204,27 +220,54 @@ export default function StudentSubmissions({
   const activeTask = submittableTasks.find((t) => t.id === activeTaskId);
   const activeKind = submissionKindForCategory(activeTask?.category);
   const canUpload =
-    !!allocation && (activeKind === 'document' ? !!selectedFile : !!uploadText.trim());
+    !!allocation &&
+    (activeKind === 'document' || activeKind === 'video' ? !!selectedFile && !fileError : !!uploadText.trim());
 
   const closeUploadModal = () => {
     setUploadModalOpen(false);
     setSelectedFile(null);
+    setFileError(null);
     setUploadText('');
+    setUploadProgress(0);
     setActiveTaskId(null);
+  };
+
+  const selectVideoFile = (file: File | null) => {
+    setSelectedFile(file);
+    if (!file) {
+      setFileError(null);
+    } else if (file.type !== 'video/mp4') {
+      setFileError('Only MP4 videos are supported.');
+    } else if (file.size > MAX_VIDEO_SIZE_BYTES) {
+      setFileError(`Video exceeds the ${MAX_VIDEO_SIZE_BYTES / (1024 * 1024)}MB limit.`);
+    } else {
+      setFileError(null);
+    }
   };
 
   const handleUpload = async () => {
     if (!allocation || !canUpload || !activeTaskId) return;
     setUploading(true);
+    setUploadProgress(0);
     setError(null);
     try {
-      await apiSubmitTaskWork({
-        allocationId: allocation.id,
-        submissionType: activeKind,
-        taskId: activeTaskId,
-        file: activeKind === 'document' ? selectedFile ?? undefined : undefined,
-        content: activeKind === 'document' ? undefined : uploadText.trim(),
-      });
+      if (activeKind === 'video') {
+        if (!selectedFile) return;
+        await apiSubmitVideoTaskWork({
+          allocationId: allocation.id,
+          taskId: activeTaskId,
+          file: selectedFile,
+          onProgress: setUploadProgress,
+        });
+      } else {
+        await apiSubmitTaskWork({
+          allocationId: allocation.id,
+          submissionType: activeKind,
+          taskId: activeTaskId,
+          file: activeKind === 'document' ? selectedFile ?? undefined : undefined,
+          content: activeKind === 'document' ? undefined : uploadText.trim(),
+        });
+      }
       await loadSubmissions();
       closeUploadModal();
     } catch (err) {
@@ -413,6 +456,37 @@ export default function StudentSubmissions({
                       {selectedFile ? selectedFile.name : 'Click to select a PDF'}
                     </p>
                   </label>
+                </div>
+              )}
+              {activeKind === 'video' && (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Video (MP4, up to 100MB)</label>
+                  <label className="border-2 border-dashed border-zinc-750 rounded-lg p-6 text-center hover:border-gold/40 transition-colors block cursor-pointer">
+                    <input
+                      type="file"
+                      accept="video/mp4"
+                      className="hidden"
+                      onChange={(e) => selectVideoFile(e.target.files?.[0] ?? null)}
+                    />
+                    <Upload size={24} className="mx-auto text-gray-500 mb-2" />
+                    <p className="text-sm text-gray-500">
+                      {selectedFile ? selectedFile.name : 'Click to select an MP4 video'}
+                    </p>
+                  </label>
+                  {fileError && <p className="text-xs text-red-400 mt-1.5">{fileError}</p>}
+                  {uploading && (
+                    <div className="mt-3">
+                      <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gold transition-all"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        {uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : 'Finishing up…'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
               {activeKind === 'text' && (

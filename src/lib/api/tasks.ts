@@ -155,7 +155,7 @@ export type ApiTaskType = 'prd' | 'db_schema' | 'hld' | 'lld' | 'api_contract' |
 // 'weekly_report' is mentor-only and admin-only (backend enforces both) —
 // it makes the mentor's task page render the weekly report grid instead of
 // a submit box. See ojt_mentor_weekly_reports.
-export type ApiTaskCategory = 'document_submission' | 'general' | 'link_submission' | 'weekly_report';
+export type ApiTaskCategory = 'document_submission' | 'general' | 'link_submission' | 'weekly_report' | 'video_submission';
 export type ApiTaskAssignMode = 'team' | 'individual';
 
 // Backend requires week/tracks/start_date/deadline/target_role/category/

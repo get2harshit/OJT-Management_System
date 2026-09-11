@@ -34,6 +34,7 @@ const KIND_LABEL: Record<SubmissionKind, string> = {
   document: 'Document',
   text: 'Answer',
   link: 'Link',
+  video: 'Video',
 };
 
 // The "doc view": document on the left, a feedback/comment panel that's
@@ -69,6 +70,21 @@ export default function SubmissionDetail({
         {submissionKind === 'document' ? (
           viewerUrl ? (
             <PdfViewer url={viewerUrl} />
+          ) : (
+            <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-10 flex items-center justify-center text-gray-500">
+              Loading preview...
+            </div>
+          )
+        ) : submissionKind === 'video' ? (
+          viewerUrl ? (
+            <video
+              key={viewerUrl}
+              controls
+              preload="metadata"
+              className="w-full rounded-lg bg-black max-h-[70vh]"
+            >
+              <source src={viewerUrl} type="video/mp4" />
+            </video>
           ) : (
             <div className="bg-zinc-900 border border-zinc-750 rounded-lg p-10 flex items-center justify-center text-gray-500">
               Loading preview...
@@ -110,7 +126,7 @@ export default function SubmissionDetail({
               <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
               {submissionStatusLabel(status).toUpperCase()}
             </span>
-            {submissionKind === 'document' && documentLink && (
+            {(submissionKind === 'document' || submissionKind === 'video') && documentLink && (
               <div className="flex items-center gap-2">
                 {downloadError && <span className="text-xs text-red-400">{downloadError}</span>}
                 <button
