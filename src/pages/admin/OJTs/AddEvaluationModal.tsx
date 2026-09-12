@@ -193,18 +193,23 @@ export function AddEvaluationModal({
   // trackNameBySlug below, which is keyed by slug for that reason.
   const workloadByMentorId = new Map(mentorWorkload.map((w) => [w.mentorId, w]));
 
+  // Whose slot the picker drawer is currently filling — shown in its header
+  // so it's never ambiguous which row's "Add" was clicked.
+  const pickerInternalMentor = pickerTarget
+    ? cohortMentors.find((m) => m.id === pickerTarget.internalMentorId)
+    : undefined;
+  const pickerInternalMentorName = pickerInternalMentor?.fullName || pickerInternalMentor?.email || '';
+
+  // Existing panel-load badge — external commitments only (how loaded this
+  // mentor already is as an EXTERNAL panelist elsewhere). Their own-student
+  // count lives in the workload line above it instead, so it isn't repeated
+  // here.
   const loadBadge = (mentorId: string) => {
     const existing = panelLoad.find((l) => l.mentorId === mentorId);
     const existingExternal = existing?.externalStudentCount ?? 0;
-    const existingInternal = existing?.internalStudentCount ?? 0;
     const projected = projectedExternalCounts.get(mentorId) ?? 0;
-    if (existingExternal === 0 && existingInternal === 0 && projected === 0) return null;
-    const parts: string[] = [];
-    if (existingInternal > 0) parts.push(`${existingInternal} own`);
-    if (existingExternal + projected > 0) {
-      parts.push(`${existingExternal}${projected > 0 ? `+${projected}` : ''} ext`);
-    }
-    return parts.join(' · ');
+    if (existingExternal === 0 && projected === 0) return null;
+    return `${existingExternal}${projected > 0 ? `+${projected}` : ''} ext`;
   };
 
   const selectedType = creatingNewType
@@ -562,16 +567,21 @@ export function AddEvaluationModal({
                               <span className="text-xs text-gray-300 block truncate" title={mentor.fullName || mentor.email}>
                                 {mentor.fullName || mentor.email}
                               </span>
-                              {workload ? (
-                                <span className="block text-[10px] text-gray-500 truncate">
-                                  {workloadTrackNames.join(', ') || 'No track'} · {workload.teamCount} team
-                                  {workload.teamCount === 1 ? '' : 's'} · {workload.studentCount} student
-                                  {workload.studentCount === 1 ? '' : 's'}
+                              {workloadTrackNames.length > 0 ? (
+                                <span className="flex flex-wrap gap-1 mt-1">
+                                  {workloadTrackNames.map((name) => (
+                                    <span
+                                      key={name}
+                                      className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-gold/10 text-gold border border-gold/30 truncate max-w-[180px]"
+                                    >
+                                      {name}
+                                    </span>
+                                  ))}
                                 </span>
                               ) : (
-                                <span className="block text-[10px] text-gray-600">No students allocated yet</span>
+                                <span className="block text-[10px] text-gray-600 mt-1">No students allocated yet</span>
                               )}
-                              {badge && <span className="block text-[10px] text-gray-500">{badge}</span>}
+                              {badge && <span className="block text-[10px] text-gray-500 mt-1">{badge}</span>}
                             </td>
                             {Array.from({ length: externalEvaluatorCount }).map((_, colIndex) => {
                               const filledId = externals[colIndex];
@@ -622,6 +632,7 @@ export function AddEvaluationModal({
             onClose={() => setPickerTarget(null)}
             mentors={pickerTarget ? cohortMentors.filter((m) => m.id !== pickerTarget.internalMentorId) : []}
             trackNameBySlug={trackNameBySlug}
+            internalMentorName={pickerInternalMentorName}
             onSelect={(mentorId) => {
               if (!pickerTarget) return;
               setPairings((prev) => {
