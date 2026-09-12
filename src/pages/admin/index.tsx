@@ -40,6 +40,7 @@ import AllocationBlueprintPage from './OJTs/AllocationBlueprintPage';
 import EvaluationBlueprintPage from './OJTs/EvaluationBlueprintPage';
 import CohortAssessmentsPage from './OJTs/CohortAssessmentsPage';
 import CohortEvaluationSummaryPage from './OJTs/CohortEvaluationSummaryPage';
+import CohortEvaluationReportsPage from './OJTs/CohortEvaluationReportsPage';
 import { useNotificationNavigate } from '../../context/NotificationNavigateContext';
 import { apiGetPrdSubmission } from '../../lib/api';
 import { useToast } from '../../toast';
@@ -248,6 +249,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route path="ojts/:cohortId/track-config-from-catalog" element={<CatalogProposalPage />} />
         <Route path="ojts/:cohortId/blueprint" element={<AllocationBlueprintPage />} />
         <Route path="ojts/:cohortId/evaluation/:configId" element={<EvaluationBlueprintPage />} />
+        <Route path="ojts/:cohortId/evaluation-reports" element={<CohortEvaluationReportsPage />} />
         <Route path="tasks/create" element={<CreateTaskPage />} />
 
         {/* An unknown path is a bad link, not a blank screen. This used to
