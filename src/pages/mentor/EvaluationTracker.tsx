@@ -65,8 +65,13 @@ export default function MentorEvaluationTracker() {
       const res = await apiGetEvaluationDetail(id);
       setDetail(res);
       const mine = res.panelists.find((p) => p.evaluatorId === myId);
+      // Only the criteria I'm actually allowed to score, into the draft —
+      // an external panelist never sees an internal-only one (they never
+      // saw the PRD/logbook it's judging), so there's nothing to pre-fill
+      // or submit for it.
+      const myCriteria = res.criteria.filter((c) => mine?.role === 'internal' || c.scoredBy === 'panel');
       const draft: Record<string, string> = {};
-      for (const c of res.criteria) {
+      for (const c of myCriteria) {
         const existing = mine?.scoreBreakdown?.[c.name];
         draft[c.name] = existing !== undefined && existing !== null ? String(existing) : '';
       }
@@ -87,9 +92,19 @@ export default function MentorEvaluationTracker() {
     setFeedbackDraft('');
   };
 
+  // Which of the rubric's criteria I'm allowed to score — the internal
+  // (the student's own mentor) scores everything; an external only scores
+  // the ones every panelist scores, never an artifact-only one they never
+  // saw the underlying document for. Matches exactly what the server
+  // validates, so a submission built from this never gets rejected for
+  // having the wrong set of keys.
+  const myPanelist = detail?.panelists.find((p) => p.evaluatorId === myId);
+  const myCriteria = detail?.criteria.filter((c) => myPanelist?.role === 'internal' || c.scoredBy === 'panel') ?? [];
+
   const canSubmit =
     !!detail &&
-    detail.criteria.every((c) => {
+    myCriteria.length > 0 &&
+    myCriteria.every((c) => {
       const raw = scoreDraft[c.name];
       if (raw === undefined || raw.trim() === '') return false;
       const n = Number(raw);
@@ -101,7 +116,7 @@ export default function MentorEvaluationTracker() {
     setSaving(true);
     try {
       const scoreBreakdown: Record<string, number> = {};
-      for (const c of detail.criteria) {
+      for (const c of myCriteria) {
         scoreBreakdown[c.name] = Number(scoreDraft[c.name]);
       }
       await apiScoreEvaluation(detail.id, scoreBreakdown, feedbackDraft.trim() || undefined);
@@ -125,7 +140,6 @@ export default function MentorEvaluationTracker() {
     finalScore: q.finalMarksObtained !== null ? `${q.finalMarksObtained}/${q.maxMarksSnapshot}` : '—',
   }));
 
-  const myScore = detail?.panelists.find((p) => p.evaluatorId === myId);
   const otherPanelists = detail?.panelists.filter((p) => p.evaluatorId !== myId) || [];
 
   return (
@@ -192,15 +206,21 @@ export default function MentorEvaluationTracker() {
               {detail.finalMarksObtained !== null && (
                 <p className="text-xs text-gold mt-1">
                   Final (best of panel): {detail.finalMarksObtained}/{detail.maxMarksSnapshot}
+                  {detail.averageMarksObtained !== null && (
+                    <span className="text-gray-500"> · Average: {detail.averageMarksObtained}/{detail.maxMarksSnapshot}</span>
+                  )}
                 </p>
               )}
             </div>
 
             <div className="space-y-3">
-              {detail.criteria.map((c) => (
+              {myCriteria.map((c) => (
                 <div key={c.id}>
                   <label className="block text-sm text-gray-400 mb-1">
                     {c.name} (0–{c.maxMarks})
+                    {c.scoredBy === 'internal' && (
+                      <span className="ml-1.5 text-[10px] text-gray-500 uppercase tracking-wide">Internal only</span>
+                    )}
                   </label>
                   <input
                     type="number"
@@ -240,7 +260,7 @@ export default function MentorEvaluationTracker() {
 
             <Button onClick={handleSubmitScore} disabled={!canSubmit || saving} fullWidth>
               {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-              {myScore?.totalMarks !== null && myScore !== undefined ? 'Update Score' : 'Submit Score'}
+              {myPanelist?.totalMarks !== null && myPanelist !== undefined ? 'Update Score' : 'Submit Score'}
             </Button>
           </div>
         ) : null}
