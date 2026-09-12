@@ -603,6 +603,10 @@ export interface DashboardMetrics {
 
 export type EvaluationMode = 'upload' | 'rubric';
 export type EvaluatorRole = 'internal' | 'external';
+/** Who scores a criterion: every panelist ('panel'), or only the student's
+ * own internal mentor ('internal') — for artifact criteria like a PRD or a
+ * logbook that an external panelist never saw. */
+export type CriterionScorer = 'panel' | 'internal';
 
 export interface EvaluationTypeTemplate {
   id: string;
@@ -615,6 +619,7 @@ export interface RubricCriterion {
   name: string;
   maxMarks: number;
   displayOrder: number;
+  scoredBy: CriterionScorer;
 }
 
 export interface RubricTemplate {
@@ -622,6 +627,14 @@ export interface RubricTemplate {
   evaluationTypeTemplateId: string;
   name: string;
   criteria: RubricCriterion[];
+}
+
+/** A config's audience. Both empty means every track / every batch — the
+ * same thing every config meant before scoping existed. */
+export interface EvaluationScope {
+  trackIds: string[];
+  trackNames: string[];
+  batches: string[];
 }
 
 export interface CohortEvaluationConfig {
@@ -634,6 +647,10 @@ export interface CohortEvaluationConfig {
   endDate: string;
   maxMarksSnapshot: number;
   isActive: boolean;
+  /** How many external panelists this config declares, on top of the one
+   * fixed internal mentor. */
+  externalEvaluatorCount: number;
+  scope: EvaluationScope;
   evaluationTypeTemplate: EvaluationTypeTemplate;
   rubricTemplate: RubricTemplate;
 }
@@ -696,7 +713,23 @@ export interface EvaluationDetail {
   criteria: RubricCriterion[];
   panelists: EvaluationPanelistScore[];
   finalMarksObtained: number | null;
+  /** Same composition, panel part averaged instead of best-of — can fall as
+   * later panelists score, unlike finalMarksObtained. Show it beside how
+   * many of the panel have actually scored, never alone. */
+  averageMarksObtained: number | null;
   evaluatedAt: string | null;
+}
+
+// What a student is allowed to see of their own evaluation — no marks, no
+// feedback, no score_breakdown, not even the final number. Which viva it
+// is, its date window, and who their internal/external mentors are.
+export interface StudentVisibleEvaluation {
+  id: string;
+  evaluationName: string;
+  startDate: string;
+  endDate: string;
+  internalMentorName: string | null;
+  externalMentorNames: string[];
 }
 
 // ── Eligibility status (platform-access gate) ───────────────────────────────

@@ -3,9 +3,11 @@ import type {
   EvaluationMode,
   RubricTemplate,
   RubricCriterion,
+  CriterionScorer,
   CohortEvaluationConfig,
   EvaluationMentorPairing,
   StudentEvaluationSummary,
+  StudentVisibleEvaluation,
   EvaluatorRole,
   EvaluatorQueueItem,
   EvaluationPanelistScore,
@@ -30,6 +32,7 @@ interface RawRubricCriterion {
   name: string;
   max_marks: string | number;
   display_order: number;
+  scored_by: CriterionScorer;
 }
 
 interface RawRubricTemplate {
@@ -49,6 +52,9 @@ interface RawCohortEvaluationConfig {
   end_date: string;
   max_marks_snapshot: string | number;
   is_active: boolean;
+  batches: string[];
+  external_evaluator_count: number;
+  tracks: { track: { id: string; name: string } }[];
   evaluation_type_template: RawEvaluationTypeTemplate;
   rubric_template: RawRubricTemplate;
 }
@@ -66,7 +72,13 @@ function mapTypeTemplate(raw: RawEvaluationTypeTemplate): EvaluationTypeTemplate
 }
 
 function mapCriterion(raw: RawRubricCriterion): RubricCriterion {
-  return { id: raw.id, name: raw.name, maxMarks: Number(raw.max_marks), displayOrder: raw.display_order };
+  return {
+    id: raw.id,
+    name: raw.name,
+    maxMarks: Number(raw.max_marks),
+    displayOrder: raw.display_order,
+    scoredBy: raw.scored_by,
+  };
 }
 
 function mapRubricTemplate(raw: RawRubricTemplate): RubricTemplate {
@@ -89,6 +101,12 @@ function mapCohortEvaluationConfig(raw: RawCohortEvaluationConfig): CohortEvalua
     endDate: raw.end_date,
     maxMarksSnapshot: Number(raw.max_marks_snapshot),
     isActive: raw.is_active,
+    externalEvaluatorCount: raw.external_evaluator_count,
+    scope: {
+      trackIds: (raw.tracks || []).map((t) => t.track.id),
+      trackNames: (raw.tracks || []).map((t) => t.track.name),
+      batches: raw.batches || [],
+    },
     evaluationTypeTemplate: mapTypeTemplate(raw.evaluation_type_template),
     rubricTemplate: mapRubricTemplate(raw.rubric_template),
   };
@@ -150,6 +168,8 @@ export async function apiCreateCohortEvaluationConfig(data: {
   sequenceNo?: number | null;
   startDate: string;
   endDate: string;
+  trackIds?: string[];
+  batches?: string[];
 }): Promise<CohortEvaluationConfig> {
   const res = await apiFetch<{ data: RawCohortEvaluationConfig }>('/api/v1/evaluations/cohort-configs', {
     method: 'POST',
@@ -160,10 +180,57 @@ export async function apiCreateCohortEvaluationConfig(data: {
       sequence_no: data.sequenceNo ?? null,
       start_date: data.startDate,
       end_date: data.endDate,
+      track_ids: data.trackIds,
+      batches: data.batches,
     }),
   });
   invalidateEvaluationCaches();
   return mapCohortEvaluationConfig(res.data);
+}
+
+/**
+ * Partial update. Every field optional; which ones the server actually
+ * accepts depends on whether students are already assigned under this
+ * config — once any are, type/rubric/sequence/scope lock and only dates and
+ * panel size stay editable. A rejected field comes back as a normal error
+ * with a message naming what's locked and why.
+ */
+export async function apiUpdateCohortEvaluationConfig(
+  configId: string,
+  data: {
+    sequenceNo?: number | null;
+    startDate?: string;
+    endDate?: string;
+    trackIds?: string[];
+    batches?: string[];
+    externalEvaluatorCount?: number;
+    evaluationTypeTemplateId?: string;
+    rubricTemplateId?: string;
+  },
+): Promise<CohortEvaluationConfig> {
+  const body: Record<string, unknown> = {};
+  if (data.sequenceNo !== undefined) body.sequence_no = data.sequenceNo;
+  if (data.startDate !== undefined) body.start_date = data.startDate;
+  if (data.endDate !== undefined) body.end_date = data.endDate;
+  if (data.trackIds !== undefined) body.track_ids = data.trackIds;
+  if (data.batches !== undefined) body.batches = data.batches;
+  if (data.externalEvaluatorCount !== undefined) body.external_evaluator_count = data.externalEvaluatorCount;
+  if (data.evaluationTypeTemplateId !== undefined) body.evaluation_type_template_id = data.evaluationTypeTemplateId;
+  if (data.rubricTemplateId !== undefined) body.rubric_template_id = data.rubricTemplateId;
+
+  const res = await apiFetch<{ data: RawCohortEvaluationConfig }>(`/api/v1/evaluations/cohort-configs/${configId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  invalidateEvaluationCaches();
+  return mapCohortEvaluationConfig(res.data);
+}
+
+/** Only when nothing under this config has been scored yet — the server
+ * rejects the request otherwise, with a message saying so. */
+export async function apiDeleteCohortEvaluationConfig(configId: string): Promise<void> {
+  await apiFetch(`/api/v1/evaluations/cohort-configs/${configId}`, { method: 'DELETE' });
+  invalidateEvaluationCaches();
 }
 
 // ── Mentor pairings (per internal mentor, per config) ───────────────────────
@@ -188,11 +255,36 @@ export async function apiSetMentorPairings(
 
 // ── Activation (bulk-assigns evaluations + panelists for the cohort) ───────
 
-export async function apiActivateCohortEvaluation(configId: string): Promise<{ newlyAssignedCount: number }> {
-  const res = await apiFetch<{ data: { newlyAssignedCount: number } }>(
-    `/api/v1/evaluations/cohort-configs/${configId}/activate`,
-    { method: 'POST' },
-  );
+export interface ActivationResult {
+  newlyAssignedCount: number;
+  repairedCount: number;
+  // Students the config's own scope (or, if given, the narrowing below)
+  // covered but didn't get assigned, broken down by why — was always
+  // happening silently before; now visible.
+  skipped: { alreadyAssigned: number; noMentor: number; noPublishedTeam: number; outOfScope: number };
+}
+
+/**
+ * Every field optional. Omit everything to assign exactly what the config's
+ * own scope covers — the ordinary case. Narrowing (explicit studentIds/
+ * teamIds, or trackIds/batches) picks a SUBSET of that scope for just this
+ * run, never a way around it; explicit studentIds/teamIds always win over
+ * trackIds/batches if both are given. Safe to call again later — already-
+ * assigned students are skipped, not re-assigned.
+ */
+export async function apiActivateCohortEvaluation(
+  configId: string,
+  narrow?: { studentIds?: string[]; teamIds?: string[]; trackIds?: string[]; batches?: string[] },
+): Promise<ActivationResult> {
+  const res = await apiFetch<{ data: ActivationResult }>(`/api/v1/evaluations/cohort-configs/${configId}/activate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      student_ids: narrow?.studentIds,
+      team_ids: narrow?.teamIds,
+      track_ids: narrow?.trackIds,
+      batches: narrow?.batches,
+    }),
+  });
   invalidateEvaluationCaches();
   return res.data;
 }
@@ -304,6 +396,7 @@ interface RawEvaluationDetail {
   id: string;
   evaluated_at: string | null;
   final_marks_obtained: string | number | null;
+  average_marks_obtained: string | number | null;
   student: { id: string; full_name: string; email: string };
   cohort_evaluation_config: {
     sequence_no: number | null;
@@ -334,31 +427,57 @@ function mapEvaluationDetail(raw: RawEvaluationDetail): EvaluationDetail {
       }),
     ),
     finalMarksObtained: raw.final_marks_obtained !== null ? Number(raw.final_marks_obtained) : null,
+    averageMarksObtained: raw.average_marks_obtained !== null ? Number(raw.average_marks_obtained) : null,
     evaluatedAt: raw.evaluated_at,
   };
 }
 
 // Any authenticated caller who's admin, the student themselves, or an
 // assigned panelist — the backend enforces this, a rejected request throws.
+// A student caller gets a redacted response with no marks in it at all —
+// use apiGetMyEvaluationsRedacted for the student's own view instead of
+// relying on that redaction here.
 export async function apiGetEvaluationDetail(evaluationId: string): Promise<EvaluationDetail> {
   const res = await apiFetch<{ data: RawEvaluationDetail }>(`/api/v1/evaluations/${evaluationId}`);
   return mapEvaluationDetail(res.data);
 }
 
+export interface ScoreResult {
+  totalMarks: number;
+  finalMarksObtained: number | null;
+  averageMarksObtained: number | null;
+}
+
 // Submits (or re-submits) the caller's own panelist score — one entry per
-// rubric criterion name, keys must match exactly what the evaluation's
-// rubric_template.criteria declare.
+// rubric criterion name. Which criteria to send depends on the caller's own
+// role on this evaluation: internal sends every criterion, external sends
+// only the ones whose scoredBy is 'panel' (never an 'internal'-only one —
+// the server rejects it, since an external never saw the artifact).
 export async function apiScoreEvaluation(
   evaluationId: string,
   scoreBreakdown: Record<string, number>,
   feedback?: string,
-): Promise<{ totalMarks: number; finalMarksObtained: number | null }> {
-  const res = await apiFetch<{ data: { totalMarks: number; finalMarksObtained: number | null } }>(
-    `/api/v1/evaluations/${evaluationId}/score`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify({ score_breakdown: scoreBreakdown, feedback }),
-    },
+): Promise<ScoreResult> {
+  const res = await apiFetch<{ data: ScoreResult }>(`/api/v1/evaluations/${evaluationId}/score`, {
+    method: 'PATCH',
+    body: JSON.stringify({ score_breakdown: scoreBreakdown, feedback }),
+  });
+  invalidateEvaluationCaches();
+  return res.data;
+}
+
+// Admin correcting a specific panelist's score — distinct from
+// apiScoreEvaluation above, which only ever submits the CALLER's own row.
+// evaluatorId names whose row is being corrected.
+export async function apiAdminScoreEvaluation(
+  evaluationId: string,
+  evaluatorId: string,
+  scoreBreakdown: Record<string, number>,
+  feedback?: string,
+): Promise<ScoreResult> {
+  const res = await apiFetch<{ data: ScoreResult }>(
+    `/api/v1/evaluations/${evaluationId}/panelists/${evaluatorId}/score`,
+    { method: 'PATCH', body: JSON.stringify({ score_breakdown: scoreBreakdown, feedback }) },
   );
   invalidateEvaluationCaches();
   return res.data;
@@ -368,10 +487,19 @@ export async function apiScoreEvaluation(
 
 export type EvaluationBlueprintStatus = 'not_assigned' | 'pending' | 'evaluated';
 
-// One student's row for a single evaluation. The score maps (internalScores/
-// externalScores) are keyed by criterion NAME — the same names as
-// meta.criteria — so the page can build one column per (criterion × evaluator)
-// dynamically.
+/** One external panelist's own total and breakdown — a list now, not a
+ * single value, since a config can declare more than one external. */
+export interface EvaluationBlueprintExternalPanelist {
+  evaluatorId: string;
+  evaluatorName: string | null;
+  totalMarks: number | null;
+  scoreBreakdown: Record<string, number> | null;
+}
+
+// One student's row for a single evaluation. internalScores is keyed by
+// criterion NAME — the same names as meta.criteria — so the page can build
+// one column per criterion dynamically; each external panelist carries its
+// own breakdown the same way.
 export interface EvaluationBlueprintStudent {
   studentId: string;
   fullName: string | null;
@@ -380,12 +508,13 @@ export interface EvaluationBlueprintStudent {
   track: string | null;
   status: EvaluationBlueprintStatus;
   finalMarks: number | null;
+  averageMarks: number | null;
+  finalPercentage: number | null;
+  averagePercentage: number | null;
   internalMentorName: string | null;
-  externalMentorName: string | null;
   internalTotal: number | null;
-  externalTotal: number | null;
   internalScores: Record<string, number> | null;
-  externalScores: Record<string, number> | null;
+  externalPanelists: EvaluationBlueprintExternalPanelist[];
 }
 
 export interface EvaluationBlueprintMeta {
@@ -393,7 +522,8 @@ export interface EvaluationBlueprintMeta {
   evaluationName: string;
   mode: EvaluationMode;
   maxMarks: number;
-  criteria: { name: string; maxMarks: number }[];
+  criteria: { name: string; maxMarks: number; scoredBy: CriterionScorer }[];
+  scope: { trackIds: string[]; trackNames: string[]; batches: string[] };
 }
 
 export interface EvaluationBlueprintPageResult {
@@ -421,10 +551,18 @@ export async function apiGetEvaluationBlueprint(
 
 // ── Cohort-wide Evaluation Summary (all evaluations at once) ─────────────────
 
+export interface CohortEvaluationSummaryExternalPanelist {
+  evaluatorId: string;
+  totalMarks: number | null;
+}
+
 export interface CohortEvaluationSummaryMarks {
-  total: number | null;    // final = MAX(internal, external)
-  internal: number | null; // internal mentor's total
-  external: number | null; // external mentor's total
+  total: number | null;    // best of the panel's totals, plus the internal's own artifact-only marks
+  average: number | null;  // same composition, panel part averaged instead of best-of
+  internal: number | null; // internal mentor's own total
+  externalPanelists: CohortEvaluationSummaryExternalPanelist[];
+  totalPercentage: number | null;
+  averagePercentage: number | null;
 }
 
 export interface CohortEvaluationSummaryStudent {
@@ -433,9 +571,15 @@ export interface CohortEvaluationSummaryStudent {
   rollNumber: string | null;
   batch: string | null;
   track: string | null;
-  // marks[configId] -> that evaluation's total/internal/external for this
-  // student; absent for evaluations the student hasn't been evaluated on.
+  // marks[configId] -> that evaluation's marks for this student. Every
+  // config the cohort has gets an entry, defaulted to nulls/[] rather than
+  // omitted when the student hasn't been evaluated on it.
   marks: Record<string, CohortEvaluationSummaryMarks>;
+  // Total marks over total available across every SCORED evaluation, not
+  // the mean of each one's own percentage — see overallPercentage in the
+  // backend's evaluationScoring.ts for why those disagree. Null until at
+  // least one evaluation is scored.
+  overallPercentage: number | null;
 }
 
 export interface CohortEvaluationSummaryEvaluation {
@@ -463,4 +607,50 @@ export async function apiGetCohortEvaluationSummary(
     `/api/v1/evaluations/summary?${q.toString()}`,
   );
   return { data: res.data, pagination: res.pagination, meta: res.meta };
+}
+
+// ── Mentor panel load (base facts for a load meter) ─────────────────────────
+
+export interface MentorPanelLoad {
+  mentorId: string;
+  mentorName: string;
+  internalStudentCount: number;
+  internalTeamCount: number;
+  externalStudentCount: number;
+  externalTeamCount: number;
+}
+
+interface RawMentorPanelLoad {
+  mentorId: string;
+  mentorName: string;
+  internalStudentCount: number;
+  internalTeamCount: number;
+  externalStudentCount: number;
+  externalTeamCount: number;
+}
+
+// Existing committed load only — a config still being set up (not yet
+// activated) contributes nothing here, since its panelist rows don't exist
+// yet. Sparse: only mentors already holding at least one panelist row in
+// this cohort appear; a caller with the cohort's full mentor list treats
+// anyone absent as zero.
+export async function apiGetMentorPanelLoad(cohortId: string): Promise<MentorPanelLoad[]> {
+  const res = await apiFetch<{ data: RawMentorPanelLoad[] }>(`/api/v1/evaluations/cohorts/${cohortId}/mentor-panel-load`);
+  return res.data;
+}
+
+// ── Student's own view (redacted — no marks, ever) ──────────────────────────
+
+interface RawStudentVisibleEvaluation {
+  id: string;
+  evaluationName: string;
+  startDate: string;
+  endDate: string;
+  internalMentorName: string | null;
+  externalMentorNames: string[];
+}
+
+export async function apiGetMyEvaluationsRedacted(): Promise<StudentVisibleEvaluation[]> {
+  const res = await apiFetch<{ data: RawStudentVisibleEvaluation[] }>('/api/v1/evaluations/mine');
+  return res.data;
 }

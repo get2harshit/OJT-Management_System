@@ -64,19 +64,33 @@ export default function EvaluationBlueprintPage() {
   const [search, setSearch] = useState('');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  // A config can now declare more than one external panelist, so every
+  // external-facing column joins each panelist's own value with a comma
+  // instead of assuming there's exactly one.
+  const externalNames = (s: EvaluationBlueprintStudent) =>
+    s.externalPanelists.length > 0 ? s.externalPanelists.map(p => p.evaluatorName || 'Unknown').join(', ') : '—';
+  const externalTotals = (s: EvaluationBlueprintStudent) =>
+    s.externalPanelists.length > 0
+      ? s.externalPanelists.map(p => (p.totalMarks != null ? String(p.totalMarks) : '—')).join(', ')
+      : '—';
+
   // Optional columns are built from the evaluation's own rubric: the fixed
-  // summary set (roll/track/mentors/totals/final) plus one Internal and one
-  // External column PER criterion. Rebuilt whenever meta (hence the criteria)
-  // changes; Student Name/Batch/Status are always shown outside this list.
+  // summary set (roll/track/mentors/totals/final/average/%) plus one
+  // Internal and one External column PER criterion. Rebuilt whenever meta
+  // (hence the criteria) changes; Student Name/Batch/Status are always
+  // shown outside this list.
   const availableColumns = useMemo<OptionalColumn[]>(() => {
     const cols: OptionalColumn[] = [
       { key: 'rollNumber', label: 'Roll Number', value: s => s.rollNumber || '—' },
       { key: 'track', label: 'Track', value: s => s.track || '—' },
       { key: 'internalMentor', label: 'Internal Mentor', value: s => s.internalMentorName || '—' },
-      { key: 'externalMentor', label: 'External Mentor', value: s => s.externalMentorName || '—' },
+      { key: 'externalMentor', label: 'External Mentor(s)', value: externalNames },
       { key: 'internalTotal', label: 'Internal Total', value: s => (s.internalTotal != null ? String(s.internalTotal) : '—') },
-      { key: 'externalTotal', label: 'External Total', value: s => (s.externalTotal != null ? String(s.externalTotal) : '—') },
+      { key: 'externalTotal', label: 'External Total(s)', value: externalTotals },
       { key: 'finalMarks', label: 'Final Marks', value: s => (s.finalMarks != null ? `${s.finalMarks}/${meta?.maxMarks ?? '?'}` : '—') },
+      { key: 'finalPercentage', label: 'Final %', value: s => (s.finalPercentage != null ? `${s.finalPercentage}%` : '—') },
+      { key: 'averageMarks', label: 'Average Marks', value: s => (s.averageMarks != null ? `${s.averageMarks}/${meta?.maxMarks ?? '?'}` : '—') },
+      { key: 'averagePercentage', label: 'Average %', value: s => (s.averagePercentage != null ? `${s.averagePercentage}%` : '—') },
     ];
     for (const c of meta?.criteria ?? []) {
       const name = c.name;
@@ -88,7 +102,10 @@ export default function EvaluationBlueprintPage() {
       cols.push({
         key: `ext::${name}`,
         label: `${name} · Ext`,
-        value: s => (s.externalScores?.[name] != null ? String(s.externalScores[name]) : '—'),
+        value: s =>
+          s.externalPanelists.length > 0
+            ? s.externalPanelists.map(p => (p.scoreBreakdown?.[name] != null ? String(p.scoreBreakdown[name]) : '—')).join(', ')
+            : '—',
       });
     }
     return cols;

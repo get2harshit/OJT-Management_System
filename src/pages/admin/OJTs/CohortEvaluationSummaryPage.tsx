@@ -64,19 +64,27 @@ export default function CohortEvaluationSummaryPage() {
   const [search, setSearch] = useState('');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Optional columns are built from the cohort's evaluations: three per
-  // evaluation — Total (final), Internal (internal mentor's total) and
-  // External (external mentor's total). Student Name/Batch/Track are always
+  // Optional columns are built from the cohort's evaluations: Total (best of
+  // panel, plus the internal's own artifact marks), Average (same
+  // composition, panel part averaged), Internal, and External(s) — a
+  // config can now declare more than one external, so that column joins
+  // each one's own total with a comma. Student Name/Batch/Track are always
   // shown outside this list.
+  const externalTotals = (s: CohortEvaluationSummaryStudent, id: string) => {
+    const panelists = s.marks[id]?.externalPanelists ?? [];
+    return panelists.length > 0 ? panelists.map(p => (p.totalMarks != null ? String(p.totalMarks) : '—')).join(', ') : '—';
+  };
   const availableColumns = useMemo<OptionalColumn[]>(() => {
     const cols: OptionalColumn[] = [
       { key: 'rollNumber', label: 'Roll Number', value: s => s.rollNumber || '—' },
+      { key: 'overallPercentage', label: 'Overall %', value: s => (s.overallPercentage != null ? `${s.overallPercentage}%` : '—') },
     ];
     for (const ev of evaluations) {
       const id = ev.configId;
       cols.push({ key: `${id}:total`, label: `${ev.name} · Total`, value: s => fmt(s.marks[id]?.total, ev.maxMarks) });
+      cols.push({ key: `${id}:avg`, label: `${ev.name} · Average`, value: s => fmt(s.marks[id]?.average, ev.maxMarks) });
       cols.push({ key: `${id}:int`, label: `${ev.name} · Internal`, value: s => fmt(s.marks[id]?.internal, ev.maxMarks) });
-      cols.push({ key: `${id}:ext`, label: `${ev.name} · External`, value: s => fmt(s.marks[id]?.external, ev.maxMarks) });
+      cols.push({ key: `${id}:ext`, label: `${ev.name} · External(s)`, value: s => externalTotals(s, id) });
     }
     return cols;
   }, [evaluations]);
@@ -212,6 +220,12 @@ export default function CohortEvaluationSummaryPage() {
   const configRows = configs.map((c) => ({
     id: c.id,
     evaluation: c.sequenceNo ? `${c.evaluationTypeTemplate.name} ${c.sequenceNo}` : c.evaluationTypeTemplate.name,
+    // Empty scope = every track, every batch — the same audience a config
+    // has always covered, so this reads "All students" rather than blank.
+    scope:
+      c.scope.trackNames.length === 0 && c.scope.batches.length === 0
+        ? 'All students'
+        : [c.scope.trackNames.join(', '), c.scope.batches.join(', ')].filter(Boolean).join(' · '),
     mode: c.evaluationTypeTemplate.mode,
     maxMarks: c.maxMarksSnapshot,
     startDate: c.startDate,
@@ -289,6 +303,11 @@ export default function CohortEvaluationSummaryPage() {
                 fill={false}
                 columns={[
                   { key: 'evaluation', header: 'Evaluation' },
+                  {
+                    key: 'scope',
+                    header: 'Audience',
+                    render: (row) => <span className="text-gray-400 text-xs">{row.scope as string}</span>,
+                  },
                   {
                     key: 'mode',
                     header: 'Mode',
