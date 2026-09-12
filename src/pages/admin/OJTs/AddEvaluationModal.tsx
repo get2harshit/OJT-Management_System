@@ -570,17 +570,23 @@ export function AddEvaluationModal({
                               <span className="text-xs text-gray-300 block truncate" title={mentor.fullName || mentor.email}>
                                 {mentor.fullName || mentor.email}
                               </span>
-                              {workloadTrackNames.length > 0 ? (
-                                <span className="flex flex-wrap gap-1 mt-1">
-                                  {workloadTrackNames.map((name) => (
-                                    <span
-                                      key={name}
-                                      className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-gold/10 text-gold border border-gold/30 truncate max-w-[180px]"
-                                    >
-                                      {name}
-                                    </span>
-                                  ))}
-                                </span>
+                              {workload ? (
+                                <>
+                                  <span className="flex flex-wrap gap-1 mt-1">
+                                    {workloadTrackNames.map((name) => (
+                                      <span
+                                        key={name}
+                                        className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-gold/10 text-gold border border-gold/30 truncate max-w-[180px]"
+                                      >
+                                        {name}
+                                      </span>
+                                    ))}
+                                  </span>
+                                  <span className="block text-[10px] text-gray-500 mt-1">
+                                    {workload.teamCount} team{workload.teamCount === 1 ? '' : 's'} ·{' '}
+                                    {workload.studentCount} student{workload.studentCount === 1 ? '' : 's'}
+                                  </span>
+                                </>
                               ) : (
                                 <span className="block text-[10px] text-gray-600 mt-1">No students allocated yet</span>
                               )}
