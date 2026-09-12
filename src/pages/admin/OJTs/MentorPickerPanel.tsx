@@ -15,6 +15,7 @@ export function MentorPickerPanel({
   internalMentorName,
   internalMentorTrackNames,
   internalMentorTeamCount,
+  internalMentorStudentCount,
   onSelect,
 }: {
   open: boolean;
@@ -26,6 +27,7 @@ export function MentorPickerPanel({
   internalMentorName?: string;
   internalMentorTrackNames?: string[];
   internalMentorTeamCount?: number;
+  internalMentorStudentCount?: number;
   onSelect: (mentorId: string) => void;
 }) {
   const [search, setSearch] = useState('');
@@ -70,6 +72,11 @@ export function MentorPickerPanel({
                 {internalMentorTeamCount !== undefined && (
                   <span className="text-[11px] text-gray-500">
                     · {internalMentorTeamCount} team{internalMentorTeamCount === 1 ? '' : 's'}
+                  </span>
+                )}
+                {internalMentorStudentCount !== undefined && (
+                  <span className="text-[11px] text-gray-500">
+                    · {internalMentorStudentCount} student{internalMentorStudentCount === 1 ? '' : 's'}
                   </span>
                 )}
               </p>

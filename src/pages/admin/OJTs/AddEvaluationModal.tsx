@@ -188,9 +188,11 @@ export function AddEvaluationModal({
     return counts;
   })();
 
+  const trackNameBySlug = new Map(trackOptions.map((t) => [t.slug, t.name]));
   // mentor_workload's trackIds are real track UUIDs (off ojt_teams.track_id),
-  // not the slug ApiMentor.tracks carries — a separate lookup from
-  // trackNameBySlug below, which is keyed by slug for that reason.
+  // not the slug ApiMentor.tracks carries — a separate lookup, keyed by id
+  // for that reason, from trackNameBySlug above.
+  const trackNameById = new Map(trackOptions.map((t) => [t.id, t.name]));
   const workloadByMentorId = new Map(mentorWorkload.map((w) => [w.mentorId, w]));
 
   // Whose slot the picker drawer is currently filling — shown in its header
@@ -271,9 +273,6 @@ export function AddEvaluationModal({
     setCriteriaDrafts((prev) =>
       prev.map((c, i) => (i === index ? { ...c, scoredBy: c.scoredBy === 'panel' ? 'internal' : 'panel' } : c)),
     );
-
-  const trackNameBySlug = new Map(trackOptions.map((t) => [t.slug, t.name]));
-  const trackNameById = new Map(trackOptions.map((t) => [t.id, t.name]));
 
   // Which mentors get a pairing row: everyone when the scope is every track
   // (blank), otherwise only mentors who actually have an allocated student
@@ -639,6 +638,7 @@ export function AddEvaluationModal({
             internalMentorName={pickerInternalMentorName}
             internalMentorTrackNames={pickerInternalMentorTrackNames}
             internalMentorTeamCount={pickerInternalMentorWorkload?.teamCount}
+            internalMentorStudentCount={pickerInternalMentorWorkload?.studentCount}
             onSelect={(mentorId) => {
               if (!pickerTarget) return;
               setPairings((prev) => {
