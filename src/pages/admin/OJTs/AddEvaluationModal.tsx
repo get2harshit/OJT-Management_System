@@ -280,16 +280,25 @@ export function AddEvaluationModal({
     );
 
   // Which mentors get a pairing row: everyone when the scope is every track
-  // (blank), otherwise only mentors who actually have an allocated student
-  // in at least one selected track right now — a primary mentor with no
-  // student in scope is never going to be this config's automatic primary
-  // for anyone, so listing them here is just noise to scroll past. The
-  // MentorPickerPanel's own candidate list stays unfiltered by track — an
-  // secondary panelist is deliberately allowed to come from outside it.
-  const pairingRowMentors =
-    selectedTrackIds.length === 0
-      ? cohortMentors
-      : cohortMentors.filter((m) => selectedTrackIds.some((trackId) => trackMentorIndex.get(trackId)?.has(m.id)));
+  // AND every batch (both blank), otherwise only mentors who actually have
+  // an allocated student matching BOTH the selected track(s) AND the
+  // selected batch(es) right now — a primary mentor whose only student
+  // falls outside either filter is never going to be this config's
+  // automatic primary for anyone, so listing them here is just noise to
+  // scroll past, or worse: a pairing that looks set up but activation (which
+  // checks track AND batch) will never actually create anything for. The
+  // MentorPickerPanel's own candidate list stays unfiltered — a secondary
+  // panelist is deliberately allowed to come from outside either.
+  const pairingRowMentors = cohortMentors.filter((m) => {
+    if (selectedTrackIds.length > 0 && !selectedTrackIds.some((trackId) => trackMentorIndex.get(trackId)?.has(m.id))) {
+      return false;
+    }
+    if (selectedBatches.length > 0) {
+      const mentorBatches = workloadByMentorId.get(m.id)?.batches ?? [];
+      if (!selectedBatches.some((batch) => mentorBatches.includes(batch))) return false;
+    }
+    return true;
+  });
 
   // Top-of-step summary meter for Mentor + Panel — the same "stat tile row"
   // pattern as the Allocations page's own Mentor Load Summary, rebuilt from
@@ -653,11 +662,12 @@ export function AddEvaluationModal({
                     <Gauge size={13} />
                   </button>
                 </div>
-                {selectedTrackIds.length > 0 && pairingRowMentors.length === 0 && (
+                {pairingRowMentors.length === 0 && (
                   <p className="text-[11px] text-amber-400/80 mb-1.5">
-                    No mentor in this cohort has a student allocated in the selected track(s) yet, so there's nobody
-                    to pair a secondary partner with — every in-scope student will get their primary mentor alone
-                    unless this is created without any pairings and recreated once allocation happens.
+                    No mentor in this cohort has a student allocated matching both the selected track(s) and
+                    batch(es) yet, so there's nobody to pair a secondary partner with — every in-scope student will
+                    get their primary mentor alone unless this is created without any pairings and recreated once
+                    allocation happens.
                   </p>
                 )}
                 {secondaryEvaluatorCount === 0 && (

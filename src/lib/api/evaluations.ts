@@ -611,15 +611,23 @@ export interface CohortEvaluationSummaryStudent {
   // omitted when the student hasn't been evaluated on it.
   marks: Record<string, CohortEvaluationSummaryMarks>;
   // Total marks over total available across every SCORED evaluation, not
-  // the mean of each one's own percentage — see overallPercentage in the
-  // backend's evaluationScoring.ts for why those disagree. Null until at
-  // least one evaluation is scored.
+  // the mean of each one's own percentage — see overallMarks in the
+  // backend's evaluationScoring.ts for why those disagree. All three null
+  // until at least one evaluation is scored.
+  overallObtained: number | null;
+  overallMaxMarks: number | null;
   overallPercentage: number | null;
 }
 
 export interface CohortEvaluationSummaryEvaluation {
   configId: string;
+  // The disambiguated admin-facing name — "Viva 1 · Product Development" —
+  // needed once sibling configs share a type + sequence. Too long for a
+  // table column header repeated per row; use shortName for that and keep
+  // this for a tooltip.
   name: string;
+  // Just "Viva 1" — what a column header should actually say.
+  shortName: string;
   maxMarks: number;
 }
 
@@ -690,6 +698,7 @@ export async function apiGetMentorsByTrack(cohortId: string): Promise<MentorsByT
 export interface MentorWorkload {
   mentorId: string;
   trackIds: string[];
+  batches: string[];
   teamCount: number;
   studentCount: number;
 }
