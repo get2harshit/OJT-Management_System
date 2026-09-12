@@ -9,6 +9,7 @@ import Select from '../../../components/Select';
 import Drawer from '../../../components/Drawer';
 import type { EvaluationBlueprintStatus, EvaluationBlueprintStudent, EvaluationBlueprintMeta } from '../../../lib/api/evaluations';
 import { apiGetEvaluationBlueprint } from '../../../lib/api/evaluations';
+import { AdminScoreCorrectionModal } from './AdminScoreCorrectionModal';
 import { apiGetCohort } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { exportToCSV } from '../../../lib/csvExport';
@@ -56,6 +57,7 @@ export default function EvaluationBlueprintPage() {
   const [allowedBatches, setAllowedBatches] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<EvaluationBlueprintMeta | null>(null);
+  const [correctingEvaluationId, setCorrectingEvaluationId] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<EvaluationBlueprintStatus | ''>('');
   const [batchFilter, setBatchFilter] = useState('');
@@ -290,6 +292,11 @@ export default function EvaluationBlueprintPage() {
              here is one page. This page's button fetches the whole filtered
              set first, so it stays. */
           hideExport
+          // Nothing to correct on a 'not_assigned' row — no evaluation
+          // exists yet to open.
+          onRowClick={(row) => {
+            if (row.evaluationId) setCorrectingEvaluationId(row.evaluationId);
+          }}
           leftHeaderContent={
             <>
               <Select
@@ -362,6 +369,14 @@ export default function EvaluationBlueprintPage() {
           })}
         </div>
       </Drawer>
+
+      {correctingEvaluationId && (
+        <AdminScoreCorrectionModal
+          evaluationId={correctingEvaluationId}
+          onClose={() => setCorrectingEvaluationId(null)}
+          onUpdated={fetchStudents}
+        />
+      )}
     </PageLayout>
   );
 }

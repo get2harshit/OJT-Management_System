@@ -1,21 +1,23 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Award, Plus, Download, Table2 } from 'lucide-react';
+import { Award, Plus, Download, Table2, Pencil, Trash2 } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import Select from '../../../components/Select';
 import Drawer from '../../../components/Drawer';
 import { AddEvaluationModal } from './AddEvaluationModal';
+import { EditEvaluationConfigModal } from './EditEvaluationConfigModal';
 import type { CohortDetails, CohortEvaluationConfig, EvaluationMode } from '../../../lib/types';
 import type { CohortEvaluationSummaryStudent, CohortEvaluationSummaryEvaluation } from '../../../lib/api/evaluations';
 import { apiGetCohortEvaluationSummary } from '../../../lib/api/evaluations';
-import { apiListCohortEvaluationConfigs } from '../../../lib/api/evaluations';
+import { apiListCohortEvaluationConfigs, apiDeleteCohortEvaluationConfig } from '../../../lib/api/evaluations';
 import { apiGetCohort } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { exportToCSV } from '../../../lib/csvExport';
 import { formatDateDisplay } from '../../../lib/utils';
 import { useToast } from '../../../toast';
+import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
 
 const PAGE_SIZE = 20;
@@ -37,7 +39,8 @@ const fmt = (v: number | null | undefined, max: number): string => (v != null ? 
 export default function CohortEvaluationSummaryPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
+  const confirm = useConfirm();
 
   // Fetched with the roster included so this same call also carries what the
   // configured-evaluations section below needs (isActive, allocationPublishedAt,
@@ -57,6 +60,7 @@ export default function CohortEvaluationSummaryPage() {
   const [configs, setConfigs] = useState<CohortEvaluationConfig[]>([]);
   const [loadingConfigs, setLoadingConfigs] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingConfig, setEditingConfig] = useState<CohortEvaluationConfig | null>(null);
 
   const [batchFilter, setBatchFilter] = useState('');
   // The search box belongs to DataTable now, so only the debounced value
@@ -217,6 +221,23 @@ export default function CohortEvaluationSummaryPage() {
     }
   };
 
+  const handleDeleteConfig = async (config: CohortEvaluationConfig) => {
+    const ok = await confirm({
+      title: 'Delete evaluation',
+      message: `Delete "${config.sequenceNo ? `${config.evaluationTypeTemplate.name} ${config.sequenceNo}` : config.evaluationTypeTemplate.name}"? Only possible while nothing under it has been scored yet — the server will say so if it can't.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await apiDeleteCohortEvaluationConfig(config.id);
+      showSuccess('Evaluation deleted.');
+      loadConfigs();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to delete evaluation');
+    }
+  };
+
   const configRows = configs.map((c) => ({
     id: c.id,
     evaluation: c.sequenceNo ? `${c.evaluationTypeTemplate.name} ${c.sequenceNo}` : c.evaluationTypeTemplate.name,
@@ -333,6 +354,38 @@ export default function CohortEvaluationSummaryPage() {
                       </span>
                     ),
                   },
+                  {
+                    key: 'actions',
+                    header: '',
+                    render: (row) => {
+                      const config = configs.find((c) => c.id === row.id);
+                      if (!config) return null;
+                      return (
+                        <div className="flex items-center gap-1 justify-end">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingConfig(config);
+                            }}
+                            title="Edit dates / panel size"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteConfig(config);
+                            }}
+                            title="Delete"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      );
+                    },
+                  },
                 ]}
                 data={configRows}
                 hideExport
@@ -428,6 +481,14 @@ export default function CohortEvaluationSummaryPage() {
             setShowAddModal(false);
             loadConfigs();
           }}
+        />
+      )}
+
+      {editingConfig && (
+        <EditEvaluationConfigModal
+          config={editingConfig}
+          onClose={() => setEditingConfig(null)}
+          onUpdated={loadConfigs}
         />
       )}
     </PageLayout>

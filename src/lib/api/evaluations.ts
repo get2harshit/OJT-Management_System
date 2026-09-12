@@ -502,6 +502,8 @@ export interface EvaluationBlueprintExternalPanelist {
 // own breakdown the same way.
 export interface EvaluationBlueprintStudent {
   studentId: string;
+  /** Null for a 'not_assigned' row — nothing to correct yet. */
+  evaluationId: string | null;
   fullName: string | null;
   rollNumber: string | null;
   batch: string | null;

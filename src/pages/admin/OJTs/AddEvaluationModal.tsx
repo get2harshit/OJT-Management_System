@@ -11,6 +11,8 @@ import {
   apiCreateCohortEvaluationConfig,
   apiSetMentorPairings,
   apiActivateCohortEvaluation,
+  apiGetMentorPanelLoad,
+  type MentorPanelLoad,
 } from '../../../lib/api/evaluations';
 import { apiGetCohortTrackConfig } from '../../../lib/api/tracks';
 import { useToast } from '../../../toast';
@@ -85,6 +87,11 @@ export function AddEvaluationModal({
   // not just one.
   const [pairings, setPairings] = useState<Record<string, string[]>>({});
 
+  // Existing committed load only — this config's own picks below aren't
+  // counted here since they don't exist as real panelist rows yet, which
+  // is exactly why the projection below adds them back in on top.
+  const [panelLoad, setPanelLoad] = useState<MentorPanelLoad[]>([]);
+
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -111,6 +118,41 @@ export function AddEvaluationModal({
       }
     })();
   }, [cohortId, showError]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setPanelLoad(await apiGetMentorPanelLoad(cohortId));
+      } catch (err: unknown) {
+        showError(err instanceof Error ? err.message : 'Failed to load mentor panel load');
+      }
+    })();
+  }, [cohortId, showError]);
+
+  // Existing load, plus what this form's own draft pairings would add —
+  // composed here rather than asked of the server, since these picks don't
+  // exist as real panelist rows until the config is actually created.
+  const projectedExternalCounts = (() => {
+    const counts = new Map<string, number>();
+    for (const externalIds of Object.values(pairings)) {
+      for (const id of externalIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return counts;
+  })();
+
+  const loadBadge = (mentorId: string) => {
+    const existing = panelLoad.find((l) => l.mentorId === mentorId);
+    const existingExternal = existing?.externalStudentCount ?? 0;
+    const existingInternal = existing?.internalStudentCount ?? 0;
+    const projected = projectedExternalCounts.get(mentorId) ?? 0;
+    if (existingExternal === 0 && existingInternal === 0 && projected === 0) return null;
+    const parts: string[] = [];
+    if (existingInternal > 0) parts.push(`${existingInternal} own`);
+    if (existingExternal + projected > 0) {
+      parts.push(`${existingExternal}${projected > 0 ? `+${projected}` : ''} ext`);
+    }
+    return parts.join(' · ');
+  };
 
   const selectedType = creatingNewType
     ? { id: '', name: newTypeName, mode: newTypeMode }
@@ -501,20 +543,26 @@ export function AddEvaluationModal({
                   </span>
                 </label>
                 <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {cohortMentors.map((mentor) => (
-                    <div key={mentor.id} className="flex items-center gap-2">
-                      <span className="text-xs text-gray-300 w-36 truncate shrink-0">{mentor.fullName || mentor.email}</span>
-                      <Select
-                        isMulti
-                        variant="filter"
-                        className="flex-1"
-                        value={pairings[mentor.id] || []}
-                        onChange={(v) => setPairings((prev) => ({ ...prev, [mentor.id]: v }))}
-                        placeholder="No external mentor"
-                        options={mentorOptions(mentor.id)}
-                      />
-                    </div>
-                  ))}
+                  {cohortMentors.map((mentor) => {
+                    const badge = loadBadge(mentor.id);
+                    return (
+                      <div key={mentor.id} className="flex items-center gap-2">
+                        <span className="text-xs text-gray-300 w-36 truncate shrink-0" title={mentor.fullName || mentor.email}>
+                          {mentor.fullName || mentor.email}
+                          {badge && <span className="block text-[10px] text-gray-500 normal-case">{badge}</span>}
+                        </span>
+                        <Select
+                          isMulti
+                          variant="filter"
+                          className="flex-1"
+                          value={pairings[mentor.id] || []}
+                          onChange={(v) => setPairings((prev) => ({ ...prev, [mentor.id]: v }))}
+                          placeholder="No external mentor"
+                          options={mentorOptions(mentor.id)}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
