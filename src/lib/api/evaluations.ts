@@ -170,6 +170,7 @@ export async function apiCreateCohortEvaluationConfig(data: {
   endDate: string;
   trackIds?: string[];
   batches?: string[];
+  externalEvaluatorCount?: number;
 }): Promise<CohortEvaluationConfig> {
   const res = await apiFetch<{ data: RawCohortEvaluationConfig }>('/api/v1/evaluations/cohort-configs', {
     method: 'POST',
@@ -182,6 +183,7 @@ export async function apiCreateCohortEvaluationConfig(data: {
       end_date: data.endDate,
       track_ids: data.trackIds,
       batches: data.batches,
+      external_evaluator_count: data.externalEvaluatorCount,
     }),
   });
   invalidateEvaluationCaches();

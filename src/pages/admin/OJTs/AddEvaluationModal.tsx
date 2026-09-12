@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ClipboardCheck, Plus, X } from 'lucide-react';
+import { ClipboardCheck, Plus, Minus, X } from 'lucide-react';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
+import { MentorPickerPanel } from './MentorPickerPanel';
 import type { ApiMentor, EvaluationTypeTemplate, RubricTemplate, EvaluationMode, CriterionScorer } from '../../../lib/types';
 import {
   apiListEvaluationTypes,
@@ -16,7 +17,6 @@ import {
   type MentorPanelLoad,
 } from '../../../lib/api/evaluations';
 import { apiGetCohortTrackConfig } from '../../../lib/api/tracks';
-import { getTrackColor } from '../../../lib/constants';
 import { useToast } from '../../../toast';
 
 interface CriterionDraft {
@@ -87,12 +87,17 @@ export function AddEvaluationModal({
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
 
   // How many externals this evaluation is declared to have, on top of the
-  // one fixed internal. Pairings below are what's actually created —
-  // this is what a mismatch gets checked against later.
-  const [externalEvaluatorCount, setExternalEvaluatorCount] = useState('1');
-  // One internal mentor -> up to externalEvaluatorCount externals now,
-  // not just one.
+  // one fixed internal — starts at 0 (no panel declared yet) and is a
+  // stepper, not free text, since it doubles as the column count for the
+  // pairings grid below: every +/- click adds or drops an "External N"
+  // column for every row at once.
+  const [externalEvaluatorCount, setExternalEvaluatorCount] = useState(0);
+  // One internal mentor -> up to externalEvaluatorCount externals, indexed
+  // by column position (pairings[mentorId][0] is that row's "External 1",
+  // etc.) — not just an unordered set, since each column is its own slot.
   const [pairings, setPairings] = useState<Record<string, string[]>>({});
+  // Which grid cell's picker drawer is currently open, if any.
+  const [pickerTarget, setPickerTarget] = useState<{ internalMentorId: string; columnIndex: number } | null>(null);
 
   // Existing committed load only — this config's own picks below aren't
   // counted here since they don't exist as real panelist rows yet, which
@@ -239,31 +244,13 @@ export function AddEvaluationModal({
 
   const trackNameBySlug = new Map(trackOptions.map((t) => [t.slug, t.name]));
 
-  // An external panelist is deliberately allowed to come from any track, not
-  // just the one(s) scoped above — so the admin needs the track(s) each
-  // candidate actually serves right in the picker to judge whether they're a
-  // sensible fit, not just a bare name.
-  const mentorOptions = (excludeId: string) =>
-    cohortMentors
-      .filter((m) => m.id !== excludeId)
-      .map((m) => {
-        const trackNames = (m.tracks ?? []).map((slug) => trackNameBySlug.get(slug) ?? slug);
-        return {
-          value: m.id,
-          label: m.fullName || m.email || m.id,
-          sublabel: trackNames.length > 0 ? trackNames.join(', ') : 'No track assigned',
-          sublabelDotClass: getTrackColor(m.tracks?.[0]).dot,
-        };
-      });
-
   // Which mentors get a pairing row: everyone when the scope is every track
   // (blank), otherwise only mentors who actually have an allocated student
   // in at least one selected track right now — an internal mentor with no
   // student in scope is never going to be this config's automatic internal
   // for anyone, so listing them here is just noise to scroll past. The
-  // external-mentor OPTIONS inside each row stay unfiltered (mentorOptions
-  // above) — an external panelist is deliberately allowed to come from
-  // outside the track.
+  // MentorPickerPanel's own candidate list stays unfiltered by track — an
+  // external panelist is deliberately allowed to come from outside it.
   const pairingRowMentors =
     selectedTrackIds.length === 0
       ? cohortMentors
@@ -317,6 +304,7 @@ export function AddEvaluationModal({
         endDate: new Date(endDate).toISOString(),
         trackIds: selectedTrackIds,
         batches: selectedBatches,
+        externalEvaluatorCount,
       });
 
       const pairingEntries = Object.entries(pairings).flatMap(([internalMentorId, externalIds]) =>
@@ -351,7 +339,7 @@ export function AddEvaluationModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-xl max-h-[85vh] overflow-y-auto bg-zinc-900 border border-zinc-750 rounded-2xl shadow-2xl p-6 mx-4 animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative w-[80vw] max-w-5xl h-[80vh] overflow-y-auto bg-zinc-900 border border-zinc-750 rounded-2xl shadow-2xl p-6 mx-4 animate-in fade-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between mb-4 border-b border-zinc-800 pb-3">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <ClipboardCheck size={20} className="text-gold" />
@@ -469,23 +457,46 @@ export function AddEvaluationModal({
                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                   External panelists
                 </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={externalEvaluatorCount}
-                  onChange={(e) => setExternalEvaluatorCount(e.target.value)}
-                  className="w-20 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
-                />
-                <span className="text-[11px] text-gray-500">per student, on top of their one fixed internal mentor</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExternalEvaluatorCount((c) => {
+                        const next = Math.max(0, c - 1);
+                        // Drop any pairing sitting in a column this just removed,
+                        // so no row keeps an "External N" pick with no column
+                        // left to show it in.
+                        setPairings((prev) => {
+                          const trimmed: Record<string, string[]> = {};
+                          for (const [mentorId, externals] of Object.entries(prev)) trimmed[mentorId] = externals.slice(0, next);
+                          return trimmed;
+                        });
+                        return next;
+                      })
+                    }
+                    disabled={externalEvaluatorCount === 0}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700 text-gray-300 hover:text-white hover:border-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <span className="w-8 text-center text-sm font-semibold text-white tabular-nums">{externalEvaluatorCount}</span>
+                  <button
+                    type="button"
+                    onClick={() => setExternalEvaluatorCount((c) => c + 1)}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 border border-zinc-700 text-gray-300 hover:text-white hover:border-zinc-600 transition-colors"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+                <span className="text-[11px] text-gray-500">
+                  per student, on top of their one fixed internal mentor — each + adds an "External N" column below
+                </span>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
                   Mentor Pairings{' '}
-                  <span className="normal-case text-gray-600">
-                    (internal mentor is automatic — pick up to {externalEvaluatorCount || '0'} external partner
-                    {externalEvaluatorCount === '1' ? '' : 's'} each, optional)
-                  </span>
+                  <span className="normal-case text-gray-600">(internal mentor is automatic, optional)</span>
                 </label>
                 {selectedTrackIds.length > 0 && pairingRowMentors.length === 0 && (
                   <p className="text-[11px] text-amber-400/80 mb-1.5">
@@ -494,31 +505,100 @@ export function AddEvaluationModal({
                     unless this is created without any pairings and recreated once allocation happens.
                   </p>
                 )}
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {pairingRowMentors.map((mentor) => {
-                    const badge = loadBadge(mentor.id);
-                    return (
-                      <div key={mentor.id} className="flex items-center gap-2">
-                        <span className="text-xs text-gray-300 w-36 truncate shrink-0" title={mentor.fullName || mentor.email}>
-                          {mentor.fullName || mentor.email}
-                          {badge && <span className="block text-[10px] text-gray-500 normal-case">{badge}</span>}
-                        </span>
-                        <Select
-                          isMulti
-                          className="flex-1"
-                          value={pairings[mentor.id] || []}
-                          onChange={(v) => setPairings((prev) => ({ ...prev, [mentor.id]: v }))}
-                          placeholder="No external mentor"
-                          options={mentorOptions(mentor.id)}
-                          menuMinWidth={280}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+                {externalEvaluatorCount === 0 ? (
+                  <p className="text-[11px] text-gray-500 py-2">
+                    External panelists is 0 — every in-scope student will be scored by their internal mentor alone.
+                    Click + above to add a column and start pairing.
+                  </p>
+                ) : (
+                  <div className="max-h-72 overflow-auto rounded-lg border border-zinc-800">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="sticky top-0 bg-zinc-850 z-10">
+                        <tr>
+                          <th className="px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-widest border-b border-zinc-800 w-40">
+                            Internal Mentor
+                          </th>
+                          {Array.from({ length: externalEvaluatorCount }).map((_, i) => (
+                            <th
+                              key={i}
+                              className="px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-widest border-b border-l border-zinc-800 min-w-[160px]"
+                            >
+                              External {i + 1}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pairingRowMentors.map((mentor) => {
+                          const badge = loadBadge(mentor.id);
+                          const externals = pairings[mentor.id] || [];
+                          return (
+                            <tr key={mentor.id} className="border-b border-zinc-800 last:border-0">
+                              <td className="px-3 py-2 align-top">
+                                <span className="text-xs text-gray-300 block truncate" title={mentor.fullName || mentor.email}>
+                                  {mentor.fullName || mentor.email}
+                                </span>
+                                {badge && <span className="block text-[10px] text-gray-500">{badge}</span>}
+                              </td>
+                              {Array.from({ length: externalEvaluatorCount }).map((_, colIndex) => {
+                                const filledId = externals[colIndex];
+                                const filled = filledId ? cohortMentors.find((m) => m.id === filledId) : undefined;
+                                return (
+                                  <td key={colIndex} className="px-2 py-1.5 align-top border-l border-zinc-800">
+                                    {filled ? (
+                                      <div className="flex items-center justify-between gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5">
+                                        <span className="text-xs text-white truncate">{filled.fullName || filled.email}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setPairings((prev) => {
+                                              const next = [...(prev[mentor.id] || [])];
+                                              next[colIndex] = '';
+                                              return { ...prev, [mentor.id]: next };
+                                            })
+                                          }
+                                          className="shrink-0 text-gray-500 hover:text-red-400"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => setPickerTarget({ internalMentorId: mentor.id, columnIndex: colIndex })}
+                                        className="w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg border border-dashed border-zinc-700 text-gray-500 hover:text-gold hover:border-gold/40 text-xs transition-colors"
+                                      >
+                                        <Plus size={12} /> Add
+                                      </button>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
+
+          <MentorPickerPanel
+            open={!!pickerTarget}
+            onClose={() => setPickerTarget(null)}
+            mentors={pickerTarget ? cohortMentors.filter((m) => m.id !== pickerTarget.internalMentorId) : []}
+            trackNameBySlug={trackNameBySlug}
+            onSelect={(mentorId) => {
+              if (!pickerTarget) return;
+              setPairings((prev) => {
+                const next = [...(prev[pickerTarget.internalMentorId] || [])];
+                next[pickerTarget.columnIndex] = mentorId;
+                return { ...prev, [pickerTarget.internalMentorId]: next };
+              });
+            }}
+          />
 
           {/* Step 3: what's being evaluated — the type and its rubric. */}
           {step === 3 && (
