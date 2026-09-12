@@ -262,12 +262,16 @@ export function AddEvaluationModal({
 
   const addCriterionRow = () => setCriteriaDrafts((prev) => [...prev, { name: '', maxMarks: '', scoredBy: 'panel' }]);
   // Shortcuts for the two artifact criteria every viva reaches for — a
-  // reviewed document (PRD, OJL logbook, ...) or attendance — pre-toggled to
-  // Internal Only since nobody but the student's own mentor ever saw either
-  // one. Document keeps the name blank (which document varies); Attendance
-  // never does, since it's always exactly that.
+  // reviewed document (PRD, OJL logbook, ...) or attendance. Attendance
+  // stays Primary Only: only the student's own mentor actually takes it, so
+  // nobody else has a basis to mark it. A document is different — any
+  // panelist can be handed read access to review it (see
+  // StudentSubmissionsPanel / the backend's isEvaluationPanelistForStudent
+  // grant), so it's Panel like Viva Performance, best-of across whoever
+  // scores it. Document keeps the name blank (which document varies);
+  // Attendance never does, since it's always exactly that.
   const addDocumentCriterionRow = () =>
-    setCriteriaDrafts((prev) => [...prev, { name: '', maxMarks: '', scoredBy: 'primary' }]);
+    setCriteriaDrafts((prev) => [...prev, { name: '', maxMarks: '', scoredBy: 'panel' }]);
   const addAttendanceCriterionRow = () =>
     setCriteriaDrafts((prev) => [...prev, { name: 'Attendance', maxMarks: '', scoredBy: 'primary' }]);
   const removeCriterionRow = (index: number) =>
@@ -1040,9 +1044,10 @@ export function AddEvaluationModal({
                         </button>
                       </div>
                       <p className="text-[11px] text-gray-500">
-                        Total: {criteriaDrafts.reduce((s, c) => s + (Number(c.maxMarks) || 0), 0)} marks · "Include Document
-                        marks" and "Include Attendance" add a primary-only criterion ready-toggled — nobody but this
-                        student's own mentor ever saw either one
+                        Total: {criteriaDrafts.reduce((s, c) => s + (Number(c.maxMarks) || 0), 0)} marks · "Include
+                        Attendance" adds a primary-only criterion — only this student's own mentor actually takes
+                        attendance. "Include Document marks" adds a Panel one instead — any panelist can review the
+                        student's submission and score it.
                       </p>
                     </div>
                   )}

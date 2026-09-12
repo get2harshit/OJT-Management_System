@@ -216,30 +216,28 @@ export default function MentorEvaluationTracker() {
               )}
             </div>
 
-            {/* Only a primary mentor ever has a "primary only" criterion
-                (PRD, logbook, attendance) to score, and they're the only one
-                with any reason to check what this student actually
-                submitted for it — a secondary panelist never saw it and
-                never scores it either. */}
-            {myCriteria.some((c) => c.scoredBy === 'primary') && (
-              <div>
-                <button
-                  onClick={() => setShowSubmissions((v) => !v)}
-                  className="w-full flex items-center justify-between gap-2 text-xs font-semibold text-gray-400 hover:text-white uppercase tracking-widest bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 transition-colors"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <FileSearch size={13} />
-                    {detail.studentName || 'Student'}'s Submissions
-                  </span>
-                  {showSubmissions ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                </button>
-                {showSubmissions && (
-                  <div className="mt-2">
-                    <StudentSubmissionsPanel studentId={detail.studentId} />
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Shown to every panelist, not just primary — a document
+                criterion is Panel now (any panelist can score it), and the
+                backend grants read access to this student's submissions to
+                whoever is actually seated on their evaluation panel,
+                primary or secondary (see isEvaluationPanelistForStudent). */}
+            <div>
+              <button
+                onClick={() => setShowSubmissions((v) => !v)}
+                className="w-full flex items-center justify-between gap-2 text-xs font-semibold text-gray-400 hover:text-white uppercase tracking-widest bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 transition-colors"
+              >
+                <span className="flex items-center gap-1.5">
+                  <FileSearch size={13} />
+                  {detail.studentName || 'Student'}'s Submissions
+                </span>
+                {showSubmissions ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+              {showSubmissions && (
+                <div className="mt-2">
+                  <StudentSubmissionsPanel studentId={detail.studentId} />
+                </div>
+              )}
+            </div>
 
             <div className="space-y-3">
               {myCriteria.map((c) => (

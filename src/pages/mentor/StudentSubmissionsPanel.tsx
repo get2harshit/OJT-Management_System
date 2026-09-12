@@ -4,13 +4,14 @@ import { apiGetSubmissionsByStudent, apiGetPrdDownloadUrl } from '../../lib/api'
 import { statusDotClass, submissionStatusLabel, fileNameFromGcsUri } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
 
-// Lets a primary mentor check a student's actual PRD/logbook/etc submissions
-// right from the viva scoring flow, instead of having to already remember
-// where those live in the Task module — no coupling to the evaluation's own
-// "primary only" criteria (there isn't one, deliberately: see
-// evaluationScoring's own notes), this just surfaces the same submissions
-// list apiGetSubmissionsByStudent already scopes to mentors who actually
-// have access to this student.
+// Lets any panelist (primary or secondary) check a student's actual
+// PRD/logbook/etc submissions right from the viva scoring flow, instead of
+// having to already remember where those live in the Task module — no
+// coupling to which criteria are Panel vs Primary Only here, this just
+// surfaces the same submissions list apiGetSubmissionsByStudent already
+// scopes server-side to whoever actually has access to this student
+// (their allocation mentors, or now, any evaluator seated on one of their
+// panels — see SubmissionService.getAllSubmissions).
 export default function StudentSubmissionsPanel({ studentId }: { studentId: string }) {
   const { showError } = useToast();
   const [loading, setLoading] = useState(true);
