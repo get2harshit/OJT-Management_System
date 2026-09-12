@@ -335,6 +335,7 @@ export function AddEvaluationModal({
                   onChange={setSelectedTrackIds}
                   placeholder="All tracks"
                   options={trackOptions.map((t) => ({ value: t.id, label: t.name }))}
+                  menuMinWidth={340}
                 />
               </div>
               <div>
@@ -434,7 +435,7 @@ export function AddEvaluationModal({
                               value={c.maxMarks}
                               onChange={(e) => updateCriterionRow(i, 'maxMarks', e.target.value)}
                               placeholder="Marks"
-                              className="w-16 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/40"
+                              className="w-20 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/40"
                             />
                             <button
                               type="button"

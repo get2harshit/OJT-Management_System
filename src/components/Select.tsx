@@ -30,6 +30,13 @@ interface SelectBaseProps {
    * a status select whose value should read green/red/amber rather than
    * the variant's plain text colour. Ignored while showing the placeholder. */
   tone?: string;
+  /** Floor for the open list's width, in pixels — the list still grows past
+   * a wide trigger, this only stops it shrinking to match a narrow one. For
+   * a trigger squeezed into a multi-column layout (e.g. two selects side by
+   * side) whose options carry long labels, matching the trigger's own width
+   * truncates every option to an unreadable stub; this lets the list stay
+   * legible without widening the trigger itself. */
+  menuMinWidth?: number;
 }
 
 // value/onChange are typed off isMulti rather than being one loose
@@ -62,7 +69,7 @@ const VARIANT_STYLES: Record<'field' | 'filter', string> = {
 // up with the OS's default highlight color instead of the app's theme).
 // This renders its own portal-based list instead, styled to match.
 export default function Select(props: SelectProps) {
-  const { options, placeholder, disabled, className = '', variant = 'field', isMulti = false, isSearchable = false, isCreatable = false, tone } = props;
+  const { options, placeholder, disabled, className = '', variant = 'field', isMulti = false, isSearchable = false, isCreatable = false, tone, menuMinWidth } = props;
   // The union is enforced at the call boundary above; inside, the body handles
   // both shapes and needs the widened form. One cast here replaces the one
   // every caller used to write.
@@ -78,7 +85,7 @@ export default function Select(props: SelectProps) {
   const position = useAnchoredPosition(
     triggerRef,
     open,
-    rect => ({ top: rect.bottom + 4, left: rect.left, width: rect.width }),
+    rect => ({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, menuMinWidth ?? 0) }),
     { top: 0, left: 0, width: 0 },
   );
 
