@@ -145,7 +145,7 @@ export function MentorPickerPanel({
                 <div className="shrink-0 flex items-center gap-1.5">
                   {usedCount > 0 && (
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-gold border border-gold/30 rounded px-1.5 py-0.5">
-                      Selected{usedCount > 1 ? ` ×${usedCount}` : ''}
+                      Selected ×{usedCount}
                     </span>
                   )}
                   {m.isExternal && (
