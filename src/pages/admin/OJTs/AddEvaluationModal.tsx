@@ -14,7 +14,9 @@ import {
   apiActivateCohortEvaluation,
   apiGetMentorPanelLoad,
   apiGetMentorsByTrack,
+  apiGetMentorWorkload,
   type MentorPanelLoad,
+  type MentorWorkload,
 } from '../../../lib/api/evaluations';
 import { apiGetCohortTrackConfig } from '../../../lib/api/tracks';
 import { useToast } from '../../../toast';
@@ -103,6 +105,10 @@ export function AddEvaluationModal({
   // counted here since they don't exist as real panelist rows yet, which
   // is exactly why the projection below adds them back in on top.
   const [panelLoad, setPanelLoad] = useState<MentorPanelLoad[]>([]);
+  // Each mentor's real current team/student load in this cohort — shown next
+  // to their row so an admin can see who's actually mentoring whom without
+  // leaving the modal.
+  const [mentorWorkload, setMentorWorkload] = useState<MentorWorkload[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -147,6 +153,16 @@ export function AddEvaluationModal({
     })();
   }, [cohortId, showError]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        setMentorWorkload(await apiGetMentorWorkload(cohortId));
+      } catch (err: unknown) {
+        showError(err instanceof Error ? err.message : 'Failed to load mentor workload');
+      }
+    })();
+  }, [cohortId, showError]);
+
   // Live-allocation based (which mentor actually has a student whose team is
   // in each track right now) — deliberately not the track-config staffing
   // roster, which would also list a mentor with nobody assigned to them yet.
@@ -171,6 +187,11 @@ export function AddEvaluationModal({
     }
     return counts;
   })();
+
+  // mentor_workload's trackIds are real track UUIDs (off ojt_teams.track_id),
+  // not the slug ApiMentor.tracks carries — a separate lookup from
+  // trackNameBySlug below, which is keyed by slug for that reason.
+  const workloadByMentorId = new Map(mentorWorkload.map((w) => [w.mentorId, w]));
 
   const loadBadge = (mentorId: string) => {
     const existing = panelLoad.find((l) => l.mentorId === mentorId);
@@ -243,6 +264,7 @@ export function AddEvaluationModal({
     );
 
   const trackNameBySlug = new Map(trackOptions.map((t) => [t.slug, t.name]));
+  const trackNameById = new Map(trackOptions.map((t) => [t.id, t.name]));
 
   // Which mentors get a pairing row: everyone when the scope is every track
   // (blank), otherwise only mentors who actually have an allocated student
@@ -505,82 +527,92 @@ export function AddEvaluationModal({
                     unless this is created without any pairings and recreated once allocation happens.
                   </p>
                 )}
-                {externalEvaluatorCount === 0 ? (
-                  <p className="text-[11px] text-gray-500 py-2">
+                {externalEvaluatorCount === 0 && (
+                  <p className="text-[11px] text-gray-500 mb-1.5">
                     External panelists is 0 — every in-scope student will be scored by their internal mentor alone.
                     Click + above to add a column and start pairing.
                   </p>
-                ) : (
-                  <div className="max-h-72 overflow-auto rounded-lg border border-zinc-800">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="sticky top-0 bg-zinc-850 z-10">
-                        <tr>
-                          <th className="px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-widest border-b border-zinc-800 w-40">
-                            Internal Mentor
+                )}
+                <div className="max-h-72 overflow-auto rounded-lg border border-zinc-800">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="sticky top-0 bg-zinc-850 z-10">
+                      <tr>
+                        <th className="px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-widest border-b border-zinc-800 w-56">
+                          Internal Mentor
+                        </th>
+                        {Array.from({ length: externalEvaluatorCount }).map((_, i) => (
+                          <th
+                            key={i}
+                            className="px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-widest border-b border-l border-zinc-800 min-w-[160px]"
+                          >
+                            External {i + 1}
                           </th>
-                          {Array.from({ length: externalEvaluatorCount }).map((_, i) => (
-                            <th
-                              key={i}
-                              className="px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-widest border-b border-l border-zinc-800 min-w-[160px]"
-                            >
-                              External {i + 1}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pairingRowMentors.map((mentor) => {
-                          const badge = loadBadge(mentor.id);
-                          const externals = pairings[mentor.id] || [];
-                          return (
-                            <tr key={mentor.id} className="border-b border-zinc-800 last:border-0">
-                              <td className="px-3 py-2 align-top">
-                                <span className="text-xs text-gray-300 block truncate" title={mentor.fullName || mentor.email}>
-                                  {mentor.fullName || mentor.email}
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pairingRowMentors.map((mentor) => {
+                        const badge = loadBadge(mentor.id);
+                        const externals = pairings[mentor.id] || [];
+                        const workload = workloadByMentorId.get(mentor.id);
+                        const workloadTrackNames = (workload?.trackIds ?? []).map((id) => trackNameById.get(id) ?? id);
+                        return (
+                          <tr key={mentor.id} className="border-b border-zinc-800 last:border-0">
+                            <td className="px-3 py-2 align-top">
+                              <span className="text-xs text-gray-300 block truncate" title={mentor.fullName || mentor.email}>
+                                {mentor.fullName || mentor.email}
+                              </span>
+                              {workload ? (
+                                <span className="block text-[10px] text-gray-500 truncate">
+                                  {workloadTrackNames.join(', ') || 'No track'} · {workload.teamCount} team
+                                  {workload.teamCount === 1 ? '' : 's'} · {workload.studentCount} student
+                                  {workload.studentCount === 1 ? '' : 's'}
                                 </span>
-                                {badge && <span className="block text-[10px] text-gray-500">{badge}</span>}
-                              </td>
-                              {Array.from({ length: externalEvaluatorCount }).map((_, colIndex) => {
-                                const filledId = externals[colIndex];
-                                const filled = filledId ? cohortMentors.find((m) => m.id === filledId) : undefined;
-                                return (
-                                  <td key={colIndex} className="px-2 py-1.5 align-top border-l border-zinc-800">
-                                    {filled ? (
-                                      <div className="flex items-center justify-between gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5">
-                                        <span className="text-xs text-white truncate">{filled.fullName || filled.email}</span>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setPairings((prev) => {
-                                              const next = [...(prev[mentor.id] || [])];
-                                              next[colIndex] = '';
-                                              return { ...prev, [mentor.id]: next };
-                                            })
-                                          }
-                                          className="shrink-0 text-gray-500 hover:text-red-400"
-                                        >
-                                          <X size={12} />
-                                        </button>
-                                      </div>
-                                    ) : (
+                              ) : (
+                                <span className="block text-[10px] text-gray-600">No students allocated yet</span>
+                              )}
+                              {badge && <span className="block text-[10px] text-gray-500">{badge}</span>}
+                            </td>
+                            {Array.from({ length: externalEvaluatorCount }).map((_, colIndex) => {
+                              const filledId = externals[colIndex];
+                              const filled = filledId ? cohortMentors.find((m) => m.id === filledId) : undefined;
+                              return (
+                                <td key={colIndex} className="px-2 py-1.5 align-top border-l border-zinc-800">
+                                  {filled ? (
+                                    <div className="flex items-center justify-between gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5">
+                                      <span className="text-xs text-white truncate">{filled.fullName || filled.email}</span>
                                       <button
                                         type="button"
-                                        onClick={() => setPickerTarget({ internalMentorId: mentor.id, columnIndex: colIndex })}
-                                        className="w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg border border-dashed border-zinc-700 text-gray-500 hover:text-gold hover:border-gold/40 text-xs transition-colors"
+                                        onClick={() =>
+                                          setPairings((prev) => {
+                                            const next = [...(prev[mentor.id] || [])];
+                                            next[colIndex] = '';
+                                            return { ...prev, [mentor.id]: next };
+                                          })
+                                        }
+                                        className="shrink-0 text-gray-500 hover:text-red-400"
                                       >
-                                        <Plus size={12} /> Add
+                                        <X size={12} />
                                       </button>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setPickerTarget({ internalMentorId: mentor.id, columnIndex: colIndex })}
+                                      className="w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg border border-dashed border-zinc-700 text-gray-500 hover:text-gold hover:border-gold/40 text-xs transition-colors"
+                                    >
+                                      <Plus size={12} /> Add
+                                    </button>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

@@ -656,6 +656,20 @@ export async function apiGetMentorsByTrack(cohortId: string): Promise<MentorsByT
   return res.data;
 }
 
+export interface MentorWorkload {
+  mentorId: string;
+  trackIds: string[];
+  teamCount: number;
+  studentCount: number;
+}
+
+// Each mentor's actual current team/student load in this cohort — not a
+// panel-load concept, just "who they're really mentoring right now."
+export async function apiGetMentorWorkload(cohortId: string): Promise<MentorWorkload[]> {
+  const res = await apiFetch<{ data: MentorWorkload[] }>(`/api/v1/evaluations/cohorts/${cohortId}/mentor-workload`);
+  return res.data;
+}
+
 // ── Student's own view (redacted — no marks, ever) ──────────────────────────
 
 interface RawStudentVisibleEvaluation {
