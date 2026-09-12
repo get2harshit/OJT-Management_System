@@ -96,6 +96,7 @@ const studentTabs = [
   { id: 'resources', label: 'Resources', icon: Share2 },
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   { id: 'assessments', label: 'My Feedback', icon: ClipboardList },
+  { id: 'evaluations', label: 'My Evaluations', icon: ClipboardCheck },
 ];
 
 export default function Sidebar({
