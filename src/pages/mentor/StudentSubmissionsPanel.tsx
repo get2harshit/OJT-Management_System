@@ -4,10 +4,10 @@ import { apiGetSubmissionsByStudent, apiGetPrdDownloadUrl } from '../../lib/api'
 import { statusDotClass, submissionStatusLabel, fileNameFromGcsUri } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
 
-// Lets an internal mentor check a student's actual PRD/logbook/etc submissions
+// Lets a primary mentor check a student's actual PRD/logbook/etc submissions
 // right from the viva scoring flow, instead of having to already remember
 // where those live in the Task module — no coupling to the evaluation's own
-// "internal only" criteria (there isn't one, deliberately: see
+// "primary only" criteria (there isn't one, deliberately: see
 // evaluationScoring's own notes), this just surfaces the same submissions
 // list apiGetSubmissionsByStudent already scopes to mentors who actually
 // have access to this student.

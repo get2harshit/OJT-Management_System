@@ -50,9 +50,9 @@ export function AdminScoreCorrectionModal({
 
   const selectedPanelist = detail?.panelists.find((p) => p.evaluatorId === selectedEvaluatorId) ?? null;
 
-  // Same split every scoring surface respects: internal scores every
-  // criterion, external only the ones every panelist scores.
-  const myCriteria = detail?.criteria.filter((c) => selectedPanelist?.role === 'internal' || c.scoredBy === 'panel') ?? [];
+  // Same split every scoring surface respects: primary scores every
+  // criterion, secondary only the ones every panelist scores.
+  const myCriteria = detail?.criteria.filter((c) => selectedPanelist?.role === 'primary' || c.scoredBy === 'panel') ?? [];
 
   // Re-seed the draft whenever the picked panelist changes, from THAT
   // panelist's own existing breakdown.
@@ -136,7 +136,7 @@ export function AdminScoreCorrectionModal({
                 onChange={setSelectedEvaluatorId}
                 options={detail.panelists.map((p) => ({
                   value: p.evaluatorId,
-                  label: `${p.evaluatorName || 'Unknown'} (${p.role === 'external' ? 'External' : 'Internal'})${
+                  label: `${p.evaluatorName || 'Unknown'} (${p.role === 'secondary' ? 'Secondary' : 'Primary'})${
                     p.totalMarks !== null ? ` — ${p.totalMarks}/${detail.maxMarksSnapshot}` : ' — not scored yet'
                   }`,
                 }))}
@@ -150,8 +150,8 @@ export function AdminScoreCorrectionModal({
                     <div key={c.id}>
                       <label className="block text-sm text-gray-400 mb-1">
                         {c.name} (0–{c.maxMarks})
-                        {c.scoredBy === 'internal' && (
-                          <span className="ml-1.5 text-[10px] text-gray-500 uppercase tracking-wide">Internal only</span>
+                        {c.scoredBy === 'primary' && (
+                          <span className="ml-1.5 text-[10px] text-gray-500 uppercase tracking-wide">Primary only</span>
                         )}
                       </label>
                       <input

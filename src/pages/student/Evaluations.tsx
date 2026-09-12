@@ -73,14 +73,14 @@ export default function StudentEvaluations() {
               <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-zinc-800">
                 <div className="flex items-center gap-2 text-sm">
                   <User size={14} className="text-gray-500 shrink-0" />
-                  <span className="text-gray-500">Internal:</span>
-                  <span className="text-gray-200">{evaluation.internalMentorName ?? 'Not assigned yet'}</span>
+                  <span className="text-gray-500">Primary:</span>
+                  <span className="text-gray-200">{evaluation.primaryMentorName ?? 'Not assigned yet'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Users size={14} className="text-gray-500 shrink-0" />
-                  <span className="text-gray-500">External:</span>
+                  <span className="text-gray-500">Secondary:</span>
                   <span className="text-gray-200">
-                    {evaluation.externalMentorNames.length > 0 ? evaluation.externalMentorNames.join(', ') : 'None'}
+                    {evaluation.secondaryMentorNames.length > 0 ? evaluation.secondaryMentorNames.join(', ') : 'None'}
                   </span>
                 </div>
               </div>
