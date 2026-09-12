@@ -290,10 +290,19 @@ export function AddEvaluationModal({
   // anything downstream makes sense — scope can stay blank (= everyone).
   const targetValid = !!startDate && !!endDate;
 
-  // Step 2 (Mentor + Panel): everything here is optional — a declared panel
-  // size with nobody paired yet is a legitimate, if incomplete, state to
-  // move on from.
-  const panelValid = true;
+  // Step 2 (Mentor + Panel): a panel size of 0 has nothing to fill in, so
+  // it's fine to move on with no pairings at all. Once it's above 0 though,
+  // every in-scope internal mentor's row must have EVERY external column
+  // filled — a half-paired panel would silently leave some students with
+  // no external evaluator once activated.
+  const incompletePairingRows =
+    externalEvaluatorCount === 0
+      ? []
+      : pairingRowMentors.filter((mentor) => {
+          const externals = pairings[mentor.id] || [];
+          return externals.length !== externalEvaluatorCount || externals.some((id) => !id);
+        });
+  const panelValid = incompletePairingRows.length === 0;
 
   // Step 3 (Rubric): type picked (or named, if new) and its rubric fully
   // specified. This is also what the final Create & Activate gates on.
@@ -526,7 +535,11 @@ export function AddEvaluationModal({
               <div>
                 <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
                   Mentor Pairings{' '}
-                  <span className="normal-case text-gray-600">(internal mentor is automatic, optional)</span>
+                  <span className="normal-case text-gray-600">
+                    {externalEvaluatorCount === 0
+                      ? '(internal mentor is automatic, optional)'
+                      : '(every external slot below is required)'}
+                  </span>
                 </label>
                 {selectedTrackIds.length > 0 && pairingRowMentors.length === 0 && (
                   <p className="text-[11px] text-amber-400/80 mb-1.5">
@@ -539,6 +552,13 @@ export function AddEvaluationModal({
                   <p className="text-[11px] text-gray-500 mb-1.5">
                     External panelists is 0 — every in-scope student will be scored by their internal mentor alone.
                     Click + above to add a column and start pairing.
+                  </p>
+                )}
+                {incompletePairingRows.length > 0 && (
+                  <p className="text-[11px] text-amber-400/80 mb-1.5">
+                    {incompletePairingRows.length} mentor{incompletePairingRows.length === 1 ? '' : 's'} still{' '}
+                    {incompletePairingRows.length === 1 ? 'has' : 'have'} an empty external slot — fill every "Add"
+                    below before continuing.
                   </p>
                 )}
                 <div className="max-h-72 overflow-auto rounded-lg border border-zinc-800">
