@@ -53,7 +53,7 @@ interface RawCohortEvaluationConfig {
   max_marks_snapshot: string | number;
   is_active: boolean;
   batches: string[];
-  external_evaluator_count: number;
+  secondary_evaluator_count: number;
   tracks: { track: { id: string; name: string } }[];
   evaluation_type_template: RawEvaluationTypeTemplate;
   rubric_template: RawRubricTemplate;
@@ -61,8 +61,8 @@ interface RawCohortEvaluationConfig {
 
 interface RawEvaluationMentorPairing {
   id: string;
-  internal_mentor_id: string;
-  external_mentor_id: string;
+  primary_mentor_id: string;
+  secondary_mentor_id: string;
 }
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ function mapCohortEvaluationConfig(raw: RawCohortEvaluationConfig): CohortEvalua
     endDate: raw.end_date,
     maxMarksSnapshot: Number(raw.max_marks_snapshot),
     isActive: raw.is_active,
-    externalEvaluatorCount: raw.external_evaluator_count,
+    secondaryEvaluatorCount: raw.secondary_evaluator_count,
     scope: {
       trackIds: (raw.tracks || []).map((t) => t.track.id),
       trackNames: (raw.tracks || []).map((t) => t.track.name),
@@ -113,7 +113,7 @@ function mapCohortEvaluationConfig(raw: RawCohortEvaluationConfig): CohortEvalua
 }
 
 function mapMentorPairing(raw: RawEvaluationMentorPairing): EvaluationMentorPairing {
-  return { id: raw.id, internalMentorId: raw.internal_mentor_id, externalMentorId: raw.external_mentor_id };
+  return { id: raw.id, primaryMentorId: raw.primary_mentor_id, secondaryMentorId: raw.secondary_mentor_id };
 }
 
 // ── Evaluation type templates ───────────────────────────────────────────────
@@ -170,7 +170,7 @@ export async function apiCreateCohortEvaluationConfig(data: {
   endDate: string;
   trackIds?: string[];
   batches?: string[];
-  externalEvaluatorCount?: number;
+  secondaryEvaluatorCount?: number;
 }): Promise<CohortEvaluationConfig> {
   const res = await apiFetch<{ data: RawCohortEvaluationConfig }>('/api/v1/evaluations/cohort-configs', {
     method: 'POST',
@@ -183,7 +183,7 @@ export async function apiCreateCohortEvaluationConfig(data: {
       end_date: data.endDate,
       track_ids: data.trackIds,
       batches: data.batches,
-      external_evaluator_count: data.externalEvaluatorCount,
+      secondary_evaluator_count: data.secondaryEvaluatorCount,
     }),
   });
   invalidateEvaluationCaches();
@@ -205,7 +205,7 @@ export async function apiUpdateCohortEvaluationConfig(
     endDate?: string;
     trackIds?: string[];
     batches?: string[];
-    externalEvaluatorCount?: number;
+    secondaryEvaluatorCount?: number;
     evaluationTypeTemplateId?: string;
     rubricTemplateId?: string;
   },
@@ -216,7 +216,7 @@ export async function apiUpdateCohortEvaluationConfig(
   if (data.endDate !== undefined) body.end_date = data.endDate;
   if (data.trackIds !== undefined) body.track_ids = data.trackIds;
   if (data.batches !== undefined) body.batches = data.batches;
-  if (data.externalEvaluatorCount !== undefined) body.external_evaluator_count = data.externalEvaluatorCount;
+  if (data.secondaryEvaluatorCount !== undefined) body.secondary_evaluator_count = data.secondaryEvaluatorCount;
   if (data.evaluationTypeTemplateId !== undefined) body.evaluation_type_template_id = data.evaluationTypeTemplateId;
   if (data.rubricTemplateId !== undefined) body.rubric_template_id = data.rubricTemplateId;
 
@@ -235,7 +235,7 @@ export async function apiDeleteCohortEvaluationConfig(configId: string): Promise
   invalidateEvaluationCaches();
 }
 
-// ── Mentor pairings (per internal mentor, per config) ───────────────────────
+// ── Mentor pairings (per primary mentor, per config) ────────────────────────
 
 export async function apiGetMentorPairings(configId: string): Promise<EvaluationMentorPairing[]> {
   const res = await apiFetch<{ data: RawEvaluationMentorPairing[] }>(
@@ -246,13 +246,44 @@ export async function apiGetMentorPairings(configId: string): Promise<Evaluation
 
 export async function apiSetMentorPairings(
   configId: string,
-  pairings: { internalMentorId: string; externalMentorId: string }[],
+  pairings: { primaryMentorId: string; secondaryMentorId: string }[],
 ): Promise<void> {
   await apiFetch(`/api/v1/evaluations/cohort-configs/${configId}/mentor-pairings`, {
     method: 'POST',
     body: JSON.stringify({ pairings }),
   });
   invalidateEvaluationCaches();
+}
+
+export interface ReassignSecondaryMentorResult {
+  reassignedCount: number;
+  keptScoredCount: number;
+  skippedConflictCount: number;
+}
+
+// Editing a pairing on a config that's already been activated — distinct
+// from apiSetMentorPairings above, which only ever adds fresh rows. A
+// student whose old secondary already scored keeps that exact panelist and
+// mark; only students still waiting move onto the new secondary, right
+// away, not just from the next activation on. See the backend's own
+// EvaluationService.reassignSecondaryMentor for the full rule.
+export async function apiReassignSecondaryMentor(
+  configId: string,
+  data: { primaryMentorId: string; oldSecondaryMentorId: string; newSecondaryMentorId: string },
+): Promise<ReassignSecondaryMentorResult> {
+  const res = await apiFetch<{ data: ReassignSecondaryMentorResult }>(
+    `/api/v1/evaluations/cohort-configs/${configId}/mentor-pairings/reassign`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        primary_mentor_id: data.primaryMentorId,
+        old_secondary_mentor_id: data.oldSecondaryMentorId,
+        new_secondary_mentor_id: data.newSecondaryMentorId,
+      }),
+    },
+  );
+  invalidateEvaluationCaches();
+  return res.data;
 }
 
 // ── Activation (bulk-assigns evaluations + panelists for the cohort) ───────
@@ -354,7 +385,7 @@ function mapEvaluatorQueueItem(raw: RawEvaluatorQueueItem): EvaluatorQueueItem {
     evaluationTypeName: raw.cohort_evaluation_config.evaluation_type_template.name,
     sequenceNo: raw.cohort_evaluation_config.sequence_no,
     maxMarksSnapshot: Number(raw.cohort_evaluation_config.max_marks_snapshot),
-    myRole: myPanelist?.role ?? 'internal',
+    myRole: myPanelist?.role ?? 'primary',
     myTotalMarks:
       myPanelist?.total_marks !== null && myPanelist?.total_marks !== undefined
         ? Number(myPanelist.total_marks)
@@ -452,9 +483,9 @@ export interface ScoreResult {
 
 // Submits (or re-submits) the caller's own panelist score — one entry per
 // rubric criterion name. Which criteria to send depends on the caller's own
-// role on this evaluation: internal sends every criterion, external sends
-// only the ones whose scoredBy is 'panel' (never an 'internal'-only one —
-// the server rejects it, since an external never saw the artifact).
+// role on this evaluation: primary sends every criterion, secondary sends
+// only the ones whose scoredBy is 'panel' (never a 'primary'-only one —
+// the server rejects it, since a secondary never saw the artifact).
 export async function apiScoreEvaluation(
   evaluationId: string,
   scoreBreakdown: Record<string, number>,
@@ -489,18 +520,18 @@ export async function apiAdminScoreEvaluation(
 
 export type EvaluationBlueprintStatus = 'not_assigned' | 'pending' | 'evaluated';
 
-/** One external panelist's own total and breakdown — a list now, not a
- * single value, since a config can declare more than one external. */
-export interface EvaluationBlueprintExternalPanelist {
+/** One secondary panelist's own total and breakdown — a list now, not a
+ * single value, since a config can declare more than one secondary. */
+export interface EvaluationBlueprintSecondaryPanelist {
   evaluatorId: string;
   evaluatorName: string | null;
   totalMarks: number | null;
   scoreBreakdown: Record<string, number> | null;
 }
 
-// One student's row for a single evaluation. internalScores is keyed by
+// One student's row for a single evaluation. primaryScores is keyed by
 // criterion NAME — the same names as meta.criteria — so the page can build
-// one column per criterion dynamically; each external panelist carries its
+// one column per criterion dynamically; each secondary panelist carries its
 // own breakdown the same way.
 export interface EvaluationBlueprintStudent {
   studentId: string;
@@ -515,10 +546,10 @@ export interface EvaluationBlueprintStudent {
   averageMarks: number | null;
   finalPercentage: number | null;
   averagePercentage: number | null;
-  internalMentorName: string | null;
-  internalTotal: number | null;
-  internalScores: Record<string, number> | null;
-  externalPanelists: EvaluationBlueprintExternalPanelist[];
+  primaryMentorName: string | null;
+  primaryTotal: number | null;
+  primaryScores: Record<string, number> | null;
+  secondaryPanelists: EvaluationBlueprintSecondaryPanelist[];
 }
 
 export interface EvaluationBlueprintMeta {
@@ -555,16 +586,16 @@ export async function apiGetEvaluationBlueprint(
 
 // ── Cohort-wide Evaluation Summary (all evaluations at once) ─────────────────
 
-export interface CohortEvaluationSummaryExternalPanelist {
+export interface CohortEvaluationSummarySecondaryPanelist {
   evaluatorId: string;
   totalMarks: number | null;
 }
 
 export interface CohortEvaluationSummaryMarks {
-  total: number | null;    // best of the panel's totals, plus the internal's own artifact-only marks
+  total: number | null;    // best of the panel's totals, plus the primary's own artifact-only marks
   average: number | null;  // same composition, panel part averaged instead of best-of
-  internal: number | null; // internal mentor's own total
-  externalPanelists: CohortEvaluationSummaryExternalPanelist[];
+  primary: number | null;  // primary mentor's own total
+  secondaryPanelists: CohortEvaluationSummarySecondaryPanelist[];
   totalPercentage: number | null;
   averagePercentage: number | null;
 }
@@ -618,19 +649,19 @@ export async function apiGetCohortEvaluationSummary(
 export interface MentorPanelLoad {
   mentorId: string;
   mentorName: string;
-  internalStudentCount: number;
-  internalTeamCount: number;
-  externalStudentCount: number;
-  externalTeamCount: number;
+  primaryStudentCount: number;
+  primaryTeamCount: number;
+  secondaryStudentCount: number;
+  secondaryTeamCount: number;
 }
 
 interface RawMentorPanelLoad {
   mentorId: string;
   mentorName: string;
-  internalStudentCount: number;
-  internalTeamCount: number;
-  externalStudentCount: number;
-  externalTeamCount: number;
+  primaryStudentCount: number;
+  primaryTeamCount: number;
+  secondaryStudentCount: number;
+  secondaryTeamCount: number;
 }
 
 // Existing committed load only — a config still being set up (not yet
@@ -677,8 +708,8 @@ interface RawStudentVisibleEvaluation {
   evaluationName: string;
   startDate: string;
   endDate: string;
-  internalMentorName: string | null;
-  externalMentorNames: string[];
+  primaryMentorName: string | null;
+  secondaryMentorNames: string[];
 }
 
 export async function apiGetMyEvaluationsRedacted(): Promise<StudentVisibleEvaluation[]> {

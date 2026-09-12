@@ -602,11 +602,11 @@ export interface DashboardMetrics {
 // `isEvaluationEligible` in EvaluationPanel.tsx.
 
 export type EvaluationMode = 'upload' | 'rubric';
-export type EvaluatorRole = 'internal' | 'external';
+export type EvaluatorRole = 'primary' | 'secondary';
 /** Who scores a criterion: every panelist ('panel'), or only the student's
- * own internal mentor ('internal') — for artifact criteria like a PRD or a
- * logbook that an external panelist never saw. */
-export type CriterionScorer = 'panel' | 'internal';
+ * own primary mentor ('primary') — for artifact criteria like a PRD or a
+ * logbook that a secondary panelist never saw. */
+export type CriterionScorer = 'panel' | 'primary';
 
 export interface EvaluationTypeTemplate {
   id: string;
@@ -647,9 +647,9 @@ export interface CohortEvaluationConfig {
   endDate: string;
   maxMarksSnapshot: number;
   isActive: boolean;
-  /** How many external panelists this config declares, on top of the one
-   * fixed internal mentor. */
-  externalEvaluatorCount: number;
+  /** How many secondary panelists this config declares, on top of the one
+   * fixed primary mentor. */
+  secondaryEvaluatorCount: number;
   scope: EvaluationScope;
   evaluationTypeTemplate: EvaluationTypeTemplate;
   rubricTemplate: RubricTemplate;
@@ -657,8 +657,8 @@ export interface CohortEvaluationConfig {
 
 export interface EvaluationMentorPairing {
   id: string;
-  internalMentorId: string;
-  externalMentorId: string;
+  primaryMentorId: string;
+  secondaryMentorId: string;
 }
 
 // One student's status for one evaluation event — the Evaluation Tracker's
@@ -722,14 +722,14 @@ export interface EvaluationDetail {
 
 // What a student is allowed to see of their own evaluation — no marks, no
 // feedback, no score_breakdown, not even the final number. Which viva it
-// is, its date window, and who their internal/external mentors are.
+// is, its date window, and who their primary/secondary mentors are.
 export interface StudentVisibleEvaluation {
   id: string;
   evaluationName: string;
   startDate: string;
   endDate: string;
-  internalMentorName: string | null;
-  externalMentorNames: string[];
+  primaryMentorName: string | null;
+  secondaryMentorNames: string[];
 }
 
 // ── Eligibility status (platform-access gate) ───────────────────────────────
