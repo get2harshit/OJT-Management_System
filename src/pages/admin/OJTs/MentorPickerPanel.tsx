@@ -16,6 +16,7 @@ export function MentorPickerPanel({
   internalMentorTrackNames,
   internalMentorTeamCount,
   internalMentorStudentCount,
+  selectedCounts,
   onSelect,
 }: {
   open: boolean;
@@ -28,6 +29,11 @@ export function MentorPickerPanel({
   internalMentorTrackNames?: string[];
   internalMentorTeamCount?: number;
   internalMentorStudentCount?: number;
+  // How many slots (across every row, in this form's own current draft)
+  // each mentor id is already sitting in — surfaced per-candidate so an
+  // admin can see at a glance who's already been picked elsewhere before
+  // picking them again.
+  selectedCounts?: Map<string, number>;
   onSelect: (mentorId: string) => void;
 }) {
   const [search, setSearch] = useState('');
@@ -122,6 +128,7 @@ export function MentorPickerPanel({
           {filtered.map((m) => {
             const trackNames = (m.tracks ?? []).map((slug) => trackNameBySlug.get(slug) ?? slug);
             const detail = [trackNames.join(', ') || null, m.organization || null].filter(Boolean).join(' · ');
+            const usedCount = selectedCounts?.get(m.id) ?? 0;
             return (
               <button
                 key={m.id}
@@ -135,11 +142,18 @@ export function MentorPickerPanel({
                   <p className="text-sm text-white truncate">{m.fullName || m.email}</p>
                   {detail && <p className="text-[11px] text-gray-500 truncate mt-0.5">{detail}</p>}
                 </div>
-                {m.isExternal && (
-                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-blue-400 border border-blue-400/30 rounded px-1.5 py-0.5">
-                    Industry
-                  </span>
-                )}
+                <div className="shrink-0 flex items-center gap-1.5">
+                  {usedCount > 0 && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-gold border border-gold/30 rounded px-1.5 py-0.5">
+                      Selected{usedCount > 1 ? ` ×${usedCount}` : ''}
+                    </span>
+                  )}
+                  {m.isExternal && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-400 border border-blue-400/30 rounded px-1.5 py-0.5">
+                      Industry
+                    </span>
+                  )}
+                </div>
               </button>
             );
           })}

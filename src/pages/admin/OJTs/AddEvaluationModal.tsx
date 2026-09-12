@@ -665,6 +665,7 @@ export function AddEvaluationModal({
             internalMentorTrackNames={pickerInternalMentorTrackNames}
             internalMentorTeamCount={pickerInternalMentorWorkload?.teamCount}
             internalMentorStudentCount={pickerInternalMentorWorkload?.studentCount}
+            selectedCounts={projectedExternalCounts}
             onSelect={(mentorId) => {
               if (!pickerTarget) return;
               setPairings((prev) => {
