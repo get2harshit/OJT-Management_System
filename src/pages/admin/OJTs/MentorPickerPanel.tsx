@@ -69,14 +69,13 @@ export function MentorPickerPanel({
                     {name}
                   </span>
                 ))}
-                {internalMentorTeamCount !== undefined && (
-                  <span className="text-[11px] text-gray-500">
-                    · {internalMentorTeamCount} team{internalMentorTeamCount === 1 ? '' : 's'}
-                  </span>
-                )}
-                {internalMentorStudentCount !== undefined && (
-                  <span className="text-[11px] text-gray-500">
-                    · {internalMentorStudentCount} student{internalMentorStudentCount === 1 ? '' : 's'}
+                {(internalMentorTeamCount !== undefined || internalMentorStudentCount !== undefined) && (
+                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-500/10 text-gray-400">
+                    {internalMentorTeamCount !== undefined &&
+                      `${internalMentorTeamCount} team${internalMentorTeamCount === 1 ? '' : 's'}`}
+                    {internalMentorTeamCount !== undefined && internalMentorStudentCount !== undefined && ' · '}
+                    {internalMentorStudentCount !== undefined &&
+                      `${internalMentorStudentCount} student${internalMentorStudentCount === 1 ? '' : 's'}`}
                   </span>
                 )}
               </p>

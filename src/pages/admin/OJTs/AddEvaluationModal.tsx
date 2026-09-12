@@ -582,7 +582,7 @@ export function AddEvaluationModal({
                                       </span>
                                     ))}
                                   </span>
-                                  <span className="block text-[10px] text-gray-500 mt-1">
+                                  <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-500/10 text-gray-400">
                                     {workload.teamCount} team{workload.teamCount === 1 ? '' : 's'} ·{' '}
                                     {workload.studentCount} student{workload.studentCount === 1 ? '' : 's'}
                                   </span>
