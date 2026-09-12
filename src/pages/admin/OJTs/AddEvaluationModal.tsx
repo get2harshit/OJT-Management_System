@@ -199,6 +199,10 @@ export function AddEvaluationModal({
     ? cohortMentors.find((m) => m.id === pickerTarget.internalMentorId)
     : undefined;
   const pickerInternalMentorName = pickerInternalMentor?.fullName || pickerInternalMentor?.email || '';
+  const pickerInternalMentorWorkload = pickerTarget ? workloadByMentorId.get(pickerTarget.internalMentorId) : undefined;
+  const pickerInternalMentorTrackNames = (pickerInternalMentorWorkload?.trackIds ?? []).map(
+    (id) => trackNameById.get(id) ?? id,
+  );
 
   // Existing panel-load badge — external commitments only (how loaded this
   // mentor already is as an EXTERNAL panelist elsewhere). Their own-student
@@ -633,6 +637,8 @@ export function AddEvaluationModal({
             mentors={pickerTarget ? cohortMentors.filter((m) => m.id !== pickerTarget.internalMentorId) : []}
             trackNameBySlug={trackNameBySlug}
             internalMentorName={pickerInternalMentorName}
+            internalMentorTrackNames={pickerInternalMentorTrackNames}
+            internalMentorTeamCount={pickerInternalMentorWorkload?.teamCount}
             onSelect={(mentorId) => {
               if (!pickerTarget) return;
               setPairings((prev) => {

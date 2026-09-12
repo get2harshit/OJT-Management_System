@@ -13,6 +13,8 @@ export function MentorPickerPanel({
   mentors,
   trackNameBySlug,
   internalMentorName,
+  internalMentorTrackNames,
+  internalMentorTeamCount,
   onSelect,
 }: {
   open: boolean;
@@ -22,6 +24,8 @@ export function MentorPickerPanel({
   // Whose slot this drawer is filling — shown up top so it's never
   // ambiguous which row's "Add" was clicked.
   internalMentorName?: string;
+  internalMentorTrackNames?: string[];
+  internalMentorTeamCount?: number;
   onSelect: (mentorId: string) => void;
 }) {
   const [search, setSearch] = useState('');
@@ -53,7 +57,24 @@ export function MentorPickerPanel({
             <h4 className="text-sm font-bold text-white truncate">
               Panel mentor of {internalMentorName || '—'}
             </h4>
-            <p className="text-[11px] text-gray-500 mt-0.5">Pick a mentor for this slot</p>
+            {internalMentorTrackNames && internalMentorTrackNames.length > 0 && (
+              <p className="flex flex-wrap items-center gap-1 mt-1">
+                {internalMentorTrackNames.map((name) => (
+                  <span
+                    key={name}
+                    className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-gold/10 text-gold border border-gold/30 truncate max-w-[160px]"
+                  >
+                    {name}
+                  </span>
+                ))}
+                {internalMentorTeamCount !== undefined && (
+                  <span className="text-[11px] text-gray-500">
+                    · {internalMentorTeamCount} team{internalMentorTeamCount === 1 ? '' : 's'}
+                  </span>
+                )}
+              </p>
+            )}
+            <p className="text-[11px] text-gray-500 mt-1">Pick a mentor for this slot</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-800 transition-colors shrink-0">
             <X size={16} />
