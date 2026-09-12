@@ -142,7 +142,7 @@ export async function apiListRubricTemplates(typeId: string): Promise<RubricTemp
 export async function apiCreateRubricTemplate(
   typeId: string,
   name: string,
-  criteria: { name: string; maxMarks: number }[],
+  criteria: { name: string; maxMarks: number; scoredBy?: CriterionScorer }[],
 ): Promise<RubricTemplate> {
   const res = await apiFetch<{ data: RawRubricTemplate }>(`/api/v1/evaluations/types/${typeId}/rubrics`, {
     method: 'POST',

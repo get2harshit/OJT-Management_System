@@ -235,7 +235,7 @@ export function AddEvaluationModal({
         const criteria =
           mode === 'upload'
             ? [{ name: (creatingNewType ? newTypeName : selectedType?.name || 'Score').trim(), maxMarks: Number(uploadMaxMarks) }]
-            : criteriaDrafts.map((c) => ({ name: c.name.trim(), maxMarks: Number(c.maxMarks) }));
+            : criteriaDrafts.map((c) => ({ name: c.name.trim(), maxMarks: Number(c.maxMarks), scoredBy: c.scoredBy }));
         const rubricName = mode === 'upload' ? `${criteria[0].name} (${criteria[0].maxMarks} marks)` : newRubricName.trim();
         const created = await apiCreateRubricTemplate(typeId, rubricName, criteria);
         rubricId = created.id;
