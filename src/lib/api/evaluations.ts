@@ -641,6 +641,19 @@ export async function apiGetMentorPanelLoad(cohortId: string): Promise<MentorPan
   return res.data;
 }
 
+export interface MentorsByTrack {
+  trackId: string;
+  mentorIds: string[];
+}
+
+// Live-allocation based, not the track-config staffing roster — a mentor
+// staffed for a track with nobody assigned yet won't appear here. See the
+// backend's own doc comment on why that distinction matters for this list.
+export async function apiGetMentorsByTrack(cohortId: string): Promise<MentorsByTrack[]> {
+  const res = await apiFetch<{ data: MentorsByTrack[] }>(`/api/v1/evaluations/cohorts/${cohortId}/mentors-by-track`);
+  return res.data;
+}
+
 // ── Student's own view (redacted — no marks, ever) ──────────────────────────
 
 interface RawStudentVisibleEvaluation {

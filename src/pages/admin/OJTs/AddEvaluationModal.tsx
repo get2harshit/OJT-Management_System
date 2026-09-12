@@ -12,6 +12,7 @@ import {
   apiSetMentorPairings,
   apiActivateCohortEvaluation,
   apiGetMentorPanelLoad,
+  apiGetMentorsByTrack,
   type MentorPanelLoad,
 } from '../../../lib/api/evaluations';
 import { apiGetCohortTrackConfig } from '../../../lib/api/tracks';
@@ -32,6 +33,11 @@ interface TrackOption {
   id: string;
   name: string;
 }
+
+// trackId -> ids of mentors who actually have a student allocated in that
+// track right now (see apiGetMentorsByTrack) — not who's merely staffed for
+// it, which would still list a mentor with nobody assigned to them yet.
+type TrackMentorIndex = Map<string, Set<string>>;
 
 // Wizard-in-a-modal for setting up a new evaluation on this cohort. Kept as a
 // single scrollable form with sections that reveal themselves as choices are
@@ -76,6 +82,7 @@ export function AddEvaluationModal({
   // config (deduped to one entry per track — evaluations scope by track,
   // not by the per-year variants that config can carry).
   const [trackOptions, setTrackOptions] = useState<TrackOption[]>([]);
+  const [trackMentorIndex, setTrackMentorIndex] = useState<TrackMentorIndex>(new Map());
   const [selectedTrackIds, setSelectedTrackIds] = useState<string[]>([]);
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
 
@@ -125,6 +132,20 @@ export function AddEvaluationModal({
         setPanelLoad(await apiGetMentorPanelLoad(cohortId));
       } catch (err: unknown) {
         showError(err instanceof Error ? err.message : 'Failed to load mentor panel load');
+      }
+    })();
+  }, [cohortId, showError]);
+
+  // Live-allocation based (which mentor actually has a student whose team is
+  // in each track right now) — deliberately not the track-config staffing
+  // roster, which would also list a mentor with nobody assigned to them yet.
+  useEffect(() => {
+    (async () => {
+      try {
+        const rows = await apiGetMentorsByTrack(cohortId);
+        setTrackMentorIndex(new Map(rows.map((r) => [r.trackId, new Set(r.mentorIds)])));
+      } catch (err: unknown) {
+        showError(err instanceof Error ? err.message : 'Failed to load which mentors have students in each track');
       }
     })();
   }, [cohortId, showError]);
@@ -205,6 +226,19 @@ export function AddEvaluationModal({
     cohortMentors
       .filter((m) => m.id !== excludeId)
       .map((m) => ({ value: m.id, label: m.fullName || m.email || m.id }));
+
+  // Which mentors get a pairing row: everyone when the scope is every track
+  // (blank), otherwise only mentors who actually have an allocated student
+  // in at least one selected track right now — an internal mentor with no
+  // student in scope is never going to be this config's automatic internal
+  // for anyone, so listing them here is just noise to scroll past. The
+  // external-mentor OPTIONS inside each row stay unfiltered (mentorOptions
+  // above) — an external panelist is deliberately allowed to come from
+  // outside the track.
+  const pairingRowMentors =
+    selectedTrackIds.length === 0
+      ? cohortMentors
+      : cohortMentors.filter((m) => selectedTrackIds.some((trackId) => trackMentorIndex.get(trackId)?.has(m.id)));
 
   const canSubmit =
     (creatingNewType ? newTypeName.trim().length > 0 : !!selectedTypeId) &&
@@ -543,8 +577,15 @@ export function AddEvaluationModal({
                     {externalEvaluatorCount === '1' ? '' : 's'} each, optional)
                   </span>
                 </label>
+                {selectedTrackIds.length > 0 && pairingRowMentors.length === 0 && (
+                  <p className="text-[11px] text-amber-400/80 mb-1.5">
+                    No mentor in this cohort has a student allocated in the selected track(s) yet, so there's nobody
+                    to pair an external partner with — every in-scope student will get their internal mentor alone
+                    unless this is created without any pairings and recreated once allocation happens.
+                  </p>
+                )}
                 <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {cohortMentors.map((mentor) => {
+                  {pairingRowMentors.map((mentor) => {
                     const badge = loadBadge(mentor.id);
                     return (
                       <div key={mentor.id} className="flex items-center gap-2">
