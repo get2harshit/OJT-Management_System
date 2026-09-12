@@ -223,6 +223,15 @@ export function AddEvaluationModal({
   };
 
   const addCriterionRow = () => setCriteriaDrafts((prev) => [...prev, { name: '', maxMarks: '', scoredBy: 'panel' }]);
+  // Shortcuts for the two artifact criteria every viva reaches for — a
+  // reviewed document (PRD, OJL logbook, ...) or attendance — pre-toggled to
+  // Internal Only since nobody but the student's own mentor ever saw either
+  // one. Document keeps the name blank (which document varies); Attendance
+  // never does, since it's always exactly that.
+  const addDocumentCriterionRow = () =>
+    setCriteriaDrafts((prev) => [...prev, { name: '', maxMarks: '', scoredBy: 'internal' }]);
+  const addAttendanceCriterionRow = () =>
+    setCriteriaDrafts((prev) => [...prev, { name: 'Attendance', maxMarks: '', scoredBy: 'internal' }]);
   const removeCriterionRow = (index: number) =>
     setCriteriaDrafts((prev) => prev.filter((_, i) => i !== index));
   const updateCriterionRow = (index: number, field: 'name' | 'maxMarks', value: string) =>
@@ -528,12 +537,21 @@ export function AddEvaluationModal({
                           </div>
                         ))}
                       </div>
-                      <button onClick={addCriterionRow} className="text-xs text-gold hover:text-gold-hover flex items-center gap-1">
-                        <Plus size={12} /> Add criterion
-                      </button>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button onClick={addCriterionRow} className="text-xs text-gold hover:text-gold-hover flex items-center gap-1">
+                          <Plus size={12} /> Add criterion
+                        </button>
+                        <button onClick={addDocumentCriterionRow} className="text-xs text-gold hover:text-gold-hover flex items-center gap-1">
+                          <Plus size={12} /> Include Document marks
+                        </button>
+                        <button onClick={addAttendanceCriterionRow} className="text-xs text-gold hover:text-gold-hover flex items-center gap-1">
+                          <Plus size={12} /> Include Attendance
+                        </button>
+                      </div>
                       <p className="text-[11px] text-gray-500">
-                        Total: {criteriaDrafts.reduce((s, c) => s + (Number(c.maxMarks) || 0), 0)} marks · click "Panel"/"Internal
-                        only" to mark an artifact criterion (PRD, logbook, attendance) only the internal mentor scores
+                        Total: {criteriaDrafts.reduce((s, c) => s + (Number(c.maxMarks) || 0), 0)} marks · "Include Document
+                        marks" and "Include Attendance" add an internal-only criterion ready-toggled — nobody but this
+                        student's own mentor ever saw either one
                       </p>
                     </div>
                   )}
