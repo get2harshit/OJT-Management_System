@@ -69,13 +69,13 @@ export default function CohortEvaluationSummaryPage() {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Optional columns are built from the cohort's evaluations: Total (best of
-  // panel, plus the internal's own artifact marks), Average (same
-  // composition, panel part averaged), Internal, and External(s) — a
-  // config can now declare more than one external, so that column joins
+  // panel, plus the primary's own artifact marks), Average (same
+  // composition, panel part averaged), Primary, and Secondary(s) — a
+  // config can now declare more than one secondary, so that column joins
   // each one's own total with a comma. Student Name/Batch/Track are always
   // shown outside this list.
-  const externalTotals = (s: CohortEvaluationSummaryStudent, id: string) => {
-    const panelists = s.marks[id]?.externalPanelists ?? [];
+  const secondaryTotals = (s: CohortEvaluationSummaryStudent, id: string) => {
+    const panelists = s.marks[id]?.secondaryPanelists ?? [];
     return panelists.length > 0 ? panelists.map(p => (p.totalMarks != null ? String(p.totalMarks) : '—')).join(', ') : '—';
   };
   const availableColumns = useMemo<OptionalColumn[]>(() => {
@@ -87,8 +87,8 @@ export default function CohortEvaluationSummaryPage() {
       const id = ev.configId;
       cols.push({ key: `${id}:total`, label: `${ev.name} · Total`, value: s => fmt(s.marks[id]?.total, ev.maxMarks) });
       cols.push({ key: `${id}:avg`, label: `${ev.name} · Average`, value: s => fmt(s.marks[id]?.average, ev.maxMarks) });
-      cols.push({ key: `${id}:int`, label: `${ev.name} · Internal`, value: s => fmt(s.marks[id]?.internal, ev.maxMarks) });
-      cols.push({ key: `${id}:ext`, label: `${ev.name} · External(s)`, value: s => externalTotals(s, id) });
+      cols.push({ key: `${id}:int`, label: `${ev.name} · Primary`, value: s => fmt(s.marks[id]?.primary, ev.maxMarks) });
+      cols.push({ key: `${id}:ext`, label: `${ev.name} · Secondary(s)`, value: s => secondaryTotals(s, id) });
     }
     return cols;
   }, [evaluations]);
@@ -487,6 +487,7 @@ export default function CohortEvaluationSummaryPage() {
       {editingConfig && (
         <EditEvaluationConfigModal
           config={editingConfig}
+          cohortMentors={cohort?.mentors || []}
           onClose={() => setEditingConfig(null)}
           onUpdated={loadConfigs}
         />
