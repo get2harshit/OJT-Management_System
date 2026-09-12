@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ClipboardCheck, Plus, X } from 'lucide-react';
 import Select from '../../../components/Select';
 import SpinnerSquare from '../../../components/SpinnerSquare';
-import type { ApiMentor, EvaluationTypeTemplate, RubricTemplate, EvaluationMode } from '../../../lib/types';
+import type { ApiMentor, EvaluationTypeTemplate, RubricTemplate, EvaluationMode, CriterionScorer } from '../../../lib/types';
 import {
   apiListEvaluationTypes,
   apiCreateEvaluationType,
@@ -12,6 +12,7 @@ import {
   apiSetMentorPairings,
   apiActivateCohortEvaluation,
 } from '../../../lib/api/evaluations';
+import { apiGetCohortTrackConfig } from '../../../lib/api/tracks';
 import { useToast } from '../../../toast';
 
 const MODE_OPTIONS: { value: EvaluationMode; label: string }[] = [
@@ -22,6 +23,12 @@ const MODE_OPTIONS: { value: EvaluationMode; label: string }[] = [
 interface CriterionDraft {
   name: string;
   maxMarks: string;
+  scoredBy: CriterionScorer;
+}
+
+interface TrackOption {
+  id: string;
+  name: string;
 }
 
 // Wizard-in-a-modal for setting up a new evaluation on this cohort. Kept as a
@@ -31,11 +38,13 @@ interface CriterionDraft {
 export function AddEvaluationModal({
   cohortId,
   cohortMentors,
+  allowedBatches,
   onClose,
   onCreated,
 }: {
   cohortId: string;
   cohortMentors: ApiMentor[];
+  allowedBatches: string[];
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -53,13 +62,28 @@ export function AddEvaluationModal({
   const [selectedRubricId, setSelectedRubricId] = useState('');
   const [creatingNewRubric, setCreatingNewRubric] = useState(false);
   const [newRubricName, setNewRubricName] = useState('');
-  const [criteriaDrafts, setCriteriaDrafts] = useState<CriterionDraft[]>([{ name: '', maxMarks: '' }]);
+  const [criteriaDrafts, setCriteriaDrafts] = useState<CriterionDraft[]>([{ name: '', maxMarks: '', scoredBy: 'panel' }]);
   const [uploadMaxMarks, setUploadMaxMarks] = useState('');
 
   const [sequenceNo, setSequenceNo] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [pairings, setPairings] = useState<Record<string, string>>({});
+
+  // Scope: empty = every track / every batch, same as a config has always
+  // meant before this. Track options come from this cohort's own track
+  // config (deduped to one entry per track — evaluations scope by track,
+  // not by the per-year variants that config can carry).
+  const [trackOptions, setTrackOptions] = useState<TrackOption[]>([]);
+  const [selectedTrackIds, setSelectedTrackIds] = useState<string[]>([]);
+  const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
+
+  // How many externals this evaluation is declared to have, on top of the
+  // one fixed internal. Pairings below are what's actually created —
+  // this is what a mismatch gets checked against later.
+  const [externalEvaluatorCount, setExternalEvaluatorCount] = useState('1');
+  // One internal mentor -> up to externalEvaluatorCount externals now,
+  // not just one.
+  const [pairings, setPairings] = useState<Record<string, string[]>>({});
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -74,6 +98,19 @@ export function AddEvaluationModal({
       }
     })();
   }, [showError]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const configs = await apiGetCohortTrackConfig(cohortId);
+        const byId = new Map<string, TrackOption>();
+        for (const c of configs) byId.set(c.trackId, { id: c.trackId, name: c.trackName });
+        setTrackOptions(Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name)));
+      } catch (err: unknown) {
+        showError(err instanceof Error ? err.message : 'Failed to load tracks');
+      }
+    })();
+  }, [cohortId, showError]);
 
   const selectedType = creatingNewType
     ? { id: '', name: newTypeName, mode: newTypeMode }
@@ -104,15 +141,23 @@ export function AddEvaluationModal({
     }
     setCreatingNewType(false);
     setSelectedTypeId(id);
-    const type = types.find((t) => t.id === id);
-    if (type?.mode === 'rubric') loadRubrics(id);
+    // Rubrics carry their own scoredBy tags, so they're always worth
+    // loading now — even for an upload-mode type, whose existing rubrics
+    // used to be permanently unreachable here (the picker only ever
+    // fetched for 'rubric' mode, so every upload-mode evaluation forced a
+    // brand new duplicate rubric).
+    loadRubrics(id);
   };
 
-  const addCriterionRow = () => setCriteriaDrafts((prev) => [...prev, { name: '', maxMarks: '' }]);
+  const addCriterionRow = () => setCriteriaDrafts((prev) => [...prev, { name: '', maxMarks: '', scoredBy: 'panel' }]);
   const removeCriterionRow = (index: number) =>
     setCriteriaDrafts((prev) => prev.filter((_, i) => i !== index));
-  const updateCriterionRow = (index: number, field: keyof CriterionDraft, value: string) =>
+  const updateCriterionRow = (index: number, field: 'name' | 'maxMarks', value: string) =>
     setCriteriaDrafts((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
+  const toggleCriterionScorer = (index: number) =>
+    setCriteriaDrafts((prev) =>
+      prev.map((c, i) => (i === index ? { ...c, scoredBy: c.scoredBy === 'panel' ? 'internal' : 'panel' } : c)),
+    );
 
   const mentorOptions = (excludeId: string) =>
     cohortMentors
@@ -161,19 +206,28 @@ export function AddEvaluationModal({
         sequenceNo: sequenceNo ? Number(sequenceNo) : null,
         startDate: new Date(startDate).toISOString(),
         endDate: new Date(endDate).toISOString(),
+        trackIds: selectedTrackIds,
+        batches: selectedBatches,
       });
 
       if (mode === 'rubric') {
-        const pairingEntries = Object.entries(pairings)
-          .filter(([, externalId]) => !!externalId)
-          .map(([internalMentorId, externalMentorId]) => ({ internalMentorId, externalMentorId }));
+        const pairingEntries = Object.entries(pairings).flatMap(([internalMentorId, externalIds]) =>
+          externalIds.filter(Boolean).map((externalMentorId) => ({ internalMentorId, externalMentorId })),
+        );
         if (pairingEntries.length > 0) {
           await apiSetMentorPairings(config.id, pairingEntries);
         }
       }
 
-      const { newlyAssignedCount } = await apiActivateCohortEvaluation(config.id);
-      showSuccess(`Evaluation activated — assigned to ${newlyAssignedCount} student(s).`);
+      const result = await apiActivateCohortEvaluation(config.id);
+      const skippedTotal =
+        result.skipped.alreadyAssigned + result.skipped.noMentor + result.skipped.noPublishedTeam + result.skipped.outOfScope;
+      showSuccess(
+        `Evaluation activated — assigned to ${result.newlyAssignedCount} student(s)` +
+          (result.repairedCount > 0 ? `, repaired ${result.repairedCount}` : '') +
+          (skippedTotal > 0 ? `, skipped ${skippedTotal} (not in scope, already assigned, or not ready)` : '') +
+          '.',
+      );
       onCreated();
       onClose();
     } catch (err: unknown) {
@@ -224,6 +278,37 @@ export function AddEvaluationModal({
               </div>
             )}
           </div>
+
+          {/* Audience: which tracks, which batches. Empty = everyone, same
+              as every evaluation meant before scoping existed. */}
+          {selectedType && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+                  Tracks <span className="normal-case text-gray-600">(blank = every track)</span>
+                </label>
+                <Select
+                  isMulti
+                  value={selectedTrackIds}
+                  onChange={setSelectedTrackIds}
+                  placeholder="All tracks"
+                  options={trackOptions.map((t) => ({ value: t.id, label: t.name }))}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+                  Batches <span className="normal-case text-gray-600">(blank = every batch)</span>
+                </label>
+                <Select
+                  isMulti
+                  value={selectedBatches}
+                  onChange={setSelectedBatches}
+                  placeholder="All batches"
+                  options={[...allowedBatches].sort().map((b) => ({ value: b, label: b }))}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Rubric (or upload max-marks) */}
           {selectedType && (
@@ -307,8 +392,20 @@ export function AddEvaluationModal({
                               value={c.maxMarks}
                               onChange={(e) => updateCriterionRow(i, 'maxMarks', e.target.value)}
                               placeholder="Marks"
-                              className="w-20 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/40"
+                              className="w-16 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/40"
                             />
+                            <button
+                              type="button"
+                              onClick={() => toggleCriterionScorer(i)}
+                              title="Who scores this — every panelist, or only the student's own mentor (for an artifact like a PRD or logbook nobody else saw)"
+                              className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide px-2 py-1.5 rounded-lg border transition-colors ${
+                                c.scoredBy === 'internal'
+                                  ? 'bg-gold/10 border-gold/40 text-gold'
+                                  : 'bg-zinc-800 border-zinc-700 text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              {c.scoredBy === 'internal' ? 'Internal only' : 'Panel'}
+                            </button>
                             {criteriaDrafts.length > 1 && (
                               <button onClick={() => removeCriterionRow(i)} className="text-gray-500 hover:text-red-400">
                                 <X size={14} />
@@ -321,7 +418,8 @@ export function AddEvaluationModal({
                         <Plus size={12} /> Add criterion
                       </button>
                       <p className="text-[11px] text-gray-500">
-                        Total: {criteriaDrafts.reduce((s, c) => s + (Number(c.maxMarks) || 0), 0)} marks
+                        Total: {criteriaDrafts.reduce((s, c) => s + (Number(c.maxMarks) || 0), 0)} marks · click "Panel"/"Internal
+                        only" to mark an artifact criterion (PRD, logbook, attendance) only the internal mentor scores
                       </p>
                     </div>
                   )}
@@ -377,26 +475,47 @@ export function AddEvaluationModal({
             </div>
           )}
 
-          {/* Mentor pairings — only for rubric-mode types */}
+          {/* Panel size + mentor pairings — only for rubric-mode types */}
           {selectedType?.mode === 'rubric' && (
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
-                Mentor Pairings <span className="normal-case text-gray-600">(internal mentor is automatic — pick their external partner, optional)</span>
-              </label>
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {cohortMentors.map((mentor) => (
-                  <div key={mentor.id} className="flex items-center gap-2">
-                    <span className="text-xs text-gray-300 w-36 truncate shrink-0">{mentor.fullName || mentor.email}</span>
-                    <Select
-                      variant="filter"
-                      className="flex-1"
-                      value={pairings[mentor.id] || ''}
-                      onChange={(v) => setPairings((prev) => ({ ...prev, [mentor.id]: v }))}
-                      placeholder="No external mentor"
-                      options={mentorOptions(mentor.id)}
-                    />
-                  </div>
-                ))}
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-widest whitespace-nowrap">
+                  External panelists
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={externalEvaluatorCount}
+                  onChange={(e) => setExternalEvaluatorCount(e.target.value)}
+                  className="w-20 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
+                />
+                <span className="text-[11px] text-gray-500">per student, on top of their one fixed internal mentor</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+                  Mentor Pairings{' '}
+                  <span className="normal-case text-gray-600">
+                    (internal mentor is automatic — pick up to {externalEvaluatorCount || '0'} external partner
+                    {externalEvaluatorCount === '1' ? '' : 's'} each, optional)
+                  </span>
+                </label>
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {cohortMentors.map((mentor) => (
+                    <div key={mentor.id} className="flex items-center gap-2">
+                      <span className="text-xs text-gray-300 w-36 truncate shrink-0">{mentor.fullName || mentor.email}</span>
+                      <Select
+                        isMulti
+                        variant="filter"
+                        className="flex-1"
+                        value={pairings[mentor.id] || []}
+                        onChange={(v) => setPairings((prev) => ({ ...prev, [mentor.id]: v }))}
+                        placeholder="No external mentor"
+                        options={mentorOptions(mentor.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -421,4 +540,3 @@ export function AddEvaluationModal({
     </div>
   );
 }
-

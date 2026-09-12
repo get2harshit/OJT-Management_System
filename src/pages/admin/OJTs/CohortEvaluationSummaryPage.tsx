@@ -422,6 +422,7 @@ export default function CohortEvaluationSummaryPage() {
         <AddEvaluationModal
           cohortId={cohortId}
           cohortMentors={cohort?.mentors || []}
+          allowedBatches={allowedBatches}
           onClose={() => setShowAddModal(false)}
           onCreated={() => {
             setShowAddModal(false);
