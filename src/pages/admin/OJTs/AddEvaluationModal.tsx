@@ -16,6 +16,7 @@ import {
   type MentorPanelLoad,
 } from '../../../lib/api/evaluations';
 import { apiGetCohortTrackConfig } from '../../../lib/api/tracks';
+import { getTrackColor } from '../../../lib/constants';
 import { useToast } from '../../../toast';
 
 const MODE_OPTIONS: { value: EvaluationMode; label: string }[] = [
@@ -32,6 +33,7 @@ interface CriterionDraft {
 interface TrackOption {
   id: string;
   name: string;
+  slug: string;
 }
 
 // trackId -> ids of mentors who actually have a student allocated in that
@@ -118,7 +120,7 @@ export function AddEvaluationModal({
       try {
         const configs = await apiGetCohortTrackConfig(cohortId);
         const byId = new Map<string, TrackOption>();
-        for (const c of configs) byId.set(c.trackId, { id: c.trackId, name: c.trackName });
+        for (const c of configs) byId.set(c.trackId, { id: c.trackId, name: c.trackName, slug: c.trackSlug });
         setTrackOptions(Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name)));
       } catch (err: unknown) {
         showError(err instanceof Error ? err.message : 'Failed to load tracks');
@@ -222,10 +224,24 @@ export function AddEvaluationModal({
       prev.map((c, i) => (i === index ? { ...c, scoredBy: c.scoredBy === 'panel' ? 'internal' : 'panel' } : c)),
     );
 
+  const trackNameBySlug = new Map(trackOptions.map((t) => [t.slug, t.name]));
+
+  // An external panelist is deliberately allowed to come from any track, not
+  // just the one(s) scoped above — so the admin needs the track(s) each
+  // candidate actually serves right in the picker to judge whether they're a
+  // sensible fit, not just a bare name.
   const mentorOptions = (excludeId: string) =>
     cohortMentors
       .filter((m) => m.id !== excludeId)
-      .map((m) => ({ value: m.id, label: m.fullName || m.email || m.id }));
+      .map((m) => {
+        const trackNames = (m.tracks ?? []).map((slug) => trackNameBySlug.get(slug) ?? slug);
+        return {
+          value: m.id,
+          label: m.fullName || m.email || m.id,
+          sublabel: trackNames.length > 0 ? trackNames.join(', ') : 'No track assigned',
+          sublabelDotClass: getTrackColor(m.tracks?.[0]).dot,
+        };
+      });
 
   // Which mentors get a pairing row: everyone when the scope is every track
   // (blank), otherwise only mentors who actually have an allocated student
@@ -595,12 +611,12 @@ export function AddEvaluationModal({
                         </span>
                         <Select
                           isMulti
-                          variant="filter"
                           className="flex-1"
                           value={pairings[mentor.id] || []}
                           onChange={(v) => setPairings((prev) => ({ ...prev, [mentor.id]: v }))}
                           placeholder="No external mentor"
                           options={mentorOptions(mentor.id)}
+                          menuMinWidth={280}
                         />
                       </div>
                     );
