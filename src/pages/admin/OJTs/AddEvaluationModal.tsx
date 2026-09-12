@@ -19,11 +19,6 @@ import { apiGetCohortTrackConfig } from '../../../lib/api/tracks';
 import { getTrackColor } from '../../../lib/constants';
 import { useToast } from '../../../toast';
 
-const MODE_OPTIONS: { value: EvaluationMode; label: string }[] = [
-  { value: 'upload', label: 'Upload (internal mentor only — e.g. Logbook, PRD, Attendance)' },
-  { value: 'rubric', label: 'Rubric (internal + external panel — e.g. Viva, Final Presentation)' },
-];
-
 interface CriterionDraft {
   name: string;
   maxMarks: string;
@@ -42,11 +37,14 @@ interface TrackOption {
 type TrackMentorIndex = Map<string, Set<string>>;
 
 // Wizard-in-a-modal for setting up a new evaluation on this cohort, as three
-// steps — what's being evaluated (type + rubric), who it's for (scope +
-// window), who's judging it (panel size + pairings) — rather than one long
-// scroll mixing all three together. Upload-mode types skip the third step
-// entirely: there's no panel to assemble when only the internal mentor ever
-// scores it.
+// steps — who it's for (scope + window), who's judging it (panel size +
+// pairings), what's being evaluated (type + rubric) — rather than one long
+// scroll mixing all three together. Panel deliberately comes before rubric:
+// an admin deciding which criteria are Panel vs Internal Only should already
+// know whether a real external panel exists for this scope, not guess at it
+// in the abstract. Every evaluation this modal creates is rubric-mode — a
+// panel of at least the internal mentor, scoring named criteria — there is
+// no separate "just one document, no panel" mode to choose between.
 export function AddEvaluationModal({
   cohortId,
   cohortMentors,
@@ -67,7 +65,6 @@ export function AddEvaluationModal({
   const [selectedTypeId, setSelectedTypeId] = useState('');
   const [creatingNewType, setCreatingNewType] = useState(false);
   const [newTypeName, setNewTypeName] = useState('');
-  const [newTypeMode, setNewTypeMode] = useState<EvaluationMode>('rubric');
 
   const [rubrics, setRubrics] = useState<RubricTemplate[]>([]);
   const [loadingRubrics, setLoadingRubrics] = useState(false);
@@ -75,7 +72,6 @@ export function AddEvaluationModal({
   const [creatingNewRubric, setCreatingNewRubric] = useState(false);
   const [newRubricName, setNewRubricName] = useState('');
   const [criteriaDrafts, setCriteriaDrafts] = useState<CriterionDraft[]>([{ name: '', maxMarks: '', scoredBy: 'panel' }]);
-  const [uploadMaxMarks, setUploadMaxMarks] = useState('');
 
   const [sequenceNo, setSequenceNo] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -186,7 +182,7 @@ export function AddEvaluationModal({
   };
 
   const selectedType = creatingNewType
-    ? { id: '', name: newTypeName, mode: newTypeMode }
+    ? { id: '', name: newTypeName, mode: 'rubric' as EvaluationMode }
     : types.find((t) => t.id === selectedTypeId);
 
   const loadRubrics = useCallback(async (typeId: string) => {
@@ -273,45 +269,42 @@ export function AddEvaluationModal({
       ? cohortMentors
       : cohortMentors.filter((m) => selectedTrackIds.some((trackId) => trackMentorIndex.get(trackId)?.has(m.id)));
 
-  // Step 1: type picked (or named, if new) and its rubric fully specified —
-  // this is the step "Next" gates on before Target is even reachable.
-  const step1Valid =
+  // Step 1 (Target): a window is the one thing every evaluation needs before
+  // anything downstream makes sense — scope can stay blank (= everyone).
+  const targetValid = !!startDate && !!endDate;
+
+  // Step 2 (Mentor + Panel): everything here is optional — a declared panel
+  // size with nobody paired yet is a legitimate, if incomplete, state to
+  // move on from.
+  const panelValid = true;
+
+  // Step 3 (Rubric): type picked (or named, if new) and its rubric fully
+  // specified. This is also what the final Create & Activate gates on.
+  const rubricValid =
     (creatingNewType ? newTypeName.trim().length > 0 : !!selectedTypeId) &&
-    (selectedType?.mode === 'upload'
-      ? creatingNewRubric
-        ? Number(uploadMaxMarks) > 0
-        : !!selectedRubricId
-      : creatingNewRubric
-        ? newRubricName.trim().length > 0 && criteriaDrafts.every((c) => c.name.trim() && Number(c.maxMarks) > 0)
-        : !!selectedRubricId);
+    (creatingNewRubric
+      ? newRubricName.trim().length > 0 && criteriaDrafts.every((c) => c.name.trim() && Number(c.maxMarks) > 0)
+      : !!selectedRubricId);
 
-  const step2Valid = !!startDate && !!endDate;
+  const totalSteps = 3;
+  const stepTitles = ['Target', 'Mentor + Panel', 'Rubric'];
 
-  const totalSteps = selectedType?.mode === 'upload' ? 2 : 3;
-  const stepTitles = totalSteps === 2 ? ['Rubric Config', 'Target'] : ['Rubric Config', 'Target', 'Mentor + Panel'];
-
-  const canSubmit = step1Valid && step2Valid;
+  const canSubmit = targetValid && panelValid && rubricValid;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
     try {
       let typeId = selectedTypeId;
-      let mode: EvaluationMode = selectedType?.mode || 'rubric';
       if (creatingNewType) {
-        const created = await apiCreateEvaluationType(newTypeName.trim(), newTypeMode);
+        const created = await apiCreateEvaluationType(newTypeName.trim(), 'rubric');
         typeId = created.id;
-        mode = created.mode;
       }
 
       let rubricId = selectedRubricId;
       if (creatingNewRubric) {
-        const criteria =
-          mode === 'upload'
-            ? [{ name: (creatingNewType ? newTypeName : selectedType?.name || 'Score').trim(), maxMarks: Number(uploadMaxMarks) }]
-            : criteriaDrafts.map((c) => ({ name: c.name.trim(), maxMarks: Number(c.maxMarks), scoredBy: c.scoredBy }));
-        const rubricName = mode === 'upload' ? `${criteria[0].name} (${criteria[0].maxMarks} marks)` : newRubricName.trim();
-        const created = await apiCreateRubricTemplate(typeId, rubricName, criteria);
+        const criteria = criteriaDrafts.map((c) => ({ name: c.name.trim(), maxMarks: Number(c.maxMarks), scoredBy: c.scoredBy }));
+        const created = await apiCreateRubricTemplate(typeId, newRubricName.trim(), criteria);
         rubricId = created.id;
       }
 
@@ -326,13 +319,11 @@ export function AddEvaluationModal({
         batches: selectedBatches,
       });
 
-      if (mode === 'rubric') {
-        const pairingEntries = Object.entries(pairings).flatMap(([internalMentorId, externalIds]) =>
-          externalIds.filter(Boolean).map((externalMentorId) => ({ internalMentorId, externalMentorId })),
-        );
-        if (pairingEntries.length > 0) {
-          await apiSetMentorPairings(config.id, pairingEntries);
-        }
+      const pairingEntries = Object.entries(pairings).flatMap(([internalMentorId, externalIds]) =>
+        externalIds.filter(Boolean).map((externalMentorId) => ({ internalMentorId, externalMentorId })),
+      );
+      if (pairingEntries.length > 0) {
+        await apiSetMentorPairings(config.id, pairingEntries);
       }
 
       const result = await apiActivateCohortEvaluation(config.id);
@@ -355,7 +346,7 @@ export function AddEvaluationModal({
 
   const goNext = () => setStep((s) => Math.min(s + 1, totalSteps));
   const goBack = () => setStep((s) => Math.max(s - 1, 1));
-  const stepValid = step === 1 ? step1Valid : step === 2 ? step2Valid : true;
+  const stepValid = step === 1 ? targetValid : step === 2 ? panelValid : rubricValid;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
@@ -404,8 +395,133 @@ export function AddEvaluationModal({
         </div>
 
         <div className="space-y-5">
-          {/* Step 1: what's being evaluated — the type and its rubric. */}
+          {/* Step 1: who it's for — scope and window. */}
           {step === 1 && (
+          <>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+                Tracks <span className="normal-case text-gray-600">(blank = every track)</span>
+              </label>
+              <Select
+                isMulti
+                value={selectedTrackIds}
+                onChange={setSelectedTrackIds}
+                placeholder="All tracks"
+                options={trackOptions.map((t) => ({ value: t.id, label: t.name }))}
+                menuMinWidth={340}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+                Batches <span className="normal-case text-gray-600">(blank = every batch)</span>
+              </label>
+              <Select
+                isMulti
+                value={selectedBatches}
+                onChange={setSelectedBatches}
+                placeholder="All batches"
+                options={[...allowedBatches].sort().map((b) => ({ value: b, label: b }))}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  const newStart = e.target.value;
+                  // End date must always be after start date — if the
+                  // already-picked end date no longer qualifies, clear it
+                  // instead of leaving a silently-invalid value in place.
+                  setStartDate(newStart);
+                  if (endDate && newStart && new Date(endDate) <= new Date(newStart)) {
+                    setEndDate('');
+                  }
+                }}
+                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">End Date</label>
+              <input
+                type="date"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
+              />
+            </div>
+          </div>
+          </>
+          )}
+
+          {/* Step 2: who's judging — panel size and pairings. Comes before
+              Rubric on purpose: whether marking a criterion Panel actually
+              means anything depends on whether a real external panel exists
+              for this scope, which this step is what answers. */}
+          {step === 2 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-widest whitespace-nowrap">
+                  External panelists
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={externalEvaluatorCount}
+                  onChange={(e) => setExternalEvaluatorCount(e.target.value)}
+                  className="w-20 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
+                />
+                <span className="text-[11px] text-gray-500">per student, on top of their one fixed internal mentor</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+                  Mentor Pairings{' '}
+                  <span className="normal-case text-gray-600">
+                    (internal mentor is automatic — pick up to {externalEvaluatorCount || '0'} external partner
+                    {externalEvaluatorCount === '1' ? '' : 's'} each, optional)
+                  </span>
+                </label>
+                {selectedTrackIds.length > 0 && pairingRowMentors.length === 0 && (
+                  <p className="text-[11px] text-amber-400/80 mb-1.5">
+                    No mentor in this cohort has a student allocated in the selected track(s) yet, so there's nobody
+                    to pair an external partner with — every in-scope student will get their internal mentor alone
+                    unless this is created without any pairings and recreated once allocation happens.
+                  </p>
+                )}
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {pairingRowMentors.map((mentor) => {
+                    const badge = loadBadge(mentor.id);
+                    return (
+                      <div key={mentor.id} className="flex items-center gap-2">
+                        <span className="text-xs text-gray-300 w-36 truncate shrink-0" title={mentor.fullName || mentor.email}>
+                          {mentor.fullName || mentor.email}
+                          {badge && <span className="block text-[10px] text-gray-500 normal-case">{badge}</span>}
+                        </span>
+                        <Select
+                          isMulti
+                          className="flex-1"
+                          value={pairings[mentor.id] || []}
+                          onChange={(v) => setPairings((prev) => ({ ...prev, [mentor.id]: v }))}
+                          placeholder="No external mentor"
+                          options={mentorOptions(mentor.id)}
+                          menuMinWidth={280}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: what's being evaluated — the type and its rubric. */}
+          {step === 3 && (
           <>
           <div>
             <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Evaluation Type</label>
@@ -416,11 +532,11 @@ export function AddEvaluationModal({
                 value={creatingNewType ? '__new__' : selectedTypeId}
                 onChange={handleSelectType}
                 placeholder="Select an evaluation type..."
-                options={[...types.map((t) => ({ value: t.id, label: `${t.name} (${t.mode})` })), { value: '__new__', label: '+ Create new type' }]}
+                options={[...types.map((t) => ({ value: t.id, label: t.name })), { value: '__new__', label: '+ Create new type' }]}
               />
             )}
             {creatingNewType && (
-              <div className="mt-3 space-y-3 p-3 bg-zinc-850 border border-zinc-800 rounded-lg">
+              <div className="mt-3">
                 <input
                   type="text"
                   value={newTypeName}
@@ -428,44 +544,15 @@ export function AddEvaluationModal({
                   placeholder="e.g. Mid-term Review"
                   className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/40"
                 />
-                <Select value={newTypeMode} onChange={(v) => setNewTypeMode(v as EvaluationMode)} options={MODE_OPTIONS} />
               </div>
             )}
           </div>
 
-          {/* Rubric (or upload max-marks) */}
           {selectedType && (
             <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
-                {selectedType.mode === 'upload' ? 'Max Marks' : 'Rubric'}
-              </label>
-
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Rubric</label>
               {!creatingNewType && loadingRubrics ? (
                 <SpinnerSquare size={20} />
-              ) : selectedType.mode === 'upload' ? (
-                creatingNewRubric && rubrics.length === 0 ? (
-                  <input
-                    type="number"
-                    min={1}
-                    value={uploadMaxMarks}
-                    onChange={(e) => setUploadMaxMarks(e.target.value)}
-                    placeholder="e.g. 20"
-                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/40"
-                  />
-                ) : (
-                  <Select
-                    value={creatingNewRubric ? '__new__' : selectedRubricId}
-                    onChange={(v) => {
-                      if (v === '__new__') { setCreatingNewRubric(true); setSelectedRubricId(''); }
-                      else { setCreatingNewRubric(false); setSelectedRubricId(v); }
-                    }}
-                    placeholder="Select an existing rubric..."
-                    options={[
-                      ...rubrics.map((r) => ({ value: r.id, label: `${r.name} — ${r.criteria.reduce((s, c) => s + c.maxMarks, 0)} marks` })),
-                      { value: '__new__', label: '+ Create new' },
-                    ]}
-                  />
-                )
               ) : (
                 <>
                   {!creatingNewRubric && (
@@ -574,128 +661,6 @@ export function AddEvaluationModal({
             />
           </div>
           </>
-          )}
-
-          {/* Step 2: who it's for — scope and window. */}
-          {step === 2 && (
-          <>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
-                Tracks <span className="normal-case text-gray-600">(blank = every track)</span>
-              </label>
-              <Select
-                isMulti
-                value={selectedTrackIds}
-                onChange={setSelectedTrackIds}
-                placeholder="All tracks"
-                options={trackOptions.map((t) => ({ value: t.id, label: t.name }))}
-                menuMinWidth={340}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
-                Batches <span className="normal-case text-gray-600">(blank = every batch)</span>
-              </label>
-              <Select
-                isMulti
-                value={selectedBatches}
-                onChange={setSelectedBatches}
-                placeholder="All batches"
-                options={[...allowedBatches].sort().map((b) => ({ value: b, label: b }))}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Start Date</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => {
-                  const newStart = e.target.value;
-                  // End date must always be after start date — if the
-                  // already-picked end date no longer qualifies, clear it
-                  // instead of leaving a silently-invalid value in place.
-                  setStartDate(newStart);
-                  if (endDate && newStart && new Date(endDate) <= new Date(newStart)) {
-                    setEndDate('');
-                  }
-                }}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">End Date</label>
-              <input
-                type="date"
-                value={endDate}
-                min={startDate || undefined}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
-              />
-            </div>
-          </div>
-          </>
-          )}
-
-          {/* Step 3: who's judging — panel size and pairings (rubric-mode only). */}
-          {step === 3 && selectedType?.mode === 'rubric' && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <label className="text-xs font-semibold text-gray-400 uppercase tracking-widest whitespace-nowrap">
-                  External panelists
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={externalEvaluatorCount}
-                  onChange={(e) => setExternalEvaluatorCount(e.target.value)}
-                  className="w-20 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
-                />
-                <span className="text-[11px] text-gray-500">per student, on top of their one fixed internal mentor</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
-                  Mentor Pairings{' '}
-                  <span className="normal-case text-gray-600">
-                    (internal mentor is automatic — pick up to {externalEvaluatorCount || '0'} external partner
-                    {externalEvaluatorCount === '1' ? '' : 's'} each, optional)
-                  </span>
-                </label>
-                {selectedTrackIds.length > 0 && pairingRowMentors.length === 0 && (
-                  <p className="text-[11px] text-amber-400/80 mb-1.5">
-                    No mentor in this cohort has a student allocated in the selected track(s) yet, so there's nobody
-                    to pair an external partner with — every in-scope student will get their internal mentor alone
-                    unless this is created without any pairings and recreated once allocation happens.
-                  </p>
-                )}
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {pairingRowMentors.map((mentor) => {
-                    const badge = loadBadge(mentor.id);
-                    return (
-                      <div key={mentor.id} className="flex items-center gap-2">
-                        <span className="text-xs text-gray-300 w-36 truncate shrink-0" title={mentor.fullName || mentor.email}>
-                          {mentor.fullName || mentor.email}
-                          {badge && <span className="block text-[10px] text-gray-500 normal-case">{badge}</span>}
-                        </span>
-                        <Select
-                          isMulti
-                          className="flex-1"
-                          value={pairings[mentor.id] || []}
-                          onChange={(v) => setPairings((prev) => ({ ...prev, [mentor.id]: v }))}
-                          placeholder="No external mentor"
-                          options={mentorOptions(mentor.id)}
-                          menuMinWidth={280}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
           )}
         </div>
 
