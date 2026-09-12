@@ -12,10 +12,10 @@ export function MentorPickerPanel({
   onClose,
   mentors,
   trackNameBySlug,
-  internalMentorName,
-  internalMentorTrackNames,
-  internalMentorTeamCount,
-  internalMentorStudentCount,
+  primaryMentorName,
+  primaryMentorTrackNames,
+  primaryMentorTeamCount,
+  primaryMentorStudentCount,
   selectedCounts,
   onSelect,
 }: {
@@ -25,10 +25,10 @@ export function MentorPickerPanel({
   trackNameBySlug: Map<string, string>;
   // Whose slot this drawer is filling — shown up top so it's never
   // ambiguous which row's "Add" was clicked.
-  internalMentorName?: string;
-  internalMentorTrackNames?: string[];
-  internalMentorTeamCount?: number;
-  internalMentorStudentCount?: number;
+  primaryMentorName?: string;
+  primaryMentorTrackNames?: string[];
+  primaryMentorTeamCount?: number;
+  primaryMentorStudentCount?: number;
   // How many slots (across every row, in this form's own current draft)
   // each mentor id is already sitting in — surfaced per-candidate so an
   // admin can see at a glance who's already been picked elsewhere before
@@ -63,11 +63,11 @@ export function MentorPickerPanel({
         <div className="flex items-center justify-between p-4 border-b border-zinc-800 shrink-0">
           <div className="min-w-0">
             <h4 className="text-sm font-bold text-white truncate">
-              Panel mentor of {internalMentorName || '—'}
+              Panel mentor of {primaryMentorName || '—'}
             </h4>
-            {internalMentorTrackNames && internalMentorTrackNames.length > 0 && (
+            {primaryMentorTrackNames && primaryMentorTrackNames.length > 0 && (
               <p className="flex flex-wrap items-center gap-1 mt-1">
-                {internalMentorTrackNames.map((name) => (
+                {primaryMentorTrackNames.map((name) => (
                   <span
                     key={name}
                     className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-gold/10 text-gold border border-gold/30 truncate max-w-[160px]"
@@ -75,13 +75,13 @@ export function MentorPickerPanel({
                     {name}
                   </span>
                 ))}
-                {(internalMentorTeamCount !== undefined || internalMentorStudentCount !== undefined) && (
+                {(primaryMentorTeamCount !== undefined || primaryMentorStudentCount !== undefined) && (
                   <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-500/10 text-gray-400">
-                    {internalMentorTeamCount !== undefined &&
-                      `${internalMentorTeamCount} team${internalMentorTeamCount === 1 ? '' : 's'}`}
-                    {internalMentorTeamCount !== undefined && internalMentorStudentCount !== undefined && ' · '}
-                    {internalMentorStudentCount !== undefined &&
-                      `${internalMentorStudentCount} student${internalMentorStudentCount === 1 ? '' : 's'}`}
+                    {primaryMentorTeamCount !== undefined &&
+                      `${primaryMentorTeamCount} team${primaryMentorTeamCount === 1 ? '' : 's'}`}
+                    {primaryMentorTeamCount !== undefined && primaryMentorStudentCount !== undefined && ' · '}
+                    {primaryMentorStudentCount !== undefined &&
+                      `${primaryMentorStudentCount} student${primaryMentorStudentCount === 1 ? '' : 's'}`}
                   </span>
                 )}
               </p>
