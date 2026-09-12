@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { Award, Loader2 } from 'lucide-react';
+import { Award, Loader2, FileSearch, ChevronDown, ChevronUp } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Button from '../../components/Button';
+import StudentSubmissionsPanel from './StudentSubmissionsPanel';
 import { apiGetMyEvaluationQueue, apiGetEvaluationDetail, apiScoreEvaluation } from '../../lib/api/evaluations';
 import type { EvaluatorQueueItem, EvaluationDetail } from '../../lib/types';
 import { useAuth } from '../../context/useAuth';
@@ -36,6 +37,7 @@ export default function MentorEvaluationTracker() {
   const [scoreDraft, setScoreDraft] = useState<Record<string, string>>({});
   const [feedbackDraft, setFeedbackDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showSubmissions, setShowSubmissions] = useState(false);
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -90,6 +92,7 @@ export default function MentorEvaluationTracker() {
     setDetail(null);
     setScoreDraft({});
     setFeedbackDraft('');
+    setShowSubmissions(false);
   };
 
   // Which of the rubric's criteria I'm allowed to score — the internal
@@ -212,6 +215,31 @@ export default function MentorEvaluationTracker() {
                 </p>
               )}
             </div>
+
+            {/* Only an internal mentor ever has an "internal only" criterion
+                (PRD, logbook, attendance) to score, and they're the only one
+                with any reason to check what this student actually
+                submitted for it — an external panelist never saw it and
+                never scores it either. */}
+            {myCriteria.some((c) => c.scoredBy === 'internal') && (
+              <div>
+                <button
+                  onClick={() => setShowSubmissions((v) => !v)}
+                  className="w-full flex items-center justify-between gap-2 text-xs font-semibold text-gray-400 hover:text-white uppercase tracking-widest bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 transition-colors"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <FileSearch size={13} />
+                    {detail.studentName || 'Student'}'s Submissions
+                  </span>
+                  {showSubmissions ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                {showSubmissions && (
+                  <div className="mt-2">
+                    <StudentSubmissionsPanel studentId={detail.studentId} />
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-3">
               {myCriteria.map((c) => (
