@@ -41,10 +41,12 @@ interface TrackOption {
 // it, which would still list a mentor with nobody assigned to them yet.
 type TrackMentorIndex = Map<string, Set<string>>;
 
-// Wizard-in-a-modal for setting up a new evaluation on this cohort. Kept as a
-// single scrollable form with sections that reveal themselves as choices are
-// made, rather than a multi-step Next/Back flow — the fields involved don't
-// need that much ceremony.
+// Wizard-in-a-modal for setting up a new evaluation on this cohort, as three
+// steps — what's being evaluated (type + rubric), who it's for (scope +
+// window), who's judging it (panel size + pairings) — rather than one long
+// scroll mixing all three together. Upload-mode types skip the third step
+// entirely: there's no panel to assemble when only the internal mentor ever
+// scores it.
 export function AddEvaluationModal({
   cohortId,
   cohortMentors,
@@ -102,6 +104,12 @@ export function AddEvaluationModal({
   const [panelLoad, setPanelLoad] = useState<MentorPanelLoad[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
+
+  // Three steps — what's being evaluated, who it's for, who's judging it —
+  // shown one at a time instead of as one long scroll. Upload-mode types
+  // have no panel to assemble (internal mentor only, no external pairing
+  // concept at all), so their wizard is two steps, not three.
+  const [step, setStep] = useState(1);
 
   useEffect(() => {
     (async () => {
@@ -256,10 +264,10 @@ export function AddEvaluationModal({
       ? cohortMentors
       : cohortMentors.filter((m) => selectedTrackIds.some((trackId) => trackMentorIndex.get(trackId)?.has(m.id)));
 
-  const canSubmit =
+  // Step 1: type picked (or named, if new) and its rubric fully specified —
+  // this is the step "Next" gates on before Target is even reachable.
+  const step1Valid =
     (creatingNewType ? newTypeName.trim().length > 0 : !!selectedTypeId) &&
-    startDate &&
-    endDate &&
     (selectedType?.mode === 'upload'
       ? creatingNewRubric
         ? Number(uploadMaxMarks) > 0
@@ -267,6 +275,13 @@ export function AddEvaluationModal({
       : creatingNewRubric
         ? newRubricName.trim().length > 0 && criteriaDrafts.every((c) => c.name.trim() && Number(c.maxMarks) > 0)
         : !!selectedRubricId);
+
+  const step2Valid = !!startDate && !!endDate;
+
+  const totalSteps = selectedType?.mode === 'upload' ? 2 : 3;
+  const stepTitles = totalSteps === 2 ? ['Rubric Config', 'Target'] : ['Rubric Config', 'Target', 'Mentor + Panel'];
+
+  const canSubmit = step1Valid && step2Valid;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -329,11 +344,15 @@ export function AddEvaluationModal({
     }
   };
 
+  const goNext = () => setStep((s) => Math.min(s + 1, totalSteps));
+  const goBack = () => setStep((s) => Math.max(s - 1, 1));
+  const stepValid = step === 1 ? step1Valid : step === 2 ? step2Valid : true;
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-xl max-h-[85vh] overflow-y-auto bg-zinc-900 border border-zinc-750 rounded-2xl shadow-2xl p-6 mx-4 animate-in fade-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between mb-5 border-b border-zinc-800 pb-3">
+        <div className="flex items-center justify-between mb-4 border-b border-zinc-800 pb-3">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <ClipboardCheck size={20} className="text-gold" />
             Add Evaluation
@@ -343,8 +362,42 @@ export function AddEvaluationModal({
           </button>
         </div>
 
+        {/* Step indicator — three short, focused screens instead of one long
+            scroll: what's being evaluated, who it's for, who's judging it. */}
+        <div className="mb-5">
+          <div className="flex items-center gap-2 mb-2">
+            {stepTitles.map((title, i) => {
+              const n = i + 1;
+              const state = n === step ? 'current' : n < step ? 'done' : 'upcoming';
+              return (
+                <div key={title} className="flex items-center gap-2 flex-1">
+                  <div
+                    className={`flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold shrink-0 ${
+                      state === 'done'
+                        ? 'bg-gold text-black'
+                        : state === 'current'
+                          ? 'bg-gold/15 border border-gold text-gold'
+                          : 'bg-zinc-800 border border-zinc-700 text-gray-500'
+                    }`}
+                  >
+                    {n}
+                  </div>
+                  {i < stepTitles.length - 1 && (
+                    <div className={`h-px flex-1 ${n < step ? 'bg-gold' : 'bg-zinc-800'}`} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+            Step {step} of {totalSteps} — {stepTitles[step - 1]}
+          </p>
+        </div>
+
         <div className="space-y-5">
-          {/* Evaluation type */}
+          {/* Step 1: what's being evaluated — the type and its rubric. */}
+          {step === 1 && (
+          <>
           <div>
             <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Evaluation Type</label>
             {loadingTypes ? (
@@ -370,38 +423,6 @@ export function AddEvaluationModal({
               </div>
             )}
           </div>
-
-          {/* Audience: which tracks, which batches. Empty = everyone, same
-              as every evaluation meant before scoping existed. */}
-          {selectedType && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
-                  Tracks <span className="normal-case text-gray-600">(blank = every track)</span>
-                </label>
-                <Select
-                  isMulti
-                  value={selectedTrackIds}
-                  onChange={setSelectedTrackIds}
-                  placeholder="All tracks"
-                  options={trackOptions.map((t) => ({ value: t.id, label: t.name }))}
-                  menuMinWidth={340}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
-                  Batches <span className="normal-case text-gray-600">(blank = every batch)</span>
-                </label>
-                <Select
-                  isMulti
-                  value={selectedBatches}
-                  onChange={setSelectedBatches}
-                  placeholder="All batches"
-                  options={[...allowedBatches].sort().map((b) => ({ value: b, label: b }))}
-                />
-              </div>
-            </div>
-          )}
 
           {/* Rubric (or upload max-marks) */}
           {selectedType && (
@@ -521,55 +542,88 @@ export function AddEvaluationModal({
             </div>
           )}
 
-          {/* Sequence + dates */}
-          {selectedType && (
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
-                  Sequence <span className="normal-case text-gray-600">(e.g. Viva 1/2/3)</span>
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  value={sequenceNo}
-                  onChange={(e) => setSequenceNo(e.target.value)}
-                  placeholder="Optional"
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/40"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Start Date</label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => {
-                    const newStart = e.target.value;
-                    // End date must always be after start date — if the
-                    // already-picked end date no longer qualifies, clear it
-                    // instead of leaving a silently-invalid value in place.
-                    setStartDate(newStart);
-                    if (endDate && newStart && new Date(endDate) <= new Date(newStart)) {
-                      setEndDate('');
-                    }
-                  }}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">End Date</label>
-                <input
-                  type="date"
-                  value={endDate}
-                  min={startDate || undefined}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
-                />
-              </div>
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+              Sequence <span className="normal-case text-gray-600">(e.g. Viva 1/2/3)</span>
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={sequenceNo}
+              onChange={(e) => setSequenceNo(e.target.value)}
+              placeholder="Optional"
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/40"
+            />
+          </div>
+          </>
           )}
 
-          {/* Panel size + mentor pairings — only for rubric-mode types */}
-          {selectedType?.mode === 'rubric' && (
+          {/* Step 2: who it's for — scope and window. */}
+          {step === 2 && (
+          <>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+                Tracks <span className="normal-case text-gray-600">(blank = every track)</span>
+              </label>
+              <Select
+                isMulti
+                value={selectedTrackIds}
+                onChange={setSelectedTrackIds}
+                placeholder="All tracks"
+                options={trackOptions.map((t) => ({ value: t.id, label: t.name }))}
+                menuMinWidth={340}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+                Batches <span className="normal-case text-gray-600">(blank = every batch)</span>
+              </label>
+              <Select
+                isMulti
+                value={selectedBatches}
+                onChange={setSelectedBatches}
+                placeholder="All batches"
+                options={[...allowedBatches].sort().map((b) => ({ value: b, label: b }))}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  const newStart = e.target.value;
+                  // End date must always be after start date — if the
+                  // already-picked end date no longer qualifies, clear it
+                  // instead of leaving a silently-invalid value in place.
+                  setStartDate(newStart);
+                  if (endDate && newStart && new Date(endDate) <= new Date(newStart)) {
+                    setEndDate('');
+                  }
+                }}
+                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">End Date</label>
+              <input
+                type="date"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/40"
+              />
+            </div>
+          </div>
+          </>
+          )}
+
+          {/* Step 3: who's judging — panel size and pairings (rubric-mode only). */}
+          {step === 3 && selectedType?.mode === 'rubric' && (
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-widest whitespace-nowrap">
@@ -627,20 +681,42 @@ export function AddEvaluationModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-3 mt-6 pt-3 border-t border-zinc-800">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white bg-zinc-800 hover:bg-zinc-750 rounded-lg border border-zinc-700 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!canSubmit || submitting}
-            className="px-5 py-2 text-sm font-semibold text-black bg-gold hover:bg-gold-hover rounded-lg shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:cursor-not-allowed"
-          >
-            {submitting ? 'Activating...' : 'Create & Activate'}
-          </button>
+        <div className="flex items-center justify-between gap-3 mt-6 pt-3 border-t border-zinc-800">
+          <div>
+            {step > 1 && (
+              <button
+                onClick={goBack}
+                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white bg-zinc-800 hover:bg-zinc-750 rounded-lg border border-zinc-700 transition-colors"
+              >
+                Back
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white bg-zinc-800 hover:bg-zinc-750 rounded-lg border border-zinc-700 transition-colors"
+            >
+              Cancel
+            </button>
+            {step < totalSteps ? (
+              <button
+                onClick={goNext}
+                disabled={!stepValid}
+                className="px-5 py-2 text-sm font-semibold text-black bg-gold hover:bg-gold-hover rounded-lg shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={!canSubmit || submitting}
+                className="px-5 py-2 text-sm font-semibold text-black bg-gold hover:bg-gold-hover rounded-lg shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:cursor-not-allowed"
+              >
+                {submitting ? 'Activating...' : 'Create & Activate'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
