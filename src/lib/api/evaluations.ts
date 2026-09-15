@@ -628,10 +628,19 @@ export interface EvaluationBlueprintStudent {
   /** Null for a 'not_assigned' row — nothing to correct yet. */
   evaluationId: string | null;
   fullName: string | null;
+  /** Still returned because the roster search matches on it; no longer a column. */
   rollNumber: string | null;
+  registrationNumber: string | null;
   batch: string | null;
   track: string | null;
+  teamName: string | null;
   status: EvaluationBlueprintStatus;
+  /**
+   * What the primary panelist marked. Null covers two cases the `status`
+   * field tells apart: 'not_assigned' means there is no evaluation to mark,
+   * anything else means one exists and nobody has marked it yet.
+   */
+  attendanceStatus: EvaluationAttendanceStatus | null;
   finalMarks: number | null;
   averageMarks: number | null;
   finalPercentage: number | null;

@@ -84,6 +84,17 @@ export default function EvaluationBlueprintPage() {
       ? s.secondaryPanelists.map(p => (p.totalMarks != null ? String(p.totalMarks) : '—')).join(', ')
       : '—';
 
+  // Three states, not two. A student with no evaluation under this config has
+  // nothing to mark and reads as a dash; one who has an evaluation the primary
+  // panelist has not got to yet reads as "Not marked". Collapsing those into
+  // the same cell hides whether a mentor is pending or the student was never
+  // in scope, which is the question this column is opened to answer.
+  const attendanceLabel = (s: EvaluationBlueprintStudent) => {
+    if (s.status === 'not_assigned') return '—';
+    if (!s.attendanceStatus) return 'Not marked';
+    return s.attendanceStatus.charAt(0).toUpperCase() + s.attendanceStatus.slice(1);
+  };
+
   // Named, and joined on a pipe rather than a comma: two panelists' notes run
   // into each other otherwise, and with prose there is no way to tell where one
   // ends — unlike secondaryTotals above, where each value is a single number.
@@ -103,8 +114,10 @@ export default function EvaluationBlueprintPage() {
   const hasSecondaries = (meta?.secondaryEvaluatorCount ?? 0) > 0;
   const availableColumns = useMemo<OptionalColumn[]>(() => {
     const cols: OptionalColumn[] = [
-      { key: 'rollNumber', label: 'Roll Number', value: s => s.rollNumber || '—' },
+      { key: 'registrationNumber', label: 'Registration Number', value: s => s.registrationNumber || '—' },
       { key: 'track', label: 'Track', value: s => s.track || '—' },
+      { key: 'teamName', label: 'Team', value: s => s.teamName || '—' },
+      { key: 'attendance', label: 'Attendance', value: attendanceLabel },
       { key: 'primaryMentor', label: 'Primary Mentor', value: s => s.primaryMentorName || '—' },
       ...(hasSecondaries ? [{ key: 'secondaryMentor', label: 'Secondary Mentor(s)', value: secondaryNames }] : []),
       { key: 'primaryTotal', label: 'Primary Total', value: s => (s.primaryTotal != null ? String(s.primaryTotal) : '—') },
@@ -333,7 +346,7 @@ export default function EvaluationBlueprintPage() {
           columns={columns}
           data={students}
           loading={studentsLoading}
-          searchPlaceholder="Search by name or roll number..."
+          searchPlaceholder="Search by name, registration or roll number..."
           onSearchChange={handleSearchInputChange}
           /* The table's own export writes the rows it currently holds, which
              here is one page. This page's button fetches the whole filtered
