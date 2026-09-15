@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ShieldCheck, X, Loader2 } from 'lucide-react';
 import Select from '../../../components/Select';
 import Button from '../../../components/Button';
-import { apiGetEvaluationDetail, apiAdminScoreEvaluation } from '../../../lib/api/evaluations';
+import { apiGetEvaluationDetail, apiAdminScoreEvaluation, MAX_FEEDBACK_LENGTH } from '../../../lib/api/evaluations';
 import type { EvaluationDetail } from '../../../lib/types';
 import { useToast } from '../../../toast';
 
@@ -71,6 +71,7 @@ export function AdminScoreCorrectionModal({
   const canSubmit =
     !!detail &&
     myCriteria.length > 0 &&
+    feedbackDraft.trim() !== '' &&
     myCriteria.every((c) => {
       const raw = scoreDraft[c.name];
       if (raw === undefined || raw.trim() === '') return false;
@@ -84,7 +85,7 @@ export function AdminScoreCorrectionModal({
     try {
       const scoreBreakdown: Record<string, number> = {};
       for (const c of myCriteria) scoreBreakdown[c.name] = Number(scoreDraft[c.name]);
-      await apiAdminScoreEvaluation(detail.id, selectedEvaluatorId, scoreBreakdown, feedbackDraft.trim() || undefined);
+      await apiAdminScoreEvaluation(detail.id, selectedEvaluatorId, scoreBreakdown, feedbackDraft.trim());
       showSuccess('Score corrected.');
       onUpdated();
       onClose();
@@ -167,13 +168,30 @@ export function AdminScoreCorrectionModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">Feedback (optional)</label>
+                  <label className="block text-sm text-gray-400 mb-1">
+                    Feedback <span className="text-red-400">*</span>
+                  </label>
                   <textarea
                     value={feedbackDraft}
                     onChange={(e) => setFeedbackDraft(e.target.value)}
                     rows={3}
+                    maxLength={MAX_FEEDBACK_LENGTH}
+                    placeholder="Required"
                     className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold resize-none"
                   />
+                  {/* Same rule as the mentor's own scoring form: shown only
+                      once the limit is in reach, since maxLength truncates a
+                      long paste without saying so. */}
+                  {feedbackDraft.length > MAX_FEEDBACK_LENGTH - 500 && (
+                    <p
+                      className={`mt-1 text-[11px] text-right ${
+                        feedbackDraft.length >= MAX_FEEDBACK_LENGTH ? 'text-amber-400/90' : 'text-gray-500'
+                      }`}
+                    >
+                      {feedbackDraft.length} / {MAX_FEEDBACK_LENGTH}
+                      {feedbackDraft.length >= MAX_FEEDBACK_LENGTH && ' — limit reached'}
+                    </p>
+                  )}
                 </div>
 
                 <p className="text-[11px] text-gray-500">

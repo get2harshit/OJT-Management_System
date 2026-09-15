@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Award, Loader2, User, Users } from 'lucide-react';
+import { Award, Loader2, Users } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import { apiGetMyEvaluationsRedacted } from '../../lib/api/evaluations';
 import type { StudentVisibleEvaluation } from '../../lib/types';
@@ -9,10 +9,13 @@ import { usePageRefresh } from '../../context/RefreshContext';
 
 /**
  * A student's own view of their vivas — deliberately narrow. Which
- * evaluation, its date window, and who's on the panel. No marks, no
- * feedback, not even the final number — the backend never sends them here
- * at all (see StudentVisibleEvaluation on the service), so there's nothing
- * this page could show even if it wanted to.
+ * evaluation, its date window, (once marked) their attendance status, and
+ * who's evaluating them. No marks, no feedback, not even the final number
+ * — the backend never sends them here at all (see StudentVisibleEvaluation
+ * on the service), so there's nothing this page could show even if it
+ * wanted to. Primary/secondary is an internal panel-role distinction, not
+ * something a student needs to know — every evaluator's name is shown
+ * together under one "Evaluator(s)" list instead.
  */
 export default function StudentEvaluations() {
   const { showError } = useToast();
@@ -47,7 +50,7 @@ export default function StudentEvaluations() {
           <Award className="text-gold" size={22} />
           My Evaluations
         </h1>
-        <p className="text-sm text-gray-400 mt-1">Your vivas, their windows, and who's on your panel.</p>
+        <p className="text-sm text-gray-400 mt-1">Your vivas, their windows, and who's evaluating you.</p>
       </div>
 
       {loading ? (
@@ -61,31 +64,46 @@ export default function StudentEvaluations() {
         </div>
       ) : (
         <div className="space-y-3">
-          {sorted.map((evaluation) => (
-            <div key={evaluation.id} className="bg-zinc-850 border border-zinc-750 rounded-2xl p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-white font-semibold">{evaluation.evaluationName}</h3>
-                <span className="text-xs text-gray-400 bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1">
-                  {formatDateDisplay(evaluation.startDate)} → {formatDateDisplay(evaluation.endDate)}
-                </span>
-              </div>
-
-              <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-zinc-800">
-                <div className="flex items-center gap-2 text-sm">
-                  <User size={14} className="text-gray-500 shrink-0" />
-                  <span className="text-gray-500">Primary:</span>
-                  <span className="text-gray-200">{evaluation.primaryMentorName ?? 'Not assigned yet'}</span>
+          {sorted.map((evaluation) => {
+            // Primary/secondary is an internal panel-role distinction — a
+            // student sees one undifferentiated list of who's evaluating them.
+            const evaluatorNames = [evaluation.primaryMentorName, ...evaluation.secondaryMentorNames].filter(
+              (name): name is string => !!name,
+            );
+            return (
+              <div key={evaluation.id} className="bg-zinc-850 border border-zinc-750 rounded-2xl p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-white font-semibold flex items-center gap-2">
+                    {evaluation.evaluationName}
+                    {evaluation.attendanceStatus && (
+                      <span
+                        className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                          evaluation.attendanceStatus === 'present'
+                            ? 'text-green-400 border-green-500/30 bg-green-500/10'
+                            : evaluation.attendanceStatus === 'absent'
+                            ? 'text-red-400 border-red-500/30 bg-red-500/10'
+                            : 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10'
+                        }`}
+                      >
+                        {evaluation.attendanceStatus}
+                      </span>
+                    )}
+                  </h3>
+                  <span className="text-xs text-gray-400 bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1">
+                    {formatDateDisplay(evaluation.startDate)} → {formatDateDisplay(evaluation.endDate)}
+                  </span>
                 </div>
-                <div className="flex items-center gap-2 text-sm">
+
+                <div className="flex items-center gap-2 text-sm mt-3 pt-3 border-t border-zinc-800">
                   <Users size={14} className="text-gray-500 shrink-0" />
-                  <span className="text-gray-500">Secondary:</span>
+                  <span className="text-gray-500">Evaluator{evaluatorNames.length !== 1 ? 's' : ''}:</span>
                   <span className="text-gray-200">
-                    {evaluation.secondaryMentorNames.length > 0 ? evaluation.secondaryMentorNames.join(', ') : 'None'}
+                    {evaluatorNames.length > 0 ? evaluatorNames.join(', ') : 'Not assigned yet'}
                   </span>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </PageLayout>

@@ -603,6 +603,13 @@ export interface DashboardMetrics {
 
 export type EvaluationMode = 'upload' | 'rubric';
 export type EvaluatorRole = 'primary' | 'secondary';
+
+// Set once by the primary panelist, before anyone may score — present
+// unlocks the ordinary rubric flow; absent finalizes the evaluation at 0
+// (counts against the student); excused finalizes it with no marks, left
+// out of the student's overall the same way an unscored evaluation is.
+// Null/undefined means not yet marked, which blocks scoring for everyone.
+export type EvaluationAttendanceStatus = 'present' | 'absent' | 'excused';
 /** Who scores a criterion: every panelist ('panel'), or only the student's
  * own primary mentor ('primary') — for artifact criteria like a PRD or a
  * logbook that a secondary panelist never saw. */
@@ -687,6 +694,10 @@ export interface EvaluatorQueueItem {
   myRole: EvaluatorRole;
   myTotalMarks: number | null;
   finalMarksObtained: number | null;
+  attendanceStatus: EvaluationAttendanceStatus | null;
+  teamName: string | null;
+  trackName: string | null;
+  projectTitle: string | null;
 }
 
 // One panelist's own breakdown on an evaluation — null fields mean that
@@ -718,6 +729,7 @@ export interface EvaluationDetail {
    * many of the panel have actually scored, never alone. */
   averageMarksObtained: number | null;
   evaluatedAt: string | null;
+  attendanceStatus: EvaluationAttendanceStatus | null;
 }
 
 // What a student is allowed to see of their own evaluation — no marks, no
@@ -730,6 +742,7 @@ export interface StudentVisibleEvaluation {
   endDate: string;
   primaryMentorName: string | null;
   secondaryMentorNames: string[];
+  attendanceStatus: EvaluationAttendanceStatus | null;
 }
 
 // ── Eligibility status (platform-access gate) ───────────────────────────────

@@ -47,6 +47,14 @@ interface OptionalColumn {
   key: string;
   label: string;
   value: (s: EvaluationBlueprintStudent) => string;
+  /**
+   * Free text rather than a number or a name. Every other column is a few
+   * characters and renders nowrap; a panelist's feedback runs to 4000, and
+   * nowrap on that stretches the whole table sideways. Marked columns get a
+   * clamped cell with the full text on hover — the CSV export reads `value`
+   * directly, so the file still carries all of it.
+   */
+  longText?: boolean;
 }
 
 export default function EvaluationBlueprintPage() {
@@ -76,23 +84,38 @@ export default function EvaluationBlueprintPage() {
       ? s.secondaryPanelists.map(p => (p.totalMarks != null ? String(p.totalMarks) : '—')).join(', ')
       : '—';
 
+  // Named, and joined on a pipe rather than a comma: two panelists' notes run
+  // into each other otherwise, and with prose there is no way to tell where one
+  // ends — unlike secondaryTotals above, where each value is a single number.
+  const secondaryFeedback = (s: EvaluationBlueprintStudent) => {
+    const written = s.secondaryPanelists.filter(p => p.feedback?.trim());
+    if (written.length === 0) return '—';
+    return written.map(p => `${p.evaluatorName ?? 'Secondary'}: ${p.feedback!.trim()}`).join(' | ');
+  };
+
   // Optional columns are built from the evaluation's own rubric: the fixed
   // summary set (roll/track/mentors/totals/final/average/%) plus one
   // Primary and one Secondary column PER criterion. Rebuilt whenever meta
   // (hence the criteria) changes; Student Name/Batch/Status are always
-  // shown outside this list.
+  // shown outside this list. Secondary-facing columns are left out
+  // entirely when this config declares zero secondary panelists — every
+  // row would just read "—", so there's nothing for them to show.
+  const hasSecondaries = (meta?.secondaryEvaluatorCount ?? 0) > 0;
   const availableColumns = useMemo<OptionalColumn[]>(() => {
     const cols: OptionalColumn[] = [
       { key: 'rollNumber', label: 'Roll Number', value: s => s.rollNumber || '—' },
       { key: 'track', label: 'Track', value: s => s.track || '—' },
       { key: 'primaryMentor', label: 'Primary Mentor', value: s => s.primaryMentorName || '—' },
-      { key: 'secondaryMentor', label: 'Secondary Mentor(s)', value: secondaryNames },
+      ...(hasSecondaries ? [{ key: 'secondaryMentor', label: 'Secondary Mentor(s)', value: secondaryNames }] : []),
       { key: 'primaryTotal', label: 'Primary Total', value: s => (s.primaryTotal != null ? String(s.primaryTotal) : '—') },
-      { key: 'secondaryTotal', label: 'Secondary Total(s)', value: secondaryTotals },
-      { key: 'finalMarks', label: 'Final Marks', value: s => (s.finalMarks != null ? `${s.finalMarks}/${meta?.maxMarks ?? '?'}` : '—') },
+      ...(hasSecondaries ? [{ key: 'secondaryTotal', label: 'Secondary Total(s)', value: secondaryTotals }] : []),
+      { key: 'primaryFeedback', label: 'Primary Feedback', value: s => s.primaryFeedback?.trim() || '—', longText: true },
+      ...(hasSecondaries
+        ? [{ key: 'secondaryFeedback', label: 'Secondary Feedback(s)', value: secondaryFeedback, longText: true }]
+        : []),
+      { key: 'finalMarks', label: 'Final Marks', value: s => (s.finalMarks != null ? String(s.finalMarks) : '—') },
       { key: 'finalPercentage', label: 'Final %', value: s => (s.finalPercentage != null ? `${s.finalPercentage}%` : '—') },
-      { key: 'averageMarks', label: 'Average Marks', value: s => (s.averageMarks != null ? `${s.averageMarks}/${meta?.maxMarks ?? '?'}` : '—') },
-      { key: 'averagePercentage', label: 'Average %', value: s => (s.averagePercentage != null ? `${s.averagePercentage}%` : '—') },
+      { key: 'averageMarks', label: 'Average Marks', value: s => (s.averageMarks != null ? String(s.averageMarks) : '—') },
     ];
     for (const c of meta?.criteria ?? []) {
       const name = c.name;
@@ -101,23 +124,29 @@ export default function EvaluationBlueprintPage() {
         label: `${name} · Primary`,
         value: s => (s.primaryScores?.[name] != null ? String(s.primaryScores[name]) : '—'),
       });
-      cols.push({
-        key: `sec::${name}`,
-        label: `${name} · Secondary`,
-        value: s =>
-          s.secondaryPanelists.length > 0
-            ? s.secondaryPanelists.map(p => (p.scoreBreakdown?.[name] != null ? String(p.scoreBreakdown[name]) : '—')).join(', ')
-            : '—',
-      });
+      if (hasSecondaries) {
+        cols.push({
+          key: `sec::${name}`,
+          label: `${name} · Secondary`,
+          value: s =>
+            s.secondaryPanelists.length > 0
+              ? s.secondaryPanelists.map(p => (p.scoreBreakdown?.[name] != null ? String(p.scoreBreakdown[name]) : '—')).join(', ')
+              : '—',
+        });
+      }
     }
     return cols;
-  }, [meta]);
+  }, [meta, hasSecondaries]);
 
   const [extraColumns, setExtraColumns] = useState<string[]>([]);
   const [columnsDrawerOpen, setColumnsDrawerOpen] = useState(false);
   const activeColumns = availableColumns.filter(c => extraColumns.includes(c.key));
   const toggleColumn = (key: string) => {
     setExtraColumns(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]));
+  };
+  const allColumnsSelected = availableColumns.length > 0 && availableColumns.every(c => extraColumns.includes(c.key));
+  const toggleSelectAllColumns = () => {
+    setExtraColumns(allColumnsSelected ? [] : availableColumns.map(c => c.key));
   };
 
   const [students, setStudents] = useState<EvaluationBlueprintStudent[]>([]);
@@ -263,7 +292,17 @@ export default function EvaluationBlueprintPage() {
       ...activeColumns.map(c => ({
         key: c.key,
         header: c.label,
-        render: (s: EvaluationBlueprintStudent) => <span className="whitespace-nowrap">{c.value(s)}</span>,
+        render: (s: EvaluationBlueprintStudent) => {
+          const text = c.value(s);
+          if (!c.longText) return <span className="whitespace-nowrap">{text}</span>;
+          // title, so the whole note is still readable on hover without
+          // leaving the table — and the row stays one line high.
+          return (
+            <span className="block max-w-[22rem] truncate" title={text === '—' ? undefined : text}>
+              {text}
+            </span>
+          );
+        },
       })),
     ],
     [activeColumns]
@@ -275,6 +314,14 @@ export default function EvaluationBlueprintPage() {
         title={meta?.evaluationName ? `${meta.evaluationName} \u00b7 Blueprint` : 'Evaluation Blueprint'}
         subtitle={cohortLabel || undefined}
         icon={Award}
+        trailing={
+          meta && (
+            <span className="flex items-baseline gap-1.5 ml-1">
+              <span className="text-base font-semibold tabular-nums leading-none text-gold">{meta.maxMarks}</span>
+              <span className="text-xs text-gray-500 leading-none">Max Marks</span>
+            </span>
+          )
+        }
       />
 
       {loading ? (
@@ -350,6 +397,15 @@ export default function EvaluationBlueprintPage() {
 
 
       <Drawer open={columnsDrawerOpen} onClose={() => setColumnsDrawerOpen(false)} title="Customize Columns" widthClassName="max-w-xs">
+        <label className="w-full flex items-center gap-2.5 px-2.5 py-2 mb-1 rounded-lg text-sm cursor-pointer text-gray-300 hover:text-white border-b border-zinc-800">
+          <input
+            type="checkbox"
+            checked={allColumnsSelected}
+            onChange={toggleSelectAllColumns}
+            className="rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold cursor-pointer"
+          />
+          Select all
+        </label>
         <div className="space-y-0.5">
           {availableColumns.map(c => {
             const active = extraColumns.includes(c.key);

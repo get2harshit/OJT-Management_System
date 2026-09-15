@@ -9,6 +9,7 @@ import type {
   StudentEvaluationSummary,
   StudentVisibleEvaluation,
   EvaluatorRole,
+  EvaluationAttendanceStatus,
   EvaluatorQueueItem,
   EvaluationPanelistScore,
   EvaluationDetail,
@@ -357,6 +358,17 @@ export async function apiGetEvaluationsForStudent(studentId: string): Promise<St
 
 // ── Evaluator's own scoring queue + scoring ─────────────────────────────────
 
+/**
+ * How long a panelist's written feedback may be.
+ *
+ * Mirrors MAX_FEEDBACK_LENGTH in the backend's evaluation.routes.ts, which is
+ * what actually rejects an over-long note — both scoring paths (a panelist's
+ * own submit, and an admin's correction) are capped there. Exported here, with
+ * the calls it constrains, so the two screens that write feedback cannot drift
+ * to different limits.
+ */
+export const MAX_FEEDBACK_LENGTH = 4000;
+
 interface RawEvaluatorQueuePanelist {
   role: EvaluatorRole;
   total_marks: string | number | null;
@@ -365,6 +377,7 @@ interface RawEvaluatorQueuePanelist {
 interface RawEvaluatorQueueItem {
   id: string;
   final_marks_obtained: string | number | null;
+  attendance_status: EvaluationAttendanceStatus | null;
   cohort_evaluation_config: {
     sequence_no: number | null;
     max_marks_snapshot: string | number;
@@ -374,6 +387,12 @@ interface RawEvaluatorQueueItem {
   // getEvaluationsForEvaluator) — always exactly one entry.
   panelists: RawEvaluatorQueuePanelist[];
   student: { id: string; full_name: string; email: string };
+  // Not relations on the evaluation itself — a separate batched lookup the
+  // backend merges in (see getEvaluationsForEvaluator), hence camelCase
+  // already rather than the snake_case the rest of this row carries.
+  teamName: string | null;
+  trackName: string | null;
+  projectTitle: string | null;
 }
 
 function mapEvaluatorQueueItem(raw: RawEvaluatorQueueItem): EvaluatorQueueItem {
@@ -391,6 +410,10 @@ function mapEvaluatorQueueItem(raw: RawEvaluatorQueueItem): EvaluatorQueueItem {
         ? Number(myPanelist.total_marks)
         : null,
     finalMarksObtained: raw.final_marks_obtained !== null ? Number(raw.final_marks_obtained) : null,
+    attendanceStatus: raw.attendance_status ?? null,
+    teamName: raw.teamName,
+    trackName: raw.trackName,
+    projectTitle: raw.projectTitle,
   };
 }
 
@@ -403,17 +426,66 @@ export interface EvaluatorQueuePage {
 // cohortId names the OJT whose queue to return; without it the backend scopes
 // to the currently active OJT, which is what a cohort-less caller wants.
 export async function apiGetMyEvaluationQueue(
-  params: { page?: number; limit?: number; cohortId?: string } = {}
+  params: { page?: number; limit?: number; cohortId?: string; configId?: string } = {}
 ): Promise<EvaluatorQueuePage> {
   const query = new URLSearchParams();
   if (params.page) query.set('page', String(params.page));
   if (params.limit) query.set('limit', String(params.limit));
   if (params.cohortId) query.set('cohortId', params.cohortId);
+  if (params.configId) query.set('configId', params.configId);
   const qs = query.toString();
   const res = await apiFetch<{ data: RawEvaluatorQueueItem[]; pagination: { page: number; limit: number; total: number } }>(
     `/api/v1/evaluations/my-queue${qs ? `?${qs}` : ''}`,
   );
   return { data: res.data.map(mapEvaluatorQueueItem), pagination: res.pagination };
+}
+
+interface RawEvaluatorConfigSummary {
+  configId: string;
+  evaluationTypeName: string;
+  sequenceNo: number | null;
+  maxMarksSnapshot: number;
+  trackNames: string[];
+  teamCount: number;
+  studentCount: number;
+  notStartedCount: number;
+  pendingCount: number;
+  completedCount: number;
+}
+
+export interface EvaluatorConfigSummary {
+  configId: string;
+  evaluationName: string;
+  maxMarksSnapshot: number;
+  trackNames: string[];
+  teamCount: number;
+  studentCount: number;
+  // Three states, not scored/unscored — not_started (attendance never
+  // marked, nobody can score it yet), pending (present, but I haven't
+  // scored my own part yet), completed (I've scored it, or attendance
+  // closed it at absent/excused — nothing left for me to do either way).
+  notStartedCount: number;
+  pendingCount: number;
+  completedCount: number;
+}
+
+// The level a mentor's queue opens on — one row per viva they're a
+// panelist on, not per student. Drilling into one re-calls
+// apiGetMyEvaluationQueue with that viva's configId.
+export async function apiGetMyEvaluationConfigs(cohortId?: string): Promise<EvaluatorConfigSummary[]> {
+  const qs = cohortId ? `?cohortId=${cohortId}` : '';
+  const res = await apiFetch<{ data: RawEvaluatorConfigSummary[] }>(`/api/v1/evaluations/my-configs${qs}`);
+  return res.data.map((c) => ({
+    configId: c.configId,
+    evaluationName: c.sequenceNo ? `${c.evaluationTypeName} ${c.sequenceNo}` : c.evaluationTypeName,
+    maxMarksSnapshot: c.maxMarksSnapshot,
+    trackNames: c.trackNames,
+    teamCount: c.teamCount,
+    studentCount: c.studentCount,
+    notStartedCount: c.notStartedCount,
+    pendingCount: c.pendingCount,
+    completedCount: c.completedCount,
+  }));
 }
 
 interface RawEvaluationPanelistScore {
@@ -430,6 +502,7 @@ interface RawEvaluationDetail {
   evaluated_at: string | null;
   final_marks_obtained: string | number | null;
   average_marks_obtained: string | number | null;
+  attendance_status: EvaluationAttendanceStatus | null;
   student: { id: string; full_name: string; email: string };
   cohort_evaluation_config: {
     sequence_no: number | null;
@@ -462,6 +535,7 @@ function mapEvaluationDetail(raw: RawEvaluationDetail): EvaluationDetail {
     finalMarksObtained: raw.final_marks_obtained !== null ? Number(raw.final_marks_obtained) : null,
     averageMarksObtained: raw.average_marks_obtained !== null ? Number(raw.average_marks_obtained) : null,
     evaluatedAt: raw.evaluated_at,
+    attendanceStatus: raw.attendance_status ?? null,
   };
 }
 
@@ -489,7 +563,7 @@ export interface ScoreResult {
 export async function apiScoreEvaluation(
   evaluationId: string,
   scoreBreakdown: Record<string, number>,
-  feedback?: string,
+  feedback: string,
 ): Promise<ScoreResult> {
   const res = await apiFetch<{ data: ScoreResult }>(`/api/v1/evaluations/${evaluationId}/score`, {
     method: 'PATCH',
@@ -506,7 +580,7 @@ export async function apiAdminScoreEvaluation(
   evaluationId: string,
   evaluatorId: string,
   scoreBreakdown: Record<string, number>,
-  feedback?: string,
+  feedback: string,
 ): Promise<ScoreResult> {
   const res = await apiFetch<{ data: ScoreResult }>(
     `/api/v1/evaluations/${evaluationId}/panelists/${evaluatorId}/score`,
@@ -514,6 +588,20 @@ export async function apiAdminScoreEvaluation(
   );
   invalidateEvaluationCaches();
   return res.data;
+}
+
+// The gate ahead of scoring — only the primary panelist may call this.
+// present unlocks the ordinary rubric flow for every panelist; absent/
+// excused close the evaluation immediately, no scoring needed.
+export async function apiMarkEvaluationAttendance(
+  evaluationId: string,
+  status: EvaluationAttendanceStatus,
+): Promise<void> {
+  await apiFetch<{ success: boolean }>(`/api/v1/evaluations/${evaluationId}/attendance`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+  invalidateEvaluationCaches();
 }
 
 // ── Evaluation Blueprint (one config's full student roster) ──────────────────
@@ -527,6 +615,8 @@ export interface EvaluationBlueprintSecondaryPanelist {
   evaluatorName: string | null;
   totalMarks: number | null;
   scoreBreakdown: Record<string, number> | null;
+  /** What this panelist wrote. Null until they have scored. */
+  feedback: string | null;
 }
 
 // One student's row for a single evaluation. primaryScores is keyed by
@@ -549,6 +639,8 @@ export interface EvaluationBlueprintStudent {
   primaryMentorName: string | null;
   primaryTotal: number | null;
   primaryScores: Record<string, number> | null;
+  /** The primary panelist's written note. Null until they have scored. */
+  primaryFeedback: string | null;
   secondaryPanelists: EvaluationBlueprintSecondaryPanelist[];
 }
 
@@ -558,6 +650,9 @@ export interface EvaluationBlueprintMeta {
   mode: EvaluationMode;
   maxMarks: number;
   criteria: { name: string; maxMarks: number; scoredBy: CriterionScorer }[];
+  // 0 means every criterion is scored solo by the primary — Secondary-
+  // facing columns have nothing to show and stay out of Customize Columns.
+  secondaryEvaluatorCount: number;
   scope: { trackIds: string[]; trackNames: string[]; batches: string[] };
 }
 
@@ -719,6 +814,7 @@ interface RawStudentVisibleEvaluation {
   endDate: string;
   primaryMentorName: string | null;
   secondaryMentorNames: string[];
+  attendanceStatus: EvaluationAttendanceStatus | null;
 }
 
 export async function apiGetMyEvaluationsRedacted(): Promise<StudentVisibleEvaluation[]> {

@@ -73,6 +73,10 @@ export function AddEvaluationModal({
   const [selectedRubricId, setSelectedRubricId] = useState('');
   const [creatingNewRubric, setCreatingNewRubric] = useState(false);
   const [newRubricName, setNewRubricName] = useState('');
+  // Declared before any criterion is added, so the admin commits to a total
+  // up front rather than discovering what it added up to after the fact —
+  // criteria below must sum to exactly this before Create & Activate unlocks.
+  const [targetMaxMarks, setTargetMaxMarks] = useState('');
   const [criteriaDrafts, setCriteriaDrafts] = useState<CriterionDraft[]>([{ name: '', maxMarks: '', scoredBy: 'panel' }]);
 
   const [sequenceNo, setSequenceNo] = useState('');
@@ -261,19 +265,6 @@ export function AddEvaluationModal({
   };
 
   const addCriterionRow = () => setCriteriaDrafts((prev) => [...prev, { name: '', maxMarks: '', scoredBy: 'panel' }]);
-  // Shortcuts for the two artifact criteria every viva reaches for — a
-  // reviewed document (PRD, OJL logbook, ...) or attendance. Attendance
-  // stays Primary Only: only the student's own mentor actually takes it, so
-  // nobody else has a basis to mark it. A document is different — any
-  // panelist can be handed read access to review it (see
-  // StudentSubmissionsPanel / the backend's isEvaluationPanelistForStudent
-  // grant), so it's Panel like Viva Performance, best-of across whoever
-  // scores it. Document keeps the name blank (which document varies);
-  // Attendance never does, since it's always exactly that.
-  const addDocumentCriterionRow = () =>
-    setCriteriaDrafts((prev) => [...prev, { name: '', maxMarks: '', scoredBy: 'panel' }]);
-  const addAttendanceCriterionRow = () =>
-    setCriteriaDrafts((prev) => [...prev, { name: 'Attendance', maxMarks: '', scoredBy: 'primary' }]);
   const removeCriterionRow = (index: number) =>
     setCriteriaDrafts((prev) => prev.filter((_, i) => i !== index));
   const updateCriterionRow = (index: number, field: 'name' | 'maxMarks', value: string) =>
@@ -419,12 +410,21 @@ export function AddEvaluationModal({
   // that behave identically here.
   const secondaryLocked = secondaryEvaluatorCount === 0;
 
+  // The criteria below must sum to exactly this — set first, so the admin
+  // commits to a total instead of discovering what it added up to after
+  // the fact.
+  const criteriaSum = criteriaDrafts.reduce((s, c) => s + (Number(c.maxMarks) || 0), 0);
+  const targetMaxMarksValid = targetMaxMarks.trim() !== '' && Number(targetMaxMarks) > 0;
+  const criteriaSumMatchesTarget = targetMaxMarksValid && criteriaSum === Number(targetMaxMarks);
+
   // Step 3 (Rubric): type picked (or named, if new) and its rubric fully
   // specified. This is also what the final Create & Activate gates on.
   const rubricValid =
     (creatingNewType ? newTypeName.trim().length > 0 : !!selectedTypeId) &&
     (creatingNewRubric
-      ? newRubricName.trim().length > 0 && criteriaDrafts.every((c) => c.name.trim() && Number(c.maxMarks) > 0)
+      ? newRubricName.trim().length > 0 &&
+        criteriaDrafts.every((c) => c.name.trim() && Number(c.maxMarks) > 0) &&
+        criteriaSumMatchesTarget
       : !!selectedRubricId);
 
   const totalSteps = 3;
@@ -987,6 +987,19 @@ export function AddEvaluationModal({
                         placeholder="Rubric name, e.g. Viva Rubric v1"
                         className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/40"
                       />
+                      <div>
+                        <label className="block text-[11px] text-gray-500 mb-1">
+                          Max marks for this rubric — criteria below must add up to exactly this
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={targetMaxMarks}
+                          onChange={(e) => setTargetMaxMarks(e.target.value)}
+                          placeholder="e.g. 70"
+                          className="w-28 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-gold/40"
+                        />
+                      </div>
                       <div className="space-y-2">
                         {criteriaDrafts.map((c, i) => (
                           <div key={i} className="flex items-center gap-2">
@@ -1036,18 +1049,21 @@ export function AddEvaluationModal({
                         <button onClick={addCriterionRow} className="text-xs text-gold hover:text-gold-hover flex items-center gap-1">
                           <Plus size={12} /> Add criterion
                         </button>
-                        <button onClick={addDocumentCriterionRow} className="text-xs text-gold hover:text-gold-hover flex items-center gap-1">
-                          <Plus size={12} /> Include Document marks
-                        </button>
-                        <button onClick={addAttendanceCriterionRow} className="text-xs text-gold hover:text-gold-hover flex items-center gap-1">
-                          <Plus size={12} /> Include Attendance
-                        </button>
                       </div>
-                      <p className="text-[11px] text-gray-500">
-                        Total: {criteriaDrafts.reduce((s, c) => s + (Number(c.maxMarks) || 0), 0)} marks · "Include
-                        Attendance" adds a primary-only criterion — only this student's own mentor actually takes
-                        attendance. "Include Document marks" adds a Panel one instead — any panelist can review the
-                        student's submission and score it.
+                      <p
+                        className={`text-[11px] font-medium ${
+                          !targetMaxMarksValid
+                            ? 'text-gray-500'
+                            : criteriaSumMatchesTarget
+                            ? 'text-green-500'
+                            : 'text-amber-400'
+                        }`}
+                      >
+                        {targetMaxMarksValid
+                          ? criteriaSumMatchesTarget
+                            ? `${criteriaSum} / ${targetMaxMarks} marks — matches the target`
+                            : `${criteriaSum} / ${targetMaxMarks} marks — must total exactly ${targetMaxMarks} before this can be created`
+                          : `${criteriaSum} marks so far — set a target above first`}
                       </p>
                     </div>
                   )}
