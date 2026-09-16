@@ -24,6 +24,7 @@ import {
   HelpCircle,
   MessageSquare,
   Share2,
+  Eye,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
 
@@ -69,6 +70,10 @@ const mentorTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'ojts', label: 'My OJT', icon: Briefcase },
   { id: 'mentored-students', label: 'My Students', icon: Users },
+  // Another mentor's students, made visible by an admin — deliberately its
+  // own door in rather than merged into My Students, so it's always obvious
+  // whose data is on screen.
+  { id: 'shared-with-me', label: 'Shared With Me', icon: Eye },
   { id: 'proposals', label: 'Project Proposals', icon: ClipboardCheck },
   { id: 'credits', label: 'Credit Requests', icon: Cloud },
   { id: 'session-requests', label: 'Session Requests', icon: Inbox },

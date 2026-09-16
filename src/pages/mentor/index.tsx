@@ -2,11 +2,13 @@ import { useState, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useLegacyTabRedirect } from '../../hooks/useLegacyTabRedirect';
 import AppShell from '../../components/AppShell';
+import ActingAsSwitcher from '../../components/ActingAsSwitcher';
 import Dashboard from './Dashboard';
 import OJTs from './OJTs';
 import MentorTeams from './ojt/MentorTeams';
 import MentorStudents from './ojt/MentorStudents';
 import MentoredStudents from './MentoredStudents';
+import SharedWithMe from './SharedWithMe';
 import MentorOjtLayout from './ojt/MentorOjtLayout';
 import MentorOjtRedirect from './ojt/MentorOjtRedirect';
 import ProjectProposals from './ProjectProposals';
@@ -98,6 +100,10 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
 
   return (
     <AppShell panel="mentor" onLogout={onLogout}>
+      {/* Above the routes so it stays visible on every mentor screen — while
+          acting as another mentor, that context must never scroll out of
+          sight. Renders nothing for mentors with no co-mentor grants. */}
+      <ActingAsSwitcher />
       <Routes>
         <Route index element={<Dashboard mentorId={mentorId} onNavigateToSection={goToSection} />} />
 
@@ -154,6 +160,7 @@ function MentorPanelContent({ mentorId, onLogout }: { mentorId: string; onLogout
         <Route path="evaluation" element={<MentorOjtRedirect section="evaluation" />} />
 
         <Route path="mentored-students" element={<MentoredStudents />} />
+        <Route path="shared-with-me" element={<SharedWithMe />} />
         <Route path="proposals" element={<ProjectProposals />} />
         {/* Its own route rather than a drawer on the Tasks page: the grid
             is ten columns wide and as tall as the mentor has teams. Flat,
