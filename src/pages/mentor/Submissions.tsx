@@ -5,13 +5,14 @@ import SplitPane from '../../components/SplitPane';
 import RosterList from '../../components/RosterList';
 import SubmissionDetail from '../../components/SubmissionDetail';
 import ReviewActions from '../../components/ReviewActions';
-import type { PrdSubmission, SubmissionKind } from '../../lib/types';
+import type { PrdSubmission } from '../../lib/types';
 import { DOCUMENT_TYPE_LABELS } from '../../lib/types';
 import { apiGetSubmissionsByStudent, apiGetPrdDownloadUrl, apiReviewPrdSubmission } from '../../lib/api';
 import { apiGetMyRoster } from '../../lib/api/teamRoster';
 import { apiGetTask } from '../../lib/api/tasks';
 import type { ApiTask, ApiAssignmentStatus } from '../../lib/api/tasks';
-import { statusDotClass, submissionStatusLabel } from '../../lib/submissionDisplay';
+import { statusDotClass, submissionKindOf, submissionStatusLabel } from '../../lib/submissionDisplay';
+import { useSubmissionViewerUrl } from '../../hooks/useSubmissionViewerUrl';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useConfirm } from '../../confirm';
@@ -90,7 +91,6 @@ export default function MentorSubmissions({
   const [reviewing, setReviewing] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
   // The mentee roster for this OJT, with each one's pending-review count,
   // from the same roster read the rest of My OJT uses. It used to call
@@ -249,21 +249,8 @@ export default function MentorSubmissions({
     (r) => (taskScope ? r.taskId === taskScope.id : taskFilter === 'ALL' || submissionTaskKey(r) === taskFilter)
   );
   const activeSub = studentSubmissions.find((r) => r.id === selectedSubId);
-  const activeSubKind: SubmissionKind = activeSub?.submissionType ?? 'document';
-
-  useEffect(() => {
-    // Only a document submission has a stored file to view.
-    if (!activeSub || activeSubKind !== 'document') {
-      setViewerUrl(null);
-      return;
-    }
-    let cancelled = false;
-    apiGetPrdDownloadUrl(activeSub.id)
-      .then((url) => { if (!cancelled) setViewerUrl(url); })
-      .catch(() => { if (!cancelled) setViewerUrl(null); });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSub?.id]);
+  const activeSubKind = submissionKindOf(activeSub);
+  const viewerUrl = useSubmissionViewerUrl(activeSub);
 
   const handleDownload = async () => {
     if (!activeSub) return;
