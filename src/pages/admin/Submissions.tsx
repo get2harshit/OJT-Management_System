@@ -7,7 +7,7 @@ import RosterList from '../../components/RosterList';
 import SubmissionDetail from '../../components/SubmissionDetail';
 import ReviewActions from '../../components/ReviewActions';
 import Select from '../../components/Select';
-import type { PrdSubmission, ApiMentor, Cohort, SubmissionKind, TeamAllocationDetail } from '../../lib/types';
+import type { PrdSubmission, ApiMentor, Cohort, TeamAllocationDetail } from '../../lib/types';
 import { DOCUMENT_TYPE_LABELS } from '../../lib/types';
 import {
   apiGetAllPrdSubmissions,
@@ -19,7 +19,8 @@ import {
   apiReviewPrdSubmission,
   apiRevertPrdApproval,
 } from '../../lib/api';
-import { statusDotClass, submissionStatusLabel } from '../../lib/submissionDisplay';
+import { statusDotClass, submissionKindOf, submissionStatusLabel } from '../../lib/submissionDisplay';
+import { useSubmissionViewerUrl } from '../../hooks/useSubmissionViewerUrl';
 import { exportToCSV } from '../../lib/csvExport';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
@@ -167,7 +168,6 @@ export default function AdminSubmissions({
   const [exporting, setExporting] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
   const loadCohorts = useCallback(() => {
     return apiListCohorts()
@@ -509,25 +509,12 @@ export default function AdminSubmissions({
     ? visibleSubmissions
     : visibleSubmissions.filter((r) => taskFilter === 'ALL' || submissionTaskKey(r) === taskFilter);
   const activeSub = studentSubmissions.find((r) => r.id === selectedSubId);
-  const activeSubKind: SubmissionKind = activeSub?.submissionType ?? 'document';
+  const activeSubKind = submissionKindOf(activeSub);
   // Whoever this specific submission belongs to — in student mode that's
   // always selectedStudent, but team mode mixes several people's rows
   // together, so the detail header has to look each one up individually.
   const activeSubStudent = rosterStudents.find((s) => s.studentId === activeSub?.studentId);
-
-  useEffect(() => {
-    // Only a document submission has a stored file to view.
-    if (!activeSub || activeSubKind !== 'document') {
-      setViewerUrl(null);
-      return;
-    }
-    let cancelled = false;
-    apiGetPrdDownloadUrl(activeSub.id)
-      .then((url) => { if (!cancelled) setViewerUrl(url); })
-      .catch(() => { if (!cancelled) setViewerUrl(null); });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSub?.id]);
+  const viewerUrl = useSubmissionViewerUrl(activeSub);
 
   const handleDownload = async () => {
     if (!activeSub) return;

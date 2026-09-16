@@ -14,7 +14,8 @@ import {
 } from '../../lib/api';
 import { apiListTasks } from '../../lib/api/tasks';
 import type { ApiTask, ApiTaskCategory } from '../../lib/api/tasks';
-import { statusDotClass, submissionStatusLabel } from '../../lib/submissionDisplay';
+import { statusDotClass, submissionKindOf, submissionStatusLabel } from '../../lib/submissionDisplay';
+import { useSubmissionViewerUrl } from '../../hooks/useSubmissionViewerUrl';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 // A hard cap on a video submission — enforced again server-side (the real
@@ -67,7 +68,6 @@ export default function StudentSubmissions({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
 
   // Set when the upload modal was opened from a specific task's "Submit"
   // button — the submission is always for that one task, so there's no
@@ -183,23 +183,8 @@ export default function StudentSubmissions({
   const selectedTask = submittableTasks.find((t) => t.id === selectedTaskId);
   const selectedTaskIsTeam = selectedTask ? isTeamTask(selectedTask) : false;
   const activeSub = submissions.find((s) => s.id === selectedSubId);
-  // Legacy rows have no submissionType but are always documents.
-  const activeSubKind: SubmissionKind = activeSub?.submissionType ?? 'document';
-
-  useEffect(() => {
-    // Only document/video submissions have a stored file to generate a
-    // viewer URL for — text/link submissions carry their content inline.
-    if (!activeSub || (activeSubKind !== 'document' && activeSubKind !== 'video')) {
-      setViewerUrl(null);
-      return;
-    }
-    let cancelled = false;
-    apiGetPrdDownloadUrl(activeSub.id)
-      .then((url) => { if (!cancelled) setViewerUrl(url); })
-      .catch(() => { if (!cancelled) setViewerUrl(null); });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSub?.id]);
+  const activeSubKind = submissionKindOf(activeSub);
+  const viewerUrl = useSubmissionViewerUrl(activeSub);
 
   const handleDownload = async () => {
     if (!activeSub) return;

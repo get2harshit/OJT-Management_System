@@ -1,3 +1,27 @@
+import type { SubmissionKind } from './types';
+
+// How a submission's content should be rendered. Rows written before the
+// column existed carry no submissionType, and those are always documents.
+export function submissionKindOf(
+  submission?: { submissionType?: SubmissionKind } | null
+): SubmissionKind {
+  return submission?.submissionType ?? 'document';
+}
+
+// Whether this kind keeps its content as a file in GCS — so viewing or
+// downloading it needs a signed URL — rather than inline on the row itself,
+// the way text and link submissions carry theirs in messageContent.
+//
+// One function on purpose. This predicate used to be spelled out at each
+// call site, and when video submissions landed only the student page's copy
+// was updated: mentor and admin reviewers got a preview pane that sat on
+// "Loading preview..." forever, because their effect decided there was no
+// file to fetch a URL for before ever asking. Any future kind with a stored
+// file (audio, an archive) is now one edit here rather than four.
+export function submissionKindHasStoredFile(kind: SubmissionKind): boolean {
+  return kind === 'document' || kind === 'video';
+}
+
 // Strips the GCS upload timestamp prefix (e.g. "1783945358386_report.pdf")
 // so the UI shows the original filename the student uploaded.
 export function fileNameFromGcsUri(uri: string): string {

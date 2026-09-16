@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react';
 import { Download, Loader2, ExternalLink } from 'lucide-react';
 import PdfViewer from './PdfViewer';
-import { statusDotClass, submissionStatusLabel } from '../lib/submissionDisplay';
+import { statusDotClass, submissionKindHasStoredFile, submissionStatusLabel } from '../lib/submissionDisplay';
 import type { SubmissionKind } from '../lib/types';
 
 interface SubmissionDetailProps {
   status: string;
-  // How to render the content: a file (document), a written answer (text), or
-  // one or more URLs (link).
+  // How to render the content: a PDF (document), an MP4 (video), a written
+  // answer (text), or one or more URLs (link).
   submissionKind: SubmissionKind;
   versionNumber: number;
   updatedAt: string;
@@ -126,7 +126,7 @@ export default function SubmissionDetail({
               <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
               {submissionStatusLabel(status).toUpperCase()}
             </span>
-            {(submissionKind === 'document' || submissionKind === 'video') && documentLink && (
+            {submissionKindHasStoredFile(submissionKind) && documentLink && (
               <div className="flex items-center gap-2">
                 {downloadError && <span className="text-xs text-red-400">{downloadError}</span>}
                 <button
