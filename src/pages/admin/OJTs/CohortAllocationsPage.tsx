@@ -145,7 +145,12 @@ export default function CohortAllocationsPage() {
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [trackFilter, setTrackFilter] = useState('');
   const [batchFilter, setBatchFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'' | 'pending' | 'allocated' | 'overridden' | 'published'>('');
+  // 'pending' asks the API for every team with no allocation yet — pending,
+  // needs_review, and teams that never submitted preferences — not just the
+  // literal 'pending' status. 'needs_review' narrows to the middle one.
+  const [statusFilter, setStatusFilter] = useState<
+    '' | 'pending' | 'needs_review' | 'allocated' | 'overridden' | 'published' | 'awaiting_publish'
+  >('');
   const [search, setSearch] = useState('');
   const [cohortBatches, setCohortBatches] = useState<string[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
@@ -310,7 +315,9 @@ export default function CohortAllocationsPage() {
 
   const handleStatusFilterChange = (value: string) => {
     setPage(1);
-    setStatusFilter(value as '' | 'pending' | 'allocated' | 'overridden' | 'published');
+    setStatusFilter(
+      value as '' | 'pending' | 'needs_review' | 'allocated' | 'overridden' | 'published' | 'awaiting_publish'
+    );
   };
 
   const handleLimitChange = (value: number) => {
@@ -965,10 +972,18 @@ export default function CohortAllocationsPage() {
                 onChange={handleStatusFilterChange}
                 placeholder="All Statuses"
                 options={[
-                  { value: 'pending', label: 'Pending' },
+                  // "Not allocated yet" — includes needs_review teams and
+                  // teams that never submitted preferences, both of which
+                  // this filter used to hide.
+                  { value: 'pending', label: 'Pending (no allocation)' },
+                  { value: 'needs_review', label: 'Needs Review' },
                   { value: 'allocated', label: 'Allocated' },
                   { value: 'overridden', label: 'Overridden' },
                   { value: 'published', label: 'Published & Visible' },
+                  // The rest of 'Allocated' — has a project and mentor, but
+                  // was resolved after the last publish, so its students
+                  // still see nothing until the cohort is published again.
+                  { value: 'awaiting_publish', label: 'Awaiting Publish' },
                 ]}
               />
             </>
