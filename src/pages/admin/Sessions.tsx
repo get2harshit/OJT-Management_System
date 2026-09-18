@@ -16,6 +16,7 @@ import SpinnerSquare from '../../components/SpinnerSquare';
 import SessionHoverPreview from '../../components/SessionHoverPreview';
 import SessionJoinLink from '../../components/SessionJoinLink';
 import LiveSessionReportModal from '../../components/LiveSessionReportModal';
+import CalendarSyncIssuesPanel from '../../components/CalendarSyncIssuesPanel';
 import RecurringSchedulePicker, { EMPTY_RECURRING_SCHEDULE, type RecurringScheduleValue } from '../../components/RecurringSchedulePicker';
 import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
@@ -744,6 +745,9 @@ export default function AdminSessions() {
           </button>
         </div>
       </div>
+
+      {/* Renders nothing unless a calendar booking actually failed. */}
+      <CalendarSyncIssuesPanel cohortId={selectedCohortId || undefined} />
 
       <div className="flex items-center gap-4 flex-wrap px-1">
         {(Object.entries(STATUS_COLORS) as [ApiSessionStatus, string][]).map(([status, color]) => (

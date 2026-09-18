@@ -524,3 +524,49 @@ export async function apiSyncLiveAttendance(sessionId: string): Promise<{ update
   invalidateCached('sessions');
   return res.data;
 }
+
+// ── Google Calendar booking ──────────────────────────────────────────────────
+// Each session is also booked on the operations calendar. That booking happens
+// after the session is saved and can fail on its own (Google unreachable, the
+// ops token expired, quota) without affecting the session, so the failures are
+// recorded per session and surfaced here for an admin to re-run.
+
+export interface ApiCalendarSyncIssue {
+  sessionId: string;
+  title: string | null;
+  scheduledDate: string;
+  startTime: string;
+  mentorName: string | null;
+  cohortId: string;
+  cohortName: string | null;
+  error: string | null;
+  attempts: number;
+}
+
+/** Failed bookings only — 'skipped' means this environment has no ops account, which is not a fault. */
+export async function apiListCalendarSyncIssues(cohortId?: string): Promise<ApiCalendarSyncIssue[]> {
+  const query = cohortId ? `?cohortId=${encodeURIComponent(cohortId)}` : '';
+  const res = await apiFetch<{ data: ApiCalendarSyncIssue[] }>(`/api/v1/sessions/calendar-sync/issues${query}`);
+  return res.data;
+}
+
+/** Re-runs one booking and reports where it landed, so a repeat failure is distinguishable from a fix. */
+export async function apiRetryCalendarSync(sessionId: string): Promise<{ status: string; error: string | null }> {
+  const res = await apiFetch<{ data: { status: string; error: string | null } }>(
+    `/api/v1/sessions/${sessionId}/calendar-sync/retry`,
+    { method: 'POST' }
+  );
+  invalidateCached('sessions');
+  return res.data;
+}
+
+/** Re-runs every failed booking — the usual shape of recovery after one expired token. */
+export async function apiRetryAllCalendarSyncs(cohortId?: string): Promise<{ attempted: number; remaining: number }> {
+  const query = cohortId ? `?cohortId=${encodeURIComponent(cohortId)}` : '';
+  const res = await apiFetch<{ data: { attempted: number; remaining: number } }>(
+    `/api/v1/sessions/calendar-sync/retry-all${query}`,
+    { method: 'POST' }
+  );
+  invalidateCached('sessions');
+  return res.data;
+}
