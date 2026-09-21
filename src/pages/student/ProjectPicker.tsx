@@ -2158,7 +2158,7 @@ function SummaryScreen({
   // A dedicated page, not a section appended below the summary — same
   // pattern as ProjectDetailView replacing the browse grid instead of
   // stacking underneath it.
-  if (isRejected && showResubmitForm) {
+  if (isRejected && !isAllocated && showResubmitForm) {
     return (
       <div className="space-y-4">
         <button
@@ -2274,7 +2274,13 @@ function SummaryScreen({
                   <p className="text-white text-sm mt-0.5">{preferences.preference1ReviewNote}</p>
                 </div>
               )}
-              {isRejected && !showResubmitForm && (
+              {/* Not once the team has a project. An admin can resolve a team
+                  by hand while its preference 1 is still sitting rejected, and
+                  that rejection stays on the row — so a published team would
+                  otherwise be told what it is working on and asked to resubmit
+                  its project in the same breath. The backend refuses the
+                  resubmit in that state too. */}
+              {isRejected && !isAllocated && !showResubmitForm && (
                 <button
                   type="button"
                   onClick={() => setShowResubmitForm(true)}

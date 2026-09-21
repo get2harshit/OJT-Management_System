@@ -14,6 +14,27 @@ export const getStoredToken = (): string | null => localStorage.getItem(TOKEN_KE
 export const setStoredToken = (token: string) => localStorage.setItem(TOKEN_KEY, token);
 export const clearStoredToken = () => localStorage.removeItem(TOKEN_KEY);
 
+// ── Acting as another mentor ─────────────────────────────────────────────────
+// Set by the mentor panel's "acting as" switcher, usable for anyone an admin
+// granted full co-mentor access to. Sent on every request so reads answer as
+// that mentor; the backend re-verifies the grant on each one, and writes
+// still record the real signed-in user.
+//
+// sessionStorage, not localStorage, on purpose: closing the tab drops you
+// back to your own identity rather than silently leaving you in someone
+// else's OJT.
+const ACTING_MENTOR_KEY = 'ojt-acting-mentor-id';
+
+export const getActingMentorId = (): string | null => sessionStorage.getItem(ACTING_MENTOR_KEY);
+
+export function setActingMentorId(mentorId: string | null): void {
+  if (mentorId) sessionStorage.setItem(ACTING_MENTOR_KEY, mentorId);
+  else sessionStorage.removeItem(ACTING_MENTOR_KEY);
+  // Every cached entry was answered for the previous identity, and the cache
+  // keys below deliberately carry none — so the whole cache has to go.
+  requestCache.clear();
+}
+
 // ── Request cache ────────────────────────────────────────────────────────────
 // Short-TTL cache + in-flight dedup for read endpoints that multiple
 // components fetch independently (e.g. several cohort sub-pages each
@@ -73,6 +94,10 @@ export async function apiFetch<T>(
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  const actingMentorId = getActingMentorId();
+  if (actingMentorId) {
+    headers['X-Acting-Mentor-Id'] = actingMentorId;
   }
 
   const res = await fetch(`${API_BASE}${path}`, {

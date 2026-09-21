@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Eye, ShieldCheck } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import MentorViewGrantsModal from './OJTs/MentorViewGrantsModal';
+import CoMentorGrantsModal from './OJTs/CoMentorGrantsModal';
 import type { ApiMentor } from '../../lib/types';
 import { getTrackColor, MENTOR_TYPE_DOT_COLORS } from '../../lib/constants';
 import { apiListMentorsPage, apiListCohorts, apiGetTeamCountsForMentors } from '../../lib/api';
@@ -31,6 +34,8 @@ export default function AdminMentors() {
   // right now", not a lifetime total across every OJT they've ever staffed.
   const [activeCohortId, setActiveCohortId] = useState('');
   const [teamCounts, setTeamCounts] = useState<Record<string, number>>({});
+  const [viewGrantsModalOpen, setViewGrantsModalOpen] = useState(false);
+  const [coGrantsModalOpen, setCoGrantsModalOpen] = useState(false);
 
   useEffect(() => {
     apiListCohorts()
@@ -96,14 +101,43 @@ export default function AdminMentors() {
 
   return (
     <PageLayout className="space-y-4">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold text-white">Mentors</h1>
-        <p className="text-sm text-gray-400">
-          Expertise is what a mentor can teach in general. To put a mentor on an OJT&apos;s track — which is
-          what decides who teams can pick — use that OJT&apos;s Track Config. Click a mentor to open their
-          workspace — the teams reporting to them, meeting cadence, rate, and schedule for a chosen OJT.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold text-white">Mentors</h1>
+          <p className="text-sm text-gray-400">
+            Expertise is what a mentor can teach in general. To put a mentor on an OJT&apos;s track — which is
+            what decides who teams can pick — use that OJT&apos;s Track Config. Click a mentor to open their
+            workspace — the teams reporting to them, meeting cadence, rate, and schedule for a chosen OJT.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setViewGrantsModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2 bg-zinc-850 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-750 transition-colors text-sm font-medium border border-zinc-700"
+          >
+            <Eye size={16} />
+            Mentor View Grants
+          </button>
+          <button
+            onClick={() => setCoGrantsModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2 bg-zinc-850 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-750 transition-colors text-sm font-medium border border-zinc-700"
+          >
+            <ShieldCheck size={16} />
+            Co-Mentor Access
+          </button>
+        </div>
       </div>
+
+      <MentorViewGrantsModal
+        open={viewGrantsModalOpen}
+        onClose={() => setViewGrantsModalOpen(false)}
+        defaultCohortId={activeCohortId}
+      />
+      <CoMentorGrantsModal
+        open={coGrantsModalOpen}
+        onClose={() => setCoGrantsModalOpen(false)}
+        defaultCohortId={activeCohortId}
+      />
 
       {loading ? (
         <div className="min-h-[50vh] flex items-center justify-center">

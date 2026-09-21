@@ -9,6 +9,7 @@ import Select from '../../../components/Select';
 import Drawer from '../../../components/Drawer';
 import type { EvaluationBlueprintStatus, EvaluationBlueprintStudent, EvaluationBlueprintMeta } from '../../../lib/api/evaluations';
 import { apiGetEvaluationBlueprint } from '../../../lib/api/evaluations';
+import { AdminScoreCorrectionModal } from './AdminScoreCorrectionModal';
 import { apiGetCohort } from '../../../lib/api';
 import { getCohortLabel } from '../../../lib/cohortLabel';
 import { exportToCSV } from '../../../lib/csvExport';
@@ -46,6 +47,14 @@ interface OptionalColumn {
   key: string;
   label: string;
   value: (s: EvaluationBlueprintStudent) => string;
+  /**
+   * Free text rather than a number or a name. Every other column is a few
+   * characters and renders nowrap; a panelist's feedback runs to 4000, and
+   * nowrap on that stretches the whole table sideways. Marked columns get a
+   * clamped cell with the full text on hover — the CSV export reads `value`
+   * directly, so the file still carries all of it.
+   */
+  longText?: boolean;
 }
 
 export default function EvaluationBlueprintPage() {
@@ -56,6 +65,7 @@ export default function EvaluationBlueprintPage() {
   const [allowedBatches, setAllowedBatches] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<EvaluationBlueprintMeta | null>(null);
+  const [correctingEvaluationId, setCorrectingEvaluationId] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<EvaluationBlueprintStatus | ''>('');
   const [batchFilter, setBatchFilter] = useState('');
@@ -64,41 +74,92 @@ export default function EvaluationBlueprintPage() {
   const [search, setSearch] = useState('');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  // A config can now declare more than one secondary panelist, so every
+  // secondary-facing column joins each panelist's own value with a comma
+  // instead of assuming there's exactly one.
+  const secondaryNames = (s: EvaluationBlueprintStudent) =>
+    s.secondaryPanelists.length > 0 ? s.secondaryPanelists.map(p => p.evaluatorName || 'Unknown').join(', ') : '—';
+  const secondaryTotals = (s: EvaluationBlueprintStudent) =>
+    s.secondaryPanelists.length > 0
+      ? s.secondaryPanelists.map(p => (p.totalMarks != null ? String(p.totalMarks) : '—')).join(', ')
+      : '—';
+
+  // Three states, not two. A student with no evaluation under this config has
+  // nothing to mark and reads as a dash; one who has an evaluation the primary
+  // panelist has not got to yet reads as "Not marked". Collapsing those into
+  // the same cell hides whether a mentor is pending or the student was never
+  // in scope, which is the question this column is opened to answer.
+  const attendanceLabel = (s: EvaluationBlueprintStudent) => {
+    if (s.status === 'not_assigned') return '—';
+    if (!s.attendanceStatus) return 'Not marked';
+    return s.attendanceStatus.charAt(0).toUpperCase() + s.attendanceStatus.slice(1);
+  };
+
+  // Named, and joined on a pipe rather than a comma: two panelists' notes run
+  // into each other otherwise, and with prose there is no way to tell where one
+  // ends — unlike secondaryTotals above, where each value is a single number.
+  const secondaryFeedback = (s: EvaluationBlueprintStudent) => {
+    const written = s.secondaryPanelists.filter(p => p.feedback?.trim());
+    if (written.length === 0) return '—';
+    return written.map(p => `${p.evaluatorName ?? 'Secondary'}: ${p.feedback!.trim()}`).join(' | ');
+  };
+
   // Optional columns are built from the evaluation's own rubric: the fixed
-  // summary set (roll/track/mentors/totals/final) plus one Internal and one
-  // External column PER criterion. Rebuilt whenever meta (hence the criteria)
-  // changes; Student Name/Batch/Status are always shown outside this list.
+  // summary set (roll/track/mentors/totals/final/average/%) plus one
+  // Primary and one Secondary column PER criterion. Rebuilt whenever meta
+  // (hence the criteria) changes; Student Name/Batch/Status are always
+  // shown outside this list. Secondary-facing columns are left out
+  // entirely when this config declares zero secondary panelists — every
+  // row would just read "—", so there's nothing for them to show.
+  const hasSecondaries = (meta?.secondaryEvaluatorCount ?? 0) > 0;
   const availableColumns = useMemo<OptionalColumn[]>(() => {
     const cols: OptionalColumn[] = [
-      { key: 'rollNumber', label: 'Roll Number', value: s => s.rollNumber || '—' },
+      { key: 'registrationNumber', label: 'Registration Number', value: s => s.registrationNumber || '—' },
       { key: 'track', label: 'Track', value: s => s.track || '—' },
-      { key: 'internalMentor', label: 'Internal Mentor', value: s => s.internalMentorName || '—' },
-      { key: 'externalMentor', label: 'External Mentor', value: s => s.externalMentorName || '—' },
-      { key: 'internalTotal', label: 'Internal Total', value: s => (s.internalTotal != null ? String(s.internalTotal) : '—') },
-      { key: 'externalTotal', label: 'External Total', value: s => (s.externalTotal != null ? String(s.externalTotal) : '—') },
-      { key: 'finalMarks', label: 'Final Marks', value: s => (s.finalMarks != null ? `${s.finalMarks}/${meta?.maxMarks ?? '?'}` : '—') },
+      { key: 'teamName', label: 'Team', value: s => s.teamName || '—' },
+      { key: 'attendance', label: 'Attendance', value: attendanceLabel },
+      { key: 'primaryMentor', label: 'Primary Mentor', value: s => s.primaryMentorName || '—' },
+      ...(hasSecondaries ? [{ key: 'secondaryMentor', label: 'Secondary Mentor(s)', value: secondaryNames }] : []),
+      { key: 'primaryTotal', label: 'Primary Total', value: s => (s.primaryTotal != null ? String(s.primaryTotal) : '—') },
+      ...(hasSecondaries ? [{ key: 'secondaryTotal', label: 'Secondary Total(s)', value: secondaryTotals }] : []),
+      { key: 'primaryFeedback', label: 'Primary Feedback', value: s => s.primaryFeedback?.trim() || '—', longText: true },
+      ...(hasSecondaries
+        ? [{ key: 'secondaryFeedback', label: 'Secondary Feedback(s)', value: secondaryFeedback, longText: true }]
+        : []),
+      { key: 'finalMarks', label: 'Final Marks', value: s => (s.finalMarks != null ? String(s.finalMarks) : '—') },
+      { key: 'finalPercentage', label: 'Final %', value: s => (s.finalPercentage != null ? `${s.finalPercentage}%` : '—') },
+      { key: 'averageMarks', label: 'Average Marks', value: s => (s.averageMarks != null ? String(s.averageMarks) : '—') },
     ];
     for (const c of meta?.criteria ?? []) {
       const name = c.name;
       cols.push({
-        key: `int::${name}`,
-        label: `${name} · Int`,
-        value: s => (s.internalScores?.[name] != null ? String(s.internalScores[name]) : '—'),
+        key: `prim::${name}`,
+        label: `${name} · Primary`,
+        value: s => (s.primaryScores?.[name] != null ? String(s.primaryScores[name]) : '—'),
       });
-      cols.push({
-        key: `ext::${name}`,
-        label: `${name} · Ext`,
-        value: s => (s.externalScores?.[name] != null ? String(s.externalScores[name]) : '—'),
-      });
+      if (hasSecondaries) {
+        cols.push({
+          key: `sec::${name}`,
+          label: `${name} · Secondary`,
+          value: s =>
+            s.secondaryPanelists.length > 0
+              ? s.secondaryPanelists.map(p => (p.scoreBreakdown?.[name] != null ? String(p.scoreBreakdown[name]) : '—')).join(', ')
+              : '—',
+        });
+      }
     }
     return cols;
-  }, [meta]);
+  }, [meta, hasSecondaries]);
 
   const [extraColumns, setExtraColumns] = useState<string[]>([]);
   const [columnsDrawerOpen, setColumnsDrawerOpen] = useState(false);
   const activeColumns = availableColumns.filter(c => extraColumns.includes(c.key));
   const toggleColumn = (key: string) => {
     setExtraColumns(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]));
+  };
+  const allColumnsSelected = availableColumns.length > 0 && availableColumns.every(c => extraColumns.includes(c.key));
+  const toggleSelectAllColumns = () => {
+    setExtraColumns(allColumnsSelected ? [] : availableColumns.map(c => c.key));
   };
 
   const [students, setStudents] = useState<EvaluationBlueprintStudent[]>([]);
@@ -244,7 +305,17 @@ export default function EvaluationBlueprintPage() {
       ...activeColumns.map(c => ({
         key: c.key,
         header: c.label,
-        render: (s: EvaluationBlueprintStudent) => <span className="whitespace-nowrap">{c.value(s)}</span>,
+        render: (s: EvaluationBlueprintStudent) => {
+          const text = c.value(s);
+          if (!c.longText) return <span className="whitespace-nowrap">{text}</span>;
+          // title, so the whole note is still readable on hover without
+          // leaving the table — and the row stays one line high.
+          return (
+            <span className="block max-w-[22rem] truncate" title={text === '—' ? undefined : text}>
+              {text}
+            </span>
+          );
+        },
       })),
     ],
     [activeColumns]
@@ -256,6 +327,14 @@ export default function EvaluationBlueprintPage() {
         title={meta?.evaluationName ? `${meta.evaluationName} \u00b7 Blueprint` : 'Evaluation Blueprint'}
         subtitle={cohortLabel || undefined}
         icon={Award}
+        trailing={
+          meta && (
+            <span className="flex items-baseline gap-1.5 ml-1">
+              <span className="text-base font-semibold tabular-nums leading-none text-gold">{meta.maxMarks}</span>
+              <span className="text-xs text-gray-500 leading-none">Max Marks</span>
+            </span>
+          )
+        }
       />
 
       {loading ? (
@@ -267,12 +346,17 @@ export default function EvaluationBlueprintPage() {
           columns={columns}
           data={students}
           loading={studentsLoading}
-          searchPlaceholder="Search by name or roll number..."
+          searchPlaceholder="Search by name, registration or roll number..."
           onSearchChange={handleSearchInputChange}
           /* The table's own export writes the rows it currently holds, which
              here is one page. This page's button fetches the whole filtered
              set first, so it stays. */
           hideExport
+          // Nothing to correct on a 'not_assigned' row — no evaluation
+          // exists yet to open.
+          onRowClick={(row) => {
+            if (row.evaluationId) setCorrectingEvaluationId(row.evaluationId);
+          }}
           leftHeaderContent={
             <>
               <Select
@@ -326,6 +410,15 @@ export default function EvaluationBlueprintPage() {
 
 
       <Drawer open={columnsDrawerOpen} onClose={() => setColumnsDrawerOpen(false)} title="Customize Columns" widthClassName="max-w-xs">
+        <label className="w-full flex items-center gap-2.5 px-2.5 py-2 mb-1 rounded-lg text-sm cursor-pointer text-gray-300 hover:text-white border-b border-zinc-800">
+          <input
+            type="checkbox"
+            checked={allColumnsSelected}
+            onChange={toggleSelectAllColumns}
+            className="rounded bg-zinc-750 border-zinc-650 accent-gold focus:ring-gold cursor-pointer"
+          />
+          Select all
+        </label>
         <div className="space-y-0.5">
           {availableColumns.map(c => {
             const active = extraColumns.includes(c.key);
@@ -345,6 +438,14 @@ export default function EvaluationBlueprintPage() {
           })}
         </div>
       </Drawer>
+
+      {correctingEvaluationId && (
+        <AdminScoreCorrectionModal
+          evaluationId={correctingEvaluationId}
+          onClose={() => setCorrectingEvaluationId(null)}
+          onUpdated={fetchStudents}
+        />
+      )}
     </PageLayout>
   );
 }

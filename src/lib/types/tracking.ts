@@ -60,7 +60,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   others: 'Others',
 };
 
-export type SubmissionKind = 'document' | 'text' | 'link';
+export type SubmissionKind = 'document' | 'text' | 'link' | 'video';
 
 export interface PrdSubmission {
   id: string;
@@ -72,9 +72,11 @@ export interface PrdSubmission {
   // The written answer (text) or newline-separated URLs (link). Interpreted
   // per submissionType.
   messageContent?: string;
-  // How to render this submission's content — 'document' (file at
-  // documentLink), 'text' (answer in messageContent), 'link' (URLs in
-  // messageContent). Absent on legacy rows, which are documents.
+  // How to render this submission's content — 'document' (PDF at
+  // documentLink), 'video' (MP4 at documentLink), 'text' (answer in
+  // messageContent), 'link' (URLs in messageContent). Absent on legacy rows,
+  // which are documents. Read it through submissionKindOf, which applies that
+  // legacy default in one place.
   submissionType?: SubmissionKind;
   status: PrdStatus;
   mentorFeedback?: string;

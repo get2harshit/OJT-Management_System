@@ -34,7 +34,16 @@ interface GetTeamsForCohortParams {
   /** A single batch or several — several is an OR match, any listed batch qualifies. */
   batch?: string | string[];
   search?: string;
-  status?: 'pending' | 'allocated' | 'overridden' | 'published';
+  /**
+   * 'pending' means "no allocation yet" — a team still pending, one sitting
+   * in needs_review, and one that never submitted preferences at all.
+   * 'needs_review' narrows to the middle case.
+   *
+   * 'published' and 'awaiting_publish' split 'allocated' in two: the teams
+   * their students can already see, and the ones resolved after the cohort's
+   * last publish that are still waiting for a fresh one.
+   */
+  status?: 'pending' | 'needs_review' | 'allocated' | 'overridden' | 'published' | 'awaiting_publish';
   page?: number;
   limit?: number;
   skipCount?: boolean;

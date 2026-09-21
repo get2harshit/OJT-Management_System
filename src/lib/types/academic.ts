@@ -602,7 +602,18 @@ export interface DashboardMetrics {
 // `isEvaluationEligible` in EvaluationPanel.tsx.
 
 export type EvaluationMode = 'upload' | 'rubric';
-export type EvaluatorRole = 'internal' | 'external';
+export type EvaluatorRole = 'primary' | 'secondary';
+
+// Set once by the primary panelist, before anyone may score — present
+// unlocks the ordinary rubric flow; absent finalizes the evaluation at 0
+// (counts against the student); excused finalizes it with no marks, left
+// out of the student's overall the same way an unscored evaluation is.
+// Null/undefined means not yet marked, which blocks scoring for everyone.
+export type EvaluationAttendanceStatus = 'present' | 'absent' | 'excused';
+/** Who scores a criterion: every panelist ('panel'), or only the student's
+ * own primary mentor ('primary') — for artifact criteria like a PRD or a
+ * logbook that a secondary panelist never saw. */
+export type CriterionScorer = 'panel' | 'primary';
 
 export interface EvaluationTypeTemplate {
   id: string;
@@ -615,6 +626,7 @@ export interface RubricCriterion {
   name: string;
   maxMarks: number;
   displayOrder: number;
+  scoredBy: CriterionScorer;
 }
 
 export interface RubricTemplate {
@@ -622,6 +634,14 @@ export interface RubricTemplate {
   evaluationTypeTemplateId: string;
   name: string;
   criteria: RubricCriterion[];
+}
+
+/** A config's audience. Both empty means every track / every batch — the
+ * same thing every config meant before scoping existed. */
+export interface EvaluationScope {
+  trackIds: string[];
+  trackNames: string[];
+  batches: string[];
 }
 
 export interface CohortEvaluationConfig {
@@ -634,14 +654,18 @@ export interface CohortEvaluationConfig {
   endDate: string;
   maxMarksSnapshot: number;
   isActive: boolean;
+  /** How many secondary panelists this config declares, on top of the one
+   * fixed primary mentor. */
+  secondaryEvaluatorCount: number;
+  scope: EvaluationScope;
   evaluationTypeTemplate: EvaluationTypeTemplate;
   rubricTemplate: RubricTemplate;
 }
 
 export interface EvaluationMentorPairing {
   id: string;
-  internalMentorId: string;
-  externalMentorId: string;
+  primaryMentorId: string;
+  secondaryMentorId: string;
 }
 
 // One student's status for one evaluation event — the Evaluation Tracker's
@@ -670,6 +694,10 @@ export interface EvaluatorQueueItem {
   myRole: EvaluatorRole;
   myTotalMarks: number | null;
   finalMarksObtained: number | null;
+  attendanceStatus: EvaluationAttendanceStatus | null;
+  teamName: string | null;
+  trackName: string | null;
+  projectTitle: string | null;
 }
 
 // One panelist's own breakdown on an evaluation — null fields mean that
@@ -696,7 +724,25 @@ export interface EvaluationDetail {
   criteria: RubricCriterion[];
   panelists: EvaluationPanelistScore[];
   finalMarksObtained: number | null;
+  /** Same composition, panel part averaged instead of best-of — can fall as
+   * later panelists score, unlike finalMarksObtained. Show it beside how
+   * many of the panel have actually scored, never alone. */
+  averageMarksObtained: number | null;
   evaluatedAt: string | null;
+  attendanceStatus: EvaluationAttendanceStatus | null;
+}
+
+// What a student is allowed to see of their own evaluation — no marks, no
+// feedback, no score_breakdown, not even the final number. Which viva it
+// is, its date window, and who their primary/secondary mentors are.
+export interface StudentVisibleEvaluation {
+  id: string;
+  evaluationName: string;
+  startDate: string;
+  endDate: string;
+  primaryMentorName: string | null;
+  secondaryMentorNames: string[];
+  attendanceStatus: EvaluationAttendanceStatus | null;
 }
 
 // ── Eligibility status (platform-access gate) ───────────────────────────────
