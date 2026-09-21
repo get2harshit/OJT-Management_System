@@ -231,6 +231,8 @@ function StudentRow({
 
       <NewAssessmentModal
         open={formOpen}
+        studentId={student.id}
+        cohortId={cohortId}
         onClose={() => setFormOpen(false)}
         onSubmit={async (scores, note) => {
           try {
