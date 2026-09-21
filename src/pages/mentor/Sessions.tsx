@@ -43,7 +43,7 @@ import {
 } from '../../lib/api';
 import { formatMeetingPattern } from '../../lib/meetingPattern';
 import { DEFAULT_SESSION_LOCATION, PST_CAMPUS_ROOM_OPTIONS, defaultSessionTitle } from '../../lib/sessionLocation';
-import { computeWeekOccurrenceDates } from '../../lib/utils';
+import { computeWeekOccurrenceDates, localDateTimeRange } from '../../lib/utils';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useAuth } from '../../context/useAuth';
@@ -95,6 +95,7 @@ export default function MentorSessions() {
 
   const [createForm, setCreateForm] = useState<SessionFormState | null>(null);
   const [creating, setCreating] = useState(false);
+  const createSubmissionInFlight = useRef(false);
   const [recurring, setRecurring] = useState(false);
   const [recurringSchedule, setRecurringSchedule] = useState<RecurringScheduleValue>(EMPTY_RECURRING_SCHEDULE);
   const [recurringResult, setRecurringResult] = useState<CreateRecurringSessionsResult | null>(null);
@@ -355,6 +356,7 @@ export default function MentorSessions() {
 
   const submitCreate = async () => {
     if (!createForm || !selectedCohortId || !user) return;
+    if (createSubmissionInFlight.current) return;
     if (createForm.teamIds.length === 0) {
       showError('At least one team is required');
       return;
@@ -366,12 +368,12 @@ export default function MentorSessions() {
         showError('Week start date, a time range, and at least one weekday are required');
         return;
       }
+      createSubmissionInFlight.current = true;
       setCreating(true);
       try {
         const occurrenceDates = computeWeekOccurrenceDates(startDate, weekdays);
         const occurrences = occurrenceDates.map((date) => {
-          const start = new Date(`${date}T${startTimeOfDay}`);
-          const end = new Date(`${date}T${endTimeOfDay}`);
+          const { start, end } = localDateTimeRange(date, startTimeOfDay, endTimeOfDay);
           return { scheduledDate: date, startTime: start.toISOString(), endTime: end.toISOString() };
         });
         const result = await apiCreateRecurringSessions({
@@ -405,6 +407,7 @@ export default function MentorSessions() {
       showError('A time range is required');
       return;
     }
+    createSubmissionInFlight.current = true;
     setCreating(true);
     try {
       const start = new Date(createForm.startLocal);
@@ -426,6 +429,7 @@ export default function MentorSessions() {
       showError(err instanceof Error ? err.message : 'Failed to schedule session');
     } finally {
       setCreating(false);
+      createSubmissionInFlight.current = false;
     }
   };
 

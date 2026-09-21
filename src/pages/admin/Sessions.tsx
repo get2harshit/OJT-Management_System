@@ -23,7 +23,7 @@ import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
 import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
 import { formatMeetingPattern } from '../../lib/meetingPattern';
 import { DEFAULT_SESSION_LOCATION, PST_CAMPUS_ROOM_OPTIONS, defaultSessionTitle } from '../../lib/sessionLocation';
-import { computeWeekOccurrenceDates } from '../../lib/utils';
+import { computeWeekOccurrenceDates, localDateTimeRange } from '../../lib/utils';
 import type { ApiMentor } from '../../lib/types';
 import {
   apiListMentorsPage,
@@ -96,6 +96,7 @@ export default function AdminSessions() {
 
   const [createForm, setCreateForm] = useState<SessionFormState | null>(null);
   const [creating, setCreating] = useState(false);
+  const createSubmissionInFlight = useRef(false);
   const [recurring, setRecurring] = useState(false);
   const [recurringSchedule, setRecurringSchedule] = useState<RecurringScheduleValue>(EMPTY_RECURRING_SCHEDULE);
   const [recurringResult, setRecurringResult] = useState<CreateRecurringSessionsResult | null>(null);
@@ -371,6 +372,7 @@ export default function AdminSessions() {
 
   const submitCreate = async () => {
     if (!createForm || !selectedCohortId) return;
+    if (createSubmissionInFlight.current) return;
     if (!createForm.mentorId || createForm.teamIds.length === 0) {
       showError('Mentor and at least one team are required');
       return;
@@ -382,12 +384,12 @@ export default function AdminSessions() {
         showError('Week start date, a time range, and at least one weekday are required');
         return;
       }
+      createSubmissionInFlight.current = true;
       setCreating(true);
       try {
         const occurrenceDates = computeWeekOccurrenceDates(startDate, weekdays);
         const occurrences = occurrenceDates.map((date) => {
-          const start = new Date(`${date}T${startTimeOfDay}`);
-          const end = new Date(`${date}T${endTimeOfDay}`);
+          const { start, end } = localDateTimeRange(date, startTimeOfDay, endTimeOfDay);
           return { scheduledDate: date, startTime: start.toISOString(), endTime: end.toISOString() };
         });
         const result = await apiCreateRecurringSessions({
@@ -421,6 +423,7 @@ export default function AdminSessions() {
       showError('A time range is required');
       return;
     }
+    createSubmissionInFlight.current = true;
     setCreating(true);
     try {
       const start = new Date(createForm.startLocal);
@@ -442,6 +445,7 @@ export default function AdminSessions() {
       showError(err instanceof Error ? err.message : 'Failed to schedule session');
     } finally {
       setCreating(false);
+      createSubmissionInFlight.current = false;
     }
   };
 

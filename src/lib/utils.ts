@@ -239,3 +239,15 @@ export const computeWeekOccurrenceDates = (startDateLocal: string, weekdays: num
     })
     .sort();
 };
+
+/** Builds a local datetime range, carrying an end time after midnight into the next day. */
+export const localDateTimeRange = (
+  dateLocal: string,
+  startTimeLocal: string,
+  endTimeLocal: string
+): { start: Date; end: Date } => {
+  const start = new Date(`${dateLocal}T${startTimeLocal}`);
+  const end = new Date(`${dateLocal}T${endTimeLocal}`);
+  if (end <= start) end.setDate(end.getDate() + 1);
+  return { start, end };
+};
