@@ -212,13 +212,24 @@ export async function apiCreateSkillAssessment(
   return res.data;
 }
 
-/** One student's history in one OJT, newest first. Admin, or that student's own mentor. */
+/**
+ * One student's history in one OJT, newest first. Admin, or that student's own mentor.
+ *
+ * `frameworkVersion` narrows to a single rubric, and the server does the
+ * narrowing — a caller that needs the latest snapshot on the current
+ * framework asks for exactly that rather than taking a page of mixed rubrics
+ * and picking through it here, which would come back empty whenever the
+ * newest row happened to be a legacy one.
+ */
 export async function apiListSkillAssessments(
   studentId: string,
   cohortId: string,
-  params: { page?: number; limit?: number } = {}
+  params: { page?: number; limit?: number; frameworkVersion?: number } = {}
 ): Promise<{ data: ApiSkillAssessment[]; pagination: PageMeta }> {
   const query = new URLSearchParams({ cohortId });
+  if (params.frameworkVersion !== undefined) {
+    query.set('frameworkVersion', String(params.frameworkVersion));
+  }
   query.set('page', String(params.page ?? 1));
   query.set('limit', String(params.limit ?? 20));
   const body = await apiFetch<{ data: ApiSkillAssessment[]; pagination: RawPagination }>(

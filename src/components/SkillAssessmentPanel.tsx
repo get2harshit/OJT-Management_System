@@ -119,6 +119,40 @@ function ComparisonBadge({ comparison }: { comparison: AssessmentComparison }) {
   );
 }
 
+/**
+ * How a figure being drafted now compares with the same figure last cycle.
+ *
+ * The sign is written out rather than left to colour, so the direction still
+ * reads without it. Two decimals because that is the precision the dimensions
+ * and the final rating are stored at — rounding further here would report "no
+ * change" for a move the saved record will show.
+ */
+function Delta({ from, to }: { from: number | null | undefined; to: number | null | undefined }) {
+  if (from === null || from === undefined || to === null || to === undefined) return null;
+  const difference = Math.round((to - from) * 100) / 100;
+  if (difference === 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 tabular-nums">
+        <Minus size={11} />
+        no change
+      </span>
+    );
+  }
+  const improved = difference > 0;
+  const Icon = improved ? TrendingUp : TrendingDown;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-[11px] font-medium tabular-nums ${
+        improved ? 'text-emerald-400' : 'text-amber-400'
+      }`}
+    >
+      <Icon size={11} />
+      {improved ? '+' : '−'}
+      {Math.abs(difference).toFixed(2)}
+    </span>
+  );
+}
+
 /** One saved snapshot, rendered according to the rubric it was written under. */
 function AssessmentDetail({ assessment }: { assessment: ApiSkillAssessment }) {
   if (assessment.frameworkVersion !== CURRENT_FRAMEWORK_VERSION) {
@@ -311,16 +345,35 @@ export default function SkillAssessmentPanel({
   );
 }
 
+/**
+ * The form a mentor records a new assessment on.
+ *
+ * It carries the student's last snapshot as a reference — marked on each
+ * rating scale (see RatingScaleInput's previousValue) and summarised against
+ * the dimensions and the final rating below. Nothing is prefilled from it:
+ * the point is a mentor rating this cycle with last cycle in view, not a
+ * mentor confirming last cycle.
+ */
 export function NewAssessmentModal({
   open,
+  studentId,
+  cohortId,
   onClose,
   onSubmit,
 }: {
   open: boolean;
+  studentId: string;
+  cohortId: string;
   onClose: () => void;
   onSubmit: (scores: Record<string, number>, note: string) => Promise<void>;
 }) {
   const [scores, setScores] = useState<Record<string, number>>({});
+  // The snapshot shown as reference. Only ever one, and only ever on the
+  // current rubric — the server filters, so a student whose newest row is a
+  // legacy one simply has no reference rather than a set of nine scores that
+  // cannot be lined up against these ten parameters.
+  const [previous, setPrevious] = useState<ApiSkillAssessment | null>(null);
+  const [previousLoading, setPreviousLoading] = useState(false);
   const [note, setNote] = useState('');
   // Once a mentor types their own words, the auto-generated draft below stops
   // overwriting them — the whole point is a starting point they can keep or
@@ -337,16 +390,41 @@ export function NewAssessmentModal({
 
   // Reset to a blank form each time the modal opens, rather than carrying
   // over whatever a previous assessment (of possibly a different student)
-  // left behind.
+  // left behind — and re-read the reference snapshot for whoever is being
+  // assessed now, for the same reason.
   useEffect(() => {
-    if (open) {
-      setScores({});
-      setNote('');
-      setNoteEdited(false);
-      setConfirmed(false);
-      setCollapsedDimensions(new Set(FRAMEWORK_DIMENSIONS.map((d) => d.key)));
-    }
-  }, [open]);
+    if (!open) return;
+    setScores({});
+    setNote('');
+    setNoteEdited(false);
+    setConfirmed(false);
+    setCollapsedDimensions(new Set(FRAMEWORK_DIMENSIONS.map((d) => d.key)));
+
+    setPrevious(null);
+    setPreviousLoading(true);
+    // Guarded rather than aborted: a reopen for a different student would
+    // otherwise be able to land the earlier request's answer on this form.
+    let cancelled = false;
+    apiListSkillAssessments(studentId, cohortId, {
+      frameworkVersion: CURRENT_FRAMEWORK_VERSION,
+      limit: 1,
+    })
+      .then((res) => {
+        if (!cancelled) setPrevious(res.data[0] ?? null);
+      })
+      // The reference is an aid, never a prerequisite. A failed read leaves
+      // the form exactly as usable as it was before this existed, rather
+      // than blocking an assessment on it.
+      .catch(() => {
+        if (!cancelled) setPrevious(null);
+      })
+      .finally(() => {
+        if (!cancelled) setPreviousLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, studentId, cohortId]);
 
   const toggleDimension = (key: string) => {
     setCollapsedDimensions((prev) => {
@@ -397,6 +475,33 @@ export function NewAssessmentModal({
           visible.
         </p>
 
+        {/* Said once, here, rather than repeated on each of the fifty rating
+            buttons below: at phone width a five-column scale has no room for
+            a caption per option, and ten copies of the same sentence is noise
+            a mentor reads past by the second parameter. */}
+        {previousLoading ? (
+          <div className="flex items-center gap-2 text-[11px] text-gray-500">
+            <Loader2 size={12} className="animate-spin" />
+            Looking up their last assessment…
+          </div>
+        ) : previous ? (
+          <div className="flex items-start gap-2 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2">
+            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-gold/70 shrink-0" aria-hidden="true" />
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              Dashed options are what they were rated{' '}
+              <span className="text-gray-300">
+                {formatInIST(previous.assessedAt, { day: '2-digit', month: 'short' })}
+                {previous.mentorName ? ` by ${previous.mentorName}` : ''}
+              </span>
+              . Shown for reference only — nothing is filled in for you.
+            </p>
+          </div>
+        ) : (
+          <p className="text-[11px] text-gray-500">
+            First assessment on the current framework — there is nothing earlier to compare against yet.
+          </p>
+        )}
+
         {FRAMEWORK_DIMENSIONS.map((dimension) => {
           const isExpanded = !collapsedDimensions.has(dimension.key);
           return (
@@ -416,7 +521,17 @@ export function NewAssessmentModal({
                     <p className="text-[11px] text-gray-500">{dimension.guidingQuestion}</p>
                   </div>
                 </div>
-                <RatingValue value={previewDimension(scores, dimension.parameters)} className="shrink-0" />
+                <div className="shrink-0 text-right">
+                  <RatingValue value={previewDimension(scores, dimension.parameters)} />
+                  {/* The server's own stored dimension, not one recomputed
+                      here — the saved record is the thing being compared
+                      against, so it is the thing that gets read. */}
+                  {previous?.[dimension.key] != null && (
+                    <p className="text-[10px] text-gray-500 tabular-nums mt-0.5">
+                      was {previous[dimension.key]!.toFixed(2)}
+                    </p>
+                  )}
+                </div>
               </button>
 
               {isExpanded &&
@@ -431,6 +546,7 @@ export function NewAssessmentModal({
                       <RatingScaleInput
                         value={scores[key]}
                         onChange={(v) => setScores((s) => ({ ...s, [key]: v }))}
+                        previousValue={previous?.scores[key] ?? null}
                       />
                     </div>
                   );
@@ -440,9 +556,22 @@ export function NewAssessmentModal({
         })}
 
         {finalPreview !== null && (
-          <div className="flex items-center justify-between bg-zinc-900 border border-gold/20 rounded-lg px-3.5 py-2.5">
-            <span className="text-xs text-gray-300 font-medium">Final rating</span>
-            <span className="text-sm font-bold text-gold tabular-nums">{finalPreview.toFixed(2)} / 5</span>
+          <div className="bg-zinc-900 border border-gold/20 rounded-lg px-3.5 py-2.5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-300 font-medium">Final rating</span>
+              <span className="text-sm font-bold text-gold tabular-nums">{finalPreview.toFixed(2)} / 5</span>
+            </div>
+            {/* The one place the movement is spelled out as a number. Each
+                parameter already shows it as a distance along its own scale,
+                and the final rating has no scale to show it on. */}
+            {previous?.finalRating != null && (
+              <div className="flex items-center justify-between border-t border-zinc-800 pt-1.5">
+                <span className="text-[11px] text-gray-500 tabular-nums">
+                  Last cycle {previous.finalRating.toFixed(2)} / 5
+                </span>
+                <Delta from={previous.finalRating} to={finalPreview} />
+              </div>
+            )}
           </div>
         )}
 
