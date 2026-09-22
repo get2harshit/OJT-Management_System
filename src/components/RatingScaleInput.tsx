@@ -15,32 +15,76 @@ export default function RatingScaleInput({
   value,
   onChange,
   disabled = false,
+  previousValue = null,
 }: {
   value: number | undefined;
   onChange: (value: number) => void;
   disabled?: boolean;
+  /**
+   * What this same parameter was rated last cycle, marked on the scale itself
+   * rather than printed beside it — the mentor is already looking here, so
+   * the comparison costs them no second glance, and "went from 3 to 4" reads
+   * as a distance across the row instead of as arithmetic.
+   *
+   * Reference only. It is deliberately NOT used to preselect anything: a
+   * prefilled form is one a mentor can save without having judged a single
+   * parameter, and this table exists to show a trend that only means
+   * something if every snapshot was actually rated.
+   *
+   * Null/undefined renders exactly as this control always has, which is what
+   * a first assessment — and a student whose last snapshot was written under
+   * the earlier nine-parameter rubric — should get.
+   */
+  previousValue?: number | null;
 }) {
   return (
     <div className="grid grid-cols-5 gap-1.5" role="radiogroup">
       {RATING_LEVELS.map((level) => {
         const active = value === level.value;
+        const previous = previousValue === level.value;
         return (
           <button
             key={level.value}
             type="button"
             role="radio"
             aria-checked={active}
+            // The marker is a dashed border and a dot, so it survives being
+            // read out as well as being looked at — colour alone would say
+            // nothing here to a mentor who cannot see the difference.
+            aria-label={`${level.value}, ${level.label}${previous ? ', previously marked' : ''}`}
             disabled={disabled}
             onClick={() => onChange(level.value)}
-            title={level.description}
-            className={`rounded-lg border px-2 py-1.5 text-left transition-colors focus:outline-none focus:ring-1 focus:ring-gold/60 ${
+            title={previous ? `${level.description} — previously marked` : level.description}
+            /* Two states, one visual language: filled gold is the rating being
+               given now, a dashed gold outline is the one given last cycle.
+               Fill against outline is what keeps them apart at a glance — a
+               second filled colour would read as a second selection, and the
+               control has to stay unambiguous about which rating is about to
+               be saved. */
+            className={`relative rounded-lg border px-2 py-1.5 text-left transition-colors focus:outline-none focus:ring-1 focus:ring-gold/60 ${
               active
                 ? 'bg-gold text-black border-gold'
-                : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-gray-600 hover:text-gray-200'
+                : previous
+                  ? 'bg-gold/5 border-dashed border-gold/50 text-gray-200 hover:border-gold/80'
+                  : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-gray-600 hover:text-gray-200'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           >
+            {/* Kept when this is also the current selection — "same as last
+                cycle" is a real answer and should look like one, rather than
+                like the previous rating having disappeared. On gold it goes
+                dark, the same way the label below already does. */}
+            {previous && (
+              <span
+                aria-hidden="true"
+                className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${active ? 'bg-black/50' : 'bg-gold/70'}`}
+              />
+            )}
             <span className="block text-sm font-bold tabular-nums leading-none">{level.value}</span>
-            <span className={`block text-[10px] leading-tight mt-1 ${active ? 'text-black/70' : 'text-gray-500'}`}>
+            <span
+              className={`block text-[10px] leading-tight mt-1 ${
+                active ? 'text-black/70' : previous ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            >
               {level.label}
             </span>
           </button>
