@@ -594,7 +594,8 @@ export async function apiAdminScoreEvaluation(
   return res.data;
 }
 
-// The gate ahead of scoring — only the primary panelist may call this.
+// The gate ahead of scoring — the primary panelist, or an admin/batch
+// manager as an override (the server records who marked it).
 // present unlocks the ordinary rubric flow for every panelist; absent/
 // excused close the evaluation immediately, no scoring needed.
 export async function apiMarkEvaluationAttendance(

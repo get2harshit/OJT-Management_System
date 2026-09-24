@@ -1,9 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldCheck, X, Loader2 } from 'lucide-react';
+import { ShieldCheck, X, Loader2, UserCheck, UserX, CalendarOff } from 'lucide-react';
 import Select from '../../../components/Select';
 import Button from '../../../components/Button';
-import { apiGetEvaluationDetail, apiAdminScoreEvaluation, MAX_FEEDBACK_LENGTH } from '../../../lib/api/evaluations';
-import type { EvaluationDetail } from '../../../lib/types';
+import {
+  apiGetEvaluationDetail,
+  apiAdminScoreEvaluation,
+  apiMarkEvaluationAttendance,
+  MAX_FEEDBACK_LENGTH,
+} from '../../../lib/api/evaluations';
+import type { EvaluationDetail, EvaluationAttendanceStatus } from '../../../lib/types';
 import { useToast } from '../../../toast';
 
 /**
@@ -11,6 +16,10 @@ import { useToast } from '../../../toast';
  * own scoring modal (EvaluationTracker), which only ever submits the
  * CALLER's own row. Here the admin picks WHICH panelist's row to correct,
  * since they aren't a panelist on this evaluation themselves.
+ *
+ * Scoring sits behind the same attendance gate as the mentor's form, so the
+ * admin can mark attendance here too — the override for a primary who never
+ * did. Whoever marks it is recorded on the evaluation.
  */
 export function AdminScoreCorrectionModal({
   evaluationId,
@@ -28,6 +37,7 @@ export function AdminScoreCorrectionModal({
   const [scoreDraft, setScoreDraft] = useState<Record<string, string>>({});
   const [feedbackDraft, setFeedbackDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [markingAttendance, setMarkingAttendance] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,8 +78,28 @@ export function AdminScoreCorrectionModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvaluatorId, detail]);
 
+  // The server refuses moving off present once anyone has scored — correct
+  // the scores instead. Offered only when it would be accepted.
+  const anyScored = detail?.panelists.some((p) => p.totalMarks !== null) ?? false;
+
+  const handleMarkAttendance = async (status: EvaluationAttendanceStatus) => {
+    if (!detail) return;
+    setMarkingAttendance(true);
+    try {
+      await apiMarkEvaluationAttendance(detail.id, status);
+      setDetail(await apiGetEvaluationDetail(detail.id));
+      showSuccess(`Marked ${status}.`);
+      onUpdated();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to mark attendance');
+    } finally {
+      setMarkingAttendance(false);
+    }
+  };
+
   const canSubmit =
     !!detail &&
+    detail.attendanceStatus === 'present' &&
     myCriteria.length > 0 &&
     feedbackDraft.trim() !== '' &&
     myCriteria.every((c) => {
@@ -144,7 +174,100 @@ export function AdminScoreCorrectionModal({
               />
             </div>
 
-            {selectedPanelist && (
+            {detail.attendanceStatus == null ? (
+              <div className="bg-zinc-800/60 border border-zinc-750 rounded-lg p-4 space-y-3">
+                <p className="text-sm text-white font-medium">
+                  Attendance hasn&apos;t been marked for {detail.studentName || 'this student'}.
+                </p>
+                <p className="text-xs text-gray-500">
+                  Scores open once it is. Marking it here overrides the primary mentor and is recorded under your name.
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => handleMarkAttendance('present')}
+                    disabled={markingAttendance}
+                    className="flex flex-col items-center gap-1 py-2.5 rounded-lg border border-zinc-700 text-gray-300 hover:border-green-500/50 hover:text-green-400 disabled:opacity-50 transition-colors"
+                  >
+                    <UserCheck size={16} />
+                    <span className="text-xs font-medium">Present</span>
+                  </button>
+                  <button
+                    onClick={() => handleMarkAttendance('absent')}
+                    disabled={markingAttendance}
+                    className="flex flex-col items-center gap-1 py-2.5 rounded-lg border border-zinc-700 text-gray-300 hover:border-red-500/50 hover:text-red-400 disabled:opacity-50 transition-colors"
+                  >
+                    <UserX size={16} />
+                    <span className="text-xs font-medium">Absent</span>
+                  </button>
+                  <button
+                    onClick={() => handleMarkAttendance('excused')}
+                    disabled={markingAttendance}
+                    className="flex flex-col items-center gap-1 py-2.5 rounded-lg border border-zinc-700 text-gray-300 hover:border-yellow-500/50 hover:text-yellow-400 disabled:opacity-50 transition-colors"
+                  >
+                    <CalendarOff size={16} />
+                    <span className="text-xs font-medium">Excused</span>
+                  </button>
+                </div>
+              </div>
+            ) : detail.attendanceStatus !== 'present' ? (
+              <div className="bg-zinc-800/60 border border-zinc-750 rounded-lg p-4 space-y-2">
+                <p className="text-sm text-white">
+                  Closed — {detail.studentName || 'the student'} was marked{' '}
+                  <span className={detail.attendanceStatus === 'absent' ? 'text-red-400 font-semibold' : 'text-yellow-400 font-semibold'}>
+                    {detail.attendanceStatus}
+                  </span>
+                  .
+                </p>
+                {detail.attendanceStatus === 'absent' && (
+                  <p className="text-xs text-gray-500">Counted as 0/{detail.maxMarksSnapshot} in the overall.</p>
+                )}
+                {detail.attendanceStatus === 'excused' && (
+                  <p className="text-xs text-gray-500">No marks recorded — left out of the overall.</p>
+                )}
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => handleMarkAttendance('present')}
+                    disabled={markingAttendance}
+                    className="text-xs text-gold hover:text-gold-hover font-medium disabled:opacity-50"
+                  >
+                    Correct to Present
+                  </button>
+                  <button
+                    onClick={() => handleMarkAttendance(detail.attendanceStatus === 'absent' ? 'excused' : 'absent')}
+                    disabled={markingAttendance}
+                    className="text-xs text-gray-400 hover:text-white font-medium disabled:opacity-50"
+                  >
+                    Change to {detail.attendanceStatus === 'absent' ? 'Excused' : 'Absent'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="text-gray-400">
+                  Attendance: <span className="text-green-400 font-semibold">Present</span>
+                </span>
+                {!anyScored && (
+                  <span className="flex gap-3">
+                    <button
+                      onClick={() => handleMarkAttendance('absent')}
+                      disabled={markingAttendance}
+                      className="text-gray-400 hover:text-red-400 font-medium disabled:opacity-50"
+                    >
+                      Mark Absent
+                    </button>
+                    <button
+                      onClick={() => handleMarkAttendance('excused')}
+                      disabled={markingAttendance}
+                      className="text-gray-400 hover:text-yellow-400 font-medium disabled:opacity-50"
+                    >
+                      Mark Excused
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
+
+            {selectedPanelist && detail.attendanceStatus === 'present' && (
               <>
                 <div className="space-y-3">
                   {myCriteria.map((c) => (
