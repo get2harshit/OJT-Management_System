@@ -9,6 +9,13 @@ import type { Credit, CreditRequest, PartnerPool, Profile, Student, CloudProvide
 import { useCredits } from '../../hooks/useCredits';
 import { useData } from '../../context/DataContext';
 
+// $1,500,000 rather than a bare 1500000 — used for both the on-screen table
+// and the CSV export, so a partner's committed value reads the same way in
+// both places instead of a spreadsheet full of unlabeled integers.
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount || 0);
+}
+
 interface Props {
   credits: Credit[];
   creditRequests: CreditRequest[];
@@ -26,7 +33,7 @@ export default function AdminCredits({
   addCredit: propAddCredit,
   approveCreditRequest: propApproveCreditRequest,
 }: Partial<Props> = {}) {
-  const { credits: hookCredits, creditRequests: hookCreditRequests, partnerPools, addCredit: hookAddCredit, approveCreditRequest: hookApproveCreditRequest } = useCredits();
+  const { credits: hookCredits, creditRequests: hookCreditRequests, partnerPools, addCredit: hookAddCredit, approveCreditRequest: hookApproveCreditRequest, addPartnerPool } = useCredits();
   const { profiles: hookProfiles, students: hookStudents } = useData();
 
   const credits = propCredits ?? hookCredits;
@@ -37,9 +44,19 @@ export default function AdminCredits({
   const approveCreditRequest = propApproveCreditRequest ?? hookApproveCreditRequest;
   const [modalOpen, setModalOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
+  const [partnerModalOpen, setPartnerModalOpen] = useState(false);
   const [selectedReqId, setSelectedReqId] = useState<string | null>(null);
   const [voucherCode, setVoucherCode] = useState('');
   const [form, setForm] = useState({ student_id: '', provider: 'AWS', amount: '', code: '', expiry_date: '' });
+  const [partnerForm, setPartnerForm] = useState({
+    partner_organization: '',
+    partner_category: '',
+    total_committed_value: '',
+    pool_allocation: '',
+    dollar_value_per_semester: '',
+    unit_or_grant_offering: '',
+    target_tracks_covered: '',
+  });
   const [activeSubTab, setActiveSubTab] = useState<'assigned' | 'requests' | 'pools'>('assigned');
 
   const poolsData: PartnerPool[] = partnerPools;
@@ -77,6 +94,29 @@ export default function AdminCredits({
     setSelectedReqId(null);
   };
 
+  const handleAddPartner = () => {
+    if (!partnerForm.partner_organization.trim() || !partnerForm.partner_category.trim()) return;
+    addPartnerPool({
+      partner_organization: partnerForm.partner_organization.trim(),
+      partner_category: partnerForm.partner_category.trim(),
+      total_committed_value: Number(partnerForm.total_committed_value) || 0,
+      pool_allocation: Number(partnerForm.pool_allocation) || 0,
+      dollar_value_per_semester: Number(partnerForm.dollar_value_per_semester) || 0,
+      unit_or_grant_offering: partnerForm.unit_or_grant_offering.trim(),
+      target_tracks_covered: partnerForm.target_tracks_covered.trim(),
+    });
+    setPartnerForm({
+      partner_organization: '',
+      partner_category: '',
+      total_committed_value: '',
+      pool_allocation: '',
+      dollar_value_per_semester: '',
+      unit_or_grant_offering: '',
+      target_tracks_covered: '',
+    });
+    setPartnerModalOpen(false);
+  };
+
   return (
     <PageLayout mode={activeSubTab === 'assigned' ? 'fill' : 'scroll'} className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -91,6 +131,13 @@ export default function AdminCredits({
           >
             <Plus size={18} />
             Direct Assignment
+          </button>
+          <button
+            onClick={() => setPartnerModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 hover:scale-105 transition-all duration-200"
+          >
+            <Plus size={18} />
+            Add Partner
           </button>
         </div>
       </div>
@@ -140,10 +187,30 @@ export default function AdminCredits({
           columns={[
             { key: 'partner_organization', header: 'Partner Organization' },
             { key: 'partner_category', header: 'Category' },
+            {
+              key: 'total_committed_value',
+              header: 'Total Committed Value',
+              render: (row) => formatCurrency(row.total_committed_value),
+              exportValue: (row) => formatCurrency(row.total_committed_value),
+            },
+            {
+              key: 'pool_allocation',
+              header: 'Pool Allocation',
+              render: (row) => formatCurrency(row.pool_allocation),
+              exportValue: (row) => formatCurrency(row.pool_allocation),
+            },
+            {
+              key: 'dollar_value_per_semester',
+              header: 'Value / Semester',
+              render: (row) => formatCurrency(row.dollar_value_per_semester),
+              exportValue: (row) => formatCurrency(row.dollar_value_per_semester),
+            },
+            { key: 'unit_or_grant_offering', header: 'Unit / Grant Offering' },
             { key: 'target_tracks_covered', header: 'Target Tracks Covered' },
           ]}
           data={poolsData}
           searchPlaceholder="Search partner pools..."
+          exportFilename="partner_pools"
         />
       ) : (
         <div className="space-y-8">
@@ -328,6 +395,88 @@ export default function AdminCredits({
               Cancel
             </button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Add partner pool modal */}
+      <Modal open={partnerModalOpen} onClose={() => setPartnerModalOpen(false)} title="Add Partner">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Partner Organization</label>
+            <input
+              type="text"
+              value={partnerForm.partner_organization}
+              onChange={(e) => setPartnerForm({ ...partnerForm, partner_organization: e.target.value })}
+              placeholder="e.g., Vultr"
+              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Category</label>
+            <input
+              type="text"
+              value={partnerForm.partner_category}
+              onChange={(e) => setPartnerForm({ ...partnerForm, partner_category: e.target.value })}
+              placeholder="e.g., Cloud & Infra"
+              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Total Committed Value ($)</label>
+              <input
+                type="number"
+                value={partnerForm.total_committed_value}
+                onChange={(e) => setPartnerForm({ ...partnerForm, total_committed_value: e.target.value })}
+                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Pool Allocation ($)</label>
+              <input
+                type="number"
+                value={partnerForm.pool_allocation}
+                onChange={(e) => setPartnerForm({ ...partnerForm, pool_allocation: e.target.value })}
+                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Value / Semester ($)</label>
+              <input
+                type="number"
+                value={partnerForm.dollar_value_per_semester}
+                onChange={(e) => setPartnerForm({ ...partnerForm, dollar_value_per_semester: e.target.value })}
+                className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Unit / Grant Offering</label>
+            <input
+              type="text"
+              value={partnerForm.unit_or_grant_offering}
+              onChange={(e) => setPartnerForm({ ...partnerForm, unit_or_grant_offering: e.target.value })}
+              placeholder="e.g., $300 / student"
+              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Target Tracks Covered</label>
+            <input
+              type="text"
+              value={partnerForm.target_tracks_covered}
+              onChange={(e) => setPartnerForm({ ...partnerForm, target_tracks_covered: e.target.value })}
+              placeholder="e.g., App Dev, Product Dev"
+              className="w-full bg-zinc-750 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+            />
+          </div>
+          <button
+            onClick={handleAddPartner}
+            disabled={!partnerForm.partner_organization.trim() || !partnerForm.partner_category.trim()}
+            className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover disabled:opacity-50 transition-colors"
+          >
+            Add Partner
+          </button>
         </div>
       </Modal>
     </PageLayout>
