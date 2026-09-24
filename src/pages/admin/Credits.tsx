@@ -486,7 +486,9 @@ export default function AdminCredits({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Total Committed Value ($)</label>
+              {/* min-h + items-end: reserves room for this label's two-line
+                  wrap so its input lines up with the single-line labels beside it. */}
+              <label className="flex items-end min-h-[2.25rem] text-sm text-gray-400 mb-1 leading-tight">Total Committed Value ($)</label>
               <input
                 type="number"
                 value={partnerForm.total_committed_value}
@@ -495,7 +497,7 @@ export default function AdminCredits({
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Pool Allocation ($)</label>
+              <label className="flex items-end min-h-[2.25rem] text-sm text-gray-400 mb-1 leading-tight">Pool Allocation ($)</label>
               <input
                 type="number"
                 value={partnerForm.pool_allocation}
@@ -504,7 +506,7 @@ export default function AdminCredits({
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Value / Semester ($)</label>
+              <label className="flex items-end min-h-[2.25rem] text-sm text-gray-400 mb-1 leading-tight">Value / Semester ($)</label>
               <input
                 type="number"
                 value={partnerForm.dollar_value_per_semester}
