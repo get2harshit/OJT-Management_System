@@ -41,6 +41,7 @@ import {
   type ApiMentorGroup,
   type CreateRecurringSessionsResult,
 } from '../../lib/api';
+import { getActingMentorId } from '../../lib/api/client';
 import { formatMeetingPattern } from '../../lib/meetingPattern';
 import { DEFAULT_SESSION_LOCATION, PST_CAMPUS_ROOM_OPTIONS, defaultSessionTitle } from '../../lib/sessionLocation';
 import { computeWeekOccurrenceDates, localDateTimeRange } from '../../lib/utils';
@@ -128,12 +129,20 @@ export default function MentorSessions() {
     [holidayDateKeys]
   );
 
+  // Both of the mentor-scoped reads below ask about whoever is being acted as,
+  // not who is signed in. A co-mentor covering for another mentor needs that
+  // mentor's teams in the picker and that mentor's self-schedule permission —
+  // asking about themselves returns an empty workspace and a disabled button,
+  // which is what "no teams showed up" looked like. The id is only a request
+  // for scope: the backend re-checks the grant, per cohort, on every call.
+  const scopedMentorId = getActingMentorId() ?? user?.id;
+
   useEffect(() => {
-    if (!selectedCohortId || !user) return;
-    apiGetSelfSchedulePermission(selectedCohortId, user.id)
+    if (!selectedCohortId || !scopedMentorId) return;
+    apiGetSelfSchedulePermission(selectedCohortId, scopedMentorId)
       .then(setCanSelfSchedule)
       .catch(() => setCanSelfSchedule(false));
-  }, [selectedCohortId, user]);
+  }, [selectedCohortId, scopedMentorId]);
 
   // Counts for the whole cohort, not just the weeks currently on screen —
   // aggregated server-side, so this stays one request however many sessions
@@ -178,12 +187,12 @@ export default function MentorSessions() {
   const [workspaceTeams, setWorkspaceTeams] = useState<ApiMentorWorkspaceTeam[]>([]);
   const [groups, setGroups] = useState<ApiMentorGroup[]>([]);
   useEffect(() => {
-    if (!selectedCohortId || !user) {
+    if (!selectedCohortId || !scopedMentorId) {
       setWorkspaceTeams([]);
       setGroups([]);
       return;
     }
-    apiGetMentorWorkspace(selectedCohortId, user.id)
+    apiGetMentorWorkspace(selectedCohortId, scopedMentorId)
       .then((workspace) => {
         setWorkspaceTeams(workspace.teams);
         setGroups(workspace.groups);
@@ -192,7 +201,7 @@ export default function MentorSessions() {
         setWorkspaceTeams([]);
         setGroups([]);
       });
-  }, [selectedCohortId, user]);
+  }, [selectedCohortId, scopedMentorId]);
 
   // Filling teamIds from a chosen group's *current* team list — a one-shot
   // convenience, not a lasting link, mirroring the admin create-session
