@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { Plus, Check, X, ShieldAlert, Award } from 'lucide-react';
+import { Plus, Check, X, ShieldAlert, Award, Edit2, Trash2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
+import ActionsMenu from '../../components/ActionsMenu';
 import type { Credit, CreditRequest, PartnerPool, Profile, Student, CloudProvider } from '../../lib/types';
 
 import { useCredits } from '../../hooks/useCredits';
 import { useData } from '../../context/DataContext';
+import { useConfirm } from '../../confirm';
 
 // $1,500,000 rather than a bare 1500000 — used for both the on-screen table
 // and the CSV export, so a partner's committed value reads the same way in
@@ -33,8 +35,9 @@ export default function AdminCredits({
   addCredit: propAddCredit,
   approveCreditRequest: propApproveCreditRequest,
 }: Partial<Props> = {}) {
-  const { credits: hookCredits, creditRequests: hookCreditRequests, partnerPools, addCredit: hookAddCredit, approveCreditRequest: hookApproveCreditRequest, addPartnerPool } = useCredits();
+  const { credits: hookCredits, creditRequests: hookCreditRequests, partnerPools, addCredit: hookAddCredit, approveCreditRequest: hookApproveCreditRequest, addPartnerPool, updatePartnerPool, deletePartnerPool } = useCredits();
   const { profiles: hookProfiles, students: hookStudents } = useData();
+  const confirm = useConfirm();
 
   const credits = propCredits ?? hookCredits;
   const creditRequests = propCreditRequests ?? hookCreditRequests;
@@ -45,6 +48,9 @@ export default function AdminCredits({
   const [modalOpen, setModalOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [partnerModalOpen, setPartnerModalOpen] = useState(false);
+  // The pool being edited, or null while adding a new one — the same modal
+  // and form serve both, so this is the only thing that tells them apart.
+  const [editingPartnerId, setEditingPartnerId] = useState<string | null>(null);
   const [selectedReqId, setSelectedReqId] = useState<string | null>(null);
   const [voucherCode, setVoucherCode] = useState('');
   const [form, setForm] = useState({ student_id: '', provider: 'AWS', amount: '', code: '', expiry_date: '' });
@@ -96,7 +102,7 @@ export default function AdminCredits({
 
   const handleAddPartner = () => {
     if (!partnerForm.partner_organization.trim() || !partnerForm.partner_category.trim()) return;
-    addPartnerPool({
+    const patch = {
       partner_organization: partnerForm.partner_organization.trim(),
       partner_category: partnerForm.partner_category.trim(),
       total_committed_value: Number(partnerForm.total_committed_value) || 0,
@@ -104,7 +110,16 @@ export default function AdminCredits({
       dollar_value_per_semester: Number(partnerForm.dollar_value_per_semester) || 0,
       unit_or_grant_offering: partnerForm.unit_or_grant_offering.trim(),
       target_tracks_covered: partnerForm.target_tracks_covered.trim(),
-    });
+    };
+    if (editingPartnerId) {
+      updatePartnerPool(editingPartnerId, patch);
+    } else {
+      addPartnerPool(patch);
+    }
+    closePartnerModal();
+  };
+
+  const closePartnerModal = () => {
     setPartnerForm({
       partner_organization: '',
       partner_category: '',
@@ -114,7 +129,47 @@ export default function AdminCredits({
       unit_or_grant_offering: '',
       target_tracks_covered: '',
     });
+    setEditingPartnerId(null);
     setPartnerModalOpen(false);
+  };
+
+  const openAddPartner = () => {
+    setEditingPartnerId(null);
+    setPartnerForm({
+      partner_organization: '',
+      partner_category: '',
+      total_committed_value: '',
+      pool_allocation: '',
+      dollar_value_per_semester: '',
+      unit_or_grant_offering: '',
+      target_tracks_covered: '',
+    });
+    setPartnerModalOpen(true);
+  };
+
+  const openEditPartner = (pool: PartnerPool) => {
+    setEditingPartnerId(pool.id);
+    setPartnerForm({
+      partner_organization: pool.partner_organization,
+      partner_category: pool.partner_category,
+      total_committed_value: String(pool.total_committed_value),
+      pool_allocation: String(pool.pool_allocation),
+      dollar_value_per_semester: String(pool.dollar_value_per_semester),
+      unit_or_grant_offering: pool.unit_or_grant_offering,
+      target_tracks_covered: pool.target_tracks_covered,
+    });
+    setPartnerModalOpen(true);
+  };
+
+  const handleDeletePartner = async (pool: PartnerPool) => {
+    const confirmed = await confirm({
+      title: 'Delete partner pool',
+      message: `Remove ${pool.partner_organization} from the partner pools? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+    deletePartnerPool(pool.id);
   };
 
   return (
@@ -133,7 +188,7 @@ export default function AdminCredits({
             Direct Assignment
           </button>
           <button
-            onClick={() => setPartnerModalOpen(true)}
+            onClick={openAddPartner}
             className="flex items-center gap-2 px-4 py-2 bg-zinc-750 text-white font-semibold rounded-lg hover:bg-zinc-700 hover:scale-105 transition-all duration-200"
           >
             <Plus size={18} />
@@ -211,6 +266,14 @@ export default function AdminCredits({
           data={poolsData}
           searchPlaceholder="Search partner pools..."
           exportFilename="partner_pools"
+          actions={(row) => (
+            <ActionsMenu
+              items={[
+                { label: 'Edit', icon: Edit2, onClick: () => openEditPartner(row) },
+                { label: 'Delete', icon: Trash2, onClick: () => handleDeletePartner(row), danger: true },
+              ]}
+            />
+          )}
         />
       ) : (
         <div className="space-y-8">
@@ -398,8 +461,8 @@ export default function AdminCredits({
         </div>
       </Modal>
 
-      {/* Add partner pool modal */}
-      <Modal open={partnerModalOpen} onClose={() => setPartnerModalOpen(false)} title="Add Partner">
+      {/* Add / edit partner pool modal */}
+      <Modal open={partnerModalOpen} onClose={closePartnerModal} title={editingPartnerId ? 'Edit Partner' : 'Add Partner'}>
         <div className="space-y-4">
           <div>
             <label className="block text-sm text-gray-400 mb-1">Partner Organization</label>
@@ -475,7 +538,7 @@ export default function AdminCredits({
             disabled={!partnerForm.partner_organization.trim() || !partnerForm.partner_category.trim()}
             className="w-full py-2.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover disabled:opacity-50 transition-colors"
           >
-            Add Partner
+            {editingPartnerId ? 'Save Changes' : 'Add Partner'}
           </button>
         </div>
       </Modal>
