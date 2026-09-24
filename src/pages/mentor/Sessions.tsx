@@ -35,6 +35,7 @@ import {
   apiEndLiveSession,
   apiGetSelfSchedulePermission,
   apiGetMentorWorkspace,
+  apiListSessionVenues,
   type ApiSession,
   type ApiSessionStatus,
   type ApiMentorWorkspaceTeam,
@@ -67,6 +68,12 @@ function formatGroupOptionLabel(group: ApiMentorGroup): string {
   return pattern ? `${group.name} (${pattern})` : group.name;
 }
 
+function venueOptions(location: string, sharedVenues: string[]) {
+  const options = [...PST_CAMPUS_ROOM_OPTIONS, ...sharedVenues.map((name) => ({ value: name, label: name }))];
+  const hasLocation = options.some((option) => option.value === location);
+  return hasLocation || !location ? options : [{ value: location, label: location }, ...options];
+}
+
 interface SessionFormState {
   teamIds: string[];
   title: string;
@@ -88,6 +95,7 @@ export default function MentorSessions() {
   const { cohortId: routeCohortId } = useParams<{ cohortId: string }>();
   const selectedCohortId = routeCohortId ?? '';
   const [sessions, setSessions] = useState<ApiSession[]>([]);
+  const [sharedVenues, setSharedVenues] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [canSelfSchedule, setCanSelfSchedule] = useState(false);
   const [sessionStats, setSessionStats] = useState<ApiMentorSessionStats | null>(null);
@@ -143,6 +151,16 @@ export default function MentorSessions() {
       .then(setCanSelfSchedule)
       .catch(() => setCanSelfSchedule(false));
   }, [selectedCohortId, scopedMentorId]);
+
+  useEffect(() => {
+    if (!selectedCohortId) {
+      setSharedVenues([]);
+      return;
+    }
+    apiListSessionVenues(selectedCohortId)
+      .then((venues) => setSharedVenues(venues.map((venue) => venue.name)))
+      .catch(() => setSharedVenues([]));
+  }, [selectedCohortId]);
 
   // Counts for the whole cohort, not just the weeks currently on screen —
   // aggregated server-side, so this stays one request however many sessions
@@ -630,18 +648,12 @@ export default function MentorSessions() {
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Location / Link (optional)</label>
         <Select
-          value={PST_CAMPUS_ROOM_OPTIONS.some((o) => o.value === form.locationOrLink) ? form.locationOrLink : ''}
-          onChange={(v) => setForm({ ...form, locationOrLink: v })}
-          options={PST_CAMPUS_ROOM_OPTIONS}
-          placeholder="Pick a PST Campus room…"
-          isSearchable
-          className="w-full mb-2"
-        />
-        <input
           value={form.locationOrLink}
-          onChange={(e) => setForm({ ...form, locationOrLink: e.target.value })}
-          placeholder="…or paste a meeting link / type a custom location"
-          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+          onChange={(v) => setForm({ ...form, locationOrLink: v })}
+          options={venueOptions(form.locationOrLink, sharedVenues)}
+          placeholder="Pick a venue…"
+          isSearchable
+          className="w-full"
         />
       </div>
     </div>

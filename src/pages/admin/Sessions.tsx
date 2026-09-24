@@ -39,6 +39,8 @@ import {
   apiCompleteSession,
   apiStartLiveSession,
   apiEndLiveSession,
+  apiListSessionVenues,
+  apiAddSessionVenue,
   type ApiSession,
   type ApiSessionStatus,
   type ApiMentorGroup,
@@ -58,6 +60,12 @@ const STATUS_COLORS: Record<ApiSessionStatus, string> = {
 function formatGroupOptionLabel(group: ApiMentorGroup): string {
   const pattern = formatMeetingPattern(group);
   return pattern ? `${group.name} (${pattern})` : group.name;
+}
+
+function venueOptions(location: string, sharedVenues: string[]) {
+  const options = [...PST_CAMPUS_ROOM_OPTIONS, ...sharedVenues.map((name) => ({ value: name, label: name }))];
+  const hasLocation = options.some((option) => option.value === location);
+  return hasLocation || !location ? options : [{ value: location, label: location }, ...options];
 }
 
 // YYYY-MM-DDTHH:mm, for a native <input type="datetime-local">, from an ISO string or Date.
@@ -91,6 +99,7 @@ export default function AdminSessions() {
   const [mentorFilterId, setMentorFilterId] = useState('');
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
   const [sessions, setSessions] = useState<ApiSession[]>([]);
+  const [sharedVenues, setSharedVenues] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   const visibleRange = useRef<{ from: string; to: string } | null>(null);
@@ -163,6 +172,16 @@ export default function AdminSessions() {
     loadRoster(selectedCohortId);
     loadSessions();
   }, [selectedCohortId, loadRoster, loadSessions]);
+
+  useEffect(() => {
+    if (!selectedCohortId) {
+      setSharedVenues([]);
+      return;
+    }
+    apiListSessionVenues(selectedCohortId)
+      .then((venues) => setSharedVenues(venues.map((venue) => venue.name)))
+      .catch(() => setSharedVenues([]));
+  }, [selectedCohortId]);
 
   usePageRefresh(loadSessions);
 
@@ -369,6 +388,27 @@ export default function AdminSessions() {
     setRecurring(false);
     setRecurringSchedule(EMPTY_RECURRING_SCHEDULE);
     setRecurringResult(null);
+  };
+
+  const selectVenue = async (form: SessionFormState, setForm: (f: SessionFormState) => void, name: string) => {
+    const venueName = name.trim();
+    if (!venueName || !selectedCohortId) {
+      setForm({ ...form, locationOrLink: venueName });
+      return;
+    }
+    const existing = venueOptions('', sharedVenues).some((option) => option.value === venueName);
+    if (existing) {
+      setForm({ ...form, locationOrLink: venueName });
+      return;
+    }
+    try {
+      const venue = await apiAddSessionVenue(selectedCohortId, venueName);
+      setSharedVenues((current) => current.includes(venue.name) ? current : [...current, venue.name].sort());
+      setForm({ ...form, locationOrLink: venue.name });
+      showSuccess('Venue added to this cohort');
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to add venue');
+    }
   };
 
   const submitCreate = async () => {
@@ -695,18 +735,13 @@ export default function AdminSessions() {
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Location / Link (optional)</label>
         <Select
-          value={PST_CAMPUS_ROOM_OPTIONS.some((o) => o.value === form.locationOrLink) ? form.locationOrLink : ''}
-          onChange={(v) => setForm({ ...form, locationOrLink: v })}
-          options={PST_CAMPUS_ROOM_OPTIONS}
-          placeholder="Pick a PST Campus room…"
-          isSearchable
-          className="w-full mb-2"
-        />
-        <input
           value={form.locationOrLink}
-          onChange={(e) => setForm({ ...form, locationOrLink: e.target.value })}
-          placeholder="…or paste a meeting link / type a custom location"
-          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+          onChange={(v) => { void selectVenue(form, setForm, v); }}
+          options={venueOptions(form.locationOrLink, sharedVenues)}
+          placeholder="Pick or add a venue…"
+          isSearchable
+          isCreatable
+          className="w-full"
         />
       </div>
     </div>
