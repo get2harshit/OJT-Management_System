@@ -384,10 +384,14 @@ export interface ApiMentorRoster {
  * Exists so the roster screen does not call apiGetTeamPerformance once per
  * team — the N+1 this app has already been bitten by twice.
  */
-export async function apiGetMyRoster(cohortId: string, weeks = 8): Promise<ApiMentorRoster> {
-  const res = await apiFetch<{ data: ApiMentorRoster }>(
-    `/api/v1/teams/mine/roster?cohortId=${encodeURIComponent(cohortId)}&weeks=${weeks}`
-  );
+// asMentorId views another mentor's roster instead of the caller's own —
+// backend-verified against a scoped grant (or blanket admin/batch_manager
+// access), never trusted from this param alone. Omit it for the caller's
+// own roster, unchanged from before.
+export async function apiGetMyRoster(cohortId: string, weeks = 8, asMentorId?: string): Promise<ApiMentorRoster> {
+  const query = new URLSearchParams({ cohortId, weeks: String(weeks) });
+  if (asMentorId) query.set('asMentorId', asMentorId);
+  const res = await apiFetch<{ data: ApiMentorRoster }>(`/api/v1/teams/mine/roster?${query.toString()}`);
   return res.data;
 }
 
@@ -430,10 +434,11 @@ export interface ApiMentorOjtOverview {
  * system and filtered them in the browser — the exact over-fetching this
  * codebase's own conventions forbid.
  */
-export async function apiGetMyOjtOverview(cohortId: string): Promise<ApiMentorOjtOverview> {
-  const res = await apiFetch<{ data: ApiMentorOjtOverview }>(
-    `/api/v1/teams/mine/ojt-overview?cohortId=${encodeURIComponent(cohortId)}`
-  );
+// asMentorId — see apiGetMyRoster's note above; same backend-verified override.
+export async function apiGetMyOjtOverview(cohortId: string, asMentorId?: string): Promise<ApiMentorOjtOverview> {
+  const query = new URLSearchParams({ cohortId });
+  if (asMentorId) query.set('asMentorId', asMentorId);
+  const res = await apiFetch<{ data: ApiMentorOjtOverview }>(`/api/v1/teams/mine/ojt-overview?${query.toString()}`);
   return res.data;
 }
 

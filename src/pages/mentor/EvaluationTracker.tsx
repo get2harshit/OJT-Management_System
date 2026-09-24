@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { Award, Loader2, ChevronLeft, UserCheck, UserX, CalendarOff } from 'lucide-react';
 import DataTable from '../../components/DataTable';
@@ -21,6 +21,7 @@ import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 400;
 
 // A mentor (internal or, via the same panel, external) scores whatever
 // evaluations they're a panelist on — the backend assigns panelists
@@ -47,6 +48,8 @@ export default function MentorEvaluationTracker() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<EvaluationDetail | null>(null);
@@ -77,7 +80,7 @@ export default function MentorEvaluationTracker() {
     if (!selectedConfig) return;
     setLoading(true);
     try {
-      const res = await apiGetMyEvaluationQueue({ page, limit, cohortId, configId: selectedConfig.configId });
+      const res = await apiGetMyEvaluationQueue({ page, limit, cohortId, configId: selectedConfig.configId, search });
       setQueue(res.data);
       setTotal(res.pagination.total);
     } catch (err) {
@@ -86,7 +89,7 @@ export default function MentorEvaluationTracker() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, limit, cohortId, selectedConfig?.configId]);
+  }, [page, limit, search, cohortId, selectedConfig?.configId]);
 
   useEffect(() => {
     loadQueue();
@@ -100,12 +103,27 @@ export default function MentorEvaluationTracker() {
 
   const openViva = (config: EvaluatorConfigSummary) => {
     setPage(1);
+    // A search typed in one viva's queue must not follow the mentor into the
+    // next one — the box renders empty there, so a filter still applied would
+    // be invisible and read as "this viva has almost no students".
+    setSearch('');
     setSelectedConfig(config);
   };
 
   const backToVivas = () => {
     setSelectedConfig(null);
+    setSearch('');
     setQueue([]);
+  };
+
+  const handleSearchInputChange = (value: string) => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      // Page 1, or a search that narrows the queue to fewer pages than the
+      // one currently open would land the mentor on an empty page.
+      setPage(1);
+      setSearch(value);
+    }, SEARCH_DEBOUNCE_MS);
   };
 
   const openEvaluation = async (id: string) => {
@@ -338,7 +356,8 @@ export default function MentorEvaluationTracker() {
             ]}
             data={tableData}
             loading={loading}
-            searchPlaceholder="Search by student name..."
+            searchPlaceholder="Search by name, registration or roll number..."
+            onSearchChange={handleSearchInputChange}
             hideExport
             onRowClick={(row) => openEvaluation(row.id as string)}
             serverPagination={{

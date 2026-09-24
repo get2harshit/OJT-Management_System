@@ -148,3 +148,52 @@ export async function apiUpdateAnnouncement(
 export async function apiDeleteAnnouncement(id: string): Promise<void> {
   await apiFetch(`/api/v1/notifications/announcements/${id}`, { method: 'DELETE' });
 }
+
+// ── Notification email delivery ──────────────────────────────────────────────
+// The notifications that matter personally — your submission was returned, your
+// session was cancelled — are also emailed. Sending happens after the
+// notification is saved and can fail on its own (an unverified sender, an
+// expired key, a SendGrid outage) without affecting the notification itself, so
+// failures are recorded per notification and surfaced here for an admin to
+// re-run.
+
+export interface ApiEmailDeliveryIssue {
+  notificationId: string;
+  recipientName: string | null;
+  recipientEmail: string | null;
+  type: NotificationType;
+  title: string;
+  error: string | null;
+  attempts: number;
+  createdAt: string;
+}
+
+/**
+ * Failed sends only. 'skipped' means no credentials or an address nobody could
+ * deliver to, and 'sandboxed' is the intended outcome in a test environment —
+ * listing either would bury the real failures.
+ */
+export async function apiListEmailDeliveryIssues(): Promise<ApiEmailDeliveryIssue[]> {
+  const res = await apiFetch<{ data: ApiEmailDeliveryIssue[] }>('/api/v1/notifications/email-delivery/issues');
+  return res.data;
+}
+
+/** Re-sends one and reports where it landed, so a repeat failure reads differently from a fix. */
+export async function apiRetryEmailDelivery(
+  notificationId: string
+): Promise<{ status: string; error: string | null }> {
+  const res = await apiFetch<{ data: { status: string; error: string | null } }>(
+    `/api/v1/notifications/${notificationId}/email-delivery/retry`,
+    { method: 'POST' }
+  );
+  return res.data;
+}
+
+/** Re-sends every failed one — the usual shape of recovery after a single misconfiguration. */
+export async function apiRetryAllEmailDeliveries(): Promise<{ attempted: number; remaining: number }> {
+  const res = await apiFetch<{ data: { attempted: number; remaining: number } }>(
+    '/api/v1/notifications/email-delivery/retry-all',
+    { method: 'POST' }
+  );
+  return res.data;
+}

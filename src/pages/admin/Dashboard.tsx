@@ -5,6 +5,7 @@ import StatCard from '../../components/StatCard';
 import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import CohortProgressPanel from '../../components/CohortProgressPanel';
+import EmailDeliveryIssuesPanel from '../../components/EmailDeliveryIssuesPanel';
 import type { DashboardMetrics, Cohort } from '../../lib/types';
 import {
   apiGetDashboardMetrics,
@@ -117,6 +118,11 @@ export default function AdminDashboard({ onNavigateToSection }: Props) {
           Export Dashboard CSV
         </button>
       </div>
+
+      {/* Sits above the filter bar on purpose: these are system-wide and do not
+          respect the cohort/batch filters, so placing them below would imply a
+          scoping that isn't there. Renders nothing when no email has failed. */}
+      <EmailDeliveryIssuesPanel />
 
       {/* Filter Bar */}
       <div className="flex flex-wrap gap-3">

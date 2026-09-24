@@ -200,6 +200,15 @@ export default function DataTable<T extends object>({
     }
   };
 
+  // A server-paginated table cannot filter what it does not hold, so the
+  // client-side filter below is off for it and the search box is only as good
+  // as the onSearchChange the parent wires up. Without that prop, typing goes
+  // nowhere at all — so the box is not rendered rather than sitting there
+  // looking functional. This was a real bug: the mentor Evaluation Tracker
+  // shipped a dead search box for exactly this reason, and six other tables
+  // still have one.
+  const searchable = !serverPagination || !!onSearchChange;
+
   const filtered = useMemo(() => {
     if (serverPagination || !search) return data;
     return data.filter((row) => {
@@ -264,24 +273,31 @@ export default function DataTable<T extends object>({
             {leftHeaderContent}
           </div>
         )}
+        {/* The container stays either way: it is also the flex-1 spacer that
+            keeps Export and full-screen pushed to the right edge. Only the
+            control inside it goes when there is nothing for it to do. */}
         <div className={`flex items-center gap-3 ${leftHeaderContent ? 'flex-1 max-w-sm' : 'flex-1'}`}>
-          <Search size={18} className="text-gray-500 shrink-0" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder={searchPlaceholder}
-            className="bg-transparent text-sm text-white placeholder-gray-500 outline-none flex-1 min-w-0"
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => handleSearchChange('')}
-              className="text-gray-500 hover:text-white p-0.5 rounded transition-colors shrink-0"
-              aria-label="Clear search"
-            >
-              <X size={16} />
-            </button>
+          {searchable && (
+            <>
+              <Search size={18} className="text-gray-500 shrink-0" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                placeholder={searchPlaceholder}
+                className="bg-transparent text-sm text-white placeholder-gray-500 outline-none flex-1 min-w-0"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => handleSearchChange('')}
+                  className="text-gray-500 hover:text-white p-0.5 rounded transition-colors shrink-0"
+                  aria-label="Clear search"
+                >
+                  <X size={16} />
+                </button>
+              )}
+            </>
           )}
         </div>
         {showExportButton && (
