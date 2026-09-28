@@ -148,6 +148,8 @@ export default function AdminPayouts() {
   const [rateEffectiveFrom, setRateEffectiveFrom] = useState(todayDateInput());
   const [deliveryStats, setDeliveryStats] = useState<Record<string, ApiMentorDeliveryStats>>({});
   const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [deliveryMentorType, setDeliveryMentorType] = useState('');
+  const [deliveryTrack, setDeliveryTrack] = useState('');
   const [rateHistory, setRateHistory] = useState<ApiMentorRate[]>([]);
   const [savingRate, setSavingRate] = useState(false);
 
@@ -248,17 +250,35 @@ export default function AdminPayouts() {
   // payouts summary follows. Teams and students are summed across mentors,
   // not de-duplicated globally: two mentors sharing a team is two mentoring
   // relationships, which is what this column is counting.
+  const deliveryTrackOptions = useMemo(() => {
+    const tracks = new Set(mentors.flatMap((mentor) => mentor.tracks ?? []));
+    return Array.from(tracks)
+      .sort()
+      .map((track) => ({
+        value: track,
+        label: track.split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+      }));
+  }, [mentors]);
+
+  const deliveryMentors = useMemo(
+    () => mentors.filter((mentor) =>
+      (!deliveryMentorType || mentor.isExternal === (deliveryMentorType === 'external')) &&
+      (!deliveryTrack || mentor.tracks?.includes(deliveryTrack))
+    ),
+    [mentors, deliveryMentorType, deliveryTrack]
+  );
+
   const deliveryTotals = useMemo(() => {
-    return Object.values(deliveryStats).reduce(
+    return deliveryMentors.reduce(
       (acc, stat) => ({
-        sessions: acc.sessions + stat.sessionsDelivered,
-        minutes: acc.minutes + stat.deliveredMinutes,
-        teams: acc.teams + stat.teamsMentored,
-        students: acc.students + stat.studentsMentored,
+        sessions: acc.sessions + (deliveryStats[stat.id]?.sessionsDelivered ?? 0),
+        minutes: acc.minutes + (deliveryStats[stat.id]?.deliveredMinutes ?? 0),
+        teams: acc.teams + (deliveryStats[stat.id]?.teamsMentored ?? 0),
+        students: acc.students + (deliveryStats[stat.id]?.studentsMentored ?? 0),
       }),
       { sessions: 0, minutes: 0, teams: 0, students: 0 }
     );
-  }, [deliveryStats]);
+  }, [deliveryMentors, deliveryStats]);
 
   const loadDelivery = useCallback(async () => {
     setDeliveryLoading(true);
@@ -477,6 +497,12 @@ export default function AdminPayouts() {
 
       <div className="flex flex-wrap gap-3">
         <Select value={cohortId} onChange={setCohortId} variant="filter" placeholder="All cohorts" className="w-[200px]" options={cohortOptions} />
+        {activeTab === 'delivery' && (
+          <>
+            <Select value={deliveryMentorType} onChange={setDeliveryMentorType} variant="filter" placeholder="All mentor types" className="w-[180px]" options={MENTOR_TYPE_OPTIONS} />
+            <Select value={deliveryTrack} onChange={setDeliveryTrack} variant="filter" placeholder="All tracks" className="w-[180px]" options={deliveryTrackOptions} />
+          </>
+        )}
         {activeTab === 'payouts' && (
           <>
             <Select value={status} onChange={setStatus} variant="filter" placeholder="All statuses" className="w-[160px]" options={STATUS_OPTIONS} />
@@ -544,6 +570,7 @@ export default function AdminPayouts() {
         />
       ) : activeTab === 'delivery' ? (
         <DataTable
+          exportFilename="work_delivered"
           columns={[
             { key: 'mentorName', header: 'Mentor', render: (row) => (
               <span>
@@ -551,6 +578,8 @@ export default function AdminPayouts() {
                 {row.isExternal && <span className="text-[10px] text-gray-500 ml-1">(External)</span>}
               </span>
             ) },
+            { key: 'mentorType', header: 'Mentor Type' },
+            { key: 'track', header: 'Tracks' },
             { key: 'sessionsDelivered', header: 'Sessions', render: (row) => (
               <span className="text-white font-medium tabular-nums">{deliveryStats[row.id]?.sessionsDelivered ?? 0}</span>
             ) },
@@ -578,7 +607,21 @@ export default function AdminPayouts() {
                 : <span className="text-gray-600">—</span>;
             } },
           ]}
-          data={mentors.map((m) => ({ ...m, mentorName: m.fullName ?? m.email ?? '' }))}
+          data={deliveryMentors.map((mentor) => {
+            const stats = deliveryStats[mentor.id];
+            return {
+              ...mentor,
+              mentorName: mentor.fullName ?? mentor.email ?? '',
+              mentorType: mentor.isExternal ? 'External' : 'Internal',
+              track: (mentor.tracks ?? []).join(', '),
+              sessionsDelivered: stats?.sessionsDelivered ?? 0,
+              deliveredMinutes: stats?.deliveredMinutes ?? 0,
+              teamsMentored: stats?.teamsMentored ?? 0,
+              studentsMentored: stats?.studentsMentored ?? 0,
+              sessionsUpcoming: stats?.sessionsUpcoming ?? 0,
+              sessionsCancelled: stats?.sessionsCancelled ?? 0,
+            };
+          })}
           searchKeys={['mentorName']}
           searchPlaceholder="Search mentors..."
           loading={deliveryLoading}
