@@ -25,6 +25,12 @@ export interface PlaceableStudent {
   /** Leading four digits of the batch — what track variants are keyed on. */
   admissionYear: string | null;
   /**
+   * Branch for a year whose sections are branches (2026: Applied AI, Cloud,
+   * Product), else null. Teams normally stay inside one branch; pairing across
+   * them needs the admin's confirmation.
+   */
+  branch: string | null;
+  /**
    * Must do an individual project, so this row has no teammate to pick. Per
    * student, not per year: an admin override grants it to a single 2025 student
    * too, and the table honours that row by row.
@@ -78,6 +84,8 @@ export interface ManualTeamDraftRow {
   track: string;
   projectId: string;
   mentorId: string;
+  /** The admin confirmed this pair although its students are from different branches. */
+  allowCrossBranch?: boolean;
 }
 
 export interface ManualTeamBulkResult {
@@ -85,7 +93,7 @@ export interface ManualTeamBulkResult {
   failed: Array<{ rowId: string; reason: string }>;
 }
 
-function query(params: Record<string, string | number | undefined>): string {
+function query(params: Record<string, string | number | boolean | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') search.set(key, String(value));
@@ -109,11 +117,15 @@ export async function apiGetPlaceableStudents(
   );
 }
 
-/** Who one student may be paired with — same year, both sides pairable. */
+/**
+ * Who one student may be paired with — same year and, for 2026, same branch,
+ * both sides pairable. `includeOtherBranches` widens it to the whole year for
+ * an admin about to place a cross-branch pair.
+ */
 export async function apiGetTeammateCandidates(
   cohortId: string,
   studentId: string,
-  params: { search?: string; page: number; limit: number }
+  params: { search?: string; page: number; limit: number; includeOtherBranches?: boolean }
 ): Promise<ManualAllocationPage<PlaceableStudent>> {
   return apiFetch<ManualAllocationPage<PlaceableStudent>>(
     `/api/v1/cohorts/${cohortId}/manual-allocation/teammates?${query({ studentId, ...params })}`
@@ -127,9 +139,16 @@ export async function apiGetTeammateCandidates(
  * track in individual mode is offered to one student and withdrawn the moment a
  * second is added.
  */
-export async function apiGetSelectableTracks(cohortId: string, studentIds: string[]): Promise<SelectableTrack[]> {
+export async function apiGetSelectableTracks(
+  cohortId: string,
+  studentIds: string[],
+  allowCrossBranch = false
+): Promise<SelectableTrack[]> {
   const res = await apiFetch<{ data: SelectableTrack[] }>(
-    `/api/v1/cohorts/${cohortId}/manual-allocation/tracks?${query({ studentIds: studentIds.join(',') })}`
+    `/api/v1/cohorts/${cohortId}/manual-allocation/tracks?${query({
+      studentIds: studentIds.join(','),
+      allowCrossBranch: allowCrossBranch || undefined,
+    })}`
   );
   return res.data;
 }
@@ -144,10 +163,15 @@ export async function apiGetSelectableTracks(cohortId: string, studentIds: strin
 export async function apiGetManualAllocationMentors(
   cohortId: string,
   track: string,
-  studentIds: string[]
+  studentIds: string[],
+  allowCrossBranch = false
 ): Promise<ManualAllocationMentor[]> {
   const res = await apiFetch<{ data: RawManualAllocationMentor[] }>(
-    `/api/v1/cohorts/${cohortId}/manual-allocation/mentors?${query({ track, studentIds: studentIds.join(',') })}`
+    `/api/v1/cohorts/${cohortId}/manual-allocation/mentors?${query({
+      track,
+      studentIds: studentIds.join(','),
+      allowCrossBranch: allowCrossBranch || undefined,
+    })}`
   );
   return res.data.map((mentor) => ({
     id: mentor.id,
