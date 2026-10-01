@@ -18,6 +18,7 @@ import {
   apiCreateMentorGroup,
   apiGetTeamRosterMentor,
   apiBreakTeam,
+  isCrossBranchConfirmRequired,
   type ApiMentorGroup,
   type ApiTeamRosterMentor,
 } from '../../../lib/api';
@@ -54,8 +55,9 @@ export default function CohortRosterPage() {
   const confirm = useConfirm();
   const { busy: cascadeBusy, withCascadeConfirm } = useCascadeConfirm();
   // Separate from the cascade-confirm hook's busy flag — these three actions
-  // (add member, move group, create group) never hit a 409 conflict, so they
-  // never go through that hook at all.
+  // (add member, move group, create group) never hit the future-sessions 409,
+  // so they never go through that hook. Add member has its own 409 (a student
+  // from another 2026 branch) and asks about it inline.
   const [busyOther, setBusyOther] = useState(false);
   const busy = cascadeBusy || busyOther;
 
@@ -147,7 +149,21 @@ export default function CohortRosterPage() {
     if (!manageTeam || !addStudentId) return;
     setBusyOther(true);
     try {
-      await apiAddTeamMember(manageTeam.teamId, addStudentId);
+      try {
+        await apiAddTeamMember(manageTeam.teamId, addStudentId);
+      } catch (err) {
+        // A student from another 2026 branch is refused until the admin says
+        // so. Ask, never retry silently; the server's message names the
+        // branches involved.
+        if (!isCrossBranchConfirmRequired(err)) throw err;
+        const proceed = await confirm({
+          title: 'Add a student from another branch?',
+          message: err.message,
+          confirmLabel: 'Add anyway',
+        });
+        if (!proceed) return;
+        await apiAddTeamMember(manageTeam.teamId, addStudentId, { allowCrossBranch: true });
+      }
       showSuccess('Student added to the team');
       await refreshAfterChange();
     } catch (err) {
