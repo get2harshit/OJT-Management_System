@@ -17,8 +17,8 @@ import {
 } from '../../lib/api';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
+import { isValidBatchCode, BATCH_CODE_FORMAT_HINT } from '../../lib/batchCode';
 
-const BATCH_FORMAT = /^[0-9]{4} [A-Z]$/;
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
@@ -107,8 +107,8 @@ export default function AdminStudents() {
 
   const handleSaveBatch = async () => {
     if (!editingStudent) return;
-    if (!BATCH_FORMAT.test(batchInput)) {
-      showError('Batch must be in format "YYYY X" (e.g. 2025 A)');
+    if (!isValidBatchCode(batchInput)) {
+      showError(`Batch must be in format ${BATCH_CODE_FORMAT_HINT}`);
       return;
     }
     setSaving(true);
@@ -289,7 +289,7 @@ export default function AdminStudents() {
             Updating batch for <span className="text-white font-semibold">{editingStudent?.fullName || editingStudent?.email}</span>
           </p>
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Batch (YYYY X)</label>
+            <label className="block text-xs text-gray-400 mb-1.5">Batch (e.g. 2025 A, 2026 A1)</label>
             <input
               type="text"
               value={batchInput}
