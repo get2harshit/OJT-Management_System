@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Wallet, Check, DollarSign, PackagePlus, Download, Tag, X, Eye, CalendarClock, Timer, AlertTriangle, Users, GraduationCap } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 import DataTable from '../../components/DataTable';
@@ -110,7 +110,10 @@ function describeRate(rate: ApiMentorRate): string {
 export default function AdminPayouts() {
   const { showSuccess, showError } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<'payouts' | 'batches' | 'rates' | 'delivery'>('payouts');
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<'payouts' | 'batches' | 'rates' | 'delivery'>(
+    searchParams.get('tab') === 'delivery' ? 'delivery' : 'payouts'
+  );
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   // Seeded from a ?cohortId= link (e.g. the OJT Setup Payouts tab) so
@@ -625,6 +628,12 @@ export default function AdminPayouts() {
           searchKeys={['mentorName']}
           searchPlaceholder="Search mentors..."
           loading={deliveryLoading}
+          onRowClick={(row) => {
+            const query = new URLSearchParams();
+            if (cohortId) query.set('cohortId', cohortId);
+            query.set('tab', 'delivery');
+            navigate(`/admin/dashboard/payouts/mentors/${row.id}/sessions?${query.toString()}`);
+          }}
         />
       ) : activeTab === 'rates' ? (
         <DataTable
