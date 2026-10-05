@@ -1,4 +1,11 @@
-export { getStoredToken, setStoredToken, clearStoredToken } from './client';
+export {
+  getStoredToken,
+  setStoredToken,
+  clearStoredToken,
+  ApiError,
+  CROSS_BRANCH_CONFIRM_REQUIRED,
+  isCrossBranchConfirmRequired,
+} from './client';
 export * from './auth';
 export * from './cohorts';
 export * from './projects';

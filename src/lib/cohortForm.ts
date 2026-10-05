@@ -1,5 +1,6 @@
 import type { SemesterSession } from './types';
 import { formatDateDisplay } from './utils';
+import { isValidBatchCode, BATCH_CODE_FORMAT_HINT } from './batchCode';
 
 export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export const COHORT_NAME_REGEX = new RegExp(`^OJT (${MONTH_NAMES.join('|')}) [0-9]{4}$`);
@@ -67,9 +68,9 @@ export function validateCohortForm(form: CohortFormState): string | null {
   if (!COHORT_NAME_REGEX.test(form.name)) {
     return 'Cohort Name must be in the format "OJT <Month> <Year>", e.g. OJT August 2026';
   }
-  const invalidBatch = form.allowedBatches.find(batch => !/^\d{4} [A-Z]$/.test(batch));
+  const invalidBatch = form.allowedBatches.find(batch => !isValidBatchCode(batch));
   if (invalidBatch) {
-    return 'Allowed Batches must be in the format "YYYY X", e.g. 2025 A';
+    return `Allowed batch "${invalidBatch}" must be in the format ${BATCH_CODE_FORMAT_HINT}`;
   }
   if (form.startDate >= form.endDate) {
     return 'End Date must be strictly after Start Date';
