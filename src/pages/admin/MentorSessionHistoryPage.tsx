@@ -212,7 +212,7 @@ export default function MentorSessionHistoryPage() {
 
                 </div>
               ),
-              exportValue: (session) => `${formatDate(session.scheduled_date)} · ${session.id}`,
+              exportValue: (session) => `${formatDate(session.scheduled_date)}`,
             },
             {
               key: 'startTime',
