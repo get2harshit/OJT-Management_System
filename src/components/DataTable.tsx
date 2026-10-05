@@ -10,6 +10,10 @@ interface Column<T> {
   header: string;
   headerRender?: () => React.ReactNode;
   render?: (row: T) => React.ReactNode;
+  /** Value written to the CSV export for this column, when it must differ
+   * from the raw field (e.g. a currency amount formatted with $ and commas).
+   * Falls back to the raw `row[key]` value when omitted. */
+  exportValue?: (row: T) => string | number;
 }
 
 interface ServerPagination {
@@ -311,10 +315,17 @@ export default function DataTable<T extends object>({
                 key: String(c.key),
                 header: c.header,
               }));
-              // exportToCSV still wants the indexable form; it reads rows by
-              // the string keys the columns name, which every object supports
-              // at runtime.
-              exportToCSV(exportFilename, filtered as unknown as Record<string, unknown>[], exportCols);
+              // A column's exportValue (e.g. currency formatting) wins over its
+              // raw field, so the CSV reads the way the column intends rather
+              // than as whatever type the field happens to be stored as.
+              const exportRows = filtered.map((row) => {
+                const out: Record<string, unknown> = {};
+                columns.forEach((c) => {
+                  out[String(c.key)] = c.exportValue ? c.exportValue(row) : (row as Record<string, unknown>)[String(c.key)];
+                });
+                return out;
+              });
+              exportToCSV(exportFilename, exportRows, exportCols);
             }}
             title="Export CSV"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-zinc-750 hover:bg-zinc-700 text-gold border border-zinc-700 rounded-lg transition-colors shrink-0"
