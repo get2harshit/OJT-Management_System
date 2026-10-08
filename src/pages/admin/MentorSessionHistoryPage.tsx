@@ -101,8 +101,15 @@ function formatTime2(time: string | null): string {
   return time ? formatTime(time) : '';
 }
 
-/** Where a row's duration figure actually came from. */
-type DurationSource = 'measured' | 'entered' | 'assumed';
+/**
+ * Where a row's actual-duration figure came from — or that there isn't one.
+ *
+ * 'unknown' is a real answer and not a gap to be filled. The booking is NOT a
+ * fallback here: substituting it is what made an eighty-minute booking stand in
+ * for a room that ran three, and a column headed "actual" must never print a
+ * number that was never observed.
+ */
+type DurationSource = 'measured' | 'entered' | 'unknown';
 
 /**
  * Real elapsed minutes of the live room, or null when there is no honest
@@ -117,71 +124,179 @@ function liveRoomMinutes(session: ApiSession): number | null {
 }
 
 /**
+ * The figure a human typed at completion, when it can be told apart from a
+ * machine-derived one.
+ *
+ * actual_duration_minutes is a *resolved* value — the backend writes it from a
+ * typed-in correction, else the room, else the booking — and does not record
+ * which. So it is identified by what it disagrees with: a stored value equal
+ * to the room's own window came from the room, and one equal to the booking is
+ * indistinguishable from the booking fallback. Only a value that matches
+ * neither is certainly somebody's own number.
+ *
+ * This under-reports rather than over-reports: a mentor who typed exactly the
+ * booked length is counted as unknown, not as entered. Claiming a human entry
+ * we cannot prove would be the worse error of the two — and a stored value
+ * equal to the booking is the booking either way, which is precisely what must
+ * not be shown as an actual duration.
+ */
+function enteredMinutes(session: ApiSession): number | null {
+  const stored = session.actual_duration_minutes;
+  if (stored == null) return null;
+  const room = liveRoomMinutes(session);
+  if (room != null) return stored === room ? null : stored;
+  return stored === session.duration_minutes ? null : stored;
+}
+
+/**
  * How long this session really ran, and on what evidence.
  *
- * Deliberately the same ranking as the backend's resolveActualDurationMinutes
- * — a hand-typed correction, else the live room's own window, else the
- * schedule — because two places answering "how long was it" differently is
- * how a screen ends up contradicting the payout computed from the same row.
+ * The measurement wins. A room's own start and end are recorded by the
+ * infrastructure with nobody's interest at stake; a typed-in figure is a claim
+ * made by the person being paid for it, and on production data those claims
+ * run above the room far more often than below it. So a hand-entered number no
+ * longer displaces a measurement — it is kept, and shown in its own column, so
+ * the two can be read against each other instead of one quietly replacing the
+ * other.
  *
- * The live-room rung is the one that matters most here and is easy to miss:
- * actual_duration_minutes is only ever written at *completion*, so a session
- * that was held and then rescheduled or cancelled carries null forever, even
- * though both of its room timestamps are sitting right there on the row. Going
- * straight from null to the schedule is what reported an 80-minute booking for
- * a room that demonstrably ran three.
+ * NOTE: this deliberately differs from the backend's
+ * resolveActualDurationMinutes, which still ranks a typed-in correction above
+ * the room and is what actual_duration_minutes — and therefore the payout — is
+ * computed from. Until that ranking is changed to match, this view is the more
+ * honest of the two and the money is not yet computed from it.
  */
-function resolveDuration(session: ApiSession): { minutes: number; source: DurationSource } {
+function resolveDuration(session: ApiSession): { minutes: number | null; source: DurationSource } {
   const room = liveRoomMinutes(session);
-
-  if (session.actual_duration_minutes != null) {
-    const stored = session.actual_duration_minutes;
-    // Completion resolved this already. If it disagrees with the room, the
-    // difference is a human's correction — which is allowed to win, but is
-    // worth labelling rather than passing off as a measurement.
-    if (room != null) return { minutes: stored, source: stored === room ? 'measured' : 'entered' };
-    return { minutes: stored, source: 'assumed' };
-  }
-
   if (room != null) return { minutes: room, source: 'measured' };
-  return { minutes: session.duration_minutes, source: 'assumed' };
+
+  const entered = enteredMinutes(session);
+  if (entered != null) return { minutes: entered, source: 'entered' };
+
+  return { minutes: null, source: 'unknown' };
 }
 
 function formatDuration(session: ApiSession): string {
-  return formatExactDuration(resolveDuration(session).minutes);
+  const { minutes } = resolveDuration(session);
+  return minutes == null ? '—' : formatExactDuration(minutes);
 }
 
 const SOURCE_LABELS: Record<DurationSource, string> = {
   measured: 'Measured',
   entered: 'Entered',
-  assumed: 'Assumed',
+  unknown: 'Not recorded',
 };
 
 const SOURCE_STYLES: Record<DurationSource, string> = {
   measured: 'text-green-400',
   entered: 'text-amber-400',
-  assumed: 'text-gray-500',
+  unknown: 'text-gray-500',
 };
 
 function durationBasis(session: ApiSession): string {
   const { source } = resolveDuration(session);
-  const room = liveRoomMinutes(session);
-  if (source === 'measured') return 'Measured from the live room’s own start and end.';
-  if (source === 'entered') {
-    return `Entered by hand when the session was completed. The live room itself ran ${formatExactDuration(room ?? 0)}.`;
+  if (source === 'measured') {
+    const claimed = enteredMinutes(session);
+    const base = 'Measured from the live room’s own start and end.';
+    return claimed == null
+      ? base
+      : `${base} A duration of ${formatExactDuration(claimed)} was also entered by hand; the measurement is shown.`;
   }
-  return 'Scheduled length — the live room’s own duration was never recorded for this session.';
+  if (source === 'entered') {
+    return 'Entered by hand at completion. The live room’s own duration was never recorded, so there is nothing to check it against.';
+  }
+  return `No actual duration exists for this session — the live room's start and end were not both recorded, and nothing was entered by hand. Its booking was ${formatExactDuration(session.duration_minutes)}, which is not the same thing.`;
 }
 
-/** Actual minus scheduled, which is the figure a payout review is actually looking for. */
-function varianceMinutes(session: ApiSession): number {
-  return resolveDuration(session).minutes - session.duration_minutes;
+/** Entered above the measurement is the shape worth looking at twice. */
+function enteredExceedsMeasured(session: ApiSession): boolean {
+  const room = liveRoomMinutes(session);
+  const entered = enteredMinutes(session);
+  return room != null && entered != null && entered > room;
+}
+
+/**
+ * Actual minus booked — the figure a payout review is looking for, and null
+ * where there is no actual to subtract from. A zero would read as "ran exactly
+ * to plan", which is the opposite of "nobody recorded it".
+ */
+function varianceMinutes(session: ApiSession): number | null {
+  const { minutes } = resolveDuration(session);
+  return minutes == null ? null : minutes - session.duration_minutes;
 }
 
 function formatVariance(session: ApiSession): string {
   const delta = varianceMinutes(session);
+  if (delta == null) return '—';
   if (delta === 0) return 'exact';
   return `${delta > 0 ? '+' : '−'}${formatExactDuration(Math.abs(delta))}`;
+}
+
+interface DurationTotals {
+  sessions: number;
+  /** Sessions that have an actual duration at all. The rest contribute no minutes. */
+  knownSessions: number;
+  /** Actual minutes, summed over the known sessions only. */
+  minutes: number;
+  /**
+   * Booked minutes for those *same* known sessions.
+   *
+   * Separate from the booking total over every session so the variance below
+   * compares like with like: measuring a partial set of actuals against the
+   * whole set of bookings would report a shortfall that is really just the
+   * sessions nobody timed.
+   */
+  knownScheduledMinutes: number;
+  /** Booked minutes over every session, for context on how much is untimed. */
+  scheduledMinutes: number;
+  measuredMinutes: number;
+  enteredMinutes: number;
+  /**
+   * Minutes claimed by hand above what the room actually recorded, summed over
+   * the sessions where both figures exist. The single number a payout review
+   * would otherwise have to find by reading every row.
+   */
+  overClaimedMinutes: number;
+}
+
+/**
+ * Totals over a set of sessions, split by what each row's figure rests on.
+ *
+ * The split is the point. A bare "42h delivered" invites approval without
+ * saying how much of it was actually observed — and on real data most of a
+ * mentor's hours can be Assumed, meaning nobody recorded the room's end and
+ * the booking is standing in for it. Printing the three beside the total is
+ * what makes the number reviewable rather than just large.
+ */
+function sumDurations(sessions: ApiSession[]): DurationTotals {
+  return sessions.reduce<DurationTotals>(
+    (totals, session) => {
+      const { minutes, source } = resolveDuration(session);
+      const room = liveRoomMinutes(session);
+      const claimed = enteredMinutes(session);
+      const known = minutes != null;
+      return {
+        sessions: totals.sessions + 1,
+        knownSessions: totals.knownSessions + (known ? 1 : 0),
+        minutes: totals.minutes + (minutes ?? 0),
+        knownScheduledMinutes: totals.knownScheduledMinutes + (known ? session.duration_minutes : 0),
+        scheduledMinutes: totals.scheduledMinutes + session.duration_minutes,
+        measuredMinutes: totals.measuredMinutes + (source === 'measured' ? (minutes ?? 0) : 0),
+        enteredMinutes: totals.enteredMinutes + (source === 'entered' ? (minutes ?? 0) : 0),
+        overClaimedMinutes:
+          totals.overClaimedMinutes + (room != null && claimed != null && claimed > room ? claimed - room : 0),
+      };
+    },
+    {
+      sessions: 0,
+      knownSessions: 0,
+      minutes: 0,
+      knownScheduledMinutes: 0,
+      scheduledMinutes: 0,
+      measuredMinutes: 0,
+      enteredMinutes: 0,
+      overClaimedMinutes: 0,
+    }
+  );
 }
 
 /** mentor_name_from_to — so a folder of these stays sortable and self-describing. */
@@ -284,6 +399,41 @@ export default function MentorSessionHistoryPage() {
     return buildExportFilename(mentorName, startDate || dates[0] || '', endDate || dates[dates.length - 1] || '');
   }, [mentorName, startDate, endDate, filteredSessions]);
 
+  const totals = useMemo(() => sumDurations(filteredSessions), [filteredSessions]);
+  // The unfiltered figure too, so a filtered total says what it is a slice of
+  // rather than looking like the mentor's whole output.
+  const overallTotals = useMemo(() => sumDurations(sessions), [sessions]);
+  const isFiltered = filteredSessions.length !== sessions.length;
+
+  /**
+   * The totals line written under the data rows, computed from whatever the
+   * table is actually exporting — see DataTable's exportSummaryRows.
+   *
+   * A blank row goes first so the total reads as a separate block rather than
+   * one more session, which is what stops someone selecting the column and
+   * summing it with the total already inside.
+   */
+  const exportSummaryRows = (rows: ApiSession[]) => {
+    const summed = sumDurations(rows);
+    return [
+      {},
+      {
+        date: `TOTAL (${summed.knownSessions} of ${summed.sessions} session${
+          summed.sessions === 1 ? '' : 's'
+        } timed)`,
+        // Actual minutes and the booking for those same sessions, so the
+        // variance on this row compares the same set on both sides.
+        duration: summed.minutes,
+        scheduledDuration: summed.knownScheduledMinutes,
+        variance: summed.minutes - summed.knownScheduledMinutes,
+        entered: summed.overClaimedMinutes > 0 ? `+${summed.overClaimedMinutes} over measured` : '',
+        durationSource: `measured ${summed.measuredMinutes} / entered ${summed.enteredMinutes} / not recorded ${
+          summed.sessions - summed.knownSessions
+        } sessions`,
+      },
+    ];
+  };
+
   /**
    * One row per student per session, from each session's own live report.
    *
@@ -373,6 +523,26 @@ export default function MentorSessionHistoryPage() {
 
       setDetailProgress({ done: Math.min(index + slice.length, hosted.length), total: hosted.length });
     }
+
+    // Totals have to be taken off the one-row-per-session set, not off every
+    // row: room minutes repeat on each of a session's student rows, so summing
+    // the column as printed multiplies a session by however many students
+    // attended it. This is the same trap the first-row flag exists to let a
+    // reader avoid, applied here so the file's own total is already right.
+    const sessionRows = rows.filter((row) => row.firstRowOfSession === 'yes');
+    const sumOf = (key: string) =>
+      sessionRows.reduce((total, row) => total + (typeof row[key] === 'number' ? (row[key] as number) : 0), 0);
+    const studentRows = rows.filter((row) => row.studentName);
+
+    rows.push({}, {
+      sessionKey: `TOTAL (${sessionRows.length} session${sessionRows.length === 1 ? '' : 's'}, ${studentRows.length} student row${studentRows.length === 1 ? '' : 's'})`,
+      scheduledMinutes: sumOf('scheduledMinutes'),
+      roomMinutes: sumOf('roomMinutes'),
+      presentMinutes: studentRows.reduce(
+        (total, row) => total + (typeof row.presentMinutes === 'number' ? (row.presentMinutes as number) : 0),
+        0
+      ),
+    });
 
     exportToCSV(`${exportFilename}_attendance`, rows, DETAIL_COLUMNS);
     setDetailProgress(null);
@@ -478,6 +648,71 @@ export default function MentorSessionHistoryPage() {
         <p className="text-xs text-amber-400/90">{detailError}</p>
       )}
 
+      {/* Sits above the table because it is the answer to the question this
+          page gets opened for — how much did this mentor deliver — and the
+          rows are the working behind it. Follows the filters, with the
+          unfiltered figure kept in view so a slice never reads as the whole. */}
+      {!error && (
+        <div className="bg-zinc-850 border border-zinc-750 rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+          <Figure
+            label="Sessions"
+            value={String(totals.sessions)}
+            sub={isFiltered ? `of ${overallTotals.sessions}` : undefined}
+          />
+          {/* Deliberately "Actual duration", and deliberately only the sessions
+              that have one. A total that quietly folded in bookings for the
+              untimed sessions would be the same lie this page exists to undo,
+              just aggregated. The companion figure below says how many are
+              missing, so the total is never mistaken for the whole. */}
+          <Figure
+            label="Actual duration"
+            value={formatExactDuration(totals.minutes)}
+            sub={isFiltered ? `of ${formatExactDuration(overallTotals.minutes)}` : undefined}
+            strong
+          />
+          <Figure
+            label="Not recorded"
+            value={`${totals.sessions - totals.knownSessions} session${
+              totals.sessions - totals.knownSessions === 1 ? '' : 's'
+            }`}
+            sub={`${formatExactDuration(totals.scheduledMinutes - totals.knownScheduledMinutes)} booked`}
+            tone={totals.sessions - totals.knownSessions > 0 ? 'text-gray-400' : 'text-white'}
+          />
+          <div className="h-8 w-px bg-zinc-750 hidden sm:block" />
+          {/* Booked minutes for the SAME sessions the actual total covers, so
+              the comparison beside it is like for like. */}
+          <Figure label="Booked (those sessions)" value={formatExactDuration(totals.knownScheduledMinutes)} />
+          <Figure
+            label="Vs booked"
+            value={
+              totals.minutes === totals.knownScheduledMinutes
+                ? 'exact'
+                : `${totals.minutes > totals.knownScheduledMinutes ? '+' : '−'}${formatExactDuration(
+                    Math.abs(totals.minutes - totals.knownScheduledMinutes)
+                  )}`
+            }
+          />
+          <div className="h-8 w-px bg-zinc-750 hidden sm:block" />
+          {/* How much of that total is actually evidenced, which is the part a
+              payout review needs and the part a single figure hides. */}
+          <Figure label="Measured" value={formatExactDuration(totals.measuredMinutes)} tone="text-green-400" />
+          <Figure label="Entered" value={formatExactDuration(totals.enteredMinutes)} tone="text-amber-400" />
+          {/* Only shown when there is something to show: a zero here is the
+              normal case and a permanent "0m" would train people to ignore the
+              figure that matters when it is not zero. */}
+          {totals.overClaimedMinutes > 0 && (
+            <>
+              <div className="h-8 w-px bg-zinc-750 hidden sm:block" />
+              <Figure
+                label="Claimed over measured"
+                value={`+${formatExactDuration(totals.overClaimedMinutes)}`}
+                tone="text-red-400"
+              />
+            </>
+          )}
+        </div>
+      )}
+
       {error ? (
         <p role="alert" className="py-8 text-center text-sm text-red-400">{error}</p>
       ) : (
@@ -535,12 +770,48 @@ export default function MentorSessionHistoryPage() {
             },
             {
               key: 'duration',
-              header: 'Duration',
-              render: (session) => <span title={durationBasis(session)}>{formatDuration(session)}</span>,
+              header: 'Actual duration',
+              render: (session) => {
+                const { minutes } = resolveDuration(session);
+                return (
+                  <span className={minutes == null ? 'text-gray-600' : undefined} title={durationBasis(session)}>
+                    {formatDuration(session)}
+                  </span>
+                );
+              },
               // Exported as plain minutes, not "1h 20m": a spreadsheet can sum
               // and chart a number, and the human-readable form is already on
               // screen for whoever is reading rather than calculating.
-              exportValue: (session) => resolveDuration(session).minutes,
+              //
+              // Blank, never zero, where there is no actual duration — a zero
+              // would be summed and averaged as though the session ran for no
+              // time, rather than skipped as unmeasured.
+              exportValue: (session) => resolveDuration(session).minutes ?? '',
+            },
+            {
+              // Kept beside the duration rather than folded into it: the whole
+              // reason the measurement now wins is that this number is a claim
+              // by the person being paid for it, and a claim is only checkable
+              // while both figures are visible.
+              key: 'entered',
+              header: 'Entered by mentor',
+              render: (session) => {
+                const entered = enteredMinutes(session);
+                if (entered == null) return <span className="text-gray-600">—</span>;
+                return (
+                  <span
+                    className={enteredExceedsMeasured(session) ? 'text-amber-400' : 'text-gray-300'}
+                    title={
+                      enteredExceedsMeasured(session)
+                        ? `Entered above the measured room duration of ${formatExactDuration(liveRoomMinutes(session) ?? 0)}.`
+                        : 'Entered by hand at completion.'
+                    }
+                  >
+                    {formatExactDuration(entered)}
+                  </span>
+                );
+              },
+              exportValue: (session) => enteredMinutes(session) ?? '',
             },
             {
               key: 'durationSource',
@@ -557,20 +828,18 @@ export default function MentorSessionHistoryPage() {
             },
             {
               key: 'variance',
-              header: 'Vs scheduled',
+              header: 'Vs booked',
               render: (session) => {
                 const delta = varianceMinutes(session);
-                return (
-                  <span className={delta === 0 ? 'text-gray-500' : delta > 0 ? 'text-amber-400' : 'text-blue-400'}>
-                    {formatVariance(session)}
-                  </span>
-                );
+                const tone =
+                  delta == null ? 'text-gray-600' : delta === 0 ? 'text-gray-500' : delta > 0 ? 'text-amber-400' : 'text-blue-400';
+                return <span className={tone}>{formatVariance(session)}</span>;
               },
-              exportValue: (session) => varianceMinutes(session),
+              exportValue: (session) => varianceMinutes(session) ?? '',
             },
             {
               key: 'scheduledDuration',
-              header: 'Scheduled length',
+              header: 'Booked length',
               render: (session) => formatExactDuration(session.duration_minutes),
               exportValue: (session) => session.duration_minutes,
             },
@@ -612,6 +881,7 @@ export default function MentorSessionHistoryPage() {
           data={filteredSessions}
           loading={loading}
           exportFilename={exportFilename}
+          exportSummaryRows={exportSummaryRows}
         />
       )}
 
@@ -634,5 +904,29 @@ export default function MentorSessionHistoryPage() {
         />
       )}
     </PageLayout>
+  );
+}
+
+function Figure({
+  label,
+  value,
+  sub,
+  tone,
+  strong,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: string;
+  strong?: boolean;
+}) {
+  return (
+    <div>
+      <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider block">{label}</span>
+      <span className={`tabular-nums ${strong ? 'text-lg font-bold' : 'text-sm font-semibold'} ${tone ?? 'text-white'}`}>
+        {value}
+      </span>
+      {sub && <span className="text-xs text-gray-500 ml-1.5 tabular-nums">{sub}</span>}
+    </div>
   );
 }

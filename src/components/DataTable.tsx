@@ -41,6 +41,20 @@ interface DataTableProps<T> {
   onExport?: () => void | Promise<void>;
   hideExport?: boolean;
   /**
+   * Extra rows appended after the data in the CSV — a totals line, typically.
+   *
+   * Takes the rows actually being exported, which is why it lives here rather
+   * than being built by the caller: by the time a file is written, the set has
+   * been through this table's own search as well as the caller's filters, and
+   * a total computed from anything else would contradict the rows printed
+   * above it.
+   *
+   * Keys are the same column keys as the data rows; anything left out exports
+   * blank, so a total can fill the numeric columns and leave the identifying
+   * ones empty.
+   */
+  exportSummaryRows?: (exportedRows: T[]) => Record<string, unknown>[];
+  /**
    * Shows a spinner over the rows without unmounting the table.
    *
    * Callers used to swap the whole table out for a spinner while fetching,
@@ -104,6 +118,7 @@ export default function DataTable<T extends object>({
   exportFilename = 'export_data',
   onExport,
   hideExport = false,
+  exportSummaryRows,
   loading = false,
   fullscreen,
   onFullscreenChange,
@@ -325,6 +340,7 @@ export default function DataTable<T extends object>({
                 });
                 return out;
               });
+              if (exportSummaryRows) exportRows.push(...exportSummaryRows(filtered));
               exportToCSV(exportFilename, exportRows, exportCols);
             }}
             title="Export CSV"
