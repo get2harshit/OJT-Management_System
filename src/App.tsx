@@ -20,6 +20,10 @@ import { NotificationNavigateProvider } from './context/NotificationNavigateCont
 const AdminPanel = lazy(() => import('./pages/admin'));
 const MentorPanel = lazy(() => import('./pages/mentor'));
 const StudentPanel = lazy(() => import('./pages/student'));
+// The one public page. Lazy like the panels so a recruiter opening a link
+// downloads this and nothing else — none of the role bundles, none of the
+// app shell they have no account for.
+const ProjectShowcasePage = lazy(() => import('./pages/public/ProjectShowcasePage'));
 
 function PanelLoader() {
   return (
@@ -54,6 +58,13 @@ export default function App() {
                       other route has no such live external connection to
                       desynchronize, so they keep StrictMode's benefit. */}
                   <Route path="/" element={<StrictMode><Login /></StrictMode>} />
+
+                  {/* Public, unauthenticated, and deliberately NOT inside
+                      ProtectedRoute: this is the link a student puts on a
+                      resume, opened by people who will never have an account
+                      here. Kept short (/p/:slug) because it gets typed off
+                      printed CVs and read aloud in interviews. */}
+                  <Route path="/p/:slug" element={<StrictMode><ProjectShowcasePage /></StrictMode>} />
 
                   <Route
                     path="/admin/dashboard/*"

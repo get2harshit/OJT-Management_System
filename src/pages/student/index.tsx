@@ -13,6 +13,7 @@ import DoubtRequests from './DoubtRequests';
 import Resources from './Resources';
 import Assessments from './Assessments';
 import Evaluations from './Evaluations';
+import Portfolio from './Portfolio';
 import { useAuth } from '../../context/useAuth';
 import { useNotificationNavigate } from '../../context/NotificationNavigateContext';
 
@@ -100,6 +101,7 @@ function StudentPanelContent({ studentId, onLogout }: { studentId: string; onLog
         <Route path="sessions" element={<Sessions />} />
         <Route path="doubt-requests" element={<DoubtRequests />} />
         <Route path="resources" element={<Resources />} />
+        <Route path="portfolio" element={<Portfolio />} />
         <Route path="attendance" element={<Attendance />} />
         <Route path="assessments" element={<Assessments />} />
         <Route path="evaluations" element={<Evaluations />} />

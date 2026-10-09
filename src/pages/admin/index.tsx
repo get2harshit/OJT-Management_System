@@ -20,6 +20,7 @@ import Sessions from './Sessions';
 import SchedulingConfig from './SchedulingConfig';
 import Payouts from './Payouts';
 import MentorSessionHistoryPage from './MentorSessionHistoryPage';
+import AdminStudentShowcases from './StudentShowcases';
 import SessionRequests from './SessionRequests';
 import EligibilityStatusPage from './EligibilityStatus';
 import CohortDetailLayout from './OJTs/CohortDetailLayout';
@@ -171,6 +172,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
         <Route path="sessions/config" element={<SchedulingConfig />} />
         <Route path="payouts" element={<Payouts />} />
         <Route path="payouts/mentors/:mentorId/sessions" element={<MentorSessionHistoryPage />} />
+        <Route path="student-pages" element={<AdminStudentShowcases />} />
         <Route path="session-requests" element={<SessionRequests />} />
         {/* The standalone global Evaluation Tracker was folded into the
             Evaluation tab's config-setup section (same capability, one

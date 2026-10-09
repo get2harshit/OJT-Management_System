@@ -4,6 +4,7 @@ import { useAuth } from '../context/useAuth';
 import {
   LayoutDashboard,
   Users,
+  Globe,
   Cloud,
   CalendarCheck,
   CheckSquare,
@@ -60,6 +61,9 @@ const adminTabs = [
   { id: 'session-requests', label: 'Session Requests', icon: Inbox },
   { id: 'payouts', label: 'Payouts', icon: Wallet },
   { id: 'eligibility', label: 'Eligibility Status', icon: ShieldCheck },
+  // Public, student-authored pages. Its own entry because the one control
+  // here is a takedown, which nobody should have to go hunting for.
+  { id: 'student-pages', label: 'Student Project Pages', icon: Globe },
 ];
 
 // Tasks, Submissions, Sessions, Attendance and Evaluation used to be here as
@@ -102,6 +106,7 @@ const studentTabs = [
   { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   { id: 'assessments', label: 'My Feedback', icon: ClipboardList },
   { id: 'evaluations', label: 'My Evaluations', icon: ClipboardCheck },
+  { id: 'portfolio', label: 'My Project Page', icon: Globe },
 ];
 
 export default function Sidebar({
