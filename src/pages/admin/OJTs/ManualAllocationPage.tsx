@@ -58,7 +58,17 @@ interface DraftRow {
   rowId: string;
   studentId: string;
   studentName: string;
+  /** The row student's 2026 branch, or null for a year without branches. */
+  studentBranch?: string | null;
+  /** The row student's 2026 pairing pool ("Applied AI + Cloud", "Product"), or null. */
+  studentTeammatePool?: string | null;
   teammate: { id: string; name: string } | null;
+  /**
+   * The admin confirmed a teammate from a different pool. Sent with every
+   * request about this pair (tracks, mentors, create), since the server
+   * refuses a cross-branch selection without it.
+   */
+  allowCrossBranch?: boolean;
   track: { slug: string; id: string; name: string } | null;
   project: { id: string; title: string; code: string | null } | null;
   mentor: { id: string; name: string } | null;
@@ -259,6 +269,7 @@ export default function ManualAllocationPage() {
           track: row.track!.slug,
           projectId: row.project!.id,
           mentorId: row.mentor!.id,
+          allowCrossBranch: row.allowCrossBranch || undefined,
         }))
       );
 
@@ -394,7 +405,11 @@ export default function ManualAllocationPage() {
                         <p className="text-white font-medium">{name}</p>
                         <p className="text-[11px] text-gray-500">
                           {student.rollNumber ?? '—'}{student.batch ? ` · ${student.batch}` : ''}
+                          {student.branch ? ` · ${student.branch}` : ''}
                         </p>
+                        {row?.allowCrossBranch && (
+                          <p className="text-[11px] text-amber-400 mt-1">Cross-branch team (confirmed)</p>
+                        )}
                         {row?.error && <p className="text-[11px] text-red-400 mt-1 max-w-xs">{row.error}</p>}
                       </td>
 
@@ -408,10 +423,10 @@ export default function ManualAllocationPage() {
                           <Cell
                             value={row?.teammate?.name ?? null}
                             onOpen={() => {
-                              updateRow(student.id, name, {});
+                              updateRow(student.id, name, { studentBranch: student.branch, studentTeammatePool: student.teammatePool });
                               setOpenCell({ studentId: student.id, kind: 'teammate' });
                             }}
-                            onClear={row?.teammate ? () => updateRow(student.id, name, { teammate: null, track: null, project: null, mentor: null }) : undefined}
+                            onClear={row?.teammate ? () => updateRow(student.id, name, { teammate: null, allowCrossBranch: false, track: null, project: null, mentor: null }) : undefined}
                           />
                         )}
                       </td>
@@ -589,9 +604,14 @@ function CellDrawer({
   onPick: (change: Partial<DraftRow>) => void;
 }) {
   const { showError } = useToast();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  // Teammate drawer only: list the whole admission year instead of the row
+  // student's own branch. Off by default — same branch is the rule.
+  const [includeOtherBranches, setIncludeOtherBranches] = useState(false);
+  const allowCrossBranch = !!row.allowCrossBranch;
 
   const [teammates, setTeammates] = useState<PlaceableStudent[]>([]);
   const [tracks, setTracks] = useState<SelectableTrack[]>([]);
@@ -621,11 +641,16 @@ function CellDrawer({
     const fail = (error: Error) => { if (!cancelled) showError(error.message); };
 
     if (kind === 'teammate') {
-      apiGetTeammateCandidates(cohortId, row.studentId, { search, page: 1, limit: DRAWER_PAGE_SIZE })
+      apiGetTeammateCandidates(cohortId, row.studentId, {
+        search,
+        page: 1,
+        limit: DRAWER_PAGE_SIZE,
+        includeOtherBranches: includeOtherBranches || undefined,
+      })
         .then(done((res) => setTeammates(res.data))).catch(fail)
         .finally(() => { if (!cancelled) setLoading(false); });
     } else if (kind === 'track') {
-      apiGetSelectableTracks(cohortId, studentIds)
+      apiGetSelectableTracks(cohortId, studentIds, allowCrossBranch)
         .then(done(setTracks)).catch(fail)
         .finally(() => { if (!cancelled) setLoading(false); });
     } else if (kind === 'project') {
@@ -646,7 +671,7 @@ function CellDrawer({
         .then(done((res) => setProjects(res.data))).catch(fail)
         .finally(() => { if (!cancelled) setLoading(false); });
     } else {
-      apiGetManualAllocationMentors(cohortId, row.track!.slug, studentIds)
+      apiGetManualAllocationMentors(cohortId, row.track!.slug, studentIds, allowCrossBranch)
         .then(done(setMentors)).catch(fail)
         .finally(() => { if (!cancelled) setLoading(false); });
     }
@@ -654,7 +679,7 @@ function CellDrawer({
     return () => { cancelled = true; };
     // studentIds is derived from row and would be a new array every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cohortId, kind, row.studentId, row.teammate?.id, row.track?.id, search, showError]);
+  }, [cohortId, kind, row.studentId, row.teammate?.id, row.track?.id, search, includeOtherBranches, allowCrossBranch, showError]);
 
   // How many other drafted rows already point at each project — the count an
   // admin cannot get from the server, because none of it has been written yet.
@@ -680,6 +705,31 @@ function CellDrawer({
   };
 
   const searchable = kind === 'teammate' || kind === 'project';
+
+  // Same pool is picked straight away. Another pool is an exception the
+  // admin has to mean, so it is asked once here and then carried on the row
+  // to every later request; the server refuses the pair without it.
+  const pickTeammate = async (candidate: PlaceableStudent) => {
+    const crossBranch = !!row.studentTeammatePool && !!candidate.teammatePool && candidate.teammatePool !== row.studentTeammatePool;
+    if (crossBranch) {
+      const proceed = await confirm({
+        title: 'Team across branches?',
+        message: `${row.studentName} is in ${row.studentBranch} and ${candidate.fullName ?? 'this student'} is in ${candidate.branch}. ${row.studentTeammatePool} students normally team up only within ${row.studentTeammatePool}. Place them together anyway?`,
+        confirmLabel: 'Pair anyway',
+      });
+      if (!proceed) return;
+    }
+    onPick({
+      teammate: { id: candidate.id, name: candidate.fullName ?? candidate.id },
+      allowCrossBranch: crossBranch,
+      // The pair may not be allowed on the track chosen for one
+      // person — an individual-mode track disappears the moment a
+      // second student is added — so the rest of the row restarts.
+      track: null,
+      project: null,
+      mentor: null,
+    });
+  };
 
   return (
     <>
@@ -711,32 +761,49 @@ function CellDrawer({
             </div>
           )}
 
+          {kind === 'teammate' && row.studentBranch && (
+            <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={includeOtherBranches}
+                onChange={(e) => setIncludeOtherBranches(e.target.checked)}
+                className="accent-gold"
+              />
+              Also show students from other branches (needs confirmation)
+            </label>
+          )}
+
           {loading ? (
             <div className="py-12 flex justify-center"><SpinnerSquare /></div>
           ) : kind === 'teammate' ? (
             <PickerList
-              empty="Nobody in this admission year is free to be a teammate right now."
+              empty={
+                row.studentTeammatePool && !includeOtherBranches
+                  ? `Nobody in ${row.studentTeammatePool} is free to be a teammate right now.`
+                  : 'Nobody in this admission year is free to be a teammate right now.'
+              }
               items={teammates.filter((candidate) => !claimedStudentIds.has(candidate.id))}
               keyOf={(candidate) => candidate.id}
-              onPick={(candidate) =>
-                onPick({
-                  teammate: { id: candidate.id, name: candidate.fullName ?? candidate.id },
-                  // The pair may not be allowed on the track chosen for one
-                  // person — an individual-mode track disappears the moment a
-                  // second student is added — so the rest of the row restarts.
-                  track: null,
-                  project: null,
-                  mentor: null,
-                })
-              }
-              render={(candidate) => (
-                <>
-                  <p className="text-sm text-white">{candidate.fullName ?? candidate.id}</p>
-                  <p className="text-[11px] text-gray-500">
-                    {candidate.rollNumber ?? '—'}{candidate.batch ? ` · ${candidate.batch}` : ''}
-                  </p>
-                </>
-              )}
+              onPick={pickTeammate}
+              render={(candidate) => {
+                const otherBranch = !!row.studentTeammatePool && !!candidate.teammatePool && candidate.teammatePool !== row.studentTeammatePool;
+                return (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-white">{candidate.fullName ?? candidate.id}</p>
+                      {otherBranch && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
+                          Other branch
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-500">
+                      {candidate.rollNumber ?? '—'}{candidate.batch ? ` · ${candidate.batch}` : ''}
+                      {candidate.branch ? ` · ${candidate.branch}` : ''}
+                    </p>
+                  </>
+                );
+              }}
             />
           ) : kind === 'track' ? (
             <PickerList

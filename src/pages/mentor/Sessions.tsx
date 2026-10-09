@@ -35,6 +35,7 @@ import {
   apiEndLiveSession,
   apiGetSelfSchedulePermission,
   apiGetMentorWorkspace,
+  apiListSessionVenues,
   type ApiSession,
   type ApiSessionStatus,
   type ApiMentorWorkspaceTeam,
@@ -44,7 +45,7 @@ import {
 import { getActingMentorId } from '../../lib/api/client';
 import { formatMeetingPattern } from '../../lib/meetingPattern';
 import { DEFAULT_SESSION_LOCATION, PST_CAMPUS_ROOM_OPTIONS, defaultSessionTitle } from '../../lib/sessionLocation';
-import { computeWeekOccurrenceDates } from '../../lib/utils';
+import { computeWeekOccurrenceDates, localDateTimeRange } from '../../lib/utils';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useAuth } from '../../context/useAuth';
@@ -65,6 +66,12 @@ function toLocalInputValue(iso: string | Date): string {
 function formatGroupOptionLabel(group: ApiMentorGroup): string {
   const pattern = formatMeetingPattern(group);
   return pattern ? `${group.name} (${pattern})` : group.name;
+}
+
+function venueOptions(location: string, sharedVenues: string[]) {
+  const options = [...PST_CAMPUS_ROOM_OPTIONS, ...sharedVenues.map((name) => ({ value: name, label: name }))];
+  const hasLocation = options.some((option) => option.value === location);
+  return hasLocation || !location ? options : [{ value: location, label: location }, ...options];
 }
 
 interface SessionFormState {
@@ -88,6 +95,7 @@ export default function MentorSessions() {
   const { cohortId: routeCohortId } = useParams<{ cohortId: string }>();
   const selectedCohortId = routeCohortId ?? '';
   const [sessions, setSessions] = useState<ApiSession[]>([]);
+  const [sharedVenues, setSharedVenues] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [canSelfSchedule, setCanSelfSchedule] = useState(false);
   const [sessionStats, setSessionStats] = useState<ApiMentorSessionStats | null>(null);
@@ -96,6 +104,7 @@ export default function MentorSessions() {
 
   const [createForm, setCreateForm] = useState<SessionFormState | null>(null);
   const [creating, setCreating] = useState(false);
+  const createSubmissionInFlight = useRef(false);
   const [recurring, setRecurring] = useState(false);
   const [recurringSchedule, setRecurringSchedule] = useState<RecurringScheduleValue>(EMPTY_RECURRING_SCHEDULE);
   const [recurringResult, setRecurringResult] = useState<CreateRecurringSessionsResult | null>(null);
@@ -142,6 +151,16 @@ export default function MentorSessions() {
       .then(setCanSelfSchedule)
       .catch(() => setCanSelfSchedule(false));
   }, [selectedCohortId, scopedMentorId]);
+
+  useEffect(() => {
+    if (!selectedCohortId) {
+      setSharedVenues([]);
+      return;
+    }
+    apiListSessionVenues(selectedCohortId)
+      .then((venues) => setSharedVenues(venues.map((venue) => venue.name)))
+      .catch(() => setSharedVenues([]));
+  }, [selectedCohortId]);
 
   // Counts for the whole cohort, not just the weeks currently on screen —
   // aggregated server-side, so this stays one request however many sessions
@@ -364,6 +383,7 @@ export default function MentorSessions() {
 
   const submitCreate = async () => {
     if (!createForm || !selectedCohortId || !user) return;
+    if (createSubmissionInFlight.current) return;
     if (createForm.teamIds.length === 0) {
       showError('At least one team is required');
       return;
@@ -375,12 +395,12 @@ export default function MentorSessions() {
         showError('Week start date, a time range, and at least one weekday are required');
         return;
       }
+      createSubmissionInFlight.current = true;
       setCreating(true);
       try {
         const occurrenceDates = computeWeekOccurrenceDates(startDate, weekdays);
         const occurrences = occurrenceDates.map((date) => {
-          const start = new Date(`${date}T${startTimeOfDay}`);
-          const end = new Date(`${date}T${endTimeOfDay}`);
+          const { start, end } = localDateTimeRange(date, startTimeOfDay, endTimeOfDay);
           return { scheduledDate: date, startTime: start.toISOString(), endTime: end.toISOString() };
         });
         const result = await apiCreateRecurringSessions({
@@ -414,6 +434,7 @@ export default function MentorSessions() {
       showError('A time range is required');
       return;
     }
+    createSubmissionInFlight.current = true;
     setCreating(true);
     try {
       const start = new Date(createForm.startLocal);
@@ -435,6 +456,7 @@ export default function MentorSessions() {
       showError(err instanceof Error ? err.message : 'Failed to schedule session');
     } finally {
       setCreating(false);
+      createSubmissionInFlight.current = false;
     }
   };
 
@@ -626,18 +648,12 @@ export default function MentorSessions() {
       <div>
         <label className="text-xs text-gray-400 mb-1 block">Location / Link (optional)</label>
         <Select
-          value={PST_CAMPUS_ROOM_OPTIONS.some((o) => o.value === form.locationOrLink) ? form.locationOrLink : ''}
-          onChange={(v) => setForm({ ...form, locationOrLink: v })}
-          options={PST_CAMPUS_ROOM_OPTIONS}
-          placeholder="Pick a PST Campus room…"
-          isSearchable
-          className="w-full mb-2"
-        />
-        <input
           value={form.locationOrLink}
-          onChange={(e) => setForm({ ...form, locationOrLink: e.target.value })}
-          placeholder="…or paste a meeting link / type a custom location"
-          className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-gold"
+          onChange={(v) => setForm({ ...form, locationOrLink: v })}
+          options={venueOptions(form.locationOrLink, sharedVenues)}
+          placeholder="Pick a venue…"
+          isSearchable
+          className="w-full"
         />
       </div>
     </div>

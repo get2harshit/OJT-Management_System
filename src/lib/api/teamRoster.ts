@@ -82,10 +82,19 @@ export async function apiGetTeamRosterMentor(teamId: string): Promise<ApiTeamRos
   return res.data;
 }
 
-export async function apiAddTeamMember(teamId: string, studentId: string): Promise<void> {
+/**
+ * Adding a student from a different 2026 branch than the team is refused with
+ * 409 CROSS_BRANCH_CONFIRM_REQUIRED unless allowCrossBranch is set — the page
+ * asks the admin, then resends.
+ */
+export async function apiAddTeamMember(
+  teamId: string,
+  studentId: string,
+  options: { allowCrossBranch?: boolean } = {}
+): Promise<void> {
   await apiFetch<void>(`/api/v1/teams/${teamId}/members`, {
     method: 'POST',
-    body: JSON.stringify({ studentId }),
+    body: JSON.stringify({ studentId, allowCrossBranch: options.allowCrossBranch || undefined }),
   });
   invalidateCached('teams');
 }

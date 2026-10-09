@@ -80,6 +80,29 @@ export function invalidateCached(prefix: string): void {
   }
 }
 
+/**
+ * A failed request. Still a plain Error with the server's message, so every
+ * existing `err instanceof Error ? err.message` keeps working; `status` and
+ * `code` are there for the few callers that branch on which refusal it was
+ * (e.g. CROSS_BRANCH_CONFIRM_REQUIRED, which a page answers with a confirm).
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+/** The refusal an admin can overrule by confirming a team across 2026 branches. */
+export const CROSS_BRANCH_CONFIRM_REQUIRED = 'CROSS_BRANCH_CONFIRM_REQUIRED';
+
+export const isCrossBranchConfirmRequired = (error: unknown): error is ApiError =>
+  error instanceof ApiError && error.code === CROSS_BRANCH_CONFIRM_REQUIRED;
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
@@ -118,7 +141,8 @@ export async function apiFetch<T>(
       window.dispatchEvent(new Event('ojt-unauthorized'));
     }
     const msg = body?.message || body?.error || `Request failed (${res.status})`;
-    throw new Error(msg);
+    const code = typeof body?.details?.code === 'string' ? body.details.code : undefined;
+    throw new ApiError(msg, res.status, code);
   }
 
   return body as T;

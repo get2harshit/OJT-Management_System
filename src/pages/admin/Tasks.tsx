@@ -12,7 +12,7 @@ import {
   apiRemoveTaskAssignment,
   apiBulkRequestResubmit,
 } from '../../lib/api/tasks';
-import type { ApiTask, ApiAssignment, ApiAssignmentStatus, ApiAssignmentPreview } from '../../lib/api/tasks';
+import type { ApiTask, ApiAssignment, ApiAssignmentStatus, ApiAssignmentPreview, ApiTaskAggregateStatus } from '../../lib/api/tasks';
 import { apiListStudents } from '../../lib/api/students';
 import { apiGetTeamsForCohortDetailed } from '../../lib/api/allocations';
 import Button from '../../components/Button';
@@ -120,23 +120,17 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
   // on load/page/search/filter with no feedback at all.
   const [tasksLoading, setTasksLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
-  // roleFilter/statusFilter apply client-side, over whatever page is
-  // currently loaded — the backend has no target_role filter, and
-  // statusFilter is an aggregate rolled up across *all* of a task's
-  // assignments (there's no raw column for it to filter server-side on).
-  // With the real task counts this app runs at today that's not
-  // noticeable, but a filtered view can show fewer than `limit` rows on a
-  // page — a full server-side fix would need the backend to compute the
-  // aggregate itself.
+  // Target, status and assigned-by all filter on the server (see
+  // taskFilterParams below), so the page count and totals describe the
+  // filtered list rather than one loaded page of it. Status is the task's
+  // rolled-up status across every assignment, computed by the backend.
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   // 'admin' = created by any admin/batch_manager (not just this one — the
   // dropdown literally says "By Admin", so it has to mean the role, the same
   // way 'mentor' already means any mentor, not just one), 'mentor' = created
-  // by any mentor (mentors can create tasks for their own students too) —
-  // same client-side-over-current-page approach as roleFilter/statusFilter
-  // above. Defaults to 'all' — the page should open showing every task, not
-  // pre-narrowed to one creator.
+  // by any mentor. Defaults to 'all' — the page should open showing every
+  // task, not pre-narrowed to one creator.
   const [assignedByFilter, setAssignedByFilter] = useState('all');
   const [searchParams, setSearchParams] = useSearchParams();
   // Set only via a ?assignedById= link (e.g. the Mentor Workspace's "tasks
@@ -203,6 +197,17 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
     [cohorts, cohortId]
   );
 
+  // The dropdowns' 'all' means "no filter", so it is dropped rather than sent.
+  // Shared by the list and the CSV export so the two can never disagree.
+  const taskFilterParams = useMemo(
+    () => ({
+      target_role: roleFilter === 'all' ? undefined : (roleFilter as 'student' | 'mentor'),
+      aggregate_status: statusFilter === 'all' ? undefined : (statusFilter as ApiTaskAggregateStatus),
+      assigned_by_role: assignedByFilter === 'all' ? undefined : (assignedByFilter as 'admin' | 'mentor'),
+    }),
+    [roleFilter, statusFilter, assignedByFilter]
+  );
+
   const fetchTasksOnly = useCallback(async () => {
     setTasksLoading(true);
     try {
@@ -212,6 +217,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
         search: search || undefined,
         cohort_id: activeCohort?.id,
         assigned_by_id: assignedById || undefined,
+        ...taskFilterParams,
       });
       setTasks(res.data || []);
       setPagination(res.pagination);
@@ -223,7 +229,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
     } finally {
       setTasksLoading(false);
     }
-  }, [page, limit, search, activeCohort, assignedById]);
+  }, [page, limit, search, activeCohort, assignedById, taskFilterParams]);
 
   const clearAssignedByFilter = () => {
     setAssignedById('');
@@ -514,13 +520,6 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
         aggregateStatus,
         progressText: totalAssignments > 0 ? `${completedAssignments}/${totalAssignments}` : '-'
       };
-    })
-    .filter(t => {
-      if (roleFilter !== 'all' && t.target_role !== roleFilter) return false;
-      if (statusFilter !== 'all' && t.aggregateStatus !== statusFilter) return false;
-      if (assignedByFilter === 'admin' && t.assigner?.role !== 'admin' && t.assigner?.role !== 'batch_manager') return false;
-      if (assignedByFilter === 'mentor' && !isMentorAssigner(t.assigner?.role)) return false;
-      return true;
     });
 
   // DataTable's own built-in export only ever sees the one page currently
@@ -551,6 +550,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
           search: search || undefined,
           cohort_id: activeCohort.id,
           assigned_by_id: assignedById || undefined,
+          ...taskFilterParams,
           include_full_assignments: true,
         });
         allTasks.push(...res.data);
@@ -570,13 +570,6 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
             else if (summary!.byStatus.review > 0) aggregateStatus = 'submitted';
           }
           return { ...t, aggregateStatus };
-        })
-        .filter(t => {
-          if (roleFilter !== 'all' && t.target_role !== roleFilter) return false;
-          if (statusFilter !== 'all' && t.aggregateStatus !== statusFilter) return false;
-          if (assignedByFilter === 'admin' && t.assigner?.role !== 'admin' && t.assigner?.role !== 'batch_manager') return false;
-          if (assignedByFilter === 'mentor' && !isMentorAssigner(t.assigner?.role)) return false;
-          return true;
         })
         .map(t => {
           const slugs = t.tracks && t.tracks.length > 0 ? t.tracks : (t.track ? [t.track] : []);
@@ -648,7 +641,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
         <div className="flex flex-wrap items-center gap-2.5">
           <Select
             value={roleFilter}
-            onChange={setRoleFilter}
+            onChange={(value) => { setPage(1); setRoleFilter(value); }}
             variant="filter"
             className="w-[140px]"
             options={[
@@ -659,7 +652,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
           />
           <Select
             value={statusFilter}
-            onChange={setStatusFilter}
+            onChange={(value) => { setPage(1); setStatusFilter(value); }}
             variant="filter"
             className="w-[140px]"
             options={[
@@ -672,7 +665,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
           />
           <Select
             value={assignedByFilter}
-            onChange={setAssignedByFilter}
+            onChange={(value) => { setPage(1); setAssignedByFilter(value); }}
             variant="filter"
             className="w-[160px]"
             options={[

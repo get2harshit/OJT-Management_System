@@ -14,7 +14,7 @@ import {
   apiResubmitTask,
   apiSaveStructuredResponse,
 } from '../../lib/api/tasks';
-import type { ApiTask, ApiTaskCategory, ApiAssignmentStatus } from '../../lib/api/tasks';
+import type { ApiTask, ApiTaskCategory, ApiAssignmentStatus, ApiTaskBucketCounts } from '../../lib/api/tasks';
 import { apiListMyTeams } from '../../lib/api/teams';
 import type { Team } from '../../lib/types';
 import { useToast } from '../../toast';
@@ -83,13 +83,9 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
   const [form, setForm] = useState(EMPTY_FORM);
   const [bucket, setBucket] = useState<TaskBucket>('all');
   const [assignedByFilter, setAssignedByFilter] = useState('all');
-  // Real backend pagination + search (mirrors admin/Tasks.tsx) — the list
-  // used to be fetched with no page/limit at all, which meant the backend's
-  // own default (limit 20) silently capped it with no page control, so any
-  // mentor with more than 20 visible tasks lost the rest with no sign they
-  // were missing. `bucket`/`assignedByFilter` below still split whatever
-  // page is currently loaded client-side (same accepted tradeoff as admin's
-  // roleFilter/statusFilter) — only the base fetch itself needed fixing.
+  // Real backend pagination, search and filters (mirrors admin/Tasks.tsx).
+  // bucket and assignedByFilter are sent to the server too, so the page
+  // count and the bucket counts describe the whole list, not one page of it.
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [search, setSearch] = useState('');
@@ -98,6 +94,26 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
   // on load/page/search/filter with no feedback at all.
   const [tasksLoading, setTasksLoading] = useState(true);
   const [statusTask, setStatusTask] = useState<ApiTask | null>(null);
+  const [bucketCounts, setBucketCounts] = useState<ApiTaskBucketCounts>({ all: 0, mine: 0, others: 0 });
+
+  // One parameter set for every list fetch below, so a refresh after acting
+  // on a task can never drop a filter the first load applied.
+  //   bucket: 'to-me' = tasks I am personally assigned; 'to-others' = every
+  //     other task I can see (my own creations and my students' work).
+  //   assignedByFilter: 'me' = tasks I created; 'admin' = tasks an admin or
+  //     batch manager created.
+  const taskListParams = useMemo(
+    () => ({
+      cohort_id: cohortId,
+      page,
+      limit,
+      search: search || undefined,
+      my_assignment: bucket === 'to-me' ? ('only' as const) : bucket === 'to-others' ? ('exclude' as const) : undefined,
+      assigned_by_id: assignedByFilter === 'me' ? mentorId : undefined,
+      assigned_by_role: assignedByFilter === 'admin' ? ('admin' as const) : undefined,
+    }),
+    [cohortId, page, limit, search, bucket, assignedByFilter, mentorId]
+  );
 
   // Used to refresh the list in place after create/approve/resubmit — must
   // carry the same cohort_id + page/limit/search as loadAll below, or a
@@ -108,31 +124,33 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
     if (!cohortId) return;
     setTasksLoading(true);
     try {
-      const res = await apiListTasks({ cohort_id: cohortId, page, limit, search: search || undefined });
+      const res = await apiListTasks(taskListParams);
       setTasks(res.data || []);
       setPagination(res.pagination);
+      if (res.bucketCounts) setBucketCounts(res.bucketCounts);
     } catch (e) {
       console.error(e);
     } finally {
       setTasksLoading(false);
     }
-  }, [cohortId, page, limit, search]);
+  }, [cohortId, taskListParams]);
 
   const loadAll = useCallback(() => {
     if (!cohortId) return Promise.resolve();
     setTasksLoading(true);
     return Promise.all([
-      apiListTasks({ cohort_id: cohortId, page, limit, search: search || undefined }),
+      apiListTasks(taskListParams),
       apiListMyTeams(),
     ])
       .then(([tasksRes, teamsRes]) => {
         setTasks(tasksRes.data || []);
         setPagination(tasksRes.pagination);
+        if (tasksRes.bucketCounts) setBucketCounts(tasksRes.bucketCounts);
         setMyTeams(teamsRes);
       })
       .catch(console.error)
       .finally(() => setTasksLoading(false));
-  }, [cohortId, page, limit, search]);
+  }, [cohortId, taskListParams]);
 
   useEffect(() => {
     loadAll();
@@ -240,32 +258,6 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
     }
   };
 
-  // Mirrors the backend's own mentor scoping for GET /tasks: assigned_by_id
-  // === me, OR I'm personally an assignee, OR one of my own students is an
-  // assignee (e.g. admin gave the task straight to a mentee) — the list is
-  // already exactly this set, so the two buckets below just split "my own
-  // assignment" from "everything else I'm allowed to see" (both my own
-  // creations and my students' admin-assigned work land in the latter).
-  // Same tradeoff as admin/Tasks.tsx's roleFilter/statusFilter: this split
-  // (and assignedByFilter below) applies client-side over whatever page is
-  // currently loaded, not the mentor's full task set — the backend has no
-  // "assignee is me" filter for a mentor to split on server-side. The counts
-  // in the bucket dropdown below are per-page counts for the same reason.
-  const assignedToMe = tasks.filter(t => t.myAssignment != null);
-  const studentTasks = tasks.filter(t => t.myAssignment == null);
-  const bucketTasks = bucket === 'all' ? tasks : bucket === 'to-me' ? assignedToMe : studentTasks;
-
-  // Independent of the bucket toggle above — narrows either bucket down to
-  // just what I created myself vs. what admin handed down. Within this
-  // mentor's visible task set the assigner is always either me or an admin/
-  // batch_manager (a mentor can only ever create tasks for their own teams),
-  // so a simple identity check is all "By Me" needs.
-  const visibleTasks = bucketTasks.filter(t => {
-    if (assignedByFilter === 'me') return t.assigned_by_id === mentorId;
-    if (assignedByFilter === 'admin') return t.assigned_by_id !== mentorId;
-    return true;
-  });
-
   // Who can approve/resubmit which assignment row, per the backend's own
   // rule: the task's own assigner, or the assignee's own mentor. Computed
   // once here (from the roster already loaded for the Create Task drawer)
@@ -276,7 +268,7 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
     [myTeams]
   );
 
-  const tableData = visibleTasks.map(t => {
+  const tableData = tasks.map(t => {
     const summary = t.assignmentsSummary;
     const preview = summary?.preview ?? [];
     // Only meaningful on a task I assigned myself, to a student: the roster
@@ -441,18 +433,18 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
         <div className="flex items-center gap-2">
           <Select
             value={bucket}
-            onChange={(v) => setBucket(v as TaskBucket)}
+            onChange={(v) => { setPage(1); setBucket(v as TaskBucket); }}
             variant="filter"
             className="w-[180px]"
             options={[
-              { value: 'all', label: `All Tasks (${tasks.length})` },
-              { value: 'to-others', label: `Students' Tasks (${studentTasks.length})` },
-              { value: 'to-me', label: `My Tasks (${assignedToMe.length})` },
+              { value: 'all', label: `All Tasks (${bucketCounts.all})` },
+              { value: 'to-others', label: `Students' Tasks (${bucketCounts.others})` },
+              { value: 'to-me', label: `My Tasks (${bucketCounts.mine})` },
             ]}
           />
           <Select
             value={assignedByFilter}
-            onChange={(v) => setAssignedByFilter(v as string)}
+            onChange={(v) => { setPage(1); setAssignedByFilter(v as string); }}
             variant="filter"
             className="w-[160px]"
             options={[

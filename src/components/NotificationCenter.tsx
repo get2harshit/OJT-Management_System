@@ -4,7 +4,6 @@ import { apiRespondToTeamRequest } from '../lib/api';
 import { apiGetMyNotifications, apiMarkNotificationRead, apiMarkAllNotificationsRead } from '../lib/api/notifications';
 import type { NotificationType } from '../lib/api/notifications';
 import { useToast } from '../toast';
-import { usePageRefresh } from '../context/RefreshContext';
 import { useNotificationNavigateContext } from '../context/NotificationNavigateContext';
 
 export interface NotificationItem {
@@ -106,8 +105,6 @@ export default function NotificationCenter() {
   useEffect(() => {
     buildNotifications();
   }, [buildNotifications]);
-
-  usePageRefresh(buildNotifications);
 
   // Wraps the handlers buildNotifications attached, purely to hold the
   // in-flight state around them — the guard makes the buttons genuinely

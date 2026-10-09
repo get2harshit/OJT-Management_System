@@ -242,6 +242,9 @@ interface DataContextType extends StoredData {
   addCreditRequest: (req: Omit<CreditRequest, 'id' | 'mentor_status' | 'admin_status' | 'created_at'>) => void;
   vouchCreditRequest: (id: string, status: 'VOUCHED' | 'REJECTED') => void;
   approveCreditRequest: (id: string, status: 'APPROVED' | 'REJECTED', code?: string) => void;
+  addPartnerPool: (pool: Omit<PartnerPool, 'id'>) => void;
+  updatePartnerPool: (id: string, patch: Partial<Omit<PartnerPool, 'id'>>) => void;
+  deletePartnerPool: (id: string) => void;
   addStudentChangeRequest: (studentId: string, type: 'MENTOR' | 'PROJECT', requestedId: string, reason: string) => void;
   resolveStudentChangeRequest: (studentId: string, status: 'APPROVED' | 'REJECTED') => void;
 }
@@ -502,6 +505,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     });
   }, [data, persist]);
 
+  const addPartnerPool = useCallback((pool: Omit<PartnerPool, 'id'>) => {
+    persist({ ...data, partnerPools: [...data.partnerPools, { ...pool, id: uid() }] });
+  }, [data, persist]);
+
+  const updatePartnerPool = useCallback((id: string, patch: Partial<Omit<PartnerPool, 'id'>>) => {
+    persist({ ...data, partnerPools: data.partnerPools.map(p => p.id === id ? { ...p, ...patch } : p) });
+  }, [data, persist]);
+
+  const deletePartnerPool = useCallback((id: string) => {
+    persist({ ...data, partnerPools: data.partnerPools.filter(p => p.id !== id) });
+  }, [data, persist]);
+
   const approveCreditRequest = useCallback((id: string, status: 'APPROVED' | 'REJECTED', code?: string) => {
     const target = data.creditRequests.find(r => r.id === id);
     if (!target) return;
@@ -595,6 +610,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addCreditRequest,
     vouchCreditRequest,
     approveCreditRequest,
+    addPartnerPool,
+    updatePartnerPool,
+    deletePartnerPool,
     addStudentChangeRequest,
     resolveStudentChangeRequest,
   }), [
@@ -624,6 +642,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addCreditRequest,
     vouchCreditRequest,
     approveCreditRequest,
+    addPartnerPool,
+    updatePartnerPool,
+    deletePartnerPool,
     addStudentChangeRequest,
     resolveStudentChangeRequest,
   ]);

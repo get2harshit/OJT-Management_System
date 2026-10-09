@@ -113,6 +113,28 @@ export async function apiDeleteHoliday(id: string): Promise<void> {
   invalidateCached('holidays');
 }
 
+export interface ApiSessionVenue {
+  id: string;
+  cohort_id: string;
+  name: string;
+  created_by_id: string;
+  created_at: string;
+}
+
+export async function apiListSessionVenues(cohortId: string): Promise<ApiSessionVenue[]> {
+  const res = await apiFetch<{ data: ApiSessionVenue[] }>(`/api/v1/cohorts/${cohortId}/session-venues`);
+  return res.data;
+}
+
+export async function apiAddSessionVenue(cohortId: string, name: string): Promise<ApiSessionVenue> {
+  const res = await apiFetch<{ data: ApiSessionVenue }>(`/api/v1/cohorts/${cohortId}/session-venues`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+  invalidateCached('session-venues');
+  return res.data;
+}
+
 export async function apiGetSelfSchedulePermission(cohortId: string, mentorId: string): Promise<boolean> {
   const res = await apiFetch<{ data: { allowed: boolean } }>(`/api/v1/cohorts/${cohortId}/mentors/${mentorId}/self-schedule`);
   return res.data.allowed;

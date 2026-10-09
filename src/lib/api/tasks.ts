@@ -213,6 +213,16 @@ export interface ApiTaskPagination {
   pages: number;
 }
 
+/** A task's single rolled-up status across all of its assignments — computed by the backend. */
+export type ApiTaskAggregateStatus = 'pending' | 'submitted' | 'resubmit' | 'approved';
+
+/** Whole-list counts for the mentor Tasks page's bucket dropdown. Only sent to mentors. */
+export interface ApiTaskBucketCounts {
+  all: number;
+  mine: number;
+  others: number;
+}
+
 export interface ApiTaskListFilter {
   page?: number;
   limit?: number;
@@ -223,11 +233,17 @@ export interface ApiTaskListFilter {
   batch?: string;
   track?: string;
   assignee?: string;
-  // Scopes to tasks a specific person created — set only via a deep link
-  // (e.g. the Mentor Workspace's "this mentor's tasks" link), not a picker
-  // in this UI. Distinct from assignedByFilter's 'me'/'mentor' role split,
-  // which only ever filters the currently-loaded page client-side.
+  // Scopes to tasks one specific person created: a deep link on the admin
+  // page, and "By Me" on the mentor page.
   assigned_by_id?: string;
+  // The filters below all run in the database, so pagination and totals
+  // count what they actually match rather than one loaded page.
+  target_role?: 'student' | 'mentor';
+  // 'admin' includes batch managers — the same role the Assigned By column shows.
+  assigned_by_role?: 'admin' | 'mentor';
+  // Tasks the caller is personally assigned ('only') or every other visible task ('exclude').
+  my_assignment?: 'only' | 'exclude';
+  aggregate_status?: ApiTaskAggregateStatus;
   search?: string;
   sort?: 'deadline' | 'created_at' | 'week' | 'status';
   // Admins have no ojt_cohort_members row of their own, so the backend
@@ -254,7 +270,9 @@ export async function apiCreateTask(payload: CreateTaskPayload): Promise<{ succe
 // that want to build pagination controls. Cached per distinct filter/
 // pagination combo — every task page (admin/mentor/student) independently
 // re-fetches this on every mount/tab-switch, usually with the same filters.
-export async function apiListTasks(filter: ApiTaskListFilter = {}): Promise<{ success: boolean; data: ApiTask[]; pagination: ApiTaskPagination }> {
+export async function apiListTasks(
+  filter: ApiTaskListFilter = {}
+): Promise<{ success: boolean; data: ApiTask[]; pagination: ApiTaskPagination; bucketCounts?: ApiTaskBucketCounts }> {
   const params = new URLSearchParams();
   Object.entries(filter).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
@@ -263,11 +281,16 @@ export async function apiListTasks(filter: ApiTaskListFilter = {}): Promise<{ su
   });
   const qs = params.toString();
   return cachedFetch(`tasks:list:${qs}`, TASKS_TTL, async () => {
-    const res = await apiFetch<{ success: boolean; data: { data: ApiTask[]; pagination: ApiTaskPagination } }>(
-      `/api/v1/tasks${qs ? `?${qs}` : ''}`,
-      { method: 'GET' }
-    );
-    return { success: res.success, data: res.data.data, pagination: res.data.pagination };
+    const res = await apiFetch<{
+      success: boolean;
+      data: { data: ApiTask[]; pagination: ApiTaskPagination; bucketCounts?: ApiTaskBucketCounts };
+    }>(`/api/v1/tasks${qs ? `?${qs}` : ''}`, { method: 'GET' });
+    return {
+      success: res.success,
+      data: res.data.data,
+      pagination: res.data.pagination,
+      bucketCounts: res.data.bucketCounts,
+    };
   });
 }
 
