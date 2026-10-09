@@ -26,10 +26,15 @@ export interface PlaceableStudent {
   admissionYear: string | null;
   /**
    * Branch for a year whose sections are branches (2026: Applied AI, Cloud,
-   * Product), else null. Teams normally stay inside one branch; pairing across
-   * them needs the admin's confirmation.
+   * Product), else null. Shown next to the student.
    */
   branch: string | null;
+  /**
+   * Pairing pool for 2026 ("Applied AI + Cloud" or "Product"), else null.
+   * Teams normally stay inside one pool; pairing across them needs the
+   * admin's confirmation.
+   */
+  teammatePool: string | null;
   /**
    * Must do an individual project, so this row has no teammate to pick. Per
    * student, not per year: an admin override grants it to a single 2025 student

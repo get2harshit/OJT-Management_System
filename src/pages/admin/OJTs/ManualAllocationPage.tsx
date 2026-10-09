@@ -60,9 +60,11 @@ interface DraftRow {
   studentName: string;
   /** The row student's 2026 branch, or null for a year without branches. */
   studentBranch?: string | null;
+  /** The row student's 2026 pairing pool ("Applied AI + Cloud", "Product"), or null. */
+  studentTeammatePool?: string | null;
   teammate: { id: string; name: string } | null;
   /**
-   * The admin confirmed a teammate from a different branch. Sent with every
+   * The admin confirmed a teammate from a different pool. Sent with every
    * request about this pair (tracks, mentors, create), since the server
    * refuses a cross-branch selection without it.
    */
@@ -421,7 +423,7 @@ export default function ManualAllocationPage() {
                           <Cell
                             value={row?.teammate?.name ?? null}
                             onOpen={() => {
-                              updateRow(student.id, name, { studentBranch: student.branch });
+                              updateRow(student.id, name, { studentBranch: student.branch, studentTeammatePool: student.teammatePool });
                               setOpenCell({ studentId: student.id, kind: 'teammate' });
                             }}
                             onClear={row?.teammate ? () => updateRow(student.id, name, { teammate: null, allowCrossBranch: false, track: null, project: null, mentor: null }) : undefined}
@@ -704,15 +706,15 @@ function CellDrawer({
 
   const searchable = kind === 'teammate' || kind === 'project';
 
-  // Same branch is picked straight away. Another branch is an exception the
+  // Same pool is picked straight away. Another pool is an exception the
   // admin has to mean, so it is asked once here and then carried on the row
   // to every later request; the server refuses the pair without it.
   const pickTeammate = async (candidate: PlaceableStudent) => {
-    const crossBranch = !!row.studentBranch && !!candidate.branch && candidate.branch !== row.studentBranch;
+    const crossBranch = !!row.studentTeammatePool && !!candidate.teammatePool && candidate.teammatePool !== row.studentTeammatePool;
     if (crossBranch) {
       const proceed = await confirm({
         title: 'Team across branches?',
-        message: `${row.studentName} is in ${row.studentBranch} and ${candidate.fullName ?? 'this student'} is in ${candidate.branch}. Teams are normally formed within one branch. Place them together anyway?`,
+        message: `${row.studentName} is in ${row.studentBranch} and ${candidate.fullName ?? 'this student'} is in ${candidate.branch}. ${row.studentTeammatePool} students normally team up only within ${row.studentTeammatePool}. Place them together anyway?`,
         confirmLabel: 'Pair anyway',
       });
       if (!proceed) return;
@@ -776,15 +778,15 @@ function CellDrawer({
           ) : kind === 'teammate' ? (
             <PickerList
               empty={
-                row.studentBranch && !includeOtherBranches
-                  ? `Nobody in ${row.studentBranch} is free to be a teammate right now.`
+                row.studentTeammatePool && !includeOtherBranches
+                  ? `Nobody in ${row.studentTeammatePool} is free to be a teammate right now.`
                   : 'Nobody in this admission year is free to be a teammate right now.'
               }
               items={teammates.filter((candidate) => !claimedStudentIds.has(candidate.id))}
               keyOf={(candidate) => candidate.id}
               onPick={pickTeammate}
               render={(candidate) => {
-                const otherBranch = !!row.studentBranch && !!candidate.branch && candidate.branch !== row.studentBranch;
+                const otherBranch = !!row.studentTeammatePool && !!candidate.teammatePool && candidate.teammatePool !== row.studentTeammatePool;
                 return (
                   <>
                     <div className="flex items-center gap-2">
