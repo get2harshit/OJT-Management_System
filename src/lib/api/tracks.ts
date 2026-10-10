@@ -378,7 +378,7 @@ export interface ApiAvailableTrack {
   opportunityEarned: boolean;
   /** The team ceiling the admin set, or null when the track is uncapped. */
   maxTeams: number | null;
-  /** Teams already formed on this track in this OJT. */
+  /** Teams counted against this student's own variant's ceiling (2025 and 2026 count separately). */
   teamCount: number;
   /**
    * Advisory. The server re-checks under a lock when a team is actually formed,
