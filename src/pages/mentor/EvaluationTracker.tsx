@@ -154,9 +154,9 @@ export default function MentorEvaluationTracker() {
     }
   };
 
-  // Primary-only — the gate ahead of scoring. present unlocks the rubric
-  // form below for every panelist; absent/excused close the evaluation
-  // immediately, nothing left to score.
+  // The gate ahead of scoring — any panelist may mark it, once, for the whole
+  // panel. present unlocks the rubric form below for every panelist;
+  // absent/excused close the evaluation immediately, nothing left to score.
   const handleMarkAttendance = async (status: EvaluationAttendanceStatus) => {
     if (!detail) return;
     setMarkingAttendance(true);
@@ -190,6 +190,11 @@ export default function MentorEvaluationTracker() {
   // having the wrong set of keys.
   const myPanelist = detail?.panelists.find((p) => p.evaluatorId === myId);
   const myCriteria = detail?.criteria.filter((c) => myPanelist?.role === 'primary' || c.scoredBy === 'panel') ?? [];
+
+  // What each role's total is out of: a secondary only scores the panel
+  // criteria, so their total is out of the panel part, not the whole viva.
+  const panelMaxMarks = detail?.criteria.filter((c) => c.scoredBy === 'panel').reduce((sum, c) => sum + c.maxMarks, 0) ?? 0;
+  const maxMarksFor = (role: 'primary' | 'secondary') => (role === 'primary' ? detail?.maxMarksSnapshot ?? 0 : panelMaxMarks);
 
   const canSubmit =
     !!detail &&
@@ -274,6 +279,12 @@ export default function MentorEvaluationTracker() {
                   <h3 className="text-white font-semibold">{c.evaluationName}</h3>
                   <span className="text-xs text-gray-500 shrink-0">{c.maxMarksSnapshot} marks</span>
                 </div>
+
+                {c.batches.length > 0 && (
+                  <p className="text-[11px] text-gray-500 mt-1 truncate" title={c.batches.join(', ')}>
+                    {c.batches.join(', ')}
+                  </p>
+                )}
 
                 {c.trackNames.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
@@ -398,11 +409,14 @@ export default function MentorEvaluationTracker() {
 
             {detail.attendanceStatus == null ? (
               // Nobody scores ahead of attendance — there's nothing to
-              // judge until it's known whether the student showed up.
-              myPanelist?.role === 'primary' ? (
+              // judge until it's known whether the student showed up. Any
+              // panelist may mark it, and it holds for the whole panel.
+              myPanelist ? (
                 <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-3">
                   <p className="text-sm text-white font-medium">Was {detail.studentName || 'the student'} present for this evaluation?</p>
-                  <p className="text-xs text-gray-500">Mark attendance first — the rubric opens once you do.</p>
+                  <p className="text-xs text-gray-500">
+                    Mark attendance first — it counts for the whole panel, and the rubric opens once you do.
+                  </p>
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       onClick={() => handleMarkAttendance('present')}
@@ -432,7 +446,7 @@ export default function MentorEvaluationTracker() {
                 </div>
               ) : (
                 <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 text-center">
-                  <p className="text-sm text-gray-400">Waiting on the primary mentor to mark attendance before this can be scored.</p>
+                  <p className="text-sm text-gray-400">Attendance has not been marked yet, so this cannot be scored.</p>
                 </div>
               )
             ) : detail.attendanceStatus !== 'present' ? (
@@ -450,7 +464,10 @@ export default function MentorEvaluationTracker() {
                 {detail.attendanceStatus === 'excused' && (
                   <p className="text-xs text-gray-500">No marks recorded — left out of the overall, like an unheld evaluation.</p>
                 )}
-                {myPanelist?.role === 'primary' && (
+                {detail.attendanceMarkedByName && (
+                  <p className="text-xs text-gray-500">Marked by {detail.attendanceMarkedByName}.</p>
+                )}
+                {myPanelist && (
                   <button
                     onClick={() => handleMarkAttendance('present')}
                     disabled={markingAttendance}
@@ -462,6 +479,11 @@ export default function MentorEvaluationTracker() {
               </div>
             ) : (
               <>
+                {detail.attendanceMarkedByName && (
+                  <p className="text-[11px] text-gray-500 -mt-2">
+                    <span className="text-green-400">Present</span> — marked by {detail.attendanceMarkedByName}
+                  </p>
+                )}
                 <div className="space-y-3">
                   {myCriteria.map((c) => (
                     <div key={c.id}>
@@ -518,7 +540,7 @@ export default function MentorEvaluationTracker() {
                       <div key={p.evaluatorId} className="flex items-center justify-between text-sm bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
                         <span className="text-gray-300">{p.evaluatorName || 'Unknown'} ({p.role === 'secondary' ? 'Secondary' : 'Primary'})</span>
                         <span className={p.totalMarks !== null ? 'text-gold font-semibold' : 'text-gray-500'}>
-                          {p.totalMarks !== null ? `${p.totalMarks}/${detail.maxMarksSnapshot}` : 'Not scored yet'}
+                          {p.totalMarks !== null ? `${p.totalMarks}/${maxMarksFor(p.role)}` : 'Not scored yet'}
                         </span>
                       </div>
                     ))}

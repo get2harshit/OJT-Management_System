@@ -19,12 +19,14 @@ import { usePageRefresh } from '../../../context/RefreshContext';
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
-const STATUS_ORDER: EvaluationBlueprintStatus[] = ['not_assigned', 'pending', 'evaluated'];
+const STATUS_ORDER: EvaluationBlueprintStatus[] = ['not_assigned', 'pending', 'evaluated', 'excused'];
 
 const STATUS_LABELS: Record<EvaluationBlueprintStatus, string> = {
   not_assigned: 'Not assigned',
   pending: 'Pending',
   evaluated: 'Evaluated',
+  // Closed with no marks — not waiting on anyone, so not Pending.
+  excused: 'Excused',
 };
 
 // App status-color convention — gray=not started, yellow=waiting/in progress,
@@ -33,12 +35,14 @@ const STATUS_DOT: Record<EvaluationBlueprintStatus, string> = {
   not_assigned: 'bg-gray-400',
   pending: 'bg-yellow-500',
   evaluated: 'bg-green-500',
+  excused: 'bg-sky-400',
 };
 
 const STATUS_TEXT: Record<EvaluationBlueprintStatus, string> = {
   not_assigned: 'text-gray-400',
   pending: 'text-yellow-500',
   evaluated: 'text-green-500',
+  excused: 'text-sky-400',
 };
 
 // A toggleable extra column. value() returns a plain string so the same

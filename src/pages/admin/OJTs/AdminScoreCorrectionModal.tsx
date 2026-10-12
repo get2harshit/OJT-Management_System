@@ -64,6 +64,11 @@ export function AdminScoreCorrectionModal({
   // criterion, secondary only the ones every panelist scores.
   const myCriteria = detail?.criteria.filter((c) => selectedPanelist?.role === 'primary' || c.scoredBy === 'panel') ?? [];
 
+  // A secondary only scores the panel criteria, so their total is out of the
+  // panel part, not the whole evaluation.
+  const panelMaxMarks = detail?.criteria.filter((c) => c.scoredBy === 'panel').reduce((sum, c) => sum + c.maxMarks, 0) ?? 0;
+  const maxMarksFor = (role: 'primary' | 'secondary') => (role === 'primary' ? detail?.maxMarksSnapshot ?? 0 : panelMaxMarks);
+
   // Re-seed the draft whenever the picked panelist changes, from THAT
   // panelist's own existing breakdown.
   useEffect(() => {
@@ -168,7 +173,7 @@ export function AdminScoreCorrectionModal({
                 options={detail.panelists.map((p) => ({
                   value: p.evaluatorId,
                   label: `${p.evaluatorName || 'Unknown'} (${p.role === 'secondary' ? 'Secondary' : 'Primary'})${
-                    p.totalMarks !== null ? ` — ${p.totalMarks}/${detail.maxMarksSnapshot}` : ' — not scored yet'
+                    p.totalMarks !== null ? ` — ${p.totalMarks}/${maxMarksFor(p.role)}` : ' — not scored yet'
                   }`,
                 }))}
               />
@@ -180,7 +185,7 @@ export function AdminScoreCorrectionModal({
                   Attendance hasn&apos;t been marked for {detail.studentName || 'this student'}.
                 </p>
                 <p className="text-xs text-gray-500">
-                  Scores open once it is. Marking it here overrides the primary mentor and is recorded under your name.
+                  Scores open once it is. Marking it here stands in for the panel and is recorded under your name.
                 </p>
                 <div className="grid grid-cols-3 gap-2">
                   <button
@@ -224,6 +229,9 @@ export function AdminScoreCorrectionModal({
                 {detail.attendanceStatus === 'excused' && (
                   <p className="text-xs text-gray-500">No marks recorded — left out of the overall.</p>
                 )}
+                {detail.attendanceMarkedByName && (
+                  <p className="text-xs text-gray-500">Marked by {detail.attendanceMarkedByName}.</p>
+                )}
                 <div className="flex gap-4">
                   <button
                     onClick={() => handleMarkAttendance('present')}
@@ -245,6 +253,7 @@ export function AdminScoreCorrectionModal({
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span className="text-gray-400">
                   Attendance: <span className="text-green-400 font-semibold">Present</span>
+                  {detail.attendanceMarkedByName && <span className="text-gray-500"> · marked by {detail.attendanceMarkedByName}</span>}
                 </span>
                 {!anyScored && (
                   <span className="flex gap-3">

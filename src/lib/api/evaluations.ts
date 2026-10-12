@@ -64,6 +64,7 @@ interface RawEvaluationMentorPairing {
   id: string;
   primary_mentor_id: string;
   secondary_mentor_id: string;
+  team_id: string | null;
 }
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
@@ -114,7 +115,12 @@ function mapCohortEvaluationConfig(raw: RawCohortEvaluationConfig): CohortEvalua
 }
 
 function mapMentorPairing(raw: RawEvaluationMentorPairing): EvaluationMentorPairing {
-  return { id: raw.id, primaryMentorId: raw.primary_mentor_id, secondaryMentorId: raw.secondary_mentor_id };
+  return {
+    id: raw.id,
+    primaryMentorId: raw.primary_mentor_id,
+    secondaryMentorId: raw.secondary_mentor_id,
+    teamId: raw.team_id ?? null,
+  };
 }
 
 // ── Evaluation type templates ───────────────────────────────────────────────
@@ -236,7 +242,11 @@ export async function apiDeleteCohortEvaluationConfig(configId: string): Promise
   invalidateEvaluationCaches();
 }
 
-// ── Mentor pairings (per primary mentor, per config) ────────────────────────
+// ── Mentor pairings ─────────────────────────────────────────────────────────
+// Two levels: a primary mentor's default secondaries, and a team's own, which
+// override the default for that team (how one mentor's teams are split across
+// different secondaries). The panel grid writes a row per team; the default
+// covers teams that turn up after it was filled in.
 
 export async function apiGetMentorPairings(configId: string): Promise<EvaluationMentorPairing[]> {
   const res = await apiFetch<{ data: RawEvaluationMentorPairing[] }>(
@@ -245,9 +255,10 @@ export async function apiGetMentorPairings(configId: string): Promise<Evaluation
   return res.data.map(mapMentorPairing);
 }
 
-export async function apiSetMentorPairings(
+/** Replaces each listed mentor's default secondaries with exactly these. */
+export async function apiSetMentorDefaultPairings(
   configId: string,
-  pairings: { primaryMentorId: string; secondaryMentorId: string }[],
+  pairings: { primaryMentorId: string; secondaryMentorIds: string[] }[],
 ): Promise<void> {
   await apiFetch(`/api/v1/evaluations/cohort-configs/${configId}/mentor-pairings`, {
     method: 'POST',
@@ -256,34 +267,78 @@ export async function apiSetMentorPairings(
   invalidateEvaluationCaches();
 }
 
-export interface ReassignSecondaryMentorResult {
-  reassignedCount: number;
+export interface TeamPairingResult {
+  /** Secondaries newly seated on existing evaluations. */
+  seatedCount: number;
+  /** Unscored seats taken off existing evaluations. */
+  removedCount: number;
+  /** Seats kept although no longer wanted, because that panelist already scored. */
   keptScoredCount: number;
-  skippedConflictCount: number;
+  /** Evaluations already scored or closed, which a new secondary did not join. */
+  lockedEvaluationCount: number;
 }
 
-// Editing a pairing on a config that's already been activated — distinct
-// from apiSetMentorPairings above, which only ever adds fresh rows. A
-// student whose old secondary already scored keeps that exact panelist and
-// mark; only students still waiting move onto the new secondary, right
-// away, not just from the next activation on. See the backend's own
-// EvaluationService.reassignSecondaryMentor for the full rule.
-export async function apiReassignSecondaryMentor(
+/**
+ * Replaces each listed team's own secondaries. On an evaluation that already
+ * exists, a removed secondary leaves only if they have not scored, and a new
+ * one joins only while nobody has scored — see TeamPairingResult.
+ */
+export async function apiSetTeamPairings(
   configId: string,
-  data: { primaryMentorId: string; oldSecondaryMentorId: string; newSecondaryMentorId: string },
-): Promise<ReassignSecondaryMentorResult> {
-  const res = await apiFetch<{ data: ReassignSecondaryMentorResult }>(
-    `/api/v1/evaluations/cohort-configs/${configId}/mentor-pairings/reassign`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify({
-        primary_mentor_id: data.primaryMentorId,
-        old_secondary_mentor_id: data.oldSecondaryMentorId,
-        new_secondary_mentor_id: data.newSecondaryMentorId,
-      }),
-    },
-  );
+  teams: { teamId: string; secondaryMentorIds: string[] }[],
+): Promise<TeamPairingResult> {
+  const res = await apiFetch<{ data: TeamPairingResult }>(`/api/v1/evaluations/cohort-configs/${configId}/team-pairings`, {
+    method: 'PUT',
+    body: JSON.stringify({ teams }),
+  });
   invalidateEvaluationCaches();
+  return res.data;
+}
+
+/** A team in a panel's scope, with the primary mentor its students are allocated to. */
+export interface PanelTeam {
+  teamId: string;
+  teamName: string | null;
+  trackName: string | null;
+  primaryMentorId: string;
+  studentCount: number;
+}
+
+/** A team under an existing evaluation, with its current panel and progress. */
+export interface ConfigPanelTeam extends PanelTeam {
+  secondaryMentorIds: string[];
+  /** 'team' when the team has its own pairing; 'default' when it falls back to its mentor's. */
+  source: 'team' | 'default';
+  /** Students with an evaluation under this config. */
+  assignedCount: number;
+  /** Of those, already scored or closed by attendance — a change of secondary no longer reaches them. */
+  lockedCount: number;
+}
+
+export interface ConfigPanel {
+  secondaryEvaluatorCount: number;
+  mentorDefaults: { primaryMentorId: string; secondaryMentorIds: string[] }[];
+  teams: ConfigPanelTeam[];
+}
+
+/** Every team in an existing evaluation's scope, with its panel — the Edit modal's grid. */
+export async function apiGetConfigPanel(configId: string): Promise<ConfigPanel> {
+  const res = await apiFetch<{ data: ConfigPanel }>(`/api/v1/evaluations/cohort-configs/${configId}/panel`);
+  return res.data;
+}
+
+/** Every team in a scope being drafted — the Add wizard's grid, before the evaluation exists. */
+export async function apiGetScopedTeams(
+  cohortId: string,
+  scope: { trackIds: string[]; batches: string[] },
+): Promise<PanelTeam[]> {
+  const query = new URLSearchParams();
+  if (scope.trackIds.length > 0) query.set('trackIds', scope.trackIds.join(','));
+  if (scope.batches.length > 0) query.set('batches', scope.batches.join(','));
+  const qs = query.toString();
+  const res = await apiFetch<{ data: PanelTeam[] }>(
+    `/api/v1/evaluations/cohorts/${cohortId}/scoped-teams${qs ? `?${qs}` : ''}`,
+  );
   return res.data;
 }
 
@@ -296,6 +351,9 @@ export interface ActivationResult {
   // covered but didn't get assigned, broken down by why — was always
   // happening silently before; now visible.
   skipped: { alreadyAssigned: number; noMentor: number; noPublishedTeam: number; outOfScope: number };
+  /** Students seated with fewer secondaries than the config declares — a
+   * mentor or team nobody paired yet. Fill the gap in the panel grid. */
+  incompletePanel: number;
 }
 
 /**
@@ -450,6 +508,7 @@ interface RawEvaluatorConfigSummary {
   sequenceNo: number | null;
   maxMarksSnapshot: number;
   trackNames: string[];
+  batches: string[];
   teamCount: number;
   studentCount: number;
   notStartedCount: number;
@@ -462,6 +521,9 @@ export interface EvaluatorConfigSummary {
   evaluationName: string;
   maxMarksSnapshot: number;
   trackNames: string[];
+  /** The viva's batch scope — what tells two same-named vivas apart, e.g. a
+   * 2025 and a 2026 "Viva 1". Empty means every batch. */
+  batches: string[];
   teamCount: number;
   studentCount: number;
   // Three states, not scored/unscored — not_started (attendance never
@@ -484,6 +546,7 @@ export async function apiGetMyEvaluationConfigs(cohortId?: string): Promise<Eval
     evaluationName: c.sequenceNo ? `${c.evaluationTypeName} ${c.sequenceNo}` : c.evaluationTypeName,
     maxMarksSnapshot: c.maxMarksSnapshot,
     trackNames: c.trackNames,
+    batches: c.batches ?? [],
     teamCount: c.teamCount,
     studentCount: c.studentCount,
     notStartedCount: c.notStartedCount,
@@ -507,6 +570,7 @@ interface RawEvaluationDetail {
   final_marks_obtained: string | number | null;
   average_marks_obtained: string | number | null;
   attendance_status: EvaluationAttendanceStatus | null;
+  attendance_marker: { full_name: string | null; email: string | null } | null;
   student: { id: string; full_name: string; email: string };
   cohort_evaluation_config: {
     sequence_no: number | null;
@@ -540,6 +604,7 @@ function mapEvaluationDetail(raw: RawEvaluationDetail): EvaluationDetail {
     averageMarksObtained: raw.average_marks_obtained !== null ? Number(raw.average_marks_obtained) : null,
     evaluatedAt: raw.evaluated_at,
     attendanceStatus: raw.attendance_status ?? null,
+    attendanceMarkedByName: raw.attendance_marker?.full_name || raw.attendance_marker?.email || null,
   };
 }
 
@@ -594,8 +659,9 @@ export async function apiAdminScoreEvaluation(
   return res.data;
 }
 
-// The gate ahead of scoring — the primary panelist, or an admin/batch
-// manager as an override (the server records who marked it).
+// The gate ahead of scoring — any panelist on the evaluation, or an admin/
+// batch manager as an override (the server records who marked it). One
+// status for the whole panel; once present, only an admin can change it.
 // present unlocks the ordinary rubric flow for every panelist; absent/
 // excused close the evaluation immediately, no scoring needed.
 export async function apiMarkEvaluationAttendance(
@@ -611,7 +677,7 @@ export async function apiMarkEvaluationAttendance(
 
 // ── Evaluation Blueprint (one config's full student roster) ──────────────────
 
-export type EvaluationBlueprintStatus = 'not_assigned' | 'pending' | 'evaluated';
+export type EvaluationBlueprintStatus = 'not_assigned' | 'pending' | 'evaluated' | 'excused';
 
 /** One secondary panelist's own total and breakdown — a list now, not a
  * single value, since a config can declare more than one secondary. */
@@ -759,64 +825,6 @@ export async function apiGetCohortEvaluationSummary(
     `/api/v1/evaluations/summary?${q.toString()}`,
   );
   return { data: res.data, pagination: res.pagination, meta: res.meta };
-}
-
-// ── Mentor panel load (base facts for a load meter) ─────────────────────────
-
-export interface MentorPanelLoad {
-  mentorId: string;
-  mentorName: string;
-  primaryStudentCount: number;
-  primaryTeamCount: number;
-  secondaryStudentCount: number;
-  secondaryTeamCount: number;
-}
-
-interface RawMentorPanelLoad {
-  mentorId: string;
-  mentorName: string;
-  primaryStudentCount: number;
-  primaryTeamCount: number;
-  secondaryStudentCount: number;
-  secondaryTeamCount: number;
-}
-
-// Existing committed load only — a config still being set up (not yet
-// activated) contributes nothing here, since its panelist rows don't exist
-// yet. Sparse: only mentors already holding at least one panelist row in
-// this cohort appear; a caller with the cohort's full mentor list treats
-// anyone absent as zero.
-export async function apiGetMentorPanelLoad(cohortId: string): Promise<MentorPanelLoad[]> {
-  const res = await apiFetch<{ data: RawMentorPanelLoad[] }>(`/api/v1/evaluations/cohorts/${cohortId}/mentor-panel-load`);
-  return res.data;
-}
-
-export interface MentorsByTrack {
-  trackId: string;
-  mentorIds: string[];
-}
-
-// Live-allocation based, not the track-config staffing roster — a mentor
-// staffed for a track with nobody assigned yet won't appear here. See the
-// backend's own doc comment on why that distinction matters for this list.
-export async function apiGetMentorsByTrack(cohortId: string): Promise<MentorsByTrack[]> {
-  const res = await apiFetch<{ data: MentorsByTrack[] }>(`/api/v1/evaluations/cohorts/${cohortId}/mentors-by-track`);
-  return res.data;
-}
-
-export interface MentorWorkload {
-  mentorId: string;
-  trackIds: string[];
-  batches: string[];
-  teamCount: number;
-  studentCount: number;
-}
-
-// Each mentor's actual current team/student load in this cohort — not a
-// panel-load concept, just "who they're really mentoring right now."
-export async function apiGetMentorWorkload(cohortId: string): Promise<MentorWorkload[]> {
-  const res = await apiFetch<{ data: MentorWorkload[] }>(`/api/v1/evaluations/cohorts/${cohortId}/mentor-workload`);
-  return res.data;
 }
 
 // ── Student's own view (redacted — no marks, ever) ──────────────────────────

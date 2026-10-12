@@ -93,7 +93,7 @@ export default function CohortEvaluationReportsPage() {
   const fixedOverallColumns = useMemo<OptionalColumn[]>(
     () => [
       { key: 'overallMax', label: 'Overall Max', value: s => (s.overallMaxMarks != null ? String(s.overallMaxMarks) : '—') },
-      { key: 'overallAvg', label: 'Overall Avg', value: s => (s.overallObtained != null ? String(s.overallObtained) : '—') },
+      { key: 'overallObtained', label: 'Overall Obtained', value: s => (s.overallObtained != null ? String(s.overallObtained) : '—') },
       { key: 'overallPercent', label: 'Overall Percent', value: s => (s.overallPercentage != null ? `${s.overallPercentage}%` : '—') },
     ],
     []

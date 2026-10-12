@@ -666,6 +666,8 @@ export interface EvaluationMentorPairing {
   id: string;
   primaryMentorId: string;
   secondaryMentorId: string;
+  /** Null for the primary mentor's default; set for one team's own pairing. */
+  teamId: string | null;
 }
 
 // One student's status for one evaluation event — the Evaluation Tracker's
@@ -730,6 +732,9 @@ export interface EvaluationDetail {
   averageMarksObtained: number | null;
   evaluatedAt: string | null;
   attendanceStatus: EvaluationAttendanceStatus | null;
+  /** Who marked attendance — one status for the whole panel, so every
+   * panelist is shown whose call it was. */
+  attendanceMarkedByName: string | null;
 }
 
 // What a student is allowed to see of their own evaluation — no marks, no
