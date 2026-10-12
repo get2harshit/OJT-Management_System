@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Search, Shuffle, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Check, Maximize2, Minimize2, Search, Shuffle } from 'lucide-react';
+import Select from '../../../components/Select';
 import type { PanelTeam } from '../../../lib/api/evaluations';
 import { isRowComplete, seatsOf, type PanelDraft } from '../../../lib/evaluationPanel';
 
@@ -17,7 +19,8 @@ import { isRowComplete, seatsOf, type PanelDraft } from '../../../lib/evaluation
  * that team's own pairing.
  *
  * Purely a controlled view over `draft` and `defaults` — the parent owns the
- * state and decides when to save.
+ * state and decides when to save. Expanding only changes where it is drawn
+ * (full screen instead of inside the modal), never what it holds.
  */
 
 export interface PanelGridTeam extends PanelTeam {
@@ -39,6 +42,10 @@ interface EvaluationPanelGridProps {
 }
 
 const DEFAULT_ROW = '__default__';
+
+// The shared Select is sized for forms; a sheet cell needs it denser.
+const CELL_SELECT = 'w-full !px-2 !py-1 !text-xs';
+const TOOLBAR_SELECT = 'min-w-[200px] !px-2 !py-1 !text-xs';
 
 export default function EvaluationPanelGrid({
   secondaryCount,
@@ -185,8 +192,31 @@ export default function EvaluationPanelGrid({
     setSplitMentorIds([]);
   };
 
+  // ── Full screen ───────────────────────────────────────────────────────────
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!expanded) return;
+    // On document, not window: an open Select catches Escape on window first
+    // and stops it there, so Escape closes the dropdown before the sheet.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        setExpanded(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [expanded]);
+
   // ── Rendering ─────────────────────────────────────────────────────────────
   const secondaryOptions = mentors.filter((m) => m.id !== activePrimaryId);
+  const toOptions = (list: { id: string; name: string }[]) => list.map((m) => ({ value: m.id, label: m.name }));
   const mentorLabel = (id: string) => mentorNameById.get(id) ?? 'Unknown mentor';
 
   const visiblePrimaryIds = mentorSearch.trim()
@@ -214,20 +244,17 @@ export default function EvaluationPanelGrid({
     const taken = new Set(seats.filter((id, i) => i !== column && id));
     return (
       <td key={column} className={`relative px-2 py-1.5 ${inDragRange(rowIndex, column) ? 'bg-gold/10' : ''}`}>
-        <select
+        {/* Mentors already in another seat of this row are left out rather
+            than greyed — the shared Select has no disabled option. */}
+        <Select
           value={value}
-          onChange={(e) => writeCells([{ rowKey, column, mentorId: e.target.value }])}
-          className={`w-full bg-zinc-800 border rounded-md pl-2 pr-6 py-1 text-xs focus:outline-none focus:border-gold ${
-            value ? 'text-white border-zinc-700' : 'text-gray-500 border-dashed border-zinc-700'
-          }`}
-        >
-          <option value="">— choose —</option>
-          {secondaryOptions.map((m) => (
-            <option key={m.id} value={m.id} disabled={taken.has(m.id)}>
-              {m.name}
-            </option>
-          ))}
-        </select>
+          onChange={(mentorId) => writeCells([{ rowKey, column, mentorId }])}
+          options={toOptions(secondaryOptions.filter((m) => !taken.has(m.id)))}
+          placeholder="— choose —"
+          isSearchable
+          menuMinWidth={220}
+          className={`${CELL_SELECT} ${value ? '' : '!border-dashed !border-zinc-700'}`}
+        />
         {value && (
           // The fill handle — drag it over other rows to copy this mentor there.
           <span
@@ -238,7 +265,7 @@ export default function EvaluationPanelGrid({
               e.preventDefault();
               setDrag({ column, mentorId: value, fromIndex: rowIndex, toIndex: rowIndex });
             }}
-            className="absolute right-1 bottom-1 w-2 h-2 bg-gold rounded-[1px] cursor-ns-resize"
+            className="absolute right-1 bottom-0.5 w-2 h-2 bg-gold rounded-[1px] cursor-ns-resize z-[1]"
           />
         )}
       </td>
@@ -248,10 +275,13 @@ export default function EvaluationPanelGrid({
   const completeCount = (primaryId: string) =>
     (teamsByPrimary.get(primaryId) ?? []).filter((t) => isRowComplete(draft[t.teamId], secondaryCount)).length;
 
-  return (
-    <div className={`flex gap-3 min-h-[320px] ${drag ? 'select-none' : ''}`}>
+  // Inline the lists cap their own height; full screen they take what's left.
+  const listSizing = expanded ? 'flex-1 min-h-0' : 'max-h-[420px]';
+
+  const grid = (
+    <div className={`flex gap-3 ${expanded ? 'flex-1 min-h-0' : 'min-h-[320px]'} ${drag ? 'select-none' : ''}`}>
       {/* Mentors */}
-      <div className="w-56 shrink-0 bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col">
+      <div className={`${expanded ? 'w-64' : 'w-56'} shrink-0 bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col min-h-0`}>
         <div className="p-2 border-b border-zinc-800 relative">
           <Search size={12} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
@@ -261,7 +291,7 @@ export default function EvaluationPanelGrid({
             className="w-full bg-zinc-800 border border-zinc-700 rounded-md pl-7 pr-2 py-1 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-gold"
           />
         </div>
-        <div className="overflow-y-auto max-h-[420px]">
+        <div className={`overflow-y-auto scrollbar-thin ${listSizing}`}>
           {visiblePrimaryIds.map((primaryId) => {
             const total = teamsByPrimary.get(primaryId)?.length ?? 0;
             const complete = completeCount(primaryId);
@@ -285,7 +315,7 @@ export default function EvaluationPanelGrid({
       </div>
 
       {/* Sheet */}
-      <div className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col">
+      <div className="flex-1 min-w-0 min-h-0 bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col">
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-zinc-800">
           <p className="text-xs text-gray-400">
             <span className="text-white font-medium">{activePrimaryId ? mentorLabel(activePrimaryId) : ''}</span>
@@ -296,21 +326,17 @@ export default function EvaluationPanelGrid({
           <div className="flex items-center gap-2">
             {selectedTeamIds.size > 0 &&
               Array.from({ length: secondaryCount }, (_, column) => (
-                <select
+                <Select
                   key={column}
                   value=""
-                  onChange={(e) =>
-                    writeCells([...selectedTeamIds].map((teamId) => ({ rowKey: teamId, column, mentorId: e.target.value })))
+                  onChange={(mentorId) =>
+                    mentorId && writeCells([...selectedTeamIds].map((teamId) => ({ rowKey: teamId, column, mentorId })))
                   }
-                  className="bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1 text-xs text-white focus:outline-none focus:border-gold"
-                >
-                  <option value="">Set secondary {secondaryCount > 1 ? column + 1 : ''} for selected…</option>
-                  {secondaryOptions.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
+                  options={toOptions(secondaryOptions)}
+                  placeholder={`Set secondary${secondaryCount > 1 ? ` ${column + 1}` : ''} for selected…`}
+                  isSearchable
+                  className={TOOLBAR_SELECT}
+                />
               ))}
             {selectedTeamIds.size > 0 && (
               <button type="button" onClick={() => setSelectedTeamIds(new Set())} className="text-xs text-gray-400 hover:text-white">
@@ -325,6 +351,15 @@ export default function EvaluationPanelGrid({
               <Shuffle size={12} />
               Split evenly
             </button>
+            <button
+              type="button"
+              onClick={() => setExpanded((open) => !open)}
+              title={expanded ? 'Exit full screen (Esc)' : 'Expand to full screen'}
+              aria-label={expanded ? 'Exit full screen' : 'Expand to full screen'}
+              className="p-1 rounded-md text-gray-400 hover:text-gold hover:bg-zinc-800 transition-colors"
+            >
+              {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
           </div>
         </div>
 
@@ -335,40 +370,22 @@ export default function EvaluationPanelGrid({
               these secondaries, round-robin.
             </p>
             <div className="flex flex-wrap items-center gap-1.5">
-              {splitMentorIds.map((id) => (
-                <span key={id} className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-gold/10 border border-gold/25 text-gold">
-                  {mentorLabel(id)}
-                  <button type="button" onClick={() => setSplitMentorIds((ids) => ids.filter((x) => x !== id))}>
-                    <X size={10} />
-                  </button>
-                </span>
-              ))}
-              <select
-                value=""
-                onChange={(e) => e.target.value && setSplitMentorIds((ids) => [...ids, e.target.value])}
-                className="bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1 text-xs text-white focus:outline-none focus:border-gold"
-              >
-                <option value="">+ Add secondary</option>
-                {secondaryOptions
-                  .filter((m) => !splitMentorIds.includes(m.id))
-                  .map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-              </select>
+              <Select
+                isMulti
+                value={splitMentorIds}
+                onChange={setSplitMentorIds}
+                options={toOptions(secondaryOptions)}
+                placeholder="Choose secondaries…"
+                isSearchable
+                className={TOOLBAR_SELECT}
+              />
               {secondaryCount > 1 && (
-                <select
-                  value={splitColumn}
-                  onChange={(e) => setSplitColumn(Number(e.target.value))}
-                  className="bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1 text-xs text-white focus:outline-none focus:border-gold"
-                >
-                  {Array.from({ length: secondaryCount }, (_, i) => (
-                    <option key={i} value={i}>
-                      Into Secondary {i + 1}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  value={String(splitColumn)}
+                  onChange={(v) => setSplitColumn(Number(v))}
+                  options={Array.from({ length: secondaryCount }, (_, i) => ({ value: String(i), label: `Into Secondary ${i + 1}` }))}
+                  className="!px-2 !py-1 !text-xs"
+                />
               )}
               <button
                 type="button"
@@ -382,7 +399,7 @@ export default function EvaluationPanelGrid({
           </div>
         )}
 
-        <div className="overflow-auto max-h-[420px]">
+        <div className={`overflow-auto scrollbar-thin ${listSizing}`}>
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-zinc-900 z-10">
               <tr className="text-gray-500 text-left">
@@ -454,5 +471,18 @@ export default function EvaluationPanelGrid({
         </p>
       </div>
     </div>
+  );
+
+  if (!expanded) return grid;
+  // Portalled so no ancestor's transform (the modal's zoom-in) traps a fixed
+  // overlay inside it. Sits above the modal (z-100), below the Select lists (z-200).
+  return createPortal(
+    <div className="fixed inset-0 z-[150] bg-zinc-850 p-4 flex flex-col gap-3">
+      <p className="text-xs text-gray-400 shrink-0">
+        Secondary panel · press <span className="text-gray-300">Esc</span> to go back
+      </p>
+      {grid}
+    </div>,
+    document.body
   );
 }
