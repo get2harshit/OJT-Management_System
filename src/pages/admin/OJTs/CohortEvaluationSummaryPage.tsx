@@ -1,14 +1,14 @@
 import PageLayout from '../../../components/PageLayout';
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Award, Plus, Table2, FileBarChart2, Eye, Pencil, Trash2 } from 'lucide-react';
+import { Award, Plus, Table2, FileBarChart2, Eye, Pencil, Trash2, UserPlus } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import SpinnerSquare from '../../../components/SpinnerSquare';
 import { AddEvaluationModal } from './AddEvaluationModal';
 import { EditEvaluationConfigModal } from './EditEvaluationConfigModal';
 import { ViewEvaluationConfigModal } from './ViewEvaluationConfigModal';
 import type { CohortDetails, CohortEvaluationConfig, EvaluationMode } from '../../../lib/types';
-import { apiListCohortEvaluationConfigs, apiDeleteCohortEvaluationConfig } from '../../../lib/api/evaluations';
+import { apiListCohortEvaluationConfigs, apiDeleteCohortEvaluationConfig, apiActivateCohortEvaluation } from '../../../lib/api/evaluations';
 import { apiGetCohort } from '../../../lib/api';
 import { formatDateDisplay } from '../../../lib/utils';
 import { useToast } from '../../../toast';
@@ -95,6 +95,43 @@ export default function CohortEvaluationSummaryPage() {
       loadConfigs();
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to delete evaluation');
+    }
+  };
+
+  // Re-runs assignment for one evaluation: students who came into its scope
+  // after it was set up (a late team, a late mentor) get their evaluation and
+  // panel; everyone already assigned is left exactly as they are. Safe to run
+  // any number of times. A window that has already closed is confirmed first,
+  // since those students land in mentors' queues for a viva that is over.
+  const [assigningConfigId, setAssigningConfigId] = useState<string | null>(null);
+  const handleAssignNewStudents = async (config: CohortEvaluationConfig) => {
+    const name = config.sequenceNo ? `${config.evaluationTypeTemplate.name} ${config.sequenceNo}` : config.evaluationTypeTemplate.name;
+    if (new Date(config.endDate) < new Date()) {
+      const ok = await confirm({
+        title: 'Window has ended',
+        message: `"${name}" ended on ${formatDateDisplay(config.endDate)}. Students assigned now will show in their mentors' queues for a viva that is over. Assign them anyway?`,
+        confirmLabel: 'Assign anyway',
+      });
+      if (!ok) return;
+    }
+    setAssigningConfigId(config.id);
+    try {
+      const result = await apiActivateCohortEvaluation(config.id);
+      const skipped = result.skipped.noMentor + result.skipped.noPublishedTeam;
+      showSuccess(
+        result.newlyAssignedCount === 0 && result.repairedCount === 0
+          ? `Nobody new to assign for "${name}"` + (skipped > 0 ? ` — ${skipped} in scope still have no mentor or published team.` : '.')
+          : `Assigned ${result.newlyAssignedCount} new student(s) to "${name}"` +
+              (result.repairedCount > 0 ? `, repaired ${result.repairedCount}` : '') +
+              (result.incompletePanel > 0 ? `; ${result.incompletePanel} got fewer secondaries than declared — fill them in Edit` : '') +
+              (skipped > 0 ? `; ${skipped} still have no mentor or published team` : '') +
+              '.',
+      );
+      loadConfigs();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to assign new students');
+    } finally {
+      setAssigningConfigId(null);
     }
   };
 
@@ -218,9 +255,20 @@ export default function CohortEvaluationSummaryPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
+                            handleAssignNewStudents(config);
+                          }}
+                          disabled={assigningConfigId === config.id}
+                          title="Assign students who came into scope after this was set up"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-40"
+                        >
+                          <UserPlus size={13} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setEditingConfig(config);
                           }}
-                          title="Edit dates / panel size"
+                          title="Edit dates, panel size and secondaries"
                           className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-800 transition-colors"
                         >
                           <Pencil size={13} />

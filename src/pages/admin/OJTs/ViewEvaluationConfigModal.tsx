@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Eye, X, ClipboardList, Users2, ArrowRight } from 'lucide-react';
 import type { ApiMentor, CohortEvaluationConfig } from '../../../lib/types';
-import { apiGetMentorPairings, apiGetMentorWorkload, type MentorWorkload } from '../../../lib/api/evaluations';
+import { apiGetConfigPanel } from '../../../lib/api/evaluations';
 import { formatDateDisplay } from '../../../lib/utils';
 import { useToast } from '../../../toast';
 import SpinnerSquare from '../../../components/SpinnerSquare';
@@ -25,24 +25,32 @@ export function ViewEvaluationConfigModal({
   onClose: () => void;
 }) {
   const { showError } = useToast();
-  const [pairingsByPrimary, setPairingsByPrimary] = useState<Record<string, string[]>>({});
-  const [workload, setWorkload] = useState<MentorWorkload[]>([]);
-  const [loadingPairings, setLoadingPairings] = useState(true);
+  // Per primary mentor: their teams and students in scope, and each secondary
+  // with how many of those teams they sit on — a mentor's teams may be split
+  // across several secondaries, so a flat list of names would hide who has what.
+  const [panelByPrimary, setPanelByPrimary] = useState<
+    Record<string, { teamCount: number; studentCount: number; secondaries: { id: string; teamCount: number }[] }>
+  >({});
+  const [loadingPairings, setLoadingPairings] = useState(config.evaluationTypeTemplate.mode === 'rubric');
 
   useEffect(() => {
+    if (config.evaluationTypeTemplate.mode !== 'rubric') return;
     (async () => {
       setLoadingPairings(true);
       try {
-        const [pairings, workloadRows] = await Promise.all([
-          apiGetMentorPairings(config.id),
-          apiGetMentorWorkload(config.cohortId),
-        ]);
-        const byPrimary: Record<string, string[]> = {};
-        for (const p of pairings) {
-          (byPrimary[p.primaryMentorId] ??= []).push(p.secondaryMentorId);
+        const panel = await apiGetConfigPanel(config.id);
+        const byPrimary: typeof panelByPrimary = {};
+        for (const team of panel.teams) {
+          const entry = (byPrimary[team.primaryMentorId] ??= { teamCount: 0, studentCount: 0, secondaries: [] });
+          entry.teamCount += 1;
+          entry.studentCount += team.studentCount;
+          for (const id of team.secondaryMentorIds) {
+            const seat = entry.secondaries.find((s) => s.id === id);
+            if (seat) seat.teamCount += 1;
+            else entry.secondaries.push({ id, teamCount: 1 });
+          }
         }
-        setPairingsByPrimary(byPrimary);
-        setWorkload(workloadRows);
+        setPanelByPrimary(byPrimary);
       } catch (err: unknown) {
         showError(err instanceof Error ? err.message : 'Failed to load mentor pairings');
       } finally {
@@ -50,17 +58,16 @@ export function ViewEvaluationConfigModal({
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.id, config.cohortId]);
+  }, [config.id]);
 
   const mentorById = new Map(cohortMentors.map((m) => [m.id, m]));
   const mentorLabel = (id: string) => mentorById.get(id)?.fullName || mentorById.get(id)?.email || 'Unknown';
-  const workloadByMentorId = new Map(workload.map((w) => [w.mentorId, w]));
 
   const evaluationName = config.sequenceNo
     ? `${config.evaluationTypeTemplate.name} ${config.sequenceNo}`
     : config.evaluationTypeTemplate.name;
 
-  const primaries = Object.keys(pairingsByPrimary);
+  const primaries = Object.keys(panelByPrimary).sort((a, b) => mentorLabel(a).localeCompare(mentorLabel(b)));
   const totalMarks = config.rubricTemplate.criteria.reduce((sum, c) => sum + c.maxMarks, 0);
 
   return (
@@ -193,26 +200,35 @@ export function ViewEvaluationConfigModal({
                 </div>
               ) : primaries.length === 0 ? (
                 <p className="text-[11px] text-gray-500 rounded-lg border border-dashed border-zinc-800 px-3 py-3 text-center">
-                  No pairings declared — every in-scope student is scored by their primary mentor alone.
+                  {config.secondaryEvaluatorCount === 0
+                    ? 'No secondary panelists — every in-scope student is scored by their primary mentor alone.'
+                    : 'No team in scope has a mentor yet.'}
                 </p>
               ) : (
                 <div className="rounded-lg border border-zinc-800 divide-y divide-zinc-800 overflow-hidden max-h-72 overflow-y-auto">
                   {primaries.map((primaryId) => {
-                    const w = workloadByMentorId.get(primaryId);
+                    const w = panelByPrimary[primaryId];
                     return (
                       <div key={primaryId} className="px-3 py-2 flex items-center justify-between gap-3">
                         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                           <span className="text-xs font-medium text-white shrink-0">{mentorLabel(primaryId)}</span>
                           <ArrowRight size={11} className="text-gray-600 shrink-0" />
                           <div className="flex flex-wrap gap-1.5">
-                            {pairingsByPrimary[primaryId].map((secId) => (
-                              <span
-                                key={secId}
-                                className="text-xs text-gold bg-gold/10 border border-gold/30 rounded-md px-2 py-0.5"
-                              >
-                                {mentorLabel(secId)}
-                              </span>
-                            ))}
+                            {w.secondaries.length === 0 ? (
+                              <span className="text-xs text-gray-500">No secondary</span>
+                            ) : (
+                              w.secondaries.map((seat) => (
+                                <span
+                                  key={seat.id}
+                                  className="text-xs text-gold bg-gold/10 border border-gold/30 rounded-md px-2 py-0.5"
+                                >
+                                  {mentorLabel(seat.id)}
+                                  {seat.teamCount < w.teamCount && (
+                                    <span className="text-gold/70"> · {seat.teamCount}/{w.teamCount} teams</span>
+                                  )}
+                                </span>
+                              ))
+                            )}
                           </div>
                         </div>
                         {w && (
