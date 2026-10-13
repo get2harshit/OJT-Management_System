@@ -486,7 +486,15 @@ export interface EvaluatorQueuePage {
 // cohortId names the OJT whose queue to return; without it the backend scopes
 // to the currently active OJT, which is what a cohort-less caller wants.
 export async function apiGetMyEvaluationQueue(
-  params: { page?: number; limit?: number; cohortId?: string; configId?: string; search?: string } = {}
+  params: {
+    page?: number;
+    limit?: number;
+    cohortId?: string;
+    configId?: string;
+    search?: string;
+    /** Only the students the mentor sits on in this seat; omitted means both. */
+    role?: 'primary' | 'secondary';
+  } = {}
 ): Promise<EvaluatorQueuePage> {
   const query = new URLSearchParams();
   if (params.page) query.set('page', String(params.page));
@@ -497,6 +505,7 @@ export async function apiGetMyEvaluationQueue(
   // the queue is paginated, so filtering the page the client happens to hold
   // would only ever search one page of it.
   if (params.search) query.set('search', params.search);
+  if (params.role) query.set('role', params.role);
   const qs = query.toString();
   const res = await apiFetch<{ data: RawEvaluatorQueueItem[]; pagination: { page: number; limit: number; total: number } }>(
     `/api/v1/evaluations/my-queue${qs ? `?${qs}` : ''}`,

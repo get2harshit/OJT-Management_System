@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { Award, Loader2, ChevronLeft, UserCheck, UserX, CalendarOff } from 'lucide-react';
 import DataTable from '../../components/DataTable';
+import Select from '../../components/Select';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Button from '../../components/Button';
@@ -23,6 +24,13 @@ import { usePageRefresh } from '../../context/RefreshContext';
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
+// The queue's "Acting as" filter — the seat the mentor holds on the panel.
+const ROLE_FILTER_OPTIONS = [
+  { value: 'all', label: 'Acting as: All' },
+  { value: 'primary', label: 'Acting as: Primary' },
+  { value: 'secondary', label: 'Acting as: Secondary' },
+];
+
 // A mentor (internal or, via the same panel, external) scores whatever
 // evaluations they're a panelist on — the backend assigns panelists
 // automatically when admin activates a cohort's evaluation, so this page is
@@ -32,6 +40,7 @@ const SEARCH_DEBOUNCE_MS = 400;
 // mentor's own students are scored), then — once one is picked — that
 // viva's own student queue, same table this page always had. Mirrors the
 // admin's own Configured Evaluations -> Blueprint drill-down.
+
 export default function MentorEvaluationTracker() {
   // The OJT this queue is scoped to, from the route.
   const { cohortId } = useParams<{ cohortId: string }>();
@@ -49,6 +58,9 @@ export default function MentorEvaluationTracker() {
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
+  // "Acting as" — narrows the queue to the students the mentor is primary or
+  // secondary for. Filtered server-side, since the queue is paginated.
+  const [roleFilter, setRoleFilter] = useState<'all' | 'primary' | 'secondary'>('all');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -80,7 +92,14 @@ export default function MentorEvaluationTracker() {
     if (!selectedConfig) return;
     setLoading(true);
     try {
-      const res = await apiGetMyEvaluationQueue({ page, limit, cohortId, configId: selectedConfig.configId, search });
+      const res = await apiGetMyEvaluationQueue({
+        page,
+        limit,
+        cohortId,
+        configId: selectedConfig.configId,
+        search,
+        role: roleFilter === 'all' ? undefined : roleFilter,
+      });
       setQueue(res.data);
       setTotal(res.pagination.total);
     } catch (err) {
@@ -89,7 +108,7 @@ export default function MentorEvaluationTracker() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, limit, search, cohortId, selectedConfig?.configId]);
+  }, [page, limit, search, roleFilter, cohortId, selectedConfig?.configId]);
 
   useEffect(() => {
     loadQueue();
@@ -107,12 +126,14 @@ export default function MentorEvaluationTracker() {
     // next one — the box renders empty there, so a filter still applied would
     // be invisible and read as "this viva has almost no students".
     setSearch('');
+    setRoleFilter('all');
     setSelectedConfig(config);
   };
 
   const backToVivas = () => {
     setSelectedConfig(null);
     setSearch('');
+    setRoleFilter('all');
     setQueue([]);
   };
 
@@ -369,6 +390,18 @@ export default function MentorEvaluationTracker() {
             loading={loading}
             searchPlaceholder="Search by name, registration or roll number..."
             onSearchChange={handleSearchInputChange}
+            leftHeaderContent={
+              <Select
+                value={roleFilter}
+                onChange={(v) => {
+                  setPage(1);
+                  setRoleFilter(v as 'all' | 'primary' | 'secondary');
+                }}
+                options={ROLE_FILTER_OPTIONS}
+                variant="filter"
+                className="w-[200px]"
+              />
+            }
             hideExport
             onRowClick={(row) => openEvaluation(row.id as string)}
             serverPagination={{
