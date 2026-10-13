@@ -43,6 +43,11 @@ interface EvaluationPanelGridProps {
 
 const DEFAULT_ROW = '__default__';
 
+const teamLabel = (team: PanelTeam) => {
+  const name = team.teamName ?? '—';
+  return team.studentNames?.length ? `${name} (${team.studentNames.join(', ')})` : name;
+};
+
 // The shared Select is sized for forms; a sheet cell needs it denser.
 const CELL_SELECT = 'w-full !px-2 !py-1 !text-xs';
 const TOOLBAR_SELECT = 'min-w-[200px] !px-2 !py-1 !text-xs';
@@ -80,8 +85,18 @@ export default function EvaluationPanelGrid({
     [activePrimaryId, teamsByPrimary]
   );
 
+  // Find a team by its G-number or by any of its students. Everything that
+  // acts on "the rows" — drag-fill, shift-select, split — acts on the rows
+  // shown, so a filtered-out team is never changed by accident.
+  const [teamSearch, setTeamSearch] = useState('');
+  const visibleTeams = useMemo(() => {
+    const q = teamSearch.trim().toLowerCase();
+    if (!q) return activeTeams;
+    return activeTeams.filter((t) => teamLabel(t).toLowerCase().includes(q));
+  }, [activeTeams, teamSearch]);
+
   // Row keys in display order: the default row first, then the teams.
-  const rowKeys = useMemo(() => [DEFAULT_ROW, ...activeTeams.map((t) => t.teamId)], [activeTeams]);
+  const rowKeys = useMemo(() => [DEFAULT_ROW, ...visibleTeams.map((t) => t.teamId)], [visibleTeams]);
 
   const readRow = (rowKey: string) =>
     seatsOf(rowKey === DEFAULT_ROW ? defaults[activePrimaryId ?? ''] : draft[rowKey], secondaryCount);
@@ -145,18 +160,23 @@ export default function EvaluationPanelGrid({
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set());
   const lastClickedIndex = useRef<number | null>(null);
 
+  // A new mentor starts with a clean slate; a new search clears the
+  // selection too, so a bulk set never reaches rows that are hidden.
+  useEffect(() => {
+    setTeamSearch('');
+  }, [activePrimaryId]);
   useEffect(() => {
     setSelectedTeamIds(new Set());
     lastClickedIndex.current = null;
-  }, [activePrimaryId]);
+  }, [activePrimaryId, teamSearch]);
 
   const toggleRow = (teamIndex: number, shiftKey: boolean) => {
     const next = new Set(selectedTeamIds);
     if (shiftKey && lastClickedIndex.current !== null) {
       const [low, high] = [Math.min(lastClickedIndex.current, teamIndex), Math.max(lastClickedIndex.current, teamIndex)];
-      for (let i = low; i <= high; i++) next.add(activeTeams[i].teamId);
+      for (let i = low; i <= high; i++) next.add(visibleTeams[i].teamId);
     } else {
-      const teamId = activeTeams[teamIndex].teamId;
+      const teamId = visibleTeams[teamIndex].teamId;
       if (next.has(teamId)) next.delete(teamId);
       else next.add(teamId);
       lastClickedIndex.current = teamIndex;
@@ -164,7 +184,7 @@ export default function EvaluationPanelGrid({
     setSelectedTeamIds(next);
   };
 
-  const targetTeamIds = selectedTeamIds.size > 0 ? [...selectedTeamIds] : activeTeams.map((t) => t.teamId);
+  const targetTeamIds = selectedTeamIds.size > 0 ? [...selectedTeamIds] : visibleTeams.map((t) => t.teamId);
 
   // ── Split evenly ──────────────────────────────────────────────────────────
   const [splitOpen, setSplitOpen] = useState(false);
@@ -317,12 +337,24 @@ export default function EvaluationPanelGrid({
       {/* Sheet */}
       <div className="flex-1 min-w-0 min-h-0 bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col">
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-zinc-800">
-          <p className="text-xs text-gray-400">
-            <span className="text-white font-medium">{activePrimaryId ? mentorLabel(activePrimaryId) : ''}</span>
-            {' · '}
-            {activeTeams.length} team{activeTeams.length === 1 ? '' : 's'}
-            {selectedTeamIds.size > 0 && <span className="text-gold"> · {selectedTeamIds.size} selected</span>}
-          </p>
+          <div className="flex items-center gap-3 min-w-0">
+            <p className="text-xs text-gray-400 whitespace-nowrap">
+              <span className="text-white font-medium">{activePrimaryId ? mentorLabel(activePrimaryId) : ''}</span>
+              {' · '}
+              {teamSearch.trim() ? `${visibleTeams.length} of ${activeTeams.length}` : activeTeams.length} team
+              {activeTeams.length === 1 ? '' : 's'}
+              {selectedTeamIds.size > 0 && <span className="text-gold"> · {selectedTeamIds.size} selected</span>}
+            </p>
+            <div className="relative">
+              <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500" />
+              <input
+                value={teamSearch}
+                onChange={(e) => setTeamSearch(e.target.value)}
+                placeholder="Find team or student"
+                className="w-48 bg-zinc-800 border border-zinc-700 rounded-md pl-6 pr-2 py-1 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-gold"
+              />
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             {selectedTeamIds.size > 0 &&
               Array.from({ length: secondaryCount }, (_, column) => (
@@ -366,7 +398,7 @@ export default function EvaluationPanelGrid({
         {splitOpen && (
           <div className="px-3 py-2 border-b border-zinc-800 bg-zinc-850 space-y-2">
             <p className="text-[11px] text-gray-400">
-              Share {selectedTeamIds.size > 0 ? `the ${selectedTeamIds.size} selected teams` : `all ${activeTeams.length} teams`} between
+              Share {selectedTeamIds.size > 0 ? `the ${selectedTeamIds.size} selected teams` : `${teamSearch.trim() ? 'the' : 'all'} ${visibleTeams.length} teams`} between
               these secondaries, round-robin.
             </p>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -425,7 +457,14 @@ export default function EvaluationPanelGrid({
                 </td>
                 {Array.from({ length: secondaryCount }, (_, column) => renderCell(DEFAULT_ROW, 0, column))}
               </tr>
-              {activeTeams.map((team, teamIndex) => {
+              {visibleTeams.length === 0 && (
+                <tr className="border-t border-zinc-800">
+                  <td colSpan={4 + secondaryCount} className="px-3 py-4 text-center text-xs text-gray-500">
+                    No team or student matches "{teamSearch.trim()}".
+                  </td>
+                </tr>
+              )}
+              {visibleTeams.map((team, teamIndex) => {
                 const rowIndex = teamIndex + 1;
                 const seats = seatsOf(draft[team.teamId], secondaryCount);
                 const incomplete = !isRowComplete(seats, secondaryCount);
@@ -444,17 +483,23 @@ export default function EvaluationPanelGrid({
                         className="accent-gold"
                       />
                     </td>
-                    <td className="px-2 py-1.5 text-white whitespace-nowrap">
-                      {team.teamName ?? '—'}
-                      {incomplete && <span className="ml-1.5 text-[10px] text-amber-400">incomplete</span>}
-                      {(team.lockedCount ?? 0) > 0 && (
-                        <span
-                          className="ml-1.5 text-[10px] text-gray-500"
-                          title="Already scored or closed — a change of secondary will not reach these students"
-                        >
-                          {team.lockedCount}/{team.assignedCount ?? team.studentCount} scored
+                    <td className="px-2 py-1.5 text-white max-w-[320px]">
+                      {/* Team name with its students — "G1 (Asha, Ravi)" — since a
+                          bare G-number tells an admin nothing about whose team it is. */}
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="truncate min-w-0" title={teamLabel(team)}>
+                          {teamLabel(team)}
                         </span>
-                      )}
+                        {incomplete && <span className="shrink-0 text-[10px] text-amber-400">incomplete</span>}
+                        {(team.lockedCount ?? 0) > 0 && (
+                          <span
+                            className="shrink-0 text-[10px] text-gray-500"
+                            title="Already scored or closed — a change of secondary will not reach these students"
+                          >
+                            {team.lockedCount}/{team.assignedCount ?? team.studentCount} scored
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-2 py-1.5 text-gray-400 whitespace-nowrap">{team.trackName ?? '—'}</td>
                     <td className="px-2 py-1.5 text-gray-400 text-right tabular-nums">{team.studentCount}</td>

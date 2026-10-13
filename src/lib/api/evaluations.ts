@@ -302,6 +302,8 @@ export interface PanelTeam {
   trackName: string | null;
   primaryMentorId: string;
   studentCount: number;
+  /** The team's in-scope students, by name — who the viva will reach. */
+  studentNames: string[];
 }
 
 /** A team under an existing evaluation, with its current panel and progress. */
