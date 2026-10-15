@@ -231,7 +231,7 @@ function AssessmentDetail({ assessment }: { assessment: ApiSkillAssessment }) {
         <div className="flex items-center justify-between border-t border-zinc-800 pt-2.5">
           <span className="text-[11px] text-gray-400">Recommended for Placement</span>
           <span className="text-[11px] font-medium text-gray-200">
-            {assessment.recommendedForPlacement ? 'Recommended' : 'Not Recommended'}
+            {assessment.recommendedForPlacement ? 'True' : 'False'}
           </span>
         </div>
       )}
@@ -586,33 +586,24 @@ export function NewAssessmentModal({
           </div>
         )}
 
-        <div className="bg-zinc-900 border border-zinc-750 rounded-lg px-3.5 py-2.5 space-y-2">
-          <p className="text-sm text-white font-medium">Recommended for Placement</p>
-          <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Recommended for Placement">
-            {[
-              { value: true, label: 'Recommended' },
-              { value: false, label: 'Not Recommended' },
-            ].map(({ value, label }) => {
-              const selected = recommendedForPlacement === value;
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  onClick={() => setRecommendedForPlacement(value)}
-                  className={`rounded-lg border px-2 py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-gold/60 ${
-                    selected
-                      ? 'bg-gold text-black border-gold'
-                      : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-gray-600 hover:text-gray-200'
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
+        <fieldset className="bg-zinc-900 border border-zinc-750 rounded-lg px-3.5 py-3 space-y-2">
+          <legend className="px-1 text-xs text-gray-300 font-medium">Recommended for Placement</legend>
+          <div className="flex gap-5">
+            {[true, false].map((value) => (
+              <label key={String(value)} className="inline-flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                <input
+                  type="radio"
+                  name={`recommendedForPlacement-${studentId}`}
+                  value={String(value)}
+                  checked={recommendedForPlacement === value}
+                  onChange={() => setRecommendedForPlacement(value)}
+                  className="accent-gold"
+                />
+                {String(value)}
+              </label>
+            ))}
           </div>
-        </div>
+        </fieldset>
 
         <div>
           <label className="block text-xs text-gray-400 mb-1.5">Mentor Feedback (optional)</label>
