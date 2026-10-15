@@ -234,9 +234,14 @@ function StudentRow({
         studentId={student.id}
         cohortId={cohortId}
         onClose={() => setFormOpen(false)}
-        onSubmit={async (scores, note) => {
+        onSubmit={async (scores, note, recommendedForPlacement) => {
           try {
-            await apiCreateSkillAssessment(student.id, { cohortId, scores, note: note || undefined });
+            await apiCreateSkillAssessment(student.id, {
+              cohortId,
+              scores,
+              note: note || undefined,
+              recommendedForPlacement,
+            });
             showSuccess('Assessment saved');
             setFormOpen(false);
             setRefreshToken((t) => t + 1);

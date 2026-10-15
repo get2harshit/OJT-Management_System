@@ -178,6 +178,14 @@ function AssessmentDetail({ assessment }: { assessment: ApiSkillAssessment }) {
         <ScoreBar label="Overall rating" value={assessment.finalRating} emphasis />
         {assessment.comparison && <ComparisonBadge comparison={assessment.comparison} />}
       </div>
+      {assessment.recommendedForPlacement !== null && (
+        <div className="flex items-center justify-between border-t border-zinc-800 pt-2.5">
+          <span className="text-[11px] text-gray-400">Recommended for Placement</span>
+          <span className="text-[11px] font-medium text-gray-200">
+            {assessment.recommendedForPlacement ? 'Recommended' : 'Not Recommended'}
+          </span>
+        </div>
+      )}
 
       {/* Stacked, not three across. Every bar here is on the same 1-5 scale, so
           they all have to share one width basis — a 4.60 drawn across a third
@@ -365,9 +373,10 @@ export function NewAssessmentModal({
   studentId: string;
   cohortId: string;
   onClose: () => void;
-  onSubmit: (scores: Record<string, number>, note: string) => Promise<void>;
+  onSubmit: (scores: Record<string, number>, note: string, recommendedForPlacement: boolean) => Promise<void>;
 }) {
   const [scores, setScores] = useState<Record<string, number>>({});
+  const [recommendedForPlacement, setRecommendedForPlacement] = useState<boolean | null>(null);
   // The snapshot shown as reference. Only ever one, and only ever on the
   // current rubric — the server filters, so a student whose newest row is a
   // legacy one simply has no reference rather than a set of nine scores that
@@ -395,6 +404,7 @@ export function NewAssessmentModal({
   useEffect(() => {
     if (!open) return;
     setScores({});
+    setRecommendedForPlacement(null);
     setNote('');
     setNoteEdited(false);
     setConfirmed(false);
@@ -457,10 +467,10 @@ export function NewAssessmentModal({
     : null;
 
   const submit = async () => {
-    if (!allRated || !confirmed) return;
+    if (!allRated || !confirmed || recommendedForPlacement === null) return;
     setSaving(true);
     try {
-      await onSubmit(scores, note.trim());
+      await onSubmit(scores, note.trim(), recommendedForPlacement);
     } finally {
       setSaving(false);
     }
@@ -575,6 +585,34 @@ export function NewAssessmentModal({
           </div>
         )}
 
+        <div className="bg-zinc-900 border border-zinc-750 rounded-lg px-3.5 py-2.5 space-y-2">
+          <p className="text-sm text-white font-semibold">Recommended for Placement</p>
+          <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Recommended for Placement">
+            {[
+              { value: true, label: 'Recommended' },
+              { value: false, label: 'Not Recommended' },
+            ].map(({ value, label }) => {
+              const selected = recommendedForPlacement === value;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setRecommendedForPlacement(value)}
+                  className={`rounded-lg border px-2 py-1.5 text-sm font-semibold transition-colors focus:outline-none focus:ring-1 focus:ring-gold/60 ${
+                    selected
+                      ? 'bg-gold text-black border-gold'
+                      : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-gray-600 hover:text-gray-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div>
           <label className="block text-xs text-gray-400 mb-1.5">Mentor Feedback (optional)</label>
           <textarea
@@ -625,8 +663,16 @@ export function NewAssessmentModal({
           </button>
           <button
             onClick={submit}
-            disabled={saving || !allRated || !confirmed}
-            title={!allRated ? 'Rate every parameter before saving' : !confirmed ? 'Confirm the checkbox before saving' : undefined}
+            disabled={saving || !allRated || !confirmed || recommendedForPlacement === null}
+            title={
+              !allRated
+                ? 'Rate every parameter before saving'
+                : recommendedForPlacement === null
+                  ? 'Choose a placement recommendation before saving'
+                  : !confirmed
+                    ? 'Confirm the checkbox before saving'
+                    : undefined
+            }
             className="text-xs px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving…' : 'Save assessment'}
