@@ -227,6 +227,15 @@ function AssessmentDetail({ assessment }: { assessment: ApiSkillAssessment }) {
         </div>
       </details>
 
+      {assessment.recommendedForPlacement !== null && (
+        <div className="flex items-center justify-between border-t border-zinc-800 pt-2.5">
+          <span className="text-[11px] text-gray-400">Recommended for Placement</span>
+          <span className="text-[11px] font-medium text-gray-200">
+            {assessment.recommendedForPlacement ? 'True' : 'False'}
+          </span>
+        </div>
+      )}
+
       {assessment.note && <MentorFeedback note={assessment.note} />}
     </div>
   );
@@ -365,9 +374,10 @@ export function NewAssessmentModal({
   studentId: string;
   cohortId: string;
   onClose: () => void;
-  onSubmit: (scores: Record<string, number>, note: string) => Promise<void>;
+  onSubmit: (scores: Record<string, number>, note: string, recommendedForPlacement: boolean) => Promise<void>;
 }) {
   const [scores, setScores] = useState<Record<string, number>>({});
+  const [recommendedForPlacement, setRecommendedForPlacement] = useState<boolean | null>(null);
   // The snapshot shown as reference. Only ever one, and only ever on the
   // current rubric — the server filters, so a student whose newest row is a
   // legacy one simply has no reference rather than a set of nine scores that
@@ -395,6 +405,7 @@ export function NewAssessmentModal({
   useEffect(() => {
     if (!open) return;
     setScores({});
+    setRecommendedForPlacement(null);
     setNote('');
     setNoteEdited(false);
     setConfirmed(false);
@@ -457,10 +468,10 @@ export function NewAssessmentModal({
     : null;
 
   const submit = async () => {
-    if (!allRated || !confirmed) return;
+    if (!allRated || !confirmed || recommendedForPlacement === null) return;
     setSaving(true);
     try {
-      await onSubmit(scores, note.trim());
+      await onSubmit(scores, note.trim(), recommendedForPlacement);
     } finally {
       setSaving(false);
     }
@@ -575,6 +586,25 @@ export function NewAssessmentModal({
           </div>
         )}
 
+        <fieldset className="bg-zinc-900 border border-zinc-750 rounded-lg px-3.5 py-3 space-y-2">
+          <legend className="px-1 text-xs text-gray-300 font-medium">Recommended for Placement</legend>
+          <div className="flex gap-5">
+            {[true, false].map((value) => (
+              <label key={String(value)} className="inline-flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                <input
+                  type="radio"
+                  name={`recommendedForPlacement-${studentId}`}
+                  value={String(value)}
+                  checked={recommendedForPlacement === value}
+                  onChange={() => setRecommendedForPlacement(value)}
+                  className="accent-gold"
+                />
+                {String(value)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
         <div>
           <label className="block text-xs text-gray-400 mb-1.5">Mentor Feedback (optional)</label>
           <textarea
@@ -625,8 +655,16 @@ export function NewAssessmentModal({
           </button>
           <button
             onClick={submit}
-            disabled={saving || !allRated || !confirmed}
-            title={!allRated ? 'Rate every parameter before saving' : !confirmed ? 'Confirm the checkbox before saving' : undefined}
+            disabled={saving || !allRated || !confirmed || recommendedForPlacement === null}
+            title={
+              !allRated
+                ? 'Rate every parameter before saving'
+                : recommendedForPlacement === null
+                  ? 'Choose true or false for placement recommendation'
+                  : !confirmed
+                    ? 'Confirm the checkbox before saving'
+                    : undefined
+            }
             className="text-xs px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving…' : 'Save assessment'}
