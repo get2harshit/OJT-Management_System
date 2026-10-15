@@ -125,7 +125,6 @@ export interface ApiSkillAssessment {
   professionalCapability: number | null;
   finalRating: number | null;
   comparison: AssessmentComparison | null;
-  recommendedForPlacement: boolean | null;
   note: string | null;
   assessedAt: string;
 }
@@ -204,12 +203,7 @@ const toPageMeta = (p: RawPagination): PageMeta => ({ ...p, totalPages: p.pages 
  */
 export async function apiCreateSkillAssessment(
   studentId: string,
-  payload: {
-    cohortId: string;
-    scores: Record<string, number>;
-    recommendedForPlacement: boolean;
-    note?: string;
-  }
+  payload: { cohortId: string; scores: Record<string, number>; note?: string }
 ): Promise<ApiSkillAssessment> {
   const res = await apiFetch<{ data: ApiSkillAssessment }>(`/api/v1/students/${studentId}/skill-assessments`, {
     method: 'POST',
