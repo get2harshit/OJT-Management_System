@@ -19,6 +19,7 @@ import LiveSessionReportModal from '../../components/LiveSessionReportModal';
 import RecurringSchedulePicker, { EMPTY_RECURRING_SCHEDULE, type RecurringScheduleValue } from '../../components/RecurringSchedulePicker';
 import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
+import { calendarStartTime, startsInWorkingHours } from '../../lib/schedulingBusinessHours';
 import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
 import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
 import {
@@ -132,9 +133,19 @@ export default function MentorSessions() {
   const holidays = useCalendarHolidays(selectedCohortId);
   const holidayEvents = useMemo(() => computeHolidayBackgroundEvents(holidays), [holidays]);
   const holidayDateKeys = useMemo(() => new Set(holidays.map((h) => h.holiday_date.slice(0, 10))), [holidays]);
+  // A slot outside the working hours cannot start a session — the server
+  // would refuse it — so it is not offered: no create form from the shaded
+  // part of the grid, and no dragging a session into it.
   const handleSelectAllow = useCallback(
-    (span: { start: Date }) => span.start.getTime() >= Date.now() && !holidayDateKeys.has(localDateKey(span.start)),
-    [holidayDateKeys]
+    (span: { start: Date }) =>
+      span.start.getTime() >= Date.now() &&
+      !holidayDateKeys.has(localDateKey(span.start)) &&
+      startsInWorkingHours(span.start, businessHours),
+    [holidayDateKeys, businessHours]
+  );
+  const handleEventAllow = useCallback(
+    (span: { start: Date }) => startsInWorkingHours(span.start, businessHours),
+    [businessHours]
   );
 
   // Both of the mentor-scoped reads below ask about whoever is being acted as,
@@ -300,7 +311,7 @@ export default function MentorSessions() {
     async (session: ApiSession, start: Date, end: Date, revert: () => void) => {
       try {
         await apiRescheduleSession(session.id, {
-          scheduledDate: start.toISOString().slice(0, 10),
+          scheduledDate: localDateKey(start),
           startTime: start.toISOString(),
           endTime: end.toISOString(),
           title: session.title ?? undefined,
@@ -332,6 +343,13 @@ export default function MentorSessions() {
       applyReschedule(session, arg.event.start, arg.event.end, arg.revert);
     },
     [applyReschedule]
+  );
+
+  // The grid opens where the working day does, and earlier only for a
+  // session on screen that starts before it.
+  const slotMinTime = useMemo(
+    () => calendarStartTime(businessHours, sessions.map((s) => s.start_time)),
+    [businessHours, sessions]
   );
 
   const handleDatesSet = useCallback(
@@ -445,7 +463,7 @@ export default function MentorSessions() {
         teamIds: createForm.teamIds,
         title: createForm.title || undefined,
         locationOrLink: createForm.locationOrLink || undefined,
-        scheduledDate: start.toISOString().slice(0, 10),
+        scheduledDate: localDateKey(start),
         startTime: start.toISOString(),
         endTime: end.toISOString(),
       });
@@ -550,7 +568,7 @@ export default function MentorSessions() {
       const start = new Date(rescheduleForm.startLocal);
       const end = new Date(rescheduleForm.endLocal);
       await apiRescheduleSession(selected.id, {
-        scheduledDate: start.toISOString().slice(0, 10),
+        scheduledDate: localDateKey(start),
         startTime: start.toISOString(),
         endTime: end.toISOString(),
         title: rescheduleForm.title || undefined,
@@ -723,6 +741,7 @@ export default function MentorSessions() {
           height="auto"
           selectable={canSelfSchedule}
           selectAllow={handleSelectAllow}
+          eventAllow={handleEventAllow}
           editable
           eventDurationEditable
           eventStartEditable
@@ -736,7 +755,7 @@ export default function MentorSessions() {
           events={events}
           businessHours={businessHours}
           datesSet={handleDatesSet}
-          slotMinTime="06:00:00"
+          slotMinTime={slotMinTime}
           // Through midnight: the grid only draws what falls inside it, so a
           // 22:00 cap hid every late-evening session from Week and Day view
           // (Month and List still showed them).
