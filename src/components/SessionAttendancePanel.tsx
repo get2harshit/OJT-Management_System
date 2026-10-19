@@ -15,6 +15,7 @@ import {
   type ApiSessionAttendanceHistory,
 } from '../lib/api';
 import { useToast } from '../toast';
+import { localDateKey } from '../lib/holidayCalendarEvents';
 
 const STATUS_TEXT_STYLES: Record<ApiAttendanceStatus, string> = {
   not_marked: 'text-gray-400',
@@ -48,7 +49,7 @@ function sessionLabel(s: ApiSession): string {
 
 export default function SessionAttendancePanel({ loadSessionsForDate }: SessionAttendancePanelProps) {
   const { showSuccess, showError } = useToast();
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(localDateKey(new Date()));
   const [sessionsForDate, setSessionsForDate] = useState<ApiSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [selectedSessionId, setSelectedSessionId] = useState('');

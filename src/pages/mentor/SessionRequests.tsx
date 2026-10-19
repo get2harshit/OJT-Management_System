@@ -19,6 +19,7 @@ import {
 import { buildCohortOptions } from '../../lib/cohortLabel';
 import { useToast } from '../../toast';
 import { useAuth } from '../../context/useAuth';
+import { localDateKey } from '../../lib/holidayCalendarEvents';
 
 const STATUS_STYLES: Record<ApiSessionRequestStatus, string> = {
   pending: 'bg-zinc-750 text-gray-300 border border-zinc-700',
@@ -136,7 +137,7 @@ export default function MentorSessionRequests() {
       await apiCreateSessionRequest({
         cohortId,
         requestType: form.requestType,
-        proposedDate: start.toISOString().slice(0, 10),
+        proposedDate: localDateKey(start),
         proposedStartTime: start.toISOString(),
         proposedEndTime: end.toISOString(),
         reason: form.reason.trim(),
