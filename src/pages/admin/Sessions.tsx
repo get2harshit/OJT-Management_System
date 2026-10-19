@@ -829,7 +829,10 @@ export default function AdminSessions() {
           businessHours={businessHours}
           datesSet={handleDatesSet}
           slotMinTime="06:00:00"
-          slotMaxTime="22:00:00"
+          // Through midnight: the grid only draws what falls inside it, so a
+          // 22:00 cap hid every late-evening session from Week and Day view
+          // (Month and List still showed them).
+          slotMaxTime="24:00:00"
           nowIndicator
           dayMaxEvents={3}
           eventDisplay="block"
