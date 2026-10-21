@@ -44,6 +44,13 @@ const ROSTER_WEEKS = 8;
 export interface MentorOjtOutletContext {
   roster: ApiMentorRoster | null;
   loading: boolean;
+  /**
+   * Re-reads the roster in place after a write that changes it (an assessment,
+   * a placement recommendation). Silent on purpose: it does not raise
+   * `loading`, so the list is not swapped for a spinner and rows keep their
+   * expanded state while the new numbers arrive.
+   */
+  refreshRoster: () => Promise<void>;
 }
 
 interface TabCounts {
@@ -97,6 +104,16 @@ export default function MentorOjtLayout() {
       setRoster(null);
     } finally {
       setRosterLoading(false);
+    }
+  }, [cohortId]);
+
+  const refreshRoster = useCallback(async () => {
+    if (!cohortId) return;
+    try {
+      setRoster(await apiGetMyRoster(cohortId, ROSTER_WEEKS));
+    } catch {
+      // Keep showing the roster we have; the write itself already succeeded
+      // and reported so, and the next full load will catch up.
     }
   }, [cohortId]);
 
@@ -213,7 +230,7 @@ export default function MentorOjtLayout() {
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col">
-        <Outlet context={{ roster, loading: rosterLoading } satisfies MentorOjtOutletContext} />
+        <Outlet context={{ roster, loading: rosterLoading, refreshRoster } satisfies MentorOjtOutletContext} />
       </div>
     </PageLayout>
   );

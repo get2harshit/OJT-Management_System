@@ -366,12 +366,19 @@ export function NewAssessmentModal({
   open,
   studentId,
   cohortId,
+  currentRecommendation = null,
   onClose,
   onSubmit,
 }: {
   open: boolean;
   studentId: string;
   cohortId: string;
+  /**
+   * The student's current placement recommendation, preselected so a mentor
+   * re-assessing them only touches it to change it. Null when none exists
+   * yet, which leaves the choice empty and required.
+   */
+  currentRecommendation?: boolean | null;
   onClose: () => void;
   onSubmit: (scores: Record<string, number>, note: string, recommendedForPlacement: boolean) => Promise<void>;
 }) {
@@ -404,7 +411,7 @@ export function NewAssessmentModal({
   useEffect(() => {
     if (!open) return;
     setScores({});
-    setRecommendedForPlacement(null);
+    setRecommendedForPlacement(currentRecommendation);
     setNote('');
     setNoteEdited(false);
     setConfirmed(false);
@@ -434,6 +441,9 @@ export function NewAssessmentModal({
     return () => {
       cancelled = true;
     };
+    // currentRecommendation is read only at the moment the modal opens: a
+    // roster refresh landing mid-form must not overwrite the mentor's pick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, studentId, cohortId]);
 
   const toggleDimension = (key: string) => {

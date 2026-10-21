@@ -4,13 +4,24 @@ import { Users, Loader2, Search, ChevronRight, ClipboardPlus } from 'lucide-reac
 import Select from '../../../components/Select';
 import PageLayout from '../../../components/PageLayout';
 import SkillAssessmentPanel, { NewAssessmentModal } from '../../../components/SkillAssessmentPanel';
+import WeeklyAssessmentStrip from '../../../components/WeeklyAssessmentStrip';
+import { WEEKLY_STATUS_STYLE, countMissedWeeks, isDueThisWeek as weekIsDue } from '../../../lib/weeklyAssessments';
+import {
+  PlacementRecommendationChip,
+  PlacementRecommendationModal,
+} from '../../../components/PlacementRecommendationControl';
 import { apiCreateSkillAssessment } from '../../../lib/api/skillAssessments';
 import { taskCoveragePct, attendancePct } from '../../../lib/rosterMetrics';
-import type { ApiMentorRosterStudent } from '../../../lib/api/teamRoster';
+import type { ApiMentorRosterStudent, ApiWeeklyAssessmentStatus } from '../../../lib/api/teamRoster';
 import type { MentorOjtOutletContext } from './MentorOjtLayout';
 import { useToast } from '../../../toast';
 
-type StudentSort = 'name' | 'attendance' | 'open';
+type StudentSort = 'name' | 'attendance' | 'open' | 'assessments';
+
+const LEGEND_ORDER: ApiWeeklyAssessmentStatus[] = ['assessed', 'missed', 'due', 'not_tracked'];
+
+/** Whether this week's assessment is still outstanding — sorts right behind missed weeks. */
+const isDueThisWeek = (s: ApiMentorRosterStudent) => weekIsDue(s.weeklyAssessments);
 
 /**
  * Every student this mentor has in this OJT, with its own full page — pulled
@@ -21,7 +32,7 @@ type StudentSort = 'name' | 'attendance' | 'open';
  */
 export default function MentorStudents() {
   const { cohortId } = useParams<{ cohortId: string }>();
-  const { roster, loading } = useOutletContext<MentorOjtOutletContext>();
+  const { roster, loading, refreshRoster } = useOutletContext<MentorOjtOutletContext>();
 
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<StudentSort>('name');
@@ -46,9 +57,17 @@ export default function MentorStudents() {
       // attention — so they put the problem at the top rather than the bottom.
       if (sort === 'attendance') return rate(a) - rate(b);
       if (sort === 'open') return b.tasksOpen + b.tasksNeedingResubmit - (a.tasksOpen + a.tasksNeedingResubmit);
+      if (sort === 'assessments') {
+        const byMissed = countMissedWeeks(b.weeklyAssessments) - countMissedWeeks(a.weeklyAssessments);
+        if (byMissed !== 0) return byMissed;
+        const byDue = Number(isDueThisWeek(b)) - Number(isDueThisWeek(a));
+        if (byDue !== 0) return byDue;
+      }
       return (a.fullName ?? '').localeCompare(b.fullName ?? '');
     });
   }, [roster, search, sort]);
+
+  const dueThisWeek = (roster?.students ?? []).filter(isDueThisWeek).length;
 
   return (
     <PageLayout mode="scroll" className="space-y-5">
@@ -59,7 +78,20 @@ export default function MentorStudents() {
               <Users size={17} className="text-gold" />
               My students
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">Where each of them currently stands.</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Where each of them currently stands. Assess every student at least once a week.
+              {dueThisWeek > 0 && (
+                <span className="text-amber-400"> {dueThisWeek} still due this week.</span>
+              )}
+            </p>
+            <div className="flex items-center gap-3 mt-2 flex-wrap text-[10px] text-gray-500">
+              {LEGEND_ORDER.map((status) => (
+                <span key={status} className="inline-flex items-center gap-1">
+                  <span className={`w-2 h-2 rounded-[2px] border ${WEEKLY_STATUS_STYLE[status].box}`} />
+                  {WEEKLY_STATUS_STYLE[status].label}
+                </span>
+              ))}
+            </div>
           </div>
           <div className="flex items-center gap-2.5">
             <div className="relative">
@@ -80,6 +112,7 @@ export default function MentorStudents() {
                 { value: 'name', label: 'Name' },
                 { value: 'attendance', label: 'Lowest attendance' },
                 { value: 'open', label: 'Most open work' },
+                { value: 'assessments', label: 'Missed assessments' },
               ]}
             />
           </div>
@@ -102,6 +135,7 @@ export default function MentorStudents() {
                 cohortId={cohortId ?? ''}
                 expanded={expanded === student.id}
                 onToggle={() => setExpanded(expanded === student.id ? null : student.id)}
+                onChanged={refreshRoster}
               />
             ))}
           </div>
@@ -128,11 +162,14 @@ function StudentRow({
   cohortId,
   expanded,
   onToggle,
+  onChanged,
 }: {
   student: ApiMentorRosterStudent;
   cohortId: string;
   expanded: boolean;
   onToggle: () => void;
+  /** Re-reads the roster after a write, so the week strip and recommendation chip show the save. */
+  onChanged: () => Promise<void>;
 }) {
   const { showSuccess, showError } = useToast();
   const attendance = attendancePct(student);
@@ -140,6 +177,7 @@ function StudentRow({
   const needsAttention = (attendance !== null && attendance < 75) || student.tasksNeedingResubmit > 0;
 
   const [formOpen, setFormOpen] = useState(false);
+  const [recommendationOpen, setRecommendationOpen] = useState(false);
   // Bumped after a save so an already-open assessment panel (the row was
   // expanded before the mentor clicked Assess) refetches immediately, rather
   // than showing the new snapshot only after a collapse/re-expand.
@@ -169,6 +207,13 @@ function StudentRow({
         </div>
 
         <div className="flex items-center gap-3 shrink-0 text-[11px] tabular-nums">
+          <span className="hidden lg:inline-flex">
+            <WeeklyAssessmentStrip weeks={student.weeklyAssessments} />
+          </span>
+          <PlacementRecommendationChip
+            current={student.placementRecommendation}
+            onOpen={() => setRecommendationOpen(true)}
+          />
           <span className="text-gray-400 hidden sm:inline">
             <span className="text-white font-semibold">{coverage === null ? '—' : `${coverage}%`}</span> tasks
           </span>
@@ -225,6 +270,12 @@ function StudentRow({
             {student.email && <Detail label="Email" value={student.email} />}
           </div>
 
+          {/* The strip is hidden in the row below lg widths; it always shows here. */}
+          <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-400">
+            <span className="text-[10px] text-gray-500 uppercase tracking-wide">Weekly assessments</span>
+            <WeeklyAssessmentStrip weeks={student.weeklyAssessments} />
+          </div>
+
           <SkillAssessmentPanel studentId={student.id} cohortId={cohortId} refreshToken={refreshToken} />
         </div>
       )}
@@ -233,6 +284,7 @@ function StudentRow({
         open={formOpen}
         studentId={student.id}
         cohortId={cohortId}
+        currentRecommendation={student.placementRecommendation?.recommended ?? null}
         onClose={() => setFormOpen(false)}
         onSubmit={async (scores, note, recommendedForPlacement) => {
           try {
@@ -247,8 +299,20 @@ function StudentRow({
             setRefreshToken((t) => t + 1);
           } catch (err) {
             showError(err instanceof Error ? err.message : 'Could not save that assessment');
+            return;
           }
+          await onChanged();
         }}
+      />
+
+      <PlacementRecommendationModal
+        open={recommendationOpen}
+        studentId={student.id}
+        studentName={student.fullName ?? 'this student'}
+        cohortId={cohortId}
+        current={student.placementRecommendation}
+        onClose={() => setRecommendationOpen(false)}
+        onSaved={onChanged}
       />
     </div>
   );

@@ -376,6 +376,38 @@ export interface ApiMentorRosterStudent {
   submissionsPending: number;
   /** This student's most recent skill-assessment average, or null if never assessed. */
   skillRatingAvg: number | null;
+  /** One bucket per roster week, oldest first — see ApiWeeklyAssessment. */
+  weeklyAssessments: ApiWeeklyAssessment[];
+  /** Current placement recommendation, or null when none has been made. Never shown to the student. */
+  placementRecommendation: ApiPlacementRecommendation | null;
+}
+
+/**
+ * Whether the weekly assessment rule (at least one per student per week) was
+ * met. `not_tracked` covers weeks before the rule began or before this mentor
+ * took the student over — those are never counted as missed.
+ */
+export type ApiWeeklyAssessmentStatus = 'assessed' | 'missed' | 'due' | 'not_tracked';
+
+export interface ApiWeeklyAssessment {
+  /** ISO timestamp of the week's Monday 00:00 UTC. */
+  weekStart: string;
+  status: ApiWeeklyAssessmentStatus;
+  assessmentCount: number;
+  /** The week's latest final rating (out of 5), or null when the week has none. */
+  finalRating: number | null;
+  /** Change from the previous rating; a missed week does not count as a drop. Null when there is nothing to compare. */
+  change: number | null;
+}
+
+export interface ApiPlacementRecommendation {
+  recommended: boolean;
+  reason: string | null;
+  recommendedById: string;
+  recommendedByName: string | null;
+  recommendedAt: string;
+  /** True when it was saved with an assessment, false when changed directly. */
+  fromAssessment: boolean;
 }
 
 export interface ApiMentorRoster {

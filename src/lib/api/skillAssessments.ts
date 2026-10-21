@@ -1,4 +1,5 @@
 import { apiFetch } from './client';
+import type { ApiPlacementRecommendation } from './teamRoster';
 
 /**
  * The Student Feedback Framework, mirrored from
@@ -215,6 +216,22 @@ export async function apiCreateSkillAssessment(
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  return res.data;
+}
+
+/**
+ * Changes a student's placement recommendation without recording an
+ * assessment. Their own mentor or a co-mentor; sending the current value
+ * again changes nothing on the server.
+ */
+export async function apiSetPlacementRecommendation(
+  studentId: string,
+  payload: { cohortId: string; recommended: boolean; reason?: string }
+): Promise<ApiPlacementRecommendation> {
+  const res = await apiFetch<{ data: ApiPlacementRecommendation }>(
+    `/api/v1/students/${studentId}/placement-recommendation`,
+    { method: 'PUT', body: JSON.stringify(payload) }
+  );
   return res.data;
 }
 
