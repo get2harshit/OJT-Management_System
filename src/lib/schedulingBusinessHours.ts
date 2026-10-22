@@ -105,6 +105,13 @@ export function startsInWorkingHours(start: Date, workingHours: BusinessHoursEnt
 }
 
 /**
+ * A session may start up to 23:59 and run past midnight. The month grid would
+ * otherwise draw it on both days, so it read as two sessions; one that ends
+ * before this hour on the next day stays on its start day only.
+ */
+export const OVERNIGHT_SESSION_CUTOFF = '09:00:00';
+
+/**
  * Where the Week and Day grid begins: the working day's start, or earlier if
  * a session on screen starts before it (one booked before the hours were
  * narrowed must not vanish) — floored to the hour. Before the hours load, or

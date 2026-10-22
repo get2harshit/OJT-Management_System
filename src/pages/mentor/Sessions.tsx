@@ -19,7 +19,7 @@ import LiveSessionReportModal from '../../components/LiveSessionReportModal';
 import RecurringSchedulePicker, { EMPTY_RECURRING_SCHEDULE, type RecurringScheduleValue } from '../../components/RecurringSchedulePicker';
 import { useAnchoredPosition } from '../../hooks/useAnchoredPosition';
 import { useCalendarBusinessHours } from '../../hooks/useCalendarBusinessHours';
-import { calendarStartTime, startsInWorkingHours } from '../../lib/schedulingBusinessHours';
+import { calendarStartTime, OVERNIGHT_SESSION_CUTOFF, startsInWorkingHours } from '../../lib/schedulingBusinessHours';
 import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
 import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
 import {
@@ -102,7 +102,9 @@ export default function MentorSessions() {
   const [canSelfSchedule, setCanSelfSchedule] = useState(false);
   const [sessionStats, setSessionStats] = useState<ApiMentorSessionStats | null>(null);
 
-  const visibleRange = useRef<{ from: string; to: string } | null>(null);
+  // The dates on screen, set by FullCalendar. State, not a ref: the one
+  // load effect below reruns whenever it or the OJT changes.
+  const [visibleRange, setVisibleRange] = useState<{ from: string; to: string } | null>(null);
   // Each load gets a number; only the newest may write, so a slow answer for
   // the view just left cannot overwrite the view now on screen.
   const loadSeq = useRef(0);
@@ -194,11 +196,11 @@ export default function MentorSessions() {
   }, [selectedCohortId, sessions]);
 
   const loadSessions = useCallback(async () => {
-    if (!selectedCohortId || !visibleRange.current) return;
+    if (!selectedCohortId || !visibleRange) return;
     const seq = ++loadSeq.current;
     setLoading(true);
     try {
-      const res = await apiGetMySessions({ cohortId: selectedCohortId, from: visibleRange.current.from, to: visibleRange.current.to, limit: CALENDAR_FETCH_LIMIT });
+      const res = await apiGetMySessions({ cohortId: selectedCohortId, from: visibleRange.from, to: visibleRange.to, limit: CALENDAR_FETCH_LIMIT });
       if (seq !== loadSeq.current) return;
       setSessions(res.data);
       setRangeTotal(res.pagination.total);
@@ -208,7 +210,7 @@ export default function MentorSessions() {
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
-  }, [selectedCohortId, showError]);
+  }, [selectedCohortId, visibleRange, showError]);
 
   useEffect(() => {
     loadSessions();
@@ -363,10 +365,14 @@ export default function MentorSessions() {
 
   const handleDatesSet = useCallback(
     (arg: { startStr: string; endStr: string }) => {
-      visibleRange.current = { from: arg.startStr.slice(0, 10), to: arg.endStr.slice(0, 10) };
-      loadSessions();
+      const from = arg.startStr.slice(0, 10);
+      const to = arg.endStr.slice(0, 10);
+      // FullCalendar also fires this when only the grid's hours change (the
+      // opening hour moves once the config and sessions arrive) — same dates,
+      // nothing new to load.
+      setVisibleRange((current) => (current?.from === from && current?.to === to ? current : { from, to }));
     },
-    [loadSessions]
+    []
   );
 
   const handleSelect = useCallback(
@@ -775,6 +781,7 @@ export default function MentorSessions() {
           // 22:00 cap hid every late-evening session from Week and Day view
           // (Month and List still showed them).
           slotMaxTime="24:00:00"
+          nextDayThreshold={OVERNIGHT_SESSION_CUTOFF}
           nowIndicator
           dayMaxEvents={3}
           eventDisplay="block"
