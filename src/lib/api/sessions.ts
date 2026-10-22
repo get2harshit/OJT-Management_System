@@ -211,6 +211,13 @@ export async function apiCancelRecurringRemaining(
 }
 
 // Admin-scoped, arbitrary filters.
+/**
+ * How many sessions a calendar asks for at once. The server allows this many
+ * only for a bounded date range (up to a month grid); open-ended lists stay
+ * capped at 100.
+ */
+export const CALENDAR_FETCH_LIMIT = 2000;
+
 export async function apiListSessions(filter: SessionListFilter): Promise<SessionsPage> {
   return fetchSessionsPage(`/api/v1/sessions?${toQuery(filter)}`);
 }
