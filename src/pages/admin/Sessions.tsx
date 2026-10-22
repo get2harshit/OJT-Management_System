@@ -32,6 +32,7 @@ import {
   apiGetMentorWorkspace,
   apiListMentorGroups,
   apiListSessions,
+  CALENDAR_FETCH_LIMIT,
   apiCreateSession,
   apiCreateRecurringSessions,
   apiCancelRecurringRemaining,
@@ -104,6 +105,10 @@ export default function AdminSessions() {
   const [loading, setLoading] = useState(true);
 
   const visibleRange = useRef<{ from: string; to: string } | null>(null);
+  // Each load gets a number; only the newest may write, so a slow answer for
+  // the view just left cannot overwrite the view now on screen.
+  const loadSeq = useRef(0);
+  const [rangeTotal, setRangeTotal] = useState(0);
 
   const [createForm, setCreateForm] = useState<SessionFormState | null>(null);
   const [creating, setCreating] = useState(false);
@@ -159,30 +164,40 @@ export default function AdminSessions() {
     setMentors(mentorsRes.data);
   }, []);
 
+  // The mentor filter is applied by the server, so picking a mentor shows
+  // all of their sessions in range, not just the ones that made the cut.
   const loadSessions = useCallback(async () => {
     if (!selectedCohortId || !visibleRange.current) return;
+    const seq = ++loadSeq.current;
     setLoading(true);
     try {
       const res = await apiListSessions({
         cohortId: selectedCohortId,
+        mentorId: mentorFilterId || undefined,
         from: visibleRange.current.from,
         to: visibleRange.current.to,
-        limit: 200,
+        limit: CALENDAR_FETCH_LIMIT,
       });
+      if (seq !== loadSeq.current) return;
       setSessions(res.data);
+      setRangeTotal(res.pagination.total);
     } catch (err) {
+      if (seq !== loadSeq.current) return;
       showError(err instanceof Error ? err.message : 'Failed to load sessions');
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
-  }, [selectedCohortId, showError]);
+  }, [selectedCohortId, mentorFilterId, showError]);
 
   useEffect(() => {
     if (!selectedCohortId) return;
     setMentorFilterId('');
     loadRoster(selectedCohortId);
+  }, [selectedCohortId, loadRoster]);
+
+  useEffect(() => {
     loadSessions();
-  }, [selectedCohortId, loadRoster, loadSessions]);
+  }, [loadSessions]);
 
   useEffect(() => {
     if (!selectedCohortId) {
@@ -805,6 +820,12 @@ export default function AdminSessions() {
 
       {/* Renders nothing unless a calendar booking actually failed. */}
       <CalendarSyncIssuesPanel cohortId={selectedCohortId || undefined} />
+
+      {rangeTotal > sessions.length && (
+        <p className="text-xs text-amber-400 px-1">
+          Showing {sessions.length} of {rangeTotal} sessions in these dates. Pick a mentor or a shorter view to see the rest.
+        </p>
+      )}
 
       <div className="flex items-center gap-4 flex-wrap px-1">
         {(Object.entries(STATUS_COLORS) as [ApiSessionStatus, string][]).map(([status, color]) => (

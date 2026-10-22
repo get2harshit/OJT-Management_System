@@ -24,6 +24,7 @@ import { useCalendarHolidays } from '../../hooks/useCalendarHolidays';
 import { computeHolidayBackgroundEvents, localDateKey } from '../../lib/holidayCalendarEvents';
 import {
   apiGetMySessions,
+  CALENDAR_FETCH_LIMIT,
   apiGetMySessionStats,
   type ApiMentorSessionStats,
   apiCreateSession,
@@ -102,6 +103,10 @@ export default function MentorSessions() {
   const [sessionStats, setSessionStats] = useState<ApiMentorSessionStats | null>(null);
 
   const visibleRange = useRef<{ from: string; to: string } | null>(null);
+  // Each load gets a number; only the newest may write, so a slow answer for
+  // the view just left cannot overwrite the view now on screen.
+  const loadSeq = useRef(0);
+  const [rangeTotal, setRangeTotal] = useState(0);
 
   const [createForm, setCreateForm] = useState<SessionFormState | null>(null);
   const [creating, setCreating] = useState(false);
@@ -190,14 +195,18 @@ export default function MentorSessions() {
 
   const loadSessions = useCallback(async () => {
     if (!selectedCohortId || !visibleRange.current) return;
+    const seq = ++loadSeq.current;
     setLoading(true);
     try {
-      const res = await apiGetMySessions({ cohortId: selectedCohortId, from: visibleRange.current.from, to: visibleRange.current.to, limit: 200 });
+      const res = await apiGetMySessions({ cohortId: selectedCohortId, from: visibleRange.current.from, to: visibleRange.current.to, limit: CALENDAR_FETCH_LIMIT });
+      if (seq !== loadSeq.current) return;
       setSessions(res.data);
+      setRangeTotal(res.pagination.total);
     } catch (err) {
+      if (seq !== loadSeq.current) return;
       showError(err instanceof Error ? err.message : 'Failed to load sessions');
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, [selectedCohortId, showError]);
 
@@ -712,6 +721,12 @@ export default function MentorSessions() {
           <SessionCountTile label="Completed" value={sessionStats.completed} tone="text-green-400" />
           <SessionCountTile label="Cancelled" value={sessionStats.cancelled} tone="text-red-400" />
         </div>
+      )}
+
+      {rangeTotal > sessions.length && (
+        <p className="text-xs text-amber-400 px-1">
+          Showing {sessions.length} of {rangeTotal} sessions in these dates. Pick a shorter view to see the rest.
+        </p>
       )}
 
       <div className="flex items-center gap-4 flex-wrap px-1">
