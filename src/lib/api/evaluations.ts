@@ -688,7 +688,9 @@ export async function apiMarkEvaluationAttendance(
 
 // ── Evaluation Blueprint (one config's full student roster) ──────────────────
 
-export type EvaluationBlueprintStatus = 'not_assigned' | 'pending' | 'evaluated' | 'excused';
+// partly_scored: some of the panel has scored, not all of it — a final mark
+// already exists then, but it can still change. absent: closed at 0.
+export type EvaluationBlueprintStatus = 'not_assigned' | 'pending' | 'partly_scored' | 'evaluated' | 'absent' | 'excused';
 
 /** One secondary panelist's own total and breakdown — a list now, not a
  * single value, since a config can declare more than one secondary. */
