@@ -784,6 +784,11 @@ export default function MentorSessions() {
           nextDayThreshold={OVERNIGHT_SESSION_CUTOFF}
           nowIndicator
           dayMaxEvents={3}
+          // dayMaxEvents only reaches Month and the all-day row — Week and
+          // Day need their own cap, or a busy hour stacks into slivers.
+          // Side by side, never on top of each other, then "+N more".
+          eventMaxStack={3}
+          slotEventOverlap={false}
           eventDisplay="block"
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', meridiem: 'short' }}
         />

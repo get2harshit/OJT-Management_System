@@ -112,6 +112,19 @@ export default function AdminSessions() {
   const loadSeq = useRef(0);
   const [rangeTotal, setRangeTotal] = useState(0);
 
+  // Every mentor's week in one grid is a dozen sessions to an hour, so all
+  // mentors opens on a day and one mentor on their week. That holds only
+  // while the view is still the one this page last chose — once the admin
+  // picks a view from the toolbar, theirs stays.
+  const calendarRef = useRef<FullCalendar>(null);
+  const autoView = useRef(mentorFilterId ? 'timeGridWeek' : 'timeGridDay');
+  useEffect(() => {
+    const api = calendarRef.current?.getApi();
+    if (!api || api.view.type !== autoView.current) return;
+    autoView.current = mentorFilterId ? 'timeGridWeek' : 'timeGridDay';
+    if (api.view.type !== autoView.current) api.changeView(autoView.current);
+  }, [mentorFilterId]);
+
   const [createForm, setCreateForm] = useState<SessionFormState | null>(null);
   const [creating, setCreating] = useState(false);
   const createSubmissionInFlight = useRef(false);
@@ -854,8 +867,9 @@ export default function AdminSessions() {
           </div>
         )}
         <FullCalendar
+          ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-          initialView="timeGridWeek"
+          initialView={autoView.current}
           headerToolbar={{ left: 'prev,next today', center: 'title', right: 'timeGridDay,timeGridWeek,dayGridMonth,listWeek' }}
           height="auto"
           selectable
@@ -882,6 +896,11 @@ export default function AdminSessions() {
           nextDayThreshold={OVERNIGHT_SESSION_CUTOFF}
           nowIndicator
           dayMaxEvents={3}
+          // dayMaxEvents only reaches Month and the all-day row — Week and
+          // Day need their own cap, or a busy hour stacks into slivers.
+          // Side by side, never on top of each other, then "+N more".
+          eventMaxStack={3}
+          slotEventOverlap={false}
           eventDisplay="block"
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', meridiem: 'short' }}
         />
