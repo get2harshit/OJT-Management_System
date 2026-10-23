@@ -22,6 +22,7 @@ import Payouts from './Payouts';
 import MentorSessionHistoryPage from './MentorSessionHistoryPage';
 import SessionRequests from './SessionRequests';
 import EligibilityStatusPage from './EligibilityStatus';
+import AddMembers from './AddMembers';
 import CohortDetailLayout from './OJTs/CohortDetailLayout';
 import ViewCohortPage from './OJTs/ViewCohortPage';
 import CohortStudentsPage from './OJTs/CohortStudentsPage';
@@ -178,6 +179,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
             reasons as the other sections above. */}
         <Route path="evaluation" element={<CohortSectionRedirect section="evaluation-summary" />} />
         <Route path="eligibility" element={<EligibilityStatusPage />} />
+        <Route path="add-members" element={<AddMembers />} />
 
         {/* Cohort detail — one persistent tab-bar shell around a cohort's
             top-level sections, so the same chrome and the same tabs are

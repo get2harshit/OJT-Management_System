@@ -25,6 +25,7 @@ import {
   MessageSquare,
   Share2,
   Eye,
+  UserPlus,
 } from 'lucide-react';
 import type { PanelType } from '../lib/types';
 
@@ -46,6 +47,7 @@ const adminTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'students', label: 'Student Directory', icon: Users },
   { id: 'mentors', label: 'Mentor Directory', icon: Users },
+  { id: 'add-members', label: 'Add Members', icon: UserPlus },
   { id: 'ojts', label: 'OJT Setup', icon: Briefcase },
   // Tasks and Submissions used to be here as standalone entries, each
   // keeping its own cohort picker. They now live as tabs inside OJT Setup
