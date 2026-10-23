@@ -246,7 +246,10 @@ html.light textarea::placeholder {
    Reusing the same --color-* tokens as the rest of the app so this tracks
    both themes automatically instead of a second hardcoded palette. */
 .fc {
-  --fc-page-bg-color: transparent;
+  /* The calendar card's own colour, not transparent: the sticky day header
+     and the "+N more" popover paint with this, and transparent let the
+     sessions scrolling underneath show through the header. */
+  --fc-page-bg-color: rgb(var(--color-zinc-850));
   --fc-neutral-bg-color: rgb(var(--color-zinc-750) / 0.5);
   --fc-border-color: rgb(var(--color-zinc-750));
   --fc-today-bg-color: rgb(var(--color-gold) / 0.12);
