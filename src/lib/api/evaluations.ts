@@ -452,7 +452,11 @@ interface RawEvaluatorQueueItem {
   // already rather than the snake_case the rest of this row carries.
   teamName: string | null;
   trackName: string | null;
+  projectId: string | null;
   projectTitle: string | null;
+  batch: string | null;
+  // Names and seats only — never the other panelists' marks.
+  otherPanelists: { role: EvaluatorRole; name: string }[];
 }
 
 function mapEvaluatorQueueItem(raw: RawEvaluatorQueueItem): EvaluatorQueueItem {
@@ -473,7 +477,10 @@ function mapEvaluatorQueueItem(raw: RawEvaluatorQueueItem): EvaluatorQueueItem {
     attendanceStatus: raw.attendance_status ?? null,
     teamName: raw.teamName,
     trackName: raw.trackName,
+    projectId: raw.projectId ?? null,
     projectTitle: raw.projectTitle,
+    batch: raw.batch ?? null,
+    otherPanelists: raw.otherPanelists ?? [],
   };
 }
 

@@ -699,7 +699,11 @@ export interface EvaluatorQueueItem {
   attendanceStatus: EvaluationAttendanceStatus | null;
   teamName: string | null;
   trackName: string | null;
+  projectId: string | null;
   projectTitle: string | null;
+  batch: string | null;
+  /** The rest of the panel — who the mentor is judging alongside, by seat. */
+  otherPanelists: { role: EvaluatorRole; name: string }[];
 }
 
 // One panelist's own breakdown on an evaluation — null fields mean that
