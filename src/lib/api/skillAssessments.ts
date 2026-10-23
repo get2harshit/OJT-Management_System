@@ -203,6 +203,24 @@ const toPageMeta = (p: RawPagination): PageMeta => ({ ...p, totalPages: p.pages 
  * in this OJT — the backend is the actual authority on both. Append-only: this
  * never overwrites a previous read.
  */
+/**
+ * The feedback a student would receive for these ratings if the mentor writes
+ * nothing — the form drafts it into the note field. Built only on the server,
+ * which writes the same text when a note is saved blank, so the preview can
+ * never differ from what the student gets.
+ */
+export async function apiPreviewAssessmentNote(
+  scores: Record<string, number>,
+  signal?: AbortSignal
+): Promise<string> {
+  const res = await apiFetch<{ data: { note: string } }>('/api/v1/skill-assessments/note-preview', {
+    method: 'POST',
+    body: JSON.stringify({ scores }),
+    signal,
+  });
+  return res.data.note;
+}
+
 export async function apiCreateSkillAssessment(
   studentId: string,
   payload: {

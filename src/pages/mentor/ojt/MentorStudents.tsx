@@ -1,20 +1,19 @@
 import { useState, useMemo } from 'react';
 import { useParams, useOutletContext } from 'react-router-dom';
-import { Users, Loader2, Search, ChevronRight, ClipboardPlus } from 'lucide-react';
+import { Users, Loader2, Search, ChevronRight, ClipboardPlus, ClipboardCheck } from 'lucide-react';
 import Select from '../../../components/Select';
 import PageLayout from '../../../components/PageLayout';
-import SkillAssessmentPanel, { NewAssessmentModal } from '../../../components/SkillAssessmentPanel';
+import SkillAssessmentPanel from '../../../components/SkillAssessmentPanel';
 import WeeklyAssessmentStrip from '../../../components/WeeklyAssessmentStrip';
 import { WEEKLY_STATUS_STYLE, countMissedWeeks, isDueThisWeek as weekIsDue } from '../../../lib/weeklyAssessments';
 import {
   PlacementRecommendationChip,
   PlacementRecommendationModal,
 } from '../../../components/PlacementRecommendationControl';
-import { apiCreateSkillAssessment } from '../../../lib/api/skillAssessments';
 import { taskCoveragePct, attendancePct } from '../../../lib/rosterMetrics';
 import type { ApiMentorRosterStudent, ApiWeeklyAssessmentStatus } from '../../../lib/api/teamRoster';
 import type { MentorOjtOutletContext } from './MentorOjtLayout';
-import { useToast } from '../../../toast';
+import WeeklyAssessmentSession from './WeeklyAssessmentSession';
 
 type StudentSort = 'name' | 'attendance' | 'open' | 'assessments';
 
@@ -37,22 +36,24 @@ export default function MentorStudents() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<StudentSort>('name');
   const [expanded, setExpanded] = useState<string | null>(null);
+  // Open while a mentor is going through assessments; null otherwise.
+  const [assessmentSession, setAssessmentSession] = useState<{ order: string[]; firstStudentId: string | null } | null>(
+    null
+  );
+  // Bumped after each save so an expanded student's assessment history
+  // refetches straight away instead of only after a collapse/re-expand.
+  const [assessmentsVersion, setAssessmentsVersion] = useState(0);
 
-  const students = useMemo(() => {
-    const list = (roster?.students ?? []).filter((s) => {
-      if (!search.trim()) return true;
-      const needle = search.trim().toLowerCase();
-      return (
-        (s.fullName ?? '').toLowerCase().includes(needle) ||
-        (s.rollNumber ?? '').toLowerCase().includes(needle) ||
-        (s.teamName ?? '').toLowerCase().includes(needle)
-      );
-    });
+  const allStudents = useMemo(() => roster?.students ?? [], [roster]);
 
+  // The whole roster in the chosen order. The assessment queue follows this
+  // order too, but never the search: a search narrows what is on screen, not
+  // who still needs assessing this week.
+  const sortedStudents = useMemo(() => {
     const rate = (s: ApiMentorRosterStudent) =>
       s.attendanceMarked === 0 ? -1 : s.attendancePresent / s.attendanceMarked;
 
-    return [...list].sort((a, b) => {
+    return [...allStudents].sort((a, b) => {
       // Both "worst first" sorts exist to answer the same question — who needs
       // attention — so they put the problem at the top rather than the bottom.
       if (sort === 'attendance') return rate(a) - rate(b);
@@ -65,9 +66,23 @@ export default function MentorStudents() {
       }
       return (a.fullName ?? '').localeCompare(b.fullName ?? '');
     });
-  }, [roster, search, sort]);
+  }, [allStudents, sort]);
 
-  const dueThisWeek = (roster?.students ?? []).filter(isDueThisWeek).length;
+  const students = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return sortedStudents;
+    return sortedStudents.filter(
+      (s) =>
+        (s.fullName ?? '').toLowerCase().includes(needle) ||
+        (s.rollNumber ?? '').toLowerCase().includes(needle) ||
+        (s.teamName ?? '').toLowerCase().includes(needle)
+    );
+  }, [sortedStudents, search]);
+
+  const dueThisWeek = allStudents.filter(isDueThisWeek).length;
+
+  const startAssessing = (firstStudentId: string | null) =>
+    setAssessmentSession({ order: sortedStudents.map((s) => s.id), firstStudentId });
 
   return (
     <PageLayout mode="scroll" className="space-y-5">
@@ -93,7 +108,16 @@ export default function MentorStudents() {
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {dueThisWeek > 0 && (
+              <button
+                onClick={() => startAssessing(null)}
+                className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-gold text-black font-semibold hover:bg-gold-hover transition-colors"
+              >
+                <ClipboardCheck size={14} />
+                Start weekly assessments ({dueThisWeek})
+              </button>
+            )}
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
@@ -135,12 +159,28 @@ export default function MentorStudents() {
                 cohortId={cohortId ?? ''}
                 expanded={expanded === student.id}
                 onToggle={() => setExpanded(expanded === student.id ? null : student.id)}
+                onAssess={() => startAssessing(student.id)}
+                assessmentsVersion={assessmentsVersion}
                 onChanged={refreshRoster}
               />
             ))}
           </div>
         )}
       </section>
+
+      {assessmentSession && (
+        <WeeklyAssessmentSession
+          cohortId={cohortId ?? ''}
+          students={allStudents}
+          order={assessmentSession.order}
+          firstStudentId={assessmentSession.firstStudentId}
+          onSaved={() => {
+            setAssessmentsVersion((v) => v + 1);
+            void refreshRoster();
+          }}
+          onClose={() => setAssessmentSession(null)}
+        />
+      )}
     </PageLayout>
   );
 }
@@ -162,26 +202,25 @@ function StudentRow({
   cohortId,
   expanded,
   onToggle,
+  onAssess,
+  assessmentsVersion,
   onChanged,
 }: {
   student: ApiMentorRosterStudent;
   cohortId: string;
   expanded: boolean;
   onToggle: () => void;
+  /** Opens the assessment form on this student; saving moves on to whoever is still due. */
+  onAssess: () => void;
+  assessmentsVersion: number;
   /** Re-reads the roster after a write, so the week strip and recommendation chip show the save. */
   onChanged: () => Promise<void>;
 }) {
-  const { showSuccess, showError } = useToast();
   const attendance = attendancePct(student);
   const coverage = taskCoveragePct(student);
   const needsAttention = (attendance !== null && attendance < 75) || student.tasksNeedingResubmit > 0;
 
-  const [formOpen, setFormOpen] = useState(false);
   const [recommendationOpen, setRecommendationOpen] = useState(false);
-  // Bumped after a save so an already-open assessment panel (the row was
-  // expanded before the mentor clicked Assess) refetches immediately, rather
-  // than showing the new snapshot only after a collapse/re-expand.
-  const [refreshToken, setRefreshToken] = useState(0);
 
   return (
     <div className="bg-zinc-900 border border-zinc-750 rounded-lg">
@@ -238,7 +277,7 @@ function StudentRow({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            setFormOpen(true);
+            onAssess();
           }}
           title="New capability assessment"
           className="shrink-0 flex items-center gap-1 text-[11px] px-2 py-1.5 rounded-md bg-zinc-800 text-gray-300 hover:text-gold hover:bg-zinc-750 transition-colors"
@@ -276,34 +315,9 @@ function StudentRow({
             <WeeklyAssessmentStrip weeks={student.weeklyAssessments} />
           </div>
 
-          <SkillAssessmentPanel studentId={student.id} cohortId={cohortId} refreshToken={refreshToken} />
+          <SkillAssessmentPanel studentId={student.id} cohortId={cohortId} refreshToken={assessmentsVersion} />
         </div>
       )}
-
-      <NewAssessmentModal
-        open={formOpen}
-        studentId={student.id}
-        cohortId={cohortId}
-        currentRecommendation={student.placementRecommendation?.recommended ?? null}
-        onClose={() => setFormOpen(false)}
-        onSubmit={async (scores, note, recommendedForPlacement) => {
-          try {
-            await apiCreateSkillAssessment(student.id, {
-              cohortId,
-              scores,
-              note: note || undefined,
-              recommendedForPlacement,
-            });
-            showSuccess('Assessment saved');
-            setFormOpen(false);
-            setRefreshToken((t) => t + 1);
-          } catch (err) {
-            showError(err instanceof Error ? err.message : 'Could not save that assessment');
-            return;
-          }
-          await onChanged();
-        }}
-      />
 
       <PlacementRecommendationModal
         open={recommendationOpen}

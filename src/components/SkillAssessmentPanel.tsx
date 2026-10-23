@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { ClipboardList, Loader2, ChevronDown, Info, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import Modal from './Modal';
 import RatingScaleInput, { RatingValue, ScoreBar } from './RatingScaleInput';
@@ -7,15 +8,16 @@ import {
   apiListSkillAssessments,
   FRAMEWORK_PARAMETERS,
   FRAMEWORK_DIMENSIONS,
-  RATING_LEVELS,
   CURRENT_FRAMEWORK_VERSION,
   COMMUNICATION_KEY,
+  apiPreviewAssessmentNote,
   LEGACY_MAX_SCORE,
   legacyAverage,
   type ApiSkillAssessment,
   type AssessmentComparison,
 } from '../lib/api/skillAssessments';
 import { formatInIST } from '../lib/utils';
+import { useConfirm } from '../confirm';
 
 /**
  * Level 1 as the mentor fills the form in, before anything is saved.
@@ -28,65 +30,6 @@ function previewDimension(scores: Record<string, number>, parameters: string[]):
   const values = parameters.map((key) => scores[key]).filter((v): v is number => typeof v === 'number');
   if (values.length !== parameters.length) return null;
   return values.reduce((sum, v) => sum + v, 0) / values.length;
-}
-
-/** Mirrors the backend's own band — see skillAssessmentFramework.ts's COMPARISON_BAND. */
-const COMPARISON_BAND = 0.5;
-
-/**
- * Preview-only mirror of the backend's compareDimensions, for the same
- * reason previewDimension above exists: nothing is saved yet, so there is no
- * server response to read this from. Once saved, every other screen renders
- * the server's own computed comparison instead of this one.
- */
-function previewComparison(technicalUnderstanding: number, engineeringExecution: number): AssessmentComparison {
-  const difference = engineeringExecution - technicalUnderstanding;
-  if (Math.abs(difference) <= COMPARISON_BAND) {
-    return { relation: 'as_good_as', label: 'Engineering Execution is as good as Technical Understanding' };
-  }
-  return difference > 0
-    ? { relation: 'better_than', label: 'Engineering Execution is better than Technical Understanding' }
-    : { relation: 'weaker_than', label: 'Engineering Execution is weaker than Technical Understanding' };
-}
-
-/**
- * Preview-only mirror of the backend's generateDefaultNote (see
- * skillAssessmentFramework.ts) — what a mentor sees pre-filled in the note
- * field as they rate, so they know before saving what a student will read if
- * they leave it as is. Only called once every parameter is rated; the
- * backend runs the authoritative version of this same logic as a fallback
- * for whatever ends up in the note field at save time.
- */
-function generateDefaultNote(scores: Record<string, number>): string {
-  const technicalUnderstanding = previewDimension(scores, FRAMEWORK_DIMENSIONS[0].parameters)!;
-  const engineeringExecution = previewDimension(scores, FRAMEWORK_DIMENSIONS[1].parameters)!;
-  const comparison = previewComparison(technicalUnderstanding, engineeringExecution);
-
-  const levelLabel = (value: number): string => {
-    const rounded = Math.min(5, Math.max(1, Math.round(value)));
-    return RATING_LEVELS.find((level) => level.value === rounded)?.label ?? '';
-  };
-
-  const strongest = FRAMEWORK_PARAMETERS.reduce((a, b) => (scores[b.key] > scores[a.key] ? b : a));
-  const weakest = FRAMEWORK_PARAMETERS.reduce((a, b) => (scores[b.key] < scores[a.key] ? b : a));
-
-  const sentences: string[] = [
-    comparison.relation === 'as_good_as'
-      ? 'Technical understanding and engineering execution are evenly matched this cycle.'
-      : `${comparison.label} this cycle.`,
-  ];
-
-  sentences.push(
-    scores[strongest.key] === scores[weakest.key]
-      ? `Every parameter currently sits at the ${levelLabel(scores[strongest.key])} stage.`
-      : `Strongest: ${strongest.label} (${levelLabel(scores[strongest.key])}). Needs focus: ${weakest.label} (${levelLabel(scores[weakest.key])}).`
-  );
-
-  if (strongest.key !== COMMUNICATION_KEY && weakest.key !== COMMUNICATION_KEY) {
-    sentences.push(`Communication is at the ${levelLabel(scores[COMMUNICATION_KEY])} stage.`);
-  }
-
-  return sentences.join(' ');
 }
 
 const COMPARISON_BADGE_STYLES: Record<AssessmentComparison['relation'], string> = {
@@ -365,13 +308,19 @@ export default function SkillAssessmentPanel({
 export function NewAssessmentModal({
   open,
   studentId,
+  studentName,
   cohortId,
   currentRecommendation = null,
+  banner,
   onClose,
+  onSkip,
+  continueLabel,
   onSubmit,
 }: {
   open: boolean;
   studentId: string;
+  /** Shown in the title, so a mentor going through several students always sees whose form this is. */
+  studentName: string;
   cohortId: string;
   /**
    * The student's current placement recommendation, preselected so a mentor
@@ -379,9 +328,28 @@ export function NewAssessmentModal({
    * yet, which leaves the choice empty and required.
    */
   currentRecommendation?: boolean | null;
+  /** Pinned above the form while it scrolls — the caller's place for who this is and how far along the week is. */
+  banner?: ReactNode;
   onClose: () => void;
-  onSubmit: (scores: Record<string, number>, note: string, recommendedForPlacement: boolean) => Promise<void>;
+  /** When given, a Skip button moves on without saving. */
+  onSkip?: () => void;
+  /**
+   * When given, the main button saves and continues under this label
+   * ("Save & next"), and a second one saves and closes instead.
+   */
+  continueLabel?: string;
+  /**
+   * `andContinue` is true for "Save & next" and false for "Save & close" —
+   * what happens next is the caller's decision, the form only reports it.
+   */
+  onSubmit: (
+    scores: Record<string, number>,
+    note: string,
+    recommendedForPlacement: boolean,
+    andContinue: boolean
+  ) => Promise<void>;
 }) {
+  const confirm = useConfirm();
   const [scores, setScores] = useState<Record<string, number>>({});
   const [recommendedForPlacement, setRecommendedForPlacement] = useState<boolean | null>(null);
   // The snapshot shown as reference. Only ever one, and only ever on the
@@ -395,6 +363,7 @@ export function NewAssessmentModal({
   // overwriting them — the whole point is a starting point they can keep or
   // replace, never text that fights back against their own edit.
   const [noteEdited, setNoteEdited] = useState(false);
+  const [draftingNote, setDraftingNote] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
   // Which dimensions are collapsed — all three by default, so a mentor opens
@@ -456,17 +425,59 @@ export function NewAssessmentModal({
 
   const allRated = FRAMEWORK_PARAMETERS.every((p) => typeof scores[p.key] === 'number');
 
-  // Drafts a description from the ratings as soon as all ten are in, so a
+  // Drafts the feedback from the ratings as soon as all ten are in, so a
   // mentor sees — before saving — exactly what a student would read if they
-  // added nothing of their own. Stops the moment they start typing (see
-  // noteEdited above); a mentor who then clears the field entirely still gets
-  // this same text written for them at save time, from the same generator
-  // running server-side (see SkillAssessmentService.createAssessment).
+  // added nothing of their own. The server writes the text (the same code
+  // that fills a note saved blank), so this preview cannot drift from it.
+  // Stops the moment they start typing (see noteEdited above).
   useEffect(() => {
     if (!allRated || noteEdited) return;
-    setNote(generateDefaultNote(scores));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const request = new AbortController();
+    // Debounced so changing a rating or two sends one request once the
+    // mentor pauses, not one per click.
+    const timer = setTimeout(() => {
+      setDraftingNote(true);
+      apiPreviewAssessmentNote(scores, request.signal)
+        .then(setNote)
+        // A failed draft leaves the field as it was: a note saved blank is
+        // still written from the ratings on the server.
+        .catch(() => undefined)
+        .finally(() => {
+          if (!request.signal.aborted) setDraftingNote(false);
+        });
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      request.abort();
+      setDraftingNote(false);
+    };
   }, [scores, allRated, noteEdited]);
+
+  // How many ratings match the last assessment — shown by Save so starting
+  // from last time's ratings stays a starting point, not a copy.
+  const unchangedFromPrevious =
+    previous && allRated ? FRAMEWORK_PARAMETERS.filter((p) => scores[p.key] === previous.scores[p.key]).length : null;
+  const matchesPrevious = unchangedFromPrevious === FRAMEWORK_PARAMETERS.length;
+
+  const fillFromPrevious = async () => {
+    if (!previous) return;
+    if (Object.keys(scores).length > 0) {
+      const replace = await confirm({
+        title: 'Replace your ratings?',
+        message: `Every parameter will be set to what ${studentName} was rated last time, replacing the ratings you have given so far.`,
+        confirmLabel: 'Replace',
+      });
+      if (!replace) return;
+    }
+    const previousScores: Record<string, number> = {};
+    for (const parameter of FRAMEWORK_PARAMETERS) {
+      const value = previous.scores[parameter.key];
+      if (typeof value === 'number') previousScores[parameter.key] = value;
+    }
+    setScores(previousScores);
+    // Opened up so every carried-over rating is in view to be checked.
+    setCollapsedDimensions(new Set());
+  };
 
   const dimensionPreviews = FRAMEWORK_DIMENSIONS.map((d) => ({
     ...d,
@@ -476,18 +487,64 @@ export function NewAssessmentModal({
     ? dimensionPreviews.reduce((sum, d) => sum + (d.value as number), 0) / dimensionPreviews.length
     : null;
 
-  const submit = async () => {
+  const submit = async (andContinue: boolean) => {
     if (!allRated || !confirmed || recommendedForPlacement === null) return;
     setSaving(true);
     try {
-      await onSubmit(scores, note.trim(), recommendedForPlacement);
+      await onSubmit(scores, note.trim(), recommendedForPlacement, andContinue);
     } finally {
       setSaving(false);
     }
   };
 
+  // Ten ratings are a few minutes of thought; a stray Skip, Escape or
+  // backdrop click must not throw them away without asking. The note alone
+  // never counts — it is only ever drafted from the ratings until edited.
+  const hasUnsavedInput =
+    Object.keys(scores).length > 0 || noteEdited || recommendedForPlacement !== currentRecommendation;
+
+  // Modal and the confirm dialog both listen for Escape on window, so one
+  // press while the prompt is up would cancel it and immediately ask again.
+  const discardPromptOpen = useRef(false);
+  const leaveIfConfirmed = async (leave: () => void) => {
+    if (!hasUnsavedInput) {
+      leave();
+      return;
+    }
+    if (discardPromptOpen.current) return;
+    discardPromptOpen.current = true;
+    try {
+      const discard = await confirm({
+        title: 'Discard this assessment?',
+        message: `Your ratings for ${studentName} have not been saved.`,
+        confirmLabel: 'Discard',
+        variant: 'danger',
+      });
+      if (discard) leave();
+    } finally {
+      discardPromptOpen.current = false;
+    }
+  };
+
+  const cannotSaveReason = !allRated
+    ? 'Rate every parameter before saving'
+    : recommendedForPlacement === null
+      ? 'Choose a placement recommendation before saving'
+      : !confirmed
+        ? 'Confirm the checkbox before saving'
+        : undefined;
+  const saveDisabled = saving || cannotSaveReason !== undefined;
+
   return (
-    <Modal open={open} onClose={onClose} title="New capability assessment" size="xl">
+    <Modal open={open} onClose={() => leaveIfConfirmed(onClose)} title={`Assess · ${studentName}`} size="xl">
+      {/* Sticky for the same reason as the footer below, and bled to the
+          modal's edges the same way — -mt-5 cancels Modal's top padding so it
+          pins flush against the header rather than a gap below it. */}
+      {banner && (
+        <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 -mt-5 mb-4 px-4 sm:px-6 py-3 bg-zinc-850 border-b border-zinc-750">
+          {banner}
+        </div>
+      )}
       <div className="space-y-4">
         <p className="text-xs text-gray-500">
           Rate each parameter on what the student can demonstrate independently, using evidence from their actual OJT
@@ -507,14 +564,23 @@ export function NewAssessmentModal({
         ) : previous ? (
           <div className="flex items-start gap-2 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2">
             <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-gold/70 shrink-0" aria-hidden="true" />
-            <p className="text-[11px] text-gray-400 leading-relaxed">
+            <p className="flex-1 text-[11px] text-gray-400 leading-relaxed">
               Dashed options are what they were rated{' '}
               <span className="text-gray-300">
                 {formatInIST(previous.assessedAt, { day: '2-digit', month: 'short' })}
                 {previous.mentorName ? ` by ${previous.mentorName}` : ''}
               </span>
-              . Shown for reference only — nothing is filled in for you.
+              . Start from those and change what has moved, or rate from scratch.
             </p>
+            {!matchesPrevious && (
+              <button
+                type="button"
+                onClick={fillFromPrevious}
+                className="shrink-0 text-[11px] px-2.5 py-1 rounded-md bg-zinc-800 text-gray-200 hover:text-gold hover:bg-zinc-750 transition-colors"
+              >
+                Start from these ratings
+              </button>
+            )}
           </div>
         ) : (
           <p className="text-[11px] text-gray-500">
@@ -631,7 +697,8 @@ export function NewAssessmentModal({
               setNote(e.target.value);
               setNoteEdited(true);
             }}
-            rows={5}
+            // Tall enough for the drafted feedback's sections to be read as laid out.
+            rows={12}
             maxLength={2000}
             placeholder="What they should work on next, and what evidence you are basing this on."
             className="w-full bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-gold/60 resize-y"
@@ -641,8 +708,17 @@ export function NewAssessmentModal({
             The student reads this. Write it to them.
           </p>
           {!noteEdited && allRated && (
-            <p className="mt-1 text-[11px] text-gray-500">
-              Drafted from the ratings above — edit it, or leave it as is.
+            <p className="mt-1 flex items-center gap-1.5 text-[11px] text-gray-500">
+              {draftingNote ? (
+                <>
+                  <Loader2 size={11} className="animate-spin" />
+                  Drafting feedback from the ratings…
+                </>
+              ) : note ? (
+                'Drafted from the ratings above — edit it, or leave it as is.'
+              ) : (
+                'Leave this blank and feedback is written from the ratings when you save.'
+              )}
             </p>
           )}
         </div>
@@ -667,25 +743,49 @@ export function NewAssessmentModal({
           I confirm these ratings and feedback are accurate and ready for the student to see.
         </label>
 
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="text-xs px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-800 transition-colors">
-            Cancel
-          </button>
+        {unchangedFromPrevious !== null && (
+          <p className={`text-[11px] ${matchesPrevious ? 'text-amber-400' : 'text-gray-500'}`}>
+            {matchesPrevious
+              ? `All ${FRAMEWORK_PARAMETERS.length} ratings are the same as last time — make sure that is still true.`
+              : `${unchangedFromPrevious} of ${FRAMEWORK_PARAMETERS.length} ratings unchanged from last time.`}
+          </p>
+        )}
+
+        <div className="flex items-center justify-end gap-2">
+          {onSkip ? (
+            <button
+              onClick={() => leaveIfConfirmed(onSkip)}
+              disabled={saving}
+              title="Move on without saving — this student comes back after the rest"
+              className="mr-auto text-xs px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-40"
+            >
+              Skip
+            </button>
+          ) : (
+            <button
+              onClick={() => leaveIfConfirmed(onClose)}
+              className="text-xs px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            >
+              Cancel
+            </button>
+          )}
+          {continueLabel && (
+            <button
+              onClick={() => submit(false)}
+              disabled={saveDisabled}
+              title={cannotSaveReason}
+              className="text-xs px-3 py-2 rounded-lg bg-zinc-800 text-gray-200 hover:bg-zinc-750 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Save &amp; close
+            </button>
+          )}
           <button
-            onClick={submit}
-            disabled={saving || !allRated || !confirmed || recommendedForPlacement === null}
-            title={
-              !allRated
-                ? 'Rate every parameter before saving'
-                : recommendedForPlacement === null
-                  ? 'Choose a placement recommendation before saving'
-                  : !confirmed
-                    ? 'Confirm the checkbox before saving'
-                    : undefined
-            }
+            onClick={() => submit(continueLabel !== undefined)}
+            disabled={saveDisabled}
+            title={cannotSaveReason}
             className="text-xs px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {saving ? 'Saving…' : 'Save assessment'}
+            {saving ? 'Saving…' : (continueLabel ?? 'Save assessment')}
           </button>
         </div>
       </div>

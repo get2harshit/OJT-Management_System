@@ -23,9 +23,31 @@ export function countMissedWeeks(weeks: ApiWeeklyAssessment[]): number {
   return weeks.filter((w) => w.status === 'missed').length;
 }
 
-/** True when this week's assessment is still outstanding — the one gap a mentor can still close. */
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The bucket for the week we are in, or null once the OJT's last week has
+ * passed — the roster's final bucket is only "this week" while it still is.
+ */
+export function currentWeek(weeks: ApiWeeklyAssessment[], now: Date = new Date()): ApiWeeklyAssessment | null {
+  if (weeks.length === 0) return null;
+  const latest = weeks[weeks.length - 1];
+  const startsAt = new Date(latest.weekStart).getTime();
+  return now.getTime() >= startsAt && now.getTime() < startsAt + WEEK_MS ? latest : null;
+}
+
+/**
+ * True when this week's assessment is still outstanding — the one gap a mentor
+ * can still close. The server only ever marks the current week `due`, so its
+ * word is taken as is rather than second-guessed against this machine's clock.
+ */
 export function isDueThisWeek(weeks: ApiWeeklyAssessment[]): boolean {
   return weeks.length > 0 && weeks[weeks.length - 1].status === 'due';
+}
+
+/** True when this week's minimum is already met, so another assessment would be an extra one. */
+export function isAssessedThisWeek(weeks: ApiWeeklyAssessment[]): boolean {
+  return currentWeek(weeks)?.status === 'assessed';
 }
 
 export function formatRatingChange(change: number): string {
