@@ -384,7 +384,7 @@ export default function MentorEvaluationTracker() {
                   </span>
                 ),
               },
-              { key: 'finalScore', header: 'Final' },
+              { key: 'finalScore', header: 'Overall Best Marks' },
             ]}
             data={tableData}
             loading={loading}

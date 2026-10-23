@@ -139,8 +139,8 @@ export default function EvaluationBlueprintPage() {
       ...(hasSecondaries
         ? [{ key: 'secondaryFeedback', label: 'Secondary Feedback(s)', value: secondaryFeedback, longText: true }]
         : []),
-      { key: 'finalMarks', label: 'Final Marks', value: s => (s.finalMarks != null ? String(s.finalMarks) : '—') },
-      { key: 'finalPercentage', label: 'Final %', value: s => (s.finalPercentage != null ? `${s.finalPercentage}%` : '—') },
+      { key: 'finalMarks', label: 'Overall Best Marks', value: s => (s.finalMarks != null ? String(s.finalMarks) : '—') },
+      { key: 'finalPercentage', label: 'Overall Best %', value: s => (s.finalPercentage != null ? `${s.finalPercentage}%` : '—') },
       { key: 'averageMarks', label: 'Average Marks', value: s => (s.averageMarks != null ? String(s.averageMarks) : '—') },
     ];
     for (const c of meta?.criteria ?? []) {
