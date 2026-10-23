@@ -31,3 +31,4 @@ export * from './resources';
 export * from './mentorAvailability';
 export * from './mentorRates';
 export * from './teamRoster';
+export * from './members';
