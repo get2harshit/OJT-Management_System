@@ -19,12 +19,17 @@ import { usePageRefresh } from '../../../context/RefreshContext';
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
-const STATUS_ORDER: EvaluationBlueprintStatus[] = ['not_assigned', 'pending', 'evaluated', 'excused'];
+const STATUS_ORDER: EvaluationBlueprintStatus[] = ['not_assigned', 'pending', 'partly_scored', 'evaluated', 'absent', 'excused'];
 
 const STATUS_LABELS: Record<EvaluationBlueprintStatus, string> = {
   not_assigned: 'Not assigned',
   pending: 'Pending',
+  // Someone on the panel has scored, someone has not — the mark can still move.
+  partly_scored: 'Partly scored',
+  // Every panelist has scored.
   evaluated: 'Evaluated',
+  // Closed at 0 by attendance — not scored, so not Evaluated.
+  absent: 'Absent',
   // Closed with no marks — not waiting on anyone, so not Pending.
   excused: 'Excused',
 };
@@ -34,14 +39,18 @@ const STATUS_LABELS: Record<EvaluationBlueprintStatus, string> = {
 const STATUS_DOT: Record<EvaluationBlueprintStatus, string> = {
   not_assigned: 'bg-gray-400',
   pending: 'bg-yellow-500',
+  partly_scored: 'bg-orange-400',
   evaluated: 'bg-green-500',
+  absent: 'bg-red-500',
   excused: 'bg-sky-400',
 };
 
 const STATUS_TEXT: Record<EvaluationBlueprintStatus, string> = {
   not_assigned: 'text-gray-400',
   pending: 'text-yellow-500',
+  partly_scored: 'text-orange-400',
   evaluated: 'text-green-500',
+  absent: 'text-red-400',
   excused: 'text-sky-400',
 };
 
