@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Calendar, Loader2, UserX } from 'lucide-react';
+import { Plus, Calendar, Loader2, UserX, UserPlus } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
 import Drawer from '../../components/Drawer';
@@ -281,8 +281,11 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
           name: a.fullName || a.assigneeId,
           status: a.status,
           movedAway: isMine && t.target_role === 'student' && !myStudentIds.has(a.assigneeId),
+          // The other direction: the student moved to me, carrying a task
+          // their previous mentor gave. Decided on the server.
+          movedIn: !!a.fromPreviousMentor,
         }))
-      : [{ name: 'All', status: undefined as ApiAssignmentStatus | undefined, movedAway: false }];
+      : [{ name: 'All', status: undefined as ApiAssignmentStatus | undefined, movedAway: false, movedIn: false }];
     const extraCount = (summary?.total ?? 0) - preview.length;
 
     return {
@@ -296,6 +299,7 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
       type: t.target_role === 'student' ? 'Student' : 'Mentor',
       assignerName: t.assigner?.full_name,
       assignerRole: t.assigner?.role,
+      fromPreviousMentor: assignees.some(a => a.movedIn),
       myStatus: t.myAssignment?.status,
       assignees,
       extraCount,
@@ -309,12 +313,17 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
     const isAdmin = row.assignerRole === 'admin' || row.assignerRole === 'batch_manager';
     return (
       <div className="flex flex-col items-start gap-1">
-        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${
-          isAdmin
-            ? 'bg-gold/10 text-gold border-gold/25'
-            : 'bg-purple-500/10 text-purple-400 border-purple-500/25'
-        }`}>
-          {isAdmin ? 'Admin' : 'Mentor'}
+        <span
+          title={row.fromPreviousMentor ? `${row.assignerName} was this student's mentor before they moved to you` : undefined}
+          className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${
+            isAdmin
+              ? 'bg-gold/10 text-gold border-gold/25'
+              : row.fromPreviousMentor
+                ? 'bg-sky-500/10 text-sky-400 border-sky-500/25'
+                : 'bg-purple-500/10 text-purple-400 border-purple-500/25'
+          }`}
+        >
+          {isAdmin ? 'Admin' : row.fromPreviousMentor ? 'Previous mentor' : 'Mentor'}
         </span>
         <span className="text-xs text-gray-200 whitespace-nowrap">{row.assignerName}</span>
       </div>
@@ -339,7 +348,7 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
 
   const renderAssignees = (row: (typeof tableData)[number]) => (
     <div className="max-w-[250px] flex flex-wrap gap-1.5 py-1">
-      {row.assignees.map((a: { name: string; status?: ApiAssignmentStatus; movedAway?: boolean }, i: number) => (
+      {row.assignees.map((a: { name: string; status?: ApiAssignmentStatus; movedAway?: boolean; movedIn?: boolean }, i: number) => (
         <span
           key={i}
           title={a.status ? STATUS_LABEL[a.status] : undefined}
@@ -353,7 +362,16 @@ export default function MentorTasks({ mentorId, onViewTaskSubmissions }: Props) 
               className="inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase text-amber-400 bg-amber-500/10 border border-amber-500/25 rounded-full px-1.5 py-0.5 ml-0.5"
             >
               <UserX size={9} />
-              Moved
+              Moved out
+            </span>
+          )}
+          {a.movedIn && (
+            <span
+              title={`Moved to you from ${row.assignerName ?? 'another mentor'} — this task was given by their previous mentor`}
+              className="inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase text-sky-400 bg-sky-500/10 border border-sky-500/25 rounded-full px-1.5 py-0.5 ml-0.5"
+            >
+              <UserPlus size={9} />
+              Moved in
             </span>
           )}
         </span>

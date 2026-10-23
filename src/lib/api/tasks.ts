@@ -91,6 +91,9 @@ export interface ApiAssignmentPreview {
   // team the same way the full apiGetTask assignments array already is.
   teamId?: string | null;
   teamName?: string | null;
+  // Mentor lists only: this student is now the viewing mentor's, but the
+  // task came from another mentor, so the student moved here with it.
+  fromPreviousMentor?: boolean;
 }
 
 // Per-task assignment aggregate for list views — a batch/track-wide task
