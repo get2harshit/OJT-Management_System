@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Award, Loader2, ChevronLeft, UserCheck, UserX, CalendarOff } from 'lucide-react';
+import { Award, Loader2, ChevronLeft, UserCheck, UserX, CalendarOff, Eye } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Select from '../../components/Select';
 import PageLayout from '../../components/PageLayout';
 import Modal from '../../components/Modal';
 import Button from '../../components/Button';
 import SpinnerSquare from '../../components/SpinnerSquare';
+import ProjectDetail from '../../components/ProjectDetail';
+import { apiGetProject } from '../../lib/api/projects';
+import type { Project } from '../../lib/types';
 import {
   apiGetMyEvaluationQueue,
   apiGetMyEvaluationConfigs,
@@ -66,6 +69,19 @@ export default function MentorEvaluationTracker() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<EvaluationDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // The project behind a row's eye button — opened over the queue, without
+  // opening the evaluation itself.
+  const [projectOpen, setProjectOpen] = useState<{ title: string; project: Project | null } | null>(null);
+  const openProject = async (projectId: string, title: string) => {
+    setProjectOpen({ title, project: null });
+    try {
+      const project = await apiGetProject(projectId);
+      setProjectOpen((open) => (open ? { title, project } : open));
+    } catch (err) {
+      setProjectOpen(null);
+      showError(err instanceof Error ? err.message : 'Failed to load the project');
+    }
+  };
   const [scoreDraft, setScoreDraft] = useState<Record<string, string>>({});
   const [feedbackDraft, setFeedbackDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -254,7 +270,12 @@ export default function MentorEvaluationTracker() {
     studentName: q.studentName || '—',
     trackName: q.trackName || '—',
     projectTitle: q.projectTitle || '—',
+    projectId: q.projectId ?? '',
+    batch: q.batch || '—',
     myRole: q.myRole === 'secondary' ? 'Secondary Evaluator' : 'Primary Evaluator',
+    // The rest of the panel, by seat — "Secondary: Asha" under a primary's
+    // role, "Primary: Ravi" under a secondary's.
+    panelWith: q.otherPanelists.map((p) => `${p.role === 'primary' ? 'Primary' : 'Secondary'}: ${p.name}`).join(', '),
     myScore:
       q.attendanceStatus === 'absent' ? 'Absent'
       : q.attendanceStatus === 'excused' ? 'Excused'
@@ -355,6 +376,7 @@ export default function MentorEvaluationTracker() {
             columns={[
               { key: 'teamName', header: 'Team' },
               { key: 'studentName', header: 'Student' },
+              { key: 'batch', header: 'Batch' },
               { key: 'trackName', header: 'Track' },
               {
                 key: 'projectTitle',
@@ -363,12 +385,39 @@ export default function MentorEvaluationTracker() {
                 // an ellipsis and keep the full title on hover rather than
                 // let one row stretch the whole table wide.
                 render: (row) => (
-                  <span className="block max-w-[320px] truncate" title={row.projectTitle as string}>
-                    {row.projectTitle}
-                  </span>
+                  <div className="flex items-center gap-1.5 max-w-[340px]">
+                    <span className="truncate" title={row.projectTitle as string}>
+                      {row.projectTitle}
+                    </span>
+                    {row.projectId && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          // The row itself opens the evaluation — this opens
+                          // only the project.
+                          e.stopPropagation();
+                          openProject(row.projectId as string, row.projectTitle as string);
+                        }}
+                        title="View project"
+                        aria-label="View project"
+                        className="shrink-0 p-1 rounded-md text-gray-400 hover:text-gold hover:bg-zinc-750 transition-colors"
+                      >
+                        <Eye size={14} />
+                      </button>
+                    )}
+                  </div>
                 ),
               },
-              { key: 'myRole', header: 'My Role' },
+              {
+                key: 'myRole',
+                header: 'My Role',
+                render: (row) => (
+                  <div className="leading-tight">
+                    <div>{row.myRole}</div>
+                    {row.panelWith && <div className="text-[11px] text-gray-500 mt-0.5">{row.panelWith}</div>}
+                  </div>
+                ),
+              },
               {
                 key: 'myScore',
                 header: 'My Score',
@@ -588,6 +637,16 @@ export default function MentorEvaluationTracker() {
             )}
           </div>
         ) : null}
+      </Modal>
+
+      <Modal open={!!projectOpen} onClose={() => setProjectOpen(null)} title={projectOpen?.title ?? 'Project'} size="xl">
+        {projectOpen?.project ? (
+          <ProjectDetail project={projectOpen.project} />
+        ) : (
+          <div className="py-12 flex justify-center">
+            <SpinnerSquare />
+          </div>
+        )}
       </Modal>
     </PageLayout>
   );
