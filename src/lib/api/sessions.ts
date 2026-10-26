@@ -415,6 +415,80 @@ export async function apiGetMyAttendance(params: { cohortId?: string; status?: A
   return { data: body.data, pagination: { ...body.pagination, totalPages: body.pagination.pages } };
 }
 
+// ── Whole-cohort attendance (admin) ──────────────────────────────────────────
+//
+// One row per student, counted on the server over sessions that have started
+// (a future session's seeded not_marked row never shows up here). percentage
+// is present / (present + absent), and null when nothing is marked yet,
+// which is "no data", not 0%.
+
+export type CohortAttendanceSort = 'percentage' | 'name';
+
+export interface ApiCohortAttendanceRow {
+  studentId: string;
+  fullName: string;
+  email: string;
+  batch: string | null;
+  teamName: string | null;
+  trackName: string | null;
+  mentorName: string | null;
+  present: number;
+  absent: number;
+  excused: number;
+  notMarked: number;
+  totalSessions: number;
+  percentage: number | null;
+}
+
+export interface CohortAttendanceParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  batch?: string;
+  track?: string;
+  mentorId?: string;
+  belowPercentage?: number;
+  sort?: CohortAttendanceSort;
+}
+
+export interface CohortAttendancePage {
+  data: ApiCohortAttendanceRow[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  /** Batch codes present in the cohort, for the batch filter. */
+  batches: string[];
+}
+
+function cohortAttendanceQuery(params: CohortAttendanceParams): URLSearchParams {
+  const query = new URLSearchParams();
+  if (params.search) query.set('search', params.search);
+  if (params.batch) query.set('batch', params.batch);
+  if (params.track) query.set('track', params.track);
+  if (params.mentorId) query.set('mentorId', params.mentorId);
+  if (params.belowPercentage !== undefined) query.set('belowPercentage', String(params.belowPercentage));
+  if (params.sort) query.set('sort', params.sort);
+  return query;
+}
+
+export async function apiGetCohortAttendance(cohortId: string, params: CohortAttendanceParams): Promise<CohortAttendancePage> {
+  const query = cohortAttendanceQuery(params);
+  query.set('page', String(params.page ?? 1));
+  query.set('limit', String(params.limit ?? 25));
+  const body = await apiFetch<{
+    data: ApiCohortAttendanceRow[];
+    pagination: { page: number; limit: number; total: number; pages: number };
+    batches: string[];
+  }>(`/api/v1/cohorts/${cohortId}/student-attendance?${query.toString()}`);
+  return { data: body.data, pagination: { ...body.pagination, totalPages: body.pagination.pages }, batches: body.batches };
+}
+
+/** Every student matching the filters, unpaged, for the CSV export. */
+export async function apiExportCohortAttendance(cohortId: string, params: CohortAttendanceParams): Promise<ApiCohortAttendanceRow[]> {
+  const query = cohortAttendanceQuery(params);
+  query.set('all', 'true');
+  const body = await apiFetch<{ data: ApiCohortAttendanceRow[] }>(`/api/v1/cohorts/${cohortId}/student-attendance?${query.toString()}`);
+  return body.data;
+}
+
 
 // ── Running a session on the multimedia service ──────────────────────────────
 //
