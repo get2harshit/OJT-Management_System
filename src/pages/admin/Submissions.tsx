@@ -51,6 +51,16 @@ interface RosterStudent {
   pendingReviewCount: number;
 }
 
+// What both CSV exports say about a student, read off the roster.
+interface ExportStudentInfo {
+  fullName: string;
+  email: string | null;
+  rollNumber: string | null;
+  batch: string | null;
+  track: string;
+  teamName: string;
+}
+
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
 
@@ -613,49 +623,123 @@ export default function AdminSubmissions({
     }
   };
 
+  // studentId -> everything the roster knows about them, so an export row
+  // doesn't need a second lookup to say who/where. The roster call caps at
+  // 200 teams a page, so a large cohort is walked page by page rather than
+  // assumed to fit in one call.
+  const loadExportStudentInfo = async (
+    cohortId: string,
+    filters: { track?: string[]; batch?: string[]; mentorId?: string; search?: string }
+  ) => {
+    const allTeams: TeamAllocationDetail[] = [];
+    let teamsPageNum = 1;
+    let totalTeamPages = 1;
+    do {
+      const teamsPage = await apiGetTeamsForCohortDetailed(cohortId, {
+        status: 'allocated',
+        ...filters,
+        page: teamsPageNum,
+        limit: 200,
+      });
+      allTeams.push(...teamsPage.data);
+      totalTeamPages = teamsPage.pagination.totalPages;
+      teamsPageNum += 1;
+    } while (teamsPageNum <= totalTeamPages);
+
+    const studentInfo = new Map<string, ExportStudentInfo>();
+    for (const team of allTeams) {
+      for (const m of team.members) {
+        studentInfo.set(m.studentId, {
+          fullName: m.fullName || m.studentId,
+          email: m.email,
+          rollNumber: m.rollNumber,
+          batch: m.batch,
+          track: team.track,
+          teamName: team.teamName || (team.isIndividual ? 'Individual' : 'Team'),
+        });
+      }
+    }
+    return studentInfo;
+  };
+
+  // One task's submissions, one row per assignee — including everyone who
+  // has not submitted, which is usually what an admin exporting one task
+  // wants to see. The server returns only this task's submissions, so links
+  // are signed for this task alone.
+  const handleExportTaskCsv = async () => {
+    if (!taskScope || !cohortFilter) return;
+    setExporting(true);
+    try {
+      const [studentInfo, taskSubmissions] = await Promise.all([
+        loadExportStudentInfo(cohortFilter, {}),
+        apiGetAllPrdSubmissions(undefined, cohortFilter, true, taskScope.id),
+      ]);
+
+      // Latest version only. A team task is answered once for the whole
+      // team, by whichever member uploaded, so it is keyed by team.
+      const latestByStudent = new Map<string, PrdSubmission>();
+      const latestByTeam = new Map<string, PrdSubmission>();
+      for (const s of taskSubmissions) {
+        if (s.isTeam && s.teamId) {
+          const existing = latestByTeam.get(s.teamId);
+          if (!existing || s.versionNumber > existing.versionNumber) latestByTeam.set(s.teamId, s);
+        }
+        if (s.studentId) {
+          const existing = latestByStudent.get(s.studentId);
+          if (!existing || s.versionNumber > existing.versionNumber) latestByStudent.set(s.studentId, s);
+        }
+      }
+
+      const rows = (taskScope.assignments ?? [])
+        .map((a) => {
+          const info = studentInfo.get(a.assignee_id);
+          const submission = (a.team_id ? latestByTeam.get(a.team_id) : undefined) ?? latestByStudent.get(a.assignee_id);
+          const fullName = info?.fullName || a.assignee?.full_name || a.assignee_id;
+          return {
+            Student: fullName,
+            Email: info?.email || a.assignee?.email || '',
+            'Reg No': info?.rollNumber || '',
+            Team: a.team_name || info?.teamName || '',
+            Batch: info?.batch || '',
+            Track: info?.track || '',
+            'Task Status': ASSIGNMENT_STATUS_LABEL[a.status],
+            'Submission Status': submission ? submissionStatusLabel(submission.status) : 'Not submitted',
+            Version: submission?.versionNumber ?? '',
+            'Submission Type': submission ? submission.submissionType || 'document' : '',
+            'Document Link': submission ? submission.downloadUrl || submission.messageContent || '' : '',
+            'Updated At': submission ? submission.updatedAt.slice(0, 10) : '',
+            Mentor: submission?.mentorName || '',
+            'Mentor Feedback': submission?.mentorFeedback || '',
+            'Reviewed By': submission?.reviewedByName || '',
+          };
+        })
+        .sort((a, b) => a.Team.localeCompare(b.Team) || a.Student.localeCompare(b.Student));
+
+      if (rows.length === 0) {
+        showError('Nobody is assigned this task — nothing to export.');
+        return;
+      }
+      exportToCSV(`${taskScope.title} - submissions`, rows);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to export submissions');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // Every submission from whoever the current Batch/Track/Mentor/search
   // filters match — the same set the roster is already showing, just
-  // unpaginated. The roster call itself caps at 200 teams/page, so a large
-  // cohort is walked page by page rather than assumed to fit in one call.
+  // unpaginated.
   const handleExportCsv = async () => {
     if (!cohortFilter) return;
     setExporting(true);
     try {
-      const allTeams: TeamAllocationDetail[] = [];
-      let teamsPageNum = 1;
-      let totalTeamPages = 1;
-      do {
-        const teamsPage = await apiGetTeamsForCohortDetailed(cohortFilter, {
-          status: 'allocated',
-          track: trackFilter.length > 0 ? trackFilter : undefined,
-          batch: batchFilter.length > 0 ? batchFilter : undefined,
-          mentorId: mentorFilter !== 'ALL' ? mentorFilter : undefined,
-          search: rosterSearch || undefined,
-          page: teamsPageNum,
-          limit: 200,
-        });
-        allTeams.push(...teamsPage.data);
-        totalTeamPages = teamsPage.pagination.totalPages;
-        teamsPageNum += 1;
-      } while (teamsPageNum <= totalTeamPages);
-
-      // studentId -> everything the roster already knows about them, so a
-      // submission's own row doesn't need a second lookup to say who/where.
-      const studentInfo = new Map<
-        string,
-        { fullName: string; rollNumber: string | null; batch: string | null; track: string; teamName: string }
-      >();
-      for (const team of allTeams) {
-        for (const m of team.members) {
-          studentInfo.set(m.studentId, {
-            fullName: m.fullName || m.studentId,
-            rollNumber: m.rollNumber,
-            batch: m.batch,
-            track: team.track,
-            teamName: team.teamName || (team.isIndividual ? 'Individual' : 'Team'),
-          });
-        }
-      }
+      const studentInfo = await loadExportStudentInfo(cohortFilter, {
+        track: trackFilter.length > 0 ? trackFilter : undefined,
+        batch: batchFilter.length > 0 ? batchFilter : undefined,
+        mentorId: mentorFilter !== 'ALL' ? mentorFilter : undefined,
+        search: rosterSearch || undefined,
+      });
 
       if (studentInfo.size === 0) {
         showError('No students match the current filters — nothing to export.');
@@ -699,6 +783,7 @@ export default function AdminSubmissions({
               Mentor: s.mentorName || '',
               Team: teamName,
               Student: info.fullName,
+              Email: info.email || '',
               'Reg No': info.rollNumber || '',
               Batch: info.batch || '',
               Track: info.track,
@@ -763,13 +848,25 @@ export default function AdminSubmissions({
           )}
         </div>
         {taskScope ? (
-          <button
-            onClick={() => navigate(`/admin/dashboard/ojts/${cohortFilter}/tasks`)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-850 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-750 transition-all text-sm font-semibold border border-zinc-700 shrink-0"
-          >
-            <ArrowLeft size={16} />
-            Back to Task
-          </button>
+          <div className="flex items-center gap-3 shrink-0">
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<Download size={14} />}
+              onClick={handleExportTaskCsv}
+              isLoading={exporting}
+              disabled={(taskScope.assignments ?? []).length === 0}
+            >
+              Export CSV
+            </Button>
+            <button
+              onClick={() => navigate(`/admin/dashboard/ojts/${cohortFilter}/tasks`)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-zinc-850 text-gray-300 rounded-lg hover:text-white hover:bg-zinc-750 transition-all text-sm font-semibold border border-zinc-700"
+            >
+              <ArrowLeft size={16} />
+              Back to Task
+            </button>
+          </div>
         ) : (
           <div className="flex items-center gap-3 flex-wrap">
             <Select
