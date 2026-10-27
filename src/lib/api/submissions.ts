@@ -38,18 +38,22 @@ export async function apiGetMySubmissions(): Promise<MySubmissions> {
 export async function apiGetAllPrdSubmissions(
   status?: PrdStatus,
   cohortId?: string,
-  includeDownloadUrls?: boolean
+  includeDownloadUrls?: boolean,
+  // One task's submissions only — the task-scoped export, so the server
+  // signs links for that task rather than the whole cohort.
+  taskId?: string
 ): Promise<PrdSubmission[]> {
   const params = new URLSearchParams();
   if (status) params.set('status', status);
   if (cohortId) params.set('cohortId', cohortId);
+  if (taskId) params.set('taskId', taskId);
   // Opt-in only — signs a 7-day download link per document submission
   // server-side, so skip it (and its cache) unless the caller (the CSV
   // export) actually wants it.
   if (includeDownloadUrls) params.set('includeDownloadUrls', 'true');
   const qs = params.toString();
   return cachedFetch(
-    `submissions:all:${status || 'all'}:${cohortId || 'any'}:${includeDownloadUrls ? 'withUrls' : 'noUrls'}`,
+    `submissions:all:${status || 'all'}:${cohortId || 'any'}:${taskId || 'anyTask'}:${includeDownloadUrls ? 'withUrls' : 'noUrls'}`,
     SUBMISSIONS_TTL,
     () => apiFetch<PrdSubmission[]>(`/api/v1/submissions${qs ? `?${qs}` : ''}`)
   );

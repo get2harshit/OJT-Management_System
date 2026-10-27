@@ -45,6 +45,7 @@ export interface ApiAssignment {
   assignee?: {
     id: string;
     full_name: string;
+    email?: string | null;
     role: string;
   };
   statusHistory?: ApiTaskStatusHistory[];
