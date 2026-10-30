@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle, Clock, Users, XCircle } from 'lucide-react';
 import Modal from './Modal';
 import SpinnerSquare from './SpinnerSquare';
+import { formatExactDuration } from '../lib/utils';
 import {
   apiGetLiveSessionReport,
   apiSyncLiveAttendance,
@@ -19,10 +20,7 @@ const STATUS_TEXT_STYLES: Record<ApiAttendanceStatus, string> = {
 };
 
 function formatDuration(totalSeconds: number): string {
-  const minutes = Math.round(totalSeconds / 60);
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m}m`;
+  return formatExactDuration(Math.round(totalSeconds / 60));
 }
 
 function formatClock(iso: string | null): string {
