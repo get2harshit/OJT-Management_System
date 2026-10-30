@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, ShieldCheck } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageLayout from '../../components/PageLayout';
+import Select from '../../components/Select';
 import SpinnerSquare from '../../components/SpinnerSquare';
 import MentorViewGrantsModal from './OJTs/MentorViewGrantsModal';
 import CoMentorGrantsModal from './OJTs/CoMentorGrantsModal';
@@ -18,6 +19,11 @@ interface MentorRow extends ApiMentor {
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
+const MENTOR_TYPE_OPTIONS = [
+  { value: '', label: 'All Mentors' },
+  { value: 'external', label: 'External Mentors' },
+  { value: 'internal', label: 'Internal Mentors' },
+] as const;
 
 export default function AdminMentors() {
   const navigate = useNavigate();
@@ -27,6 +33,7 @@ export default function AdminMentors() {
   const [loading, setLoading] = useState(true);
   const [tableLoading, setTableLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [mentorType, setMentorType] = useState<'internal' | 'external' | ''>('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
@@ -45,7 +52,12 @@ export default function AdminMentors() {
 
   const fetchMentors = useCallback(async () => {
     try {
-      const res = await apiListMentorsPage({ page, limit, search: search || undefined });
+      const res = await apiListMentorsPage({
+        page,
+        limit,
+        search: search || undefined,
+        type: mentorType || undefined,
+      });
       setMentors(res.data.map(m => ({
         ...m,
         assignedTracks: m.tracks ?? [],
@@ -54,7 +66,7 @@ export default function AdminMentors() {
     } catch {
       setMentors([]);
     }
-  }, [page, limit, search]);
+  }, [page, limit, search, mentorType]);
 
   useEffect(() => {
     setTableLoading(true);
@@ -87,6 +99,11 @@ export default function AdminMentors() {
   const handleLimitChange = (value: number) => {
     setPage(1);
     setLimit(value);
+  };
+
+  const handleMentorTypeChange = (value: string) => {
+    setPage(1);
+    setMentorType((value === 'internal' || value === 'external') ? value : '');
   };
 
   const tableData = mentors.map(m => ({
@@ -202,6 +219,16 @@ export default function AdminMentors() {
           onRowClick={(row) => navigate(`/admin/dashboard/mentors/${row.id}`)}
           searchPlaceholder="Search mentors..."
           onSearchChange={handleSearchChange}
+          leftHeaderContent={
+            <Select
+              variant="filter"
+              className="min-w-[180px]"
+              value={mentorType}
+              onChange={handleMentorTypeChange}
+              placeholder="All Mentors"
+              options={MENTOR_TYPE_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+            />
+          }
           serverPagination={{
             page: pagination.page,
             limit: pagination.limit,
