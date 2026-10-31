@@ -234,8 +234,8 @@ export default function AttendanceSummary({ cohortId }: { cohortId: string }) {
   return (
     <div className="space-y-3">
       <p className="text-xs text-gray-500">
-        Attendance % is present ÷ (present + absent). Excused and not-marked sessions are left out, and only
-        sessions that have already started are counted.
+        Attendance % is present ÷ (present + absent + not marked), so a session nobody marked counts as absent.
+        Excused sessions are left out, and only sessions that have already started are counted.
       </p>
       <DataTable<ApiCohortAttendanceRow>
         columns={columns}
