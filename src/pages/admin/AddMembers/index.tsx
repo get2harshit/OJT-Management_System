@@ -2,6 +2,7 @@ import { useState } from 'react';
 import PageLayout from '../../../components/PageLayout';
 import StaffMemberForm from './StaffMemberForm';
 import StudentImport from './StudentImport';
+import MemberList from './MemberList';
 
 type MemberRole = 'admin' | 'mentor' | 'students';
 
@@ -20,13 +21,15 @@ const ROLES: { value: MemberRole; label: string; hint: string }[] = [
  */
 export default function AddMembers() {
   const [role, setRole] = useState<MemberRole>('admin');
+  // Bumped on every add, so the list below shows the new person.
+  const [addedCount, setAddedCount] = useState(0);
   const current = ROLES.find((r) => r.value === role)!;
 
   return (
     <PageLayout mode="scroll" className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Add members</h1>
-        <p className="text-gray-400 text-sm mt-1">Give someone access. They sign in with Google using the email you enter here.</p>
+        <p className="text-gray-400 text-sm mt-1">Give someone access, or edit and remove those who have it. They sign in with Google using the email entered here.</p>
       </div>
 
       <div className="space-y-2">
@@ -54,8 +57,14 @@ export default function AddMembers() {
 
       <section className={`rounded-2xl border border-zinc-750 bg-zinc-850 p-5 ${role === 'students' ? '' : 'max-w-2xl'}`}>
         {/* Keyed so switching role starts the form clean rather than carrying a half-typed name across. */}
-        {role === 'students' ? <StudentImport /> : <StaffMemberForm key={role} role={role} />}
+        {role === 'students' ? (
+          <StudentImport />
+        ) : (
+          <StaffMemberForm key={role} role={role} onAdded={() => setAddedCount((n) => n + 1)} />
+        )}
       </section>
+
+      {role !== 'students' && <MemberList key={role} role={role} refreshKey={addedCount} />}
     </PageLayout>
   );
 }

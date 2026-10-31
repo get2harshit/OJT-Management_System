@@ -27,7 +27,7 @@ const MENTOR_KINDS = [
   { value: true, label: 'External' },
 ] as const;
 
-export default function StaffMemberForm({ role }: { role: StaffRole }) {
+export default function StaffMemberForm({ role, onAdded }: { role: StaffRole; onAdded?: () => void }) {
   const { showSuccess, showError } = useToast();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -50,6 +50,7 @@ export default function StaffMemberForm({ role }: { role: StaffRole }) {
           : await apiAddMentor({ fullName, email, isExternal });
       setLastAdded(added);
       showSuccess(copy.added(added.fullName));
+      onAdded?.();
       setFullName('');
       setEmail('');
       setIsExternal(false);
