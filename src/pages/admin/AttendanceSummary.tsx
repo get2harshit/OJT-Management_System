@@ -17,9 +17,18 @@ import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 
 const SEARCH_DEBOUNCE_MS = 400;
-// The usual college attendance bar. Below it a student needs chasing.
+// Colour bands only. Which students are listed is the admin's own "Below"
+// number, not these.
 const LOW_ATTENDANCE_PERCENT = 75;
 const AT_RISK_PERCENT = 50;
+
+/** The "Below __ %" box as a filter: a number from 0 to 100, or no filter. */
+function parseThreshold(raw: string): number | undefined | 'invalid' {
+  const trimmed = raw.trim();
+  if (trimmed === '') return undefined;
+  const value = Number(trimmed);
+  return Number.isFinite(value) && value >= 0 && value <= 100 ? value : 'invalid';
+}
 
 const SORT_OPTIONS: { value: CohortAttendanceSort; label: string }[] = [
   { value: 'percentage', label: 'Lowest attendance first' },
@@ -47,16 +56,20 @@ export default function AttendanceSummary({ cohortId }: { cohortId: string }) {
 
   const [rows, setRows] = useState<ApiCohortAttendanceRow[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
-  const [batches, setBatches] = useState<string[]>([]);
+  const [batchOptions, setBatchOptions] = useState<string[]>([]);
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
   const [search, setSearch] = useState('');
-  const [batch, setBatch] = useState('');
-  const [track, setTrack] = useState('');
+  const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
+  const [selectedTracks, setSelectedTracks] = useState<string[]>([]);
   const [mentorId, setMentorId] = useState('');
-  const [lowOnly, setLowOnly] = useState(false);
+  // What is typed, and the number the list is filtered by once typing pauses.
+  const [thresholdInput, setThresholdInput] = useState('');
+  const [belowPercentage, setBelowPercentage] = useState<number | undefined>(undefined);
+  const thresholdDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const thresholdInvalid = parseThreshold(thresholdInput) === 'invalid';
   const [sort, setSort] = useState<CohortAttendanceSort>('percentage');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
@@ -67,13 +80,13 @@ export default function AttendanceSummary({ cohortId }: { cohortId: string }) {
   const filters = useMemo<CohortAttendanceParams>(
     () => ({
       search: search || undefined,
-      batch: batch || undefined,
-      track: track || undefined,
+      batches: selectedBatches.length > 0 ? selectedBatches : undefined,
+      tracks: selectedTracks.length > 0 ? selectedTracks : undefined,
       mentorId: mentorId || undefined,
-      belowPercentage: lowOnly ? LOW_ATTENDANCE_PERCENT : undefined,
+      belowPercentage,
       sort,
     }),
-    [search, batch, track, mentorId, lowOnly, sort]
+    [search, selectedBatches, selectedTracks, mentorId, belowPercentage, sort]
   );
 
   const loadRows = useCallback(async () => {
@@ -82,7 +95,7 @@ export default function AttendanceSummary({ cohortId }: { cohortId: string }) {
       const res = await apiGetCohortAttendance(cohortId, { ...filters, page, limit });
       setRows(res.data);
       setPagination(res.pagination);
-      setBatches(res.batches);
+      setBatchOptions(res.batches);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to load attendance');
     } finally {
@@ -107,6 +120,18 @@ export default function AttendanceSummary({ cohortId }: { cohortId: string }) {
   const changeFilter = <T,>(setter: (value: T) => void) => (value: T) => {
     setter(value);
     setPage(1);
+  };
+
+  const handleThresholdChange = (raw: string) => {
+    setThresholdInput(raw);
+    if (thresholdDebounceRef.current) clearTimeout(thresholdDebounceRef.current);
+    const parsed = parseThreshold(raw);
+    // Out of range keeps the last good filter and just shows the box in red.
+    if (parsed === 'invalid') return;
+    thresholdDebounceRef.current = setTimeout(() => {
+      setPage(1);
+      setBelowPercentage(parsed);
+    }, SEARCH_DEBOUNCE_MS);
   };
 
   const handleSearchChange = (value: string) => {
@@ -230,44 +255,59 @@ export default function AttendanceSummary({ cohortId }: { cohortId: string }) {
               options={SORT_OPTIONS}
               className="min-w-[170px] !text-xs !py-1.5"
             />
-            {batches.length > 0 && (
+            {batchOptions.length > 0 && (
               <Select
+                isMulti
                 variant="filter"
-                value={batch}
-                onChange={(v) => changeFilter(setBatch)(v as string)}
-                options={batches.map((b) => ({ value: b, label: b }))}
+                value={selectedBatches}
+                onChange={changeFilter(setSelectedBatches)}
+                options={batchOptions.map((b) => ({ value: b, label: b }))}
                 placeholder="All Batches"
-                className="min-w-[120px] !text-xs !py-1.5"
+                className="min-w-[130px] !text-xs !py-1.5"
               />
             )}
             <Select
+              isMulti
               variant="filter"
-              value={track}
-              onChange={(v) => changeFilter(setTrack)(v as string)}
+              value={selectedTracks}
+              onChange={changeFilter(setSelectedTracks)}
               options={trackOptions}
               placeholder="All Tracks"
-              className="min-w-[130px] !text-xs !py-1.5"
+              className="min-w-[140px] !text-xs !py-1.5"
             />
             <Select
+              isSearchable
               variant="filter"
               value={mentorId}
-              onChange={(v) => changeFilter(setMentorId)(v as string)}
+              onChange={changeFilter(setMentorId)}
               options={mentorOptions}
               placeholder="All Mentors"
-              className="min-w-[150px] !text-xs !py-1.5"
+              className="min-w-[170px] !text-xs !py-1.5"
             />
-            <button
-              type="button"
-              onClick={() => changeFilter(setLowOnly)(!lowOnly)}
-              aria-pressed={lowOnly}
-              className={`text-xs px-2.5 py-1.5 rounded-lg border font-semibold transition-colors shrink-0 ${
-                lowOnly
-                  ? 'bg-red-500/10 text-red-400 border-red-500/30'
-                  : 'bg-zinc-850 text-gray-300 border-zinc-750 hover:text-white'
+            <label
+              className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border shrink-0 ${
+                thresholdInvalid
+                  ? 'border-red-500/50 text-red-400'
+                  : belowPercentage !== undefined
+                    ? 'border-gold/40 text-gold bg-gold/5'
+                    : 'border-zinc-750 text-gray-300 bg-zinc-850'
               }`}
+              title={thresholdInvalid ? 'Enter a number from 0 to 100' : 'Only students below this attendance %. Leave empty for everyone.'}
             >
-              Below {LOW_ATTENDANCE_PERCENT}%
-            </button>
+              Below
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                max={100}
+                value={thresholdInput}
+                onChange={(e) => handleThresholdChange(e.target.value)}
+                placeholder="—"
+                aria-label="Attendance below this percentage"
+                className="w-12 bg-transparent text-center text-white focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+              %
+            </label>
             <span className="text-xs text-gray-500 shrink-0">
               {pagination.total} student{pagination.total === 1 ? '' : 's'}
             </span>

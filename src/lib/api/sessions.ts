@@ -444,8 +444,10 @@ export interface CohortAttendanceParams {
   page?: number;
   limit?: number;
   search?: string;
-  batch?: string;
-  track?: string;
+  /** Any of these batches. */
+  batches?: string[];
+  /** Any of these track slugs. */
+  tracks?: string[];
   mentorId?: string;
   belowPercentage?: number;
   sort?: CohortAttendanceSort;
@@ -461,8 +463,9 @@ export interface CohortAttendancePage {
 function cohortAttendanceQuery(params: CohortAttendanceParams): URLSearchParams {
   const query = new URLSearchParams();
   if (params.search) query.set('search', params.search);
-  if (params.batch) query.set('batch', params.batch);
-  if (params.track) query.set('track', params.track);
+  // Repeated keys: the server reads them as a list.
+  params.batches?.forEach((batch) => query.append('batch', batch));
+  params.tracks?.forEach((track) => query.append('track', track));
   if (params.mentorId) query.set('mentorId', params.mentorId);
   if (params.belowPercentage !== undefined) query.set('belowPercentage', String(params.belowPercentage));
   if (params.sort) query.set('sort', params.sort);
