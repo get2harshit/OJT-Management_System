@@ -8,7 +8,9 @@ type MemberRole = 'admin' | 'mentor' | 'students';
 const ROLES: { value: MemberRole; label: string; hint: string }[] = [
   { value: 'admin', label: 'Admin', hint: 'Runs every OJT on the platform.' },
   { value: 'mentor', label: 'Mentor', hint: 'Mentors teams once added to an OJT.' },
-  { value: 'students', label: 'Students', hint: 'Added in bulk from a CSV file.' },
+  // Student import is off until its backend fixes land — its routes are
+  // unmounted, so the option is hidden rather than left to fail.
+  // { value: 'students', label: 'Students', hint: 'Added in bulk from a CSV file.' },
 ];
 
 /**
