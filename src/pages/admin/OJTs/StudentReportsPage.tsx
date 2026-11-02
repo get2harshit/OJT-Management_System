@@ -235,11 +235,17 @@ export default function StudentReportsPage() {
     [search, selectedBatches, selectedTracks, selectedMentorIds, selectedTaskIds, selectedRatingKeys]
   );
 
+  // Quick toggles start overlapping requests; only the latest may land, or an
+  // older response would put back a column the admin just removed.
+  const latestRequestRef = useRef(0);
+
   const loadReport = useCallback(async () => {
     if (!cohortId) return;
+    const requestId = ++latestRequestRef.current;
     setLoading(true);
     try {
       const report = await apiGetStudentReport(cohortId, { ...filters, page, limit });
+      if (requestId !== latestRequestRef.current) return;
       setRows(report.rows);
       setTaskColumns(report.taskColumns);
       setRatingColumns(report.ratingColumns);
@@ -248,9 +254,11 @@ export default function StudentReportsPage() {
       setPagination(report.pagination);
       setBatchOptions(report.batches);
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to load student reports');
+      if (requestId === latestRequestRef.current) {
+        showError(err instanceof Error ? err.message : 'Failed to load student reports');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === latestRequestRef.current) setLoading(false);
     }
   }, [cohortId, filters, page, limit, showError]);
 
@@ -267,7 +275,22 @@ export default function StudentReportsPage() {
       .catch(() => setMentors([]));
     // Admin-assigned student tasks only; the server ignores any other id too.
     apiListTasks({ cohort_id: cohortId, target_role: 'student', assigned_by_role: 'admin', sort: 'created_at', limit: 200 })
-      .then((res) => setTaskOptions(res.data.map((task) => ({ value: task.id, label: task.title, sublabel: task.week }))))
+      .then((res) => {
+        setTaskOptions(res.data.map((task) => ({ value: task.id, label: task.title, sublabel: task.week })));
+        // A remembered column whose task is no longer offered (deleted, or a
+        // mentor's own task from before columns were admin-only) would count
+        // as selected yet be impossible to untick, so it is dropped.
+        // Only once the whole list is in hand, or a task past the page would be
+        // dropped too.
+        if (res.pagination.total > res.data.length) return;
+        const offered = new Set(res.data.map((task) => task.id));
+        setSelectedTaskIds((current) => {
+          const kept = current.filter((id) => offered.has(id));
+          if (kept.length === current.length) return current;
+          saveColumns('taskColumns', cohortId, kept);
+          return kept;
+        });
+      })
       .catch(() => setTaskOptions([]));
   }, [cohortId]);
 
