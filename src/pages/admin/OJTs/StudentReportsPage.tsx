@@ -13,6 +13,7 @@ import {
   type StudentReportRow,
   type StudentReportTaskCell,
   type StudentReportTaskColumn,
+  type StudentReportRatingColumn,
   type StudentReportEvaluationColumn,
   type StudentReportParams,
 } from '../../../lib/api';
@@ -37,27 +38,43 @@ const TASK_STATE_LABEL = {
   not_assigned: 'Not assigned',
 } as const;
 
-// The chosen task columns are a per-admin view setting, so they live in this
-// browser only. Storage can be missing or blocked; the page works without it.
-function taskColumnsStorageKey(cohortId: string) {
-  return `studentReports:taskColumns:${cohortId}`;
+// The chosen task and rating columns are a per-admin view setting, so they
+// live in this browser only. Storage can be missing or blocked; the page
+// works without it.
+type SavedColumnKind = 'taskColumns' | 'ratingColumns';
+
+function savedColumnsKey(kind: SavedColumnKind, cohortId: string) {
+  return `studentReports:${kind}:${cohortId}`;
 }
 
-function readSavedTaskIds(cohortId: string): string[] {
+function readSavedColumns(kind: SavedColumnKind, cohortId: string): string[] {
   try {
-    const saved = JSON.parse(localStorage.getItem(taskColumnsStorageKey(cohortId)) ?? '[]');
+    const saved = JSON.parse(localStorage.getItem(savedColumnsKey(kind, cohortId)) ?? '[]');
     return Array.isArray(saved) ? saved.filter((id) => typeof id === 'string') : [];
   } catch {
     return [];
   }
 }
 
-function saveTaskIds(cohortId: string, taskIds: string[]) {
+function saveColumns(kind: SavedColumnKind, cohortId: string, columns: string[]) {
   try {
-    localStorage.setItem(taskColumnsStorageKey(cohortId), JSON.stringify(taskIds));
+    localStorage.setItem(savedColumnsKey(kind, cohortId), JSON.stringify(columns));
   } catch {
     // Not remembered next time; nothing else depends on it.
   }
+}
+
+/** A 1-5 framework rating, two decimals at most ("1.8", "3.33", "4"). */
+function formatRating(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : String(Math.round(value * 100) / 100);
+}
+
+// Colour bands on the framework's scale: 4 is "Independent", below 3 is
+// "Not Ready" or under.
+function ratingTone(value: number): string {
+  if (value >= 4) return 'text-green-400';
+  if (value >= 3) return 'text-amber-400';
+  return 'text-red-400';
 }
 
 /**
@@ -174,6 +191,8 @@ export default function StudentReportsPage() {
 
   const [rows, setRows] = useState<StudentReportRow[]>([]);
   const [taskColumns, setTaskColumns] = useState<StudentReportTaskColumn[]>([]);
+  const [ratingColumns, setRatingColumns] = useState<StudentReportRatingColumn[]>([]);
+  const [ratingOptions, setRatingOptions] = useState<StudentReportRatingColumn[]>([]);
   const [evaluationColumns, setEvaluationColumns] = useState<StudentReportEvaluationColumn[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
   const [batchOptions, setBatchOptions] = useState<string[]>([]);
@@ -188,7 +207,8 @@ export default function StudentReportsPage() {
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
   const [selectedTracks, setSelectedTracks] = useState<string[]>([]);
   const [selectedMentorIds, setSelectedMentorIds] = useState<string[]>([]);
-  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>(() => readSavedTaskIds(cohortId));
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>(() => readSavedColumns('taskColumns', cohortId));
+  const [selectedRatingKeys, setSelectedRatingKeys] = useState<string[]>(() => readSavedColumns('ratingColumns', cohortId));
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout>>();
@@ -196,7 +216,8 @@ export default function StudentReportsPage() {
   // The tab bar keeps this page mounted when the OJT switches, so the saved
   // columns are reread for the new one.
   useEffect(() => {
-    setSelectedTaskIds(readSavedTaskIds(cohortId));
+    setSelectedTaskIds(readSavedColumns('taskColumns', cohortId));
+    setSelectedRatingKeys(readSavedColumns('ratingColumns', cohortId));
     setPage(1);
   }, [cohortId]);
 
@@ -209,8 +230,9 @@ export default function StudentReportsPage() {
       tracks: selectedTracks.length > 0 ? selectedTracks : undefined,
       mentorIds: selectedMentorIds.length > 0 ? selectedMentorIds : undefined,
       taskIds: selectedTaskIds.length > 0 ? selectedTaskIds : undefined,
+      ratingKeys: selectedRatingKeys.length > 0 ? selectedRatingKeys : undefined,
     }),
-    [search, selectedBatches, selectedTracks, selectedMentorIds, selectedTaskIds]
+    [search, selectedBatches, selectedTracks, selectedMentorIds, selectedTaskIds, selectedRatingKeys]
   );
 
   const loadReport = useCallback(async () => {
@@ -220,6 +242,8 @@ export default function StudentReportsPage() {
       const report = await apiGetStudentReport(cohortId, { ...filters, page, limit });
       setRows(report.rows);
       setTaskColumns(report.taskColumns);
+      setRatingColumns(report.ratingColumns);
+      setRatingOptions(report.ratingOptions);
       setEvaluationColumns(report.evaluationColumns);
       setPagination(report.pagination);
       setBatchOptions(report.batches);
@@ -257,7 +281,12 @@ export default function StudentReportsPage() {
   const handleTaskColumnsChange = (taskIds: string[]) => {
     const capped = taskIds.slice(0, MAX_TASK_COLUMNS);
     setSelectedTaskIds(capped);
-    saveTaskIds(cohortId, capped);
+    saveColumns('taskColumns', cohortId, capped);
+  };
+
+  const handleRatingColumnsChange = (ratingKeys: string[]) => {
+    setSelectedRatingKeys(ratingKeys);
+    saveColumns('ratingColumns', cohortId, ratingKeys);
   };
 
   const handleSearchChange = (value: string) => {
@@ -283,6 +312,8 @@ export default function StudentReportsPage() {
         { key: 'mentor', header: 'Mentor' },
         { key: 'attendance', header: 'Attendance %' },
         ...report.taskColumns.map((task) => ({ key: `task:${task.id}`, header: task.title })),
+        ...report.ratingColumns.map((column) => ({ key: `rating:${column.key}`, header: column.label })),
+        ...(report.ratingColumns.length > 0 ? [{ key: 'ratedOn', header: 'Rated on' }] : []),
         ...report.evaluationColumns.map((column) => ({ key: `eval:${column.configId}`, header: column.label })),
         { key: 'feedback', header: 'Latest feedback' },
         { key: 'feedbackDate', header: 'Feedback date' },
@@ -305,6 +336,10 @@ export default function StudentReportsPage() {
           feedbackBy: row.feedback?.mentorName ?? '',
         };
         for (const task of report.taskColumns) csvRow[`task:${task.id}`] = taskCellExportValue(row.tasks[task.id]);
+        for (const column of report.ratingColumns) {
+          csvRow[`rating:${column.key}`] = row.ratings?.values[column.key] ?? '';
+        }
+        csvRow.ratedOn = row.ratings ? formatInIST(row.ratings.assessedAt) : '';
         for (const column of report.evaluationColumns) csvRow[`eval:${column.configId}`] = formatMarks(row, column);
         return csvRow;
       });
@@ -396,6 +431,34 @@ export default function StudentReportsPage() {
       header: task.title,
       render: (row: StudentReportRow) => <TaskCell cell={row.tasks[task.id]} />,
     })),
+    ...ratingColumns.map((column) => ({
+      key: `rating:${column.key}`,
+      header: column.label,
+      render: (row: StudentReportRow) => {
+        const value = row.ratings?.values[column.key] ?? null;
+        return (
+          <span
+            className={`text-sm font-semibold tabular-nums ${value === null ? 'text-gray-500' : ratingTone(value)}`}
+            title={row.ratings ? `Latest assessment, ${formatInIST(row.ratings.assessedAt)}` : 'Not assessed yet'}
+          >
+            {formatRating(value)}
+          </span>
+        );
+      },
+    })),
+    ...(ratingColumns.length > 0
+      ? [
+          {
+            key: 'ratedOn',
+            header: 'Rated on',
+            render: (row: StudentReportRow) => (
+              <span className="text-xs text-gray-400 whitespace-nowrap">
+                {row.ratings ? formatInIST(row.ratings.assessedAt) : '—'}
+              </span>
+            ),
+          },
+        ]
+      : []),
     ...evaluationColumns.map((column) => ({
       key: `eval:${column.configId}`,
       header: column.label,
@@ -429,7 +492,8 @@ export default function StudentReportsPage() {
     <PageLayout className="space-y-3">
       <p className="text-xs text-gray-500">
         One row per student, grouped by team. Add task columns to see each student's submission: its link, or Pending
-        before the deadline and Not submitted after it. Attendance counts unmarked sessions as absent.
+        before the deadline and Not submitted after it. Rating columns show the latest assessment (1–5). Attendance counts
+        unmarked sessions as absent.
       </p>
       <DataTable<StudentReportRow>
         columns={columns}
@@ -452,6 +516,17 @@ export default function StudentReportsPage() {
               placeholder="+ Task columns"
               className="min-w-[170px] !text-xs !py-1.5"
               menuMinWidth={320}
+            />
+            <Select
+              isMulti
+              isSearchable
+              variant="filter"
+              value={selectedRatingKeys}
+              onChange={handleRatingColumnsChange}
+              options={ratingOptions.map((option) => ({ value: option.key, label: option.label }))}
+              placeholder="+ Rating columns"
+              className="min-w-[170px] !text-xs !py-1.5"
+              menuMinWidth={300}
             />
             {batchOptions.length > 0 && (
               <Select

@@ -47,6 +47,14 @@ export interface StudentReportRow {
   feedback: { note: string; assessedAt: string; mentorName: string | null } | null;
   evaluations: Record<string, { marks: number | null; attendance: 'present' | 'absent' | 'excused' | null }>;
   tasks: Record<string, StudentReportTaskCell>;
+  /** The chosen rating columns from the latest assessment; null when never assessed. */
+  ratings: { assessedAt: string; values: Record<string, number | null> } | null;
+}
+
+/** An assessment rating the sheet can show: finalRating, a dimension or a parameter. */
+export interface StudentReportRatingColumn {
+  key: string;
+  label: string;
 }
 
 export interface StudentReportTaskColumn {
@@ -73,11 +81,16 @@ export interface StudentReportParams {
   mentorIds?: string[];
   /** Task columns, in display order. */
   taskIds?: string[];
+  /** Rating columns (StudentReportRatingColumn keys). */
+  ratingKeys?: string[];
 }
 
 export interface StudentReport {
   rows: StudentReportRow[];
   taskColumns: StudentReportTaskColumn[];
+  ratingColumns: StudentReportRatingColumn[];
+  /** Every rating an admin can add, for the column picker. */
+  ratingOptions: StudentReportRatingColumn[];
   evaluationColumns: StudentReportEvaluationColumn[];
   batches: string[];
 }
@@ -88,7 +101,13 @@ export interface StudentReportPage extends StudentReport {
 }
 
 interface StudentReportBody {
-  data: { rows: StudentReportRow[]; taskColumns: StudentReportTaskColumn[]; evaluationColumns: StudentReportEvaluationColumn[] };
+  data: {
+    rows: StudentReportRow[];
+    taskColumns: StudentReportTaskColumn[];
+    ratingColumns: StudentReportRatingColumn[];
+    ratingOptions: StudentReportRatingColumn[];
+    evaluationColumns: StudentReportEvaluationColumn[];
+  };
   pagination: { page: number; limit: number; total: number; pages: number } | null;
   batches: string[];
 }
@@ -100,6 +119,7 @@ function studentReportQuery(params: StudentReportParams): URLSearchParams {
   params.batches?.forEach((batch) => query.append('batch', batch));
   params.tracks?.forEach((track) => query.append('track', track));
   params.taskIds?.forEach((taskId) => query.append('task', taskId));
+  params.ratingKeys?.forEach((ratingKey) => query.append('rating', ratingKey));
   params.mentorIds?.forEach((mentorId) => query.append('mentor', mentorId));
   return query;
 }
