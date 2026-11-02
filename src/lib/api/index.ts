@@ -23,6 +23,7 @@ export * from './ops';
 export * from './manualAllocation';
 export * from './eligibility';
 export * from './sessions';
+export * from './studentReports';
 export * from './schedulingConfig';
 export * from './payouts';
 export * from './sessionRequests';

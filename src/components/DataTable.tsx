@@ -14,6 +14,10 @@ interface Column<T> {
    * from the raw field (e.g. a currency amount formatted with $ and commas).
    * Falls back to the raw `row[key]` value when omitted. */
   exportValue?: (row: T) => string | number;
+  /** Desktop table only: how many rows this cell spans, starting at this
+   * row. 0 means a cell above already covers it, so none is drawn. Used to
+   * show one value (a team's project) once across the rows that share it. */
+  rowSpan?: (row: T, index: number) => number;
 }
 
 interface ServerPagination {
@@ -388,11 +392,19 @@ export default function DataTable<T extends object>({
                   onRowClick ? 'cursor-pointer hover:bg-gold/5 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-gold/50' : 'hover:bg-zinc-750/20'
                 }`}
               >
-                {columns.map((col) => (
-                  <td key={String(col.key)} className="px-4 py-3 text-gray-300">
-                    {col.render ? col.render(row) : String(row[col.key as keyof T] ?? '-')}
-                  </td>
-                ))}
+                {columns.map((col) => {
+                  const span = col.rowSpan ? col.rowSpan(row, idx) : 1;
+                  if (span === 0) return null;
+                  return (
+                    <td
+                      key={String(col.key)}
+                      rowSpan={span > 1 ? span : undefined}
+                      className={`px-4 py-3 text-gray-300 ${span > 1 ? 'align-top border-r border-zinc-750/50' : ''}`}
+                    >
+                      {col.render ? col.render(row) : String(row[col.key as keyof T] ?? '-')}
+                    </td>
+                  );
+                })}
                 {actions && (
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     {actions(row)}
