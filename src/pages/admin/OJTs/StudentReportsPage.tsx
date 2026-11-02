@@ -238,7 +238,8 @@ export default function StudentReportsPage() {
     apiListMentorsPage({ page: 1, limit: 200, cohortId })
       .then((res) => setMentors(res.data))
       .catch(() => setMentors([]));
-    apiListTasks({ cohort_id: cohortId, target_role: 'student', sort: 'created_at', limit: 200 })
+    // Admin-assigned student tasks only; the server ignores any other id too.
+    apiListTasks({ cohort_id: cohortId, target_role: 'student', assigned_by_role: 'admin', sort: 'created_at', limit: 200 })
       .then((res) => setTaskOptions(res.data.map((task) => ({ value: task.id, label: task.title, sublabel: task.week }))))
       .catch(() => setTaskOptions([]));
   }, [cohortId]);
