@@ -63,6 +63,16 @@ export interface StudentReportTaskColumn {
   deadline: string;
 }
 
+/** An admin task the sheet can add as a column. */
+export interface StudentReportTaskOption {
+  id: string;
+  title: string;
+  week: string;
+  deadline: string;
+  /** How many of the students matching the filters it is assigned to. */
+  assignedCount: number;
+}
+
 export interface StudentReportEvaluationColumn {
   configId: string;
   label: string;
@@ -131,6 +141,24 @@ export async function apiGetStudentReport(cohortId: string, params: StudentRepor
   const body = await apiFetch<StudentReportBody>(`/api/v1/cohorts/${cohortId}/student-report?${query.toString()}`);
   const pagination = body.pagination ?? { page: 1, limit: body.data.rows.length, total: 0, pages: 1 };
   return { ...body.data, batches: body.batches, pagination: { ...pagination, totalPages: pagination.pages } };
+}
+
+/**
+ * The task column picker's options: admin-assigned student tasks, narrowed to
+ * those given to at least one student matching the batch / track / mentor filters.
+ */
+export async function apiGetStudentReportTaskOptions(
+  cohortId: string,
+  params: Pick<StudentReportParams, 'batches' | 'tracks' | 'mentorIds'>
+): Promise<StudentReportTaskOption[]> {
+  const query = new URLSearchParams();
+  params.batches?.forEach((batch) => query.append('batch', batch));
+  params.tracks?.forEach((track) => query.append('track', track));
+  params.mentorIds?.forEach((mentorId) => query.append('mentor', mentorId));
+  const body = await apiFetch<{ data: StudentReportTaskOption[] }>(
+    `/api/v1/cohorts/${cohortId}/student-report/task-options?${query.toString()}`
+  );
+  return body.data;
 }
 
 /** The whole filtered sheet, unpaged, with signed file links, for the CSV export. */

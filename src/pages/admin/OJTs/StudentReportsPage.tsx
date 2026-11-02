@@ -10,14 +10,15 @@ import {
   apiExportStudentReport,
   apiListMentorsPage,
   apiGetPrdDownloadUrl,
+  apiGetStudentReportTaskOptions,
   type StudentReportRow,
   type StudentReportTaskCell,
   type StudentReportTaskColumn,
   type StudentReportRatingColumn,
+  type StudentReportTaskOption,
   type StudentReportEvaluationColumn,
   type StudentReportParams,
 } from '../../../lib/api';
-import { apiListTasks } from '../../../lib/api/tasks';
 import type { ApiMentor } from '../../../lib/types';
 import { exportToCSV } from '../../../lib/csvExport';
 import { submissionStatusLabel, statusDotClass } from '../../../lib/submissionDisplay';
@@ -199,7 +200,7 @@ export default function StudentReportsPage() {
   const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
   const [batchOptions, setBatchOptions] = useState<string[]>([]);
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
-  const [taskOptions, setTaskOptions] = useState<{ value: string; label: string }[]>([]);
+  const [taskOptions, setTaskOptions] = useState<StudentReportTaskOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   // The project whose full description is open; the cell itself is clamped.
@@ -250,6 +251,18 @@ export default function StudentReportsPage() {
       if (requestId !== latestRequestRef.current) return;
       setRows(report.rows);
       setTaskColumns(report.taskColumns);
+      // The server drops a requested task it will not show (deleted, or not
+      // admin-assigned, e.g. a mentor's task remembered from before columns
+      // were admin-only). Dropping it here too keeps the picker from counting
+      // a selection that can never be seen or unticked.
+      const shown = new Set(report.taskColumns.map((task) => task.id));
+      const requested = new Set(filters.taskIds ?? []);
+      setSelectedTaskIds((current) => {
+        const kept = current.filter((id) => shown.has(id) || !requested.has(id));
+        if (kept.length === current.length) return current;
+        saveColumns('taskColumns', cohortId, kept);
+        return kept;
+      });
       setRatingColumns(report.ratingColumns);
       setRatingOptions(report.ratingOptions);
       setEvaluationColumns(report.evaluationColumns);
@@ -270,30 +283,46 @@ export default function StudentReportsPage() {
 
   usePageRefresh(loadReport);
 
+  // The picker follows the batch / track / mentor filters: only tasks given
+  // to at least one of the students they match. Latest request wins, as for
+  // the sheet itself.
+  const latestTaskOptionsRef = useRef(0);
+  useEffect(() => {
+    if (!cohortId) return;
+    const requestId = ++latestTaskOptionsRef.current;
+    apiGetStudentReportTaskOptions(cohortId, {
+      batches: selectedBatches.length > 0 ? selectedBatches : undefined,
+      tracks: selectedTracks.length > 0 ? selectedTracks : undefined,
+      mentorIds: selectedMentorIds.length > 0 ? selectedMentorIds : undefined,
+    })
+      .then((options) => {
+        if (requestId === latestTaskOptionsRef.current) setTaskOptions(options);
+      })
+      .catch(() => {
+        if (requestId === latestTaskOptionsRef.current) setTaskOptions([]);
+      });
+  }, [cohortId, selectedBatches, selectedTracks, selectedMentorIds]);
+
+  // A chosen column stays listed even when the filters no longer match its
+  // task, so it can always be unticked.
+  const taskPickerOptions = useMemo(() => {
+    const offered = taskOptions.map((task) => ({
+      value: task.id,
+      label: task.title,
+      sublabel: `${task.week} · ${task.assignedCount} student${task.assignedCount === 1 ? '' : 's'}`,
+    }));
+    const offeredIds = new Set(taskOptions.map((task) => task.id));
+    const chosenElsewhere = taskColumns
+      .filter((task) => !offeredIds.has(task.id))
+      .map((task) => ({ value: task.id, label: task.title, sublabel: 'Not given to anyone in these filters' }));
+    return [...chosenElsewhere, ...offered];
+  }, [taskOptions, taskColumns]);
+
   useEffect(() => {
     if (!cohortId) return;
     apiListMentorsPage({ page: 1, limit: 200, cohortId })
       .then((res) => setMentors(res.data))
       .catch(() => setMentors([]));
-    // Admin-assigned student tasks only; the server ignores any other id too.
-    apiListTasks({ cohort_id: cohortId, target_role: 'student', assigned_by_role: 'admin', sort: 'created_at', limit: 200 })
-      .then((res) => {
-        setTaskOptions(res.data.map((task) => ({ value: task.id, label: task.title, sublabel: task.week })));
-        // A remembered column whose task is no longer offered (deleted, or a
-        // mentor's own task from before columns were admin-only) would count
-        // as selected yet be impossible to untick, so it is dropped.
-        // Only once the whole list is in hand, or a task past the page would be
-        // dropped too.
-        if (res.pagination.total > res.data.length) return;
-        const offered = new Set(res.data.map((task) => task.id));
-        setSelectedTaskIds((current) => {
-          const kept = current.filter((id) => offered.has(id));
-          if (kept.length === current.length) return current;
-          saveColumns('taskColumns', cohortId, kept);
-          return kept;
-        });
-      })
-      .catch(() => setTaskOptions([]));
   }, [cohortId]);
 
   // Any filter change goes back to page 1, or a narrower result could leave
@@ -540,7 +569,7 @@ export default function StudentReportsPage() {
               variant="filter"
               value={selectedTaskIds}
               onChange={handleTaskColumnsChange}
-              options={taskOptions}
+              options={taskPickerOptions}
               placeholder="+ Task columns"
               className="min-w-[170px] !text-xs !py-1.5"
               menuMinWidth={320}
