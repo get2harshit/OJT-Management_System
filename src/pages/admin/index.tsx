@@ -26,6 +26,7 @@ import AddMembers from './AddMembers';
 import CohortDetailLayout from './OJTs/CohortDetailLayout';
 import ViewCohortPage from './OJTs/ViewCohortPage';
 import CohortStudentsPage from './OJTs/CohortStudentsPage';
+import StudentReportsPage from './OJTs/StudentReportsPage';
 import CohortProjectsPage from './OJTs/CohortProjectsPage';
 import ProjectInsightsPage from './OJTs/ProjectInsightsPage';
 import SelfProposedProjectsPage from './OJTs/SelfProposedProjectsPage';
@@ -221,6 +222,7 @@ function AdminPanelContent({ onLogout }: { onLogout?: () => void }) {
           />
           <Route path="sessions" element={<Sessions />} />
           <Route path="attendance" element={<Attendance />} />
+          <Route path="reports" element={<StudentReportsPage />} />
           <Route path="assessments" element={<CohortAssessmentsPage />} />
           <Route path="evaluation-summary" element={<CohortEvaluationSummaryPage />} />
         </Route>
