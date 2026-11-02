@@ -69,7 +69,8 @@ export interface StudentReportParams {
   batches?: string[];
   /** Track slugs. */
   tracks?: string[];
-  mentorId?: string;
+  /** Any of these mentors. */
+  mentorIds?: string[];
   /** Task columns, in display order. */
   taskIds?: string[];
 }
@@ -99,7 +100,7 @@ function studentReportQuery(params: StudentReportParams): URLSearchParams {
   params.batches?.forEach((batch) => query.append('batch', batch));
   params.tracks?.forEach((track) => query.append('track', track));
   params.taskIds?.forEach((taskId) => query.append('task', taskId));
-  if (params.mentorId) query.set('mentorId', params.mentorId);
+  params.mentorIds?.forEach((mentorId) => query.append('mentor', mentorId));
   return query;
 }
 

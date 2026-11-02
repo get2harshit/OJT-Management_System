@@ -184,7 +184,7 @@ export default function StudentReportsPage() {
   const [search, setSearch] = useState('');
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
   const [selectedTracks, setSelectedTracks] = useState<string[]>([]);
-  const [mentorId, setMentorId] = useState('');
+  const [selectedMentorIds, setSelectedMentorIds] = useState<string[]>([]);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>(() => readSavedTaskIds(cohortId));
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
@@ -204,10 +204,10 @@ export default function StudentReportsPage() {
       search: search || undefined,
       batches: selectedBatches.length > 0 ? selectedBatches : undefined,
       tracks: selectedTracks.length > 0 ? selectedTracks : undefined,
-      mentorId: mentorId || undefined,
+      mentorIds: selectedMentorIds.length > 0 ? selectedMentorIds : undefined,
       taskIds: selectedTaskIds.length > 0 ? selectedTaskIds : undefined,
     }),
-    [search, selectedBatches, selectedTracks, mentorId, selectedTaskIds]
+    [search, selectedBatches, selectedTracks, selectedMentorIds, selectedTaskIds]
   );
 
   const loadReport = useCallback(async () => {
@@ -459,10 +459,11 @@ export default function StudentReportsPage() {
               className="min-w-[140px] !text-xs !py-1.5"
             />
             <Select
+              isMulti
               isSearchable
               variant="filter"
-              value={mentorId}
-              onChange={changeFilter(setMentorId)}
+              value={selectedMentorIds}
+              onChange={changeFilter(setSelectedMentorIds)}
               options={mentorOptions}
               placeholder="All Mentors"
               className="min-w-[170px] !text-xs !py-1.5"
