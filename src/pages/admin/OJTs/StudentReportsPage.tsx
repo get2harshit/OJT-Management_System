@@ -27,7 +27,9 @@ import { useToast } from '../../../toast';
 import { usePageRefresh } from '../../../context/RefreshContext';
 
 const SEARCH_DEBOUNCE_MS = 400;
-const MAX_TASK_COLUMNS = 20;
+// The server reads at most 50 of any list. An OJT has ~30 admin tasks today,
+// so every one of them fits.
+const MAX_TASK_COLUMNS = 50;
 // Colour bands only, the same ones the attendance summary uses.
 const LOW_ATTENDANCE_PERCENT = 75;
 const AT_RISK_PERCENT = 50;
@@ -302,6 +304,9 @@ export default function StudentReportsPage() {
   };
 
   const handleTaskColumnsChange = (taskIds: string[]) => {
+    if (taskIds.length > MAX_TASK_COLUMNS) {
+      showError(`At most ${MAX_TASK_COLUMNS} task columns at once; the first ${MAX_TASK_COLUMNS} are shown.`);
+    }
     const capped = taskIds.slice(0, MAX_TASK_COLUMNS);
     setSelectedTaskIds(capped);
     saveColumns('taskColumns', cohortId, capped);

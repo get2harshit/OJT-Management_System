@@ -197,26 +197,38 @@ export default function Select(props: SelectProps) {
               {value === '' && <Check size={14} className="shrink-0" />}
             </button>
           )}
-          {isMulti && filteredOptions.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                const allValues = filteredOptions.map(o => o.value);
-                const currentValues = value as string[];
-                const allSelected = allValues.every(v => currentValues.includes(v));
-                if (allSelected) {
-                  onChange(currentValues.filter(v => !allValues.includes(v)));
-                } else {
-                  onChange(Array.from(new Set([...currentValues, ...allValues])));
-                }
-              }}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-left transition-colors text-blue-400 font-semibold hover:bg-zinc-750"
-            >
-              <span className="truncate">
-                {filteredOptions.every(v => (value as string[]).includes(v.value)) ? 'Deselect All' : 'Select All'}
-              </span>
-            </button>
-          )}
+          {isMulti && filteredOptions.length > 0 && (() => {
+            // Two separate actions rather than one toggle: a caller may keep
+            // only part of a Select All (a cap on columns, say), and a toggle
+            // that only offers Deselect once everything is selected would
+            // then never offer it at all.
+            const currentValues = value as string[];
+            const filteredValues = filteredOptions.map(o => o.value);
+            const allSelected = filteredValues.every(v => currentValues.includes(v));
+            const anySelected = filteredValues.some(v => currentValues.includes(v));
+            return (
+              <div className="flex items-center gap-1 px-1">
+                {!allSelected && (
+                  <button
+                    type="button"
+                    onClick={() => onChange(Array.from(new Set([...currentValues, ...filteredValues])))}
+                    className="flex-1 px-2 py-2 text-sm text-left rounded transition-colors text-blue-400 font-semibold hover:bg-zinc-750"
+                  >
+                    Select All
+                  </button>
+                )}
+                {anySelected && (
+                  <button
+                    type="button"
+                    onClick={() => onChange(currentValues.filter(v => !filteredValues.includes(v)))}
+                    className="flex-1 px-2 py-2 text-sm text-left rounded transition-colors text-blue-400 font-semibold hover:bg-zinc-750"
+                  >
+                    Deselect All
+                  </button>
+                )}
+              </div>
+            );
+          })()}
           {filteredOptions.length === 0 && !isCreatable && (
             <div className="px-3 py-2 text-sm text-gray-500 text-center">No results found</div>
           )}
