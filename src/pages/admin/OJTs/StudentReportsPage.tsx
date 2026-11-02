@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Download, ExternalLink, FileText } from 'lucide-react';
+import { Download, ExternalLink, Eye, FileText } from 'lucide-react';
 import DataTable from '../../../components/DataTable';
 import PageLayout from '../../../components/PageLayout';
+import Modal from '../../../components/Modal';
 import Select from '../../../components/Select';
 import {
   apiGetStudentReport,
@@ -180,6 +181,8 @@ export default function StudentReportsPage() {
   const [taskOptions, setTaskOptions] = useState<{ value: string; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  // The project whose full description is open; the cell itself is clamped.
+  const [viewingProject, setViewingProject] = useState<{ title: string; description: string } | null>(null);
 
   const [search, setSearch] = useState('');
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
@@ -339,9 +342,20 @@ export default function StudentReportsPage() {
       rowSpan: spanProject,
       render: (row: StudentReportRow) =>
         row.projectDescription ? (
-          <p className="min-w-[200px] max-w-[300px] text-xs text-gray-400 line-clamp-4" title={row.projectDescription}>
-            {row.projectDescription}
-          </p>
+          <div className="flex items-start gap-2 min-w-[220px] max-w-[320px]">
+            <p className="flex-1 text-xs text-gray-400 line-clamp-4">{row.projectDescription}</p>
+            <button
+              type="button"
+              onClick={() =>
+                setViewingProject({ title: row.projectTitle ?? 'Project', description: row.projectDescription ?? '' })
+              }
+              title="View full description"
+              aria-label="View full project description"
+              className="shrink-0 p-1 rounded-md text-gray-400 hover:text-gold hover:bg-zinc-750 transition-colors"
+            >
+              <Eye size={14} />
+            </button>
+          </div>
         ) : (
           '—'
         ),
@@ -495,6 +509,12 @@ export default function StudentReportsPage() {
           },
         }}
       />
+      <Modal open={!!viewingProject} onClose={() => setViewingProject(null)} title={viewingProject?.title ?? ''} size="lg">
+        {/* pre-wrap keeps the paragraphs the description was written with. */}
+        <p className="text-sm text-gray-300 whitespace-pre-wrap break-words max-h-[60vh] overflow-y-auto pr-1">
+          {viewingProject?.description}
+        </p>
+      </Modal>
     </PageLayout>
   );
 }
