@@ -86,6 +86,14 @@ export interface PrdSubmission {
   // reviewedBy is.
   reviewedByName?: string;
   updatedAt: string;
+  submittedAt?: string;
+  // On the review lists and the student's own list. Late is decided by the
+  // FIRST submission for this work (theirs or, on a team task, a teammate's)
+  // against the end of the due date in IST, so a resubmit the mentor asked
+  // for after the deadline is not late. lateByMs is null when on time.
+  taskDeadline?: string;
+  firstSubmittedAt?: string;
+  lateByMs?: number | null;
   // Denormalized via a backend join — only present on the "review
   // everything" list (apiGetAllPrdSubmissions), not on a single allocation's
   // own submissions (apiGetPrdSubmissionsByAllocation already implies them).

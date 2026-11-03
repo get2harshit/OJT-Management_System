@@ -17,6 +17,7 @@ import type { ApiTask, ApiTaskCategory } from '../../lib/api/tasks';
 import { statusDotClass, submissionKindOf, submissionStatusLabel } from '../../lib/submissionDisplay';
 import { useSubmissionViewerUrl } from '../../hooks/useSubmissionViewerUrl';
 import { usePageRefresh } from '../../context/RefreshContext';
+import LateBadge from '../../components/LateBadge';
 
 // A hard cap on a video submission — enforced again server-side (the real
 // authority), checked here too so picking an oversized file fails instantly
@@ -346,6 +347,7 @@ export default function StudentSubmissions({
               status={activeSub.status}
               submissionKind={activeSubKind}
               versionNumber={activeSub.versionNumber}
+              lateByMs={activeSub.lateByMs}
               updatedAt={activeSub.updatedAt}
               documentLink={activeSub.documentLink}
               messageContent={activeSub.messageContent}
@@ -397,10 +399,13 @@ export default function StudentSubmissions({
                           {selectedTaskIsTeam && sub.submitterName && <> · by {sub.submitterName}</>}
                         </p>
                       </div>
-                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium shrink-0 ${style.text}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                        {submissionStatusLabel(sub.status).toUpperCase()}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <LateBadge lateByMs={sub.lateByMs} compact />
+                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                          {submissionStatusLabel(sub.status).toUpperCase()}
+                        </span>
+                      </div>
                     </button>
                   );
                 })}

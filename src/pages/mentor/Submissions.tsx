@@ -16,6 +16,7 @@ import { useSubmissionViewerUrl } from '../../hooks/useSubmissionViewerUrl';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { useConfirm } from '../../confirm';
+import LateBadge from '../../components/LateBadge';
 
 const ASSIGNMENT_STATUS_LABEL: Record<ApiAssignmentStatus, string> = {
   pending: 'Pending',
@@ -365,6 +366,7 @@ export default function MentorSubmissions({
               status={activeSub.status}
               submissionKind={activeSubKind}
               versionNumber={activeSub.versionNumber}
+              lateByMs={activeSub.lateByMs}
               updatedAt={activeSub.updatedAt}
               documentLink={activeSub.documentLink}
               messageContent={activeSub.messageContent}
@@ -455,6 +457,7 @@ export default function MentorSubmissions({
                         </p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
+                        <LateBadge lateByMs={row.lateByMs} />
                         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                           {submissionStatusLabel(row.status).toUpperCase()}

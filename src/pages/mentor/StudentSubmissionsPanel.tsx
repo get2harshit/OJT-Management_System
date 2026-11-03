@@ -3,6 +3,7 @@ import { Loader2, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import { apiGetSubmissionsByStudent, apiGetPrdDownloadUrl } from '../../lib/api';
 import { statusDotClass, submissionStatusLabel, fileNameFromGcsUri } from '../../lib/submissionDisplay';
 import { useToast } from '../../toast';
+import LateBadge from '../../components/LateBadge';
 
 // Lets any panelist (primary or secondary) check a student's actual
 // PRD/logbook/etc submissions right from the viva scoring flow, instead of
@@ -77,6 +78,7 @@ export default function StudentSubmissionsPanel({ studentId }: { studentId: stri
                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusStyle.dot}`} />
                   <span className={statusStyle.text}>{submissionStatusLabel(s.status)}</span>
                   <span>· v{s.versionNumber} · {new Date(s.updatedAt).toLocaleDateString()}</span>
+                  <LateBadge lateByMs={s.lateByMs} compact />
                 </p>
               </div>
               {isDocument ? (

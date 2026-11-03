@@ -20,7 +20,8 @@ import {
 import { apiListTasks } from '../../../lib/api/tasks';
 import type { ApiMentor } from '../../../lib/types';
 import { exportToCSV } from '../../../lib/csvExport';
-import { submissionStatusLabel, statusDotClass } from '../../../lib/submissionDisplay';
+import { submissionStatusLabel, statusDotClass, formatLateBy } from '../../../lib/submissionDisplay';
+import LateBadge from '../../../components/LateBadge';
 import { formatInIST } from '../../../lib/utils';
 import { useTracks } from '../../../hooks/useTracks';
 import { useToast } from '../../../toast';
@@ -117,10 +118,8 @@ function formatMarks(row: StudentReportRow, column: StudentReportEvaluationColum
 function taskCellExportValue(cell: StudentReportTaskCell | undefined): string {
   if (!cell) return '';
   if (cell.state !== 'submitted') return TASK_STATE_LABEL[cell.state];
-  if (cell.links.length > 0) return cell.links.join(' | ');
-  if (cell.downloadUrl) return cell.downloadUrl;
-  if (cell.text) return cell.text;
-  return 'Submitted';
+  const content = cell.links.length > 0 ? cell.links.join(' | ') : cell.downloadUrl || cell.text || 'Submitted';
+  return cell.lateByMs ? `[Late ${formatLateBy(cell.lateByMs)}] ${content}` : content;
 }
 
 function TaskCell({ cell }: { cell: StudentReportTaskCell | undefined }) {
@@ -176,6 +175,7 @@ function TaskCell({ cell }: { cell: StudentReportTaskCell | undefined }) {
           {cell.text}
         </p>
       )}
+      <LateBadge lateByMs={cell.lateByMs} />
       {cell.reviewStatus && tone && (
         <div className={`flex items-center gap-1 text-[11px] ${tone.text}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${tone.dot}`} />
