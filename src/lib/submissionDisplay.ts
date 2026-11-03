@@ -55,3 +55,13 @@ const SUBMISSION_STATUS_LABEL: Record<string, string> = {
 export function submissionStatusLabel(status: string): string {
   return SUBMISSION_STATUS_LABEL[status] ?? status.replace(/_/g, ' ');
 }
+
+/** "3h", "2d 4h", "under 1h": how late a submission came in. */
+export function formatLateBy(lateByMs: number): string {
+  const hours = Math.floor(lateByMs / (60 * 60 * 1000));
+  if (hours < 1) return 'under 1h';
+  const days = Math.floor(hours / 24);
+  const rest = hours % 24;
+  if (days === 0) return `${hours}h`;
+  return rest === 0 ? `${days}d` : `${days}d ${rest}h`;
+}

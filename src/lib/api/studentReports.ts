@@ -21,6 +21,8 @@ export interface StudentReportTaskCell {
   downloadUrl?: string;
   reviewStatus: string | null;
   submittedAt: string | null;
+  /** How late the work first came in after the due date; null when on time or not submitted. */
+  lateByMs: number | null;
 }
 
 export interface StudentReportRow {

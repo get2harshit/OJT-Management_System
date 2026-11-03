@@ -3,6 +3,7 @@ import { Download, Loader2, ExternalLink } from 'lucide-react';
 import PdfViewer from './PdfViewer';
 import { statusDotClass, submissionKindHasStoredFile, submissionStatusLabel } from '../lib/submissionDisplay';
 import type { SubmissionKind } from '../lib/types';
+import LateBadge from './LateBadge';
 
 interface SubmissionDetailProps {
   status: string;
@@ -11,6 +12,8 @@ interface SubmissionDetailProps {
   submissionKind: SubmissionKind;
   versionNumber: number;
   updatedAt: string;
+  /** How late the work first came in; null or absent when on time. */
+  lateByMs?: number | null;
   documentLink?: string;
   messageContent?: string;
   mentorFeedback?: string;
@@ -46,6 +49,7 @@ export default function SubmissionDetail({
   submissionKind,
   versionNumber,
   updatedAt,
+  lateByMs,
   documentLink,
   messageContent,
   mentorFeedback,
@@ -126,6 +130,7 @@ export default function SubmissionDetail({
               <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
               {submissionStatusLabel(status).toUpperCase()}
             </span>
+            <LateBadge lateByMs={lateByMs} />
             {submissionKindHasStoredFile(submissionKind) && documentLink && (
               <div className="flex items-center gap-2">
                 {downloadError && <span className="text-xs text-red-400">{downloadError}</span>}

@@ -19,7 +19,7 @@ import {
   apiReviewPrdSubmission,
   apiRevertPrdApproval,
 } from '../../lib/api';
-import { statusDotClass, submissionKindOf, submissionStatusLabel } from '../../lib/submissionDisplay';
+import { statusDotClass, submissionKindOf, submissionStatusLabel, formatLateBy } from '../../lib/submissionDisplay';
 import { useSubmissionViewerUrl } from '../../hooks/useSubmissionViewerUrl';
 import { exportToCSV } from '../../lib/csvExport';
 import { useToast } from '../../toast';
@@ -30,6 +30,7 @@ import { apiGetCohortTrackConfig } from '../../lib/api/tracks';
 import type { ApiCohortTrackConfig } from '../../lib/api/tracks';
 import { apiGetTask } from '../../lib/api/tasks';
 import type { ApiTask, ApiAssignmentStatus } from '../../lib/api/tasks';
+import LateBadge from '../../components/LateBadge';
 
 type Row = PrdSubmission & { studentId: string; mentorId?: string };
 
@@ -708,6 +709,8 @@ export default function AdminSubmissions({
             'Submission Type': submission ? submission.submissionType || 'document' : '',
             'Document Link': submission ? submission.downloadUrl || submission.messageContent || '' : '',
             'Updated At': submission ? submission.updatedAt.slice(0, 10) : '',
+            Late: submission ? (submission.lateByMs ? 'Yes' : 'No') : '',
+            'Late By': submission?.lateByMs ? formatLateBy(submission.lateByMs) : '',
             Mentor: submission?.mentorName || '',
             'Mentor Feedback': submission?.mentorFeedback || '',
             'Reviewed By': submission?.reviewedByName || '',
@@ -796,6 +799,8 @@ export default function AdminSubmissions({
               // submissions have no file, so messageContent is the content.
               'Document Link': s.downloadUrl || s.messageContent || '',
               'Updated At': s.updatedAt.slice(0, 10),
+              Late: s.lateByMs ? 'Yes' : 'No',
+              'Late By': s.lateByMs ? formatLateBy(s.lateByMs) : '',
               'Mentor Feedback': s.mentorFeedback || '',
               'Reviewed By': s.reviewedByName || '',
             },
@@ -982,6 +987,7 @@ export default function AdminSubmissions({
               status={activeSub.status}
               submissionKind={activeSubKind}
               versionNumber={activeSub.versionNumber}
+              lateByMs={activeSub.lateByMs}
               updatedAt={activeSub.updatedAt}
               documentLink={activeSub.documentLink}
               messageContent={activeSub.messageContent}
@@ -1132,6 +1138,7 @@ export default function AdminSubmissions({
                         </p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
+                        <LateBadge lateByMs={row.lateByMs} />
                         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                           {submissionStatusLabel(row.status).toUpperCase()}
