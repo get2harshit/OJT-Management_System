@@ -233,7 +233,8 @@ export interface ApiTaskListFilter {
   task_type?: ApiTaskType;
   category?: ApiTaskCategory;
   status?: ApiAssignmentStatus;
-  week?: string;
+  /** One week ("Week 3") or several; several match any of them. */
+  week?: string | string[];
   batch?: string;
   track?: string;
   assignee?: string;
@@ -279,7 +280,11 @@ export async function apiListTasks(
 ): Promise<{ success: boolean; data: ApiTask[]; pagination: ApiTaskPagination; bucketCounts?: ApiTaskBucketCounts }> {
   const params = new URLSearchParams();
   Object.entries(filter).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
+    // A list goes as repeated keys (?week=Week 3&week=Week 4), which the
+    // server reads as a list.
+    if (Array.isArray(value)) {
+      value.forEach((item) => params.append(key, String(item)));
+    } else if (value !== undefined && value !== null && value !== '') {
       params.set(key, String(value));
     }
   });

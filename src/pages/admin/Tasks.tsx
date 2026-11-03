@@ -107,6 +107,10 @@ interface Props {
   onViewTaskSubmissions?: (taskId: string, cohortId: string) => void;
 }
 
+// A task's week is stored as "Week N", N from 1 to 12, the same range the
+// create and edit forms offer.
+const WEEK_OPTIONS = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `Week ${i + 1}` }));
+
 export default function AdminTasks({ onViewTaskSubmissions }: Props) {
   const { tracks, options: trackOptions } = useTracks();
   const trackNameBySlug = useMemo(() => new Map(tracks.map(t => [t.slug, t.name])), [tracks]);
@@ -126,6 +130,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
   // rolled-up status across every assignment, computed by the backend.
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [weekFilter, setWeekFilter] = useState<string[]>([]);
   // 'admin' = created by any admin/batch_manager (not just this one — the
   // dropdown literally says "By Admin", so it has to mean the role, the same
   // way 'mentor' already means any mentor, not just one), 'mentor' = created
@@ -204,8 +209,9 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
       target_role: roleFilter === 'all' ? undefined : (roleFilter as 'student' | 'mentor'),
       aggregate_status: statusFilter === 'all' ? undefined : (statusFilter as ApiTaskAggregateStatus),
       assigned_by_role: assignedByFilter === 'all' ? undefined : (assignedByFilter as 'admin' | 'mentor'),
+      week: weekFilter.length > 0 ? weekFilter.map((week) => `Week ${week}`) : undefined,
     }),
-    [roleFilter, statusFilter, assignedByFilter]
+    [roleFilter, statusFilter, assignedByFilter, weekFilter]
   );
 
   const fetchTasksOnly = useCallback(async () => {
@@ -664,6 +670,15 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
             ]}
           />
           <Select
+            isMulti
+            value={weekFilter}
+            onChange={(value) => { setPage(1); setWeekFilter(value); }}
+            variant="filter"
+            className="w-[130px]"
+            placeholder="All Weeks"
+            options={WEEK_OPTIONS}
+          />
+          <Select
             value={assignedByFilter}
             onChange={(value) => { setPage(1); setAssignedByFilter(value); }}
             variant="filter"
@@ -983,7 +998,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
                 <Select
                   value={editForm.week}
                   onChange={v => setEditForm(prev => ({ ...prev, week: v as string }))}
-                  options={Array.from({ length: 12 }, (_, i) => ({ value: String(i+1), label: `Week ${i+1}` }))}
+                  options={WEEK_OPTIONS}
                   className="w-full"
                 />
               </div>
