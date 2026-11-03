@@ -19,6 +19,8 @@ export interface AuthUser {
   email: string;
   role: ApiUserRole;
   fullName?: string;
+  /** An admin who can see everything but change nothing. Sent by /auth/me. */
+  isViewOnly?: boolean;
 }
 
 export interface AuthResult {

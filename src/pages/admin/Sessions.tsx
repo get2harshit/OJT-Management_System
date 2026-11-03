@@ -51,6 +51,7 @@ import {
 } from '../../lib/api';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
+import { useViewOnly } from '../../hooks/useViewOnly';
 
 const STATUS_COLORS: Record<ApiSessionStatus, string> = {
   scheduled: '#ffcc3f',
@@ -98,6 +99,7 @@ export default function AdminSessions() {
   const { cohortId: selectedCohortId = '' } = useParams<{ cohortId: string }>();
   const { showSuccess, showError } = useToast();
 
+  const viewOnly = useViewOnly();
   const [mentorFilterId, setMentorFilterId] = useState('');
   const [mentors, setMentors] = useState<ApiMentor[]>([]);
   const [sessions, setSessions] = useState<ApiSession[]>([]);
@@ -826,14 +828,16 @@ export default function AdminSessions() {
             <Settings size={14} />
             Scheduling Config
           </button>
-          <button
-            onClick={() => setCreateForm({ ...EMPTY_FORM, locationOrLink: DEFAULT_SESSION_LOCATION })}
-            disabled={!selectedCohortId}
-            className="flex items-center gap-1.5 text-xs px-3 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
-          >
-            <Plus size={14} />
-            Schedule Session
-          </button>
+          {!viewOnly && (
+            <button
+              onClick={() => setCreateForm({ ...EMPTY_FORM, locationOrLink: DEFAULT_SESSION_LOCATION })}
+              disabled={!selectedCohortId}
+              className="flex items-center gap-1.5 text-xs px-3 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors disabled:opacity-50"
+            >
+              <Plus size={14} />
+              Schedule Session
+            </button>
+          )}
         </div>
       </div>
 
@@ -872,7 +876,8 @@ export default function AdminSessions() {
           initialView={autoView.current}
           headerToolbar={{ left: 'prev,next today', center: 'title', right: 'timeGridDay,timeGridWeek,dayGridMonth,listWeek' }}
           height="auto"
-          selectable
+          // Dragging across the calendar opens the scheduling form.
+          selectable={!viewOnly}
           selectAllow={handleSelectAllow}
           eventAllow={handleEventAllow}
           editable

@@ -103,10 +103,41 @@ export const CROSS_BRANCH_CONFIRM_REQUIRED = 'CROSS_BRANCH_CONFIRM_REQUIRED';
 export const isCrossBranchConfirmRequired = (error: unknown): error is ApiError =>
   error instanceof ApiError && error.code === CROSS_BRANCH_CONFIRM_REQUIRED;
 
+// ── View-only admins ─────────────────────────────────────────────────────────
+//
+// The server refuses a view-only admin's writes (authMiddleware). This stops
+// them before they are sent, so every button in the panel fails the same way,
+// with one clear message, instead of each page meeting a raw 403. Set from
+// AuthContext. The allowlist mirrors the backend's domain/viewOnlyAccess.ts:
+// their own session, password and notifications only.
+let viewOnlyMode = false;
+
+export function setViewOnlyMode(enabled: boolean): void {
+  viewOnlyMode = enabled;
+}
+
+export const VIEW_ONLY_MESSAGE = 'You have view-only access, so this cannot be changed.';
+
+const VIEW_ONLY_ALLOWED_WRITES: readonly { method: string; path: RegExp }[] = [
+  { method: 'POST', path: /^\/api\/v1\/auth\/signout$/ },
+  { method: 'POST', path: /^\/api\/v1\/auth\/reset-password$/ },
+  { method: 'PATCH', path: /^\/api\/v1\/notifications\/[0-9a-f-]{36}\/read$/i },
+  { method: 'POST', path: /^\/api\/v1\/notifications\/read-all$/ },
+];
+
+function isBlockedForViewOnly(path: string, method: string): boolean {
+  if (!viewOnlyMode || ['GET', 'HEAD', 'OPTIONS'].includes(method)) return false;
+  const bare = path.split('?')[0];
+  return !VIEW_ONLY_ALLOWED_WRITES.some((rule) => rule.method === method && rule.path.test(bare));
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  if (isBlockedForViewOnly(path, (options.method ?? 'GET').toUpperCase())) {
+    throw new ApiError(VIEW_ONLY_MESSAGE, 403, 'view_only');
+  }
   const token = getStoredToken();
   // FormData bodies must let the browser set their own multipart boundary —
   // forcing application/json here would break file uploads.

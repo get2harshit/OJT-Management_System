@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { Menu, Sun, Moon, User, LogOut, RefreshCw } from 'lucide-react';
+import { Menu, Sun, Moon, User, LogOut, RefreshCw, Eye } from 'lucide-react';
 import Sidebar from './Sidebar';
 import NotificationCenter from './NotificationCenter';
 import StudentAttentionBar from './StudentAttentionBar';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/useAuth';
 import { useRefreshContext } from '../context/RefreshContext';
+import { useViewOnly } from '../hooks/useViewOnly';
 import type { PanelType } from '../lib/types';
 
 interface AppShellProps {
@@ -38,6 +39,7 @@ function getDisplayName(user: { fullName?: string; email?: string } | null): str
 // Shared layout shell for the admin/mentor/student panels: inline sidebar on
 // desktop, hamburger-triggered off-canvas drawer below the lg breakpoint.
 export default function AppShell({ panel, onLogout, children }: AppShellProps) {
+  const viewOnly = useViewOnly();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [isPinned, setIsPinned] = useState(() => {
@@ -177,6 +179,15 @@ export default function AppShell({ panel, onLogout, children }: AppShellProps) {
         </header>
 
         {panel === 'student' && <StudentAttentionBar />}
+        {viewOnly && (
+          <div className="flex items-center gap-2 bg-amber-500/10 border-b border-amber-500/20 text-amber-400 text-sm px-4 sm:px-6 lg:px-8 py-2">
+            <Eye size={16} className="shrink-0" />
+            <span>
+              <span className="font-semibold">View-only access.</span> You can see every page, report and export, but
+              cannot add, edit or delete anything.
+            </span>
+          </div>
+        )}
 
         <main className="flex-1 min-h-0 p-4 sm:p-6 lg:p-8 overflow-y-auto scrollbar-thin flex flex-col">
           <div className="w-full flex-1 min-h-0 flex flex-col">

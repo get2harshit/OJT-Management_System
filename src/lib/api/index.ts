@@ -5,6 +5,8 @@ export {
   ApiError,
   CROSS_BRANCH_CONFIRM_REQUIRED,
   isCrossBranchConfirmRequired,
+  setViewOnlyMode,
+  VIEW_ONLY_MESSAGE,
 } from './client';
 export * from './auth';
 export * from './cohorts';

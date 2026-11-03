@@ -14,6 +14,7 @@ import { formatDateDisplay } from '../../../lib/utils';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
+import { useViewOnly } from '../../../hooks/useViewOnly';
 
 const MODE_LABELS: Record<EvaluationMode, string> = {
   upload: 'Upload',
@@ -24,6 +25,7 @@ export default function CohortEvaluationSummaryPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
+  const viewOnly = useViewOnly();
   const confirm = useConfirm();
 
   // Fetched with the roster included so this same call also carries what the
@@ -184,13 +186,15 @@ export default function CohortEvaluationSummaryPage() {
                 <FileBarChart2 size={14} />
                 View Reports
               </button>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors"
-              >
-                <Plus size={14} />
-                Add Evaluation
-              </button>
+              {!viewOnly && (
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover transition-colors"
+                >
+                  <Plus size={14} />
+                  Add Evaluation
+                </button>
+              )}
             </div>
           </div>
 

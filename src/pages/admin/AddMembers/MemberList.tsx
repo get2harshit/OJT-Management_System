@@ -8,6 +8,7 @@ import { apiListStaff, apiRemoveStaff, apiUpdateStaff, type StaffMember, type St
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
 import { useAuth } from '../../../context/useAuth';
+import { useViewOnly } from '../../../hooks/useViewOnly';
 
 const SEARCH_DEBOUNCE_MS = 400;
 
@@ -29,9 +30,11 @@ const COPY: Record<StaffRole, { title: string; noun: string; alsoLabel: string; 
   },
 };
 
-function EditMemberModal({ role, member, onClose, onSaved }: {
+function EditMemberModal({ role, member, isSelf, onClose, onSaved }: {
   role: StaffRole;
   member: StaffMember;
+  /** Your own row: you cannot make yourself view-only (refused on the server too). */
+  isSelf: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -39,6 +42,7 @@ function EditMemberModal({ role, member, onClose, onSaved }: {
   const [fullName, setFullName] = useState(member.fullName);
   const [phoneNumber, setPhoneNumber] = useState(member.phoneNumber ?? '');
   const [isExternal, setIsExternal] = useState(!!member.isExternal);
+  const [isViewOnly, setIsViewOnly] = useState(!!member.isViewOnly);
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (event: FormEvent) => {
@@ -50,6 +54,9 @@ function EditMemberModal({ role, member, onClose, onSaved }: {
         fullName,
         phoneNumber: phoneNumber.trim() || null,
         ...(role === 'mentor' ? { isExternal } : {}),
+        // Sent only when it changes, so editing a name never trips the
+        // view-only rules.
+        ...(role === 'admin' && isViewOnly !== !!member.isViewOnly ? { isViewOnly } : {}),
       });
       showSuccess(`${fullName.trim()} updated`);
       onSaved();
@@ -98,6 +105,25 @@ function EditMemberModal({ role, member, onClose, onSaved }: {
             External mentor
           </label>
         )}
+        {role === 'admin' && (
+          <div className="space-y-1">
+            <label className={`flex items-center gap-2 text-sm ${isSelf ? 'text-gray-500' : 'text-gray-300'}`}>
+              <input
+                type="checkbox"
+                checked={isViewOnly}
+                disabled={isSelf}
+                onChange={(e) => setIsViewOnly(e.target.checked)}
+                className="accent-gold w-4 h-4"
+              />
+              View only
+            </label>
+            <p className="text-xs text-gray-500">
+              {isSelf
+                ? "You can't make yourself view-only. Ask another admin."
+                : 'Sees every page, report and export, but cannot add, edit, delete or run anything.'}
+            </p>
+          </div>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
           <Button type="submit" isLoading={saving} disabled={!fullName.trim()}>Save</Button>
@@ -113,6 +139,7 @@ function EditMemberModal({ role, member, onClose, onSaved }: {
  */
 export default function MemberList({ role, refreshKey }: { role: StaffRole; refreshKey: number }) {
   const { showSuccess, showError } = useToast();
+  const viewOnly = useViewOnly();
   const confirm = useConfirm();
   const { user } = useAuth();
   const copy = COPY[role];
@@ -183,6 +210,11 @@ export default function MemberList({ role, refreshKey }: { role: StaffRole; refr
               {copy.alsoLabel}
             </span>
           )}
+          {role === 'admin' && m.isViewOnly && (
+            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border bg-amber-500/10 text-amber-400 border-amber-500/25">
+              View only
+            </span>
+          )}
           {m.id === user?.id && <span className="text-[11px] text-gray-500">(you)</span>}
         </div>
       ),
@@ -209,7 +241,7 @@ export default function MemberList({ role, refreshKey }: { role: StaffRole; refr
         searchPlaceholder="Search by name or email..."
         onSearchChange={handleSearchChange}
         hideExport
-        actions={(m) => (
+        actions={viewOnly ? undefined : (m) => (
           <ActionsMenu
             items={[
               { label: 'Edit', icon: Pencil, onClick: () => setEditing(m) },
@@ -235,6 +267,7 @@ export default function MemberList({ role, refreshKey }: { role: StaffRole; refr
           key={editing.id}
           role={role}
           member={editing}
+          isSelf={editing.id === user?.id}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);

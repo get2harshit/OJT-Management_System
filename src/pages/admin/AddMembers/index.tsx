@@ -3,6 +3,7 @@ import PageLayout from '../../../components/PageLayout';
 import StaffMemberForm from './StaffMemberForm';
 import StudentImport from './StudentImport';
 import MemberList from './MemberList';
+import { useViewOnly } from '../../../hooks/useViewOnly';
 
 type MemberRole = 'admin' | 'mentor' | 'students';
 
@@ -20,6 +21,7 @@ const ROLES: { value: MemberRole; label: string; hint: string }[] = [
  * the address entered here.
  */
 export default function AddMembers() {
+  const viewOnly = useViewOnly();
   const [role, setRole] = useState<MemberRole>('admin');
   // Bumped on every add, so the list below shows the new person.
   const [addedCount, setAddedCount] = useState(0);
@@ -55,6 +57,7 @@ export default function AddMembers() {
         <p className="text-xs text-gray-500">{current.hint}</p>
       </div>
 
+      {!viewOnly && (
       <section className={`rounded-2xl border border-zinc-750 bg-zinc-850 p-5 ${role === 'students' ? '' : 'max-w-2xl'}`}>
         {/* Keyed so switching role starts the form clean rather than carrying a half-typed name across. */}
         {role === 'students' ? (
@@ -63,6 +66,7 @@ export default function AddMembers() {
           <StaffMemberForm key={role} role={role} onAdded={() => setAddedCount((n) => n + 1)} />
         )}
       </section>
+      )}
 
       {role !== 'students' && <MemberList key={role} role={role} refreshKey={addedCount} />}
     </PageLayout>

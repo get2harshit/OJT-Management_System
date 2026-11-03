@@ -16,6 +16,7 @@ import PastAnnouncements from '../../../components/PastAnnouncements';
 import { usePageRefresh } from '../../../context/RefreshContext';
 import { useTracks } from '../../../hooks/useTracks';
 import { submittedPreferences } from '../../../lib/preferences';
+import { useViewOnly } from '../../../hooks/useViewOnly';
 
 type PanelView = '' | 'students' | 'projects' | 'mentors';
 
@@ -533,6 +534,7 @@ export default function ViewCohortPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
+  const viewOnly = useViewOnly();
   const { options: trackOptions } = useTracks();
   const [cohort, setCohort] = useState<CohortDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -822,13 +824,15 @@ export default function ViewCohortPage() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowAnnModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 active:scale-95 transition-all duration-200 text-sm shadow-md shadow-gold/10"
-          >
-            <Megaphone size={16} />
-            Create Announcement
-          </button>
+          {!viewOnly && (
+            <button
+              onClick={() => setShowAnnModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gold text-black font-semibold rounded-lg hover:bg-gold-hover hover:scale-105 active:scale-95 transition-all duration-200 text-sm shadow-md shadow-gold/10"
+            >
+              <Megaphone size={16} />
+              Create Announcement
+            </button>
+          )}
           <button
             onClick={() => navigate(`/admin/dashboard/ojts/${cohortId}/self-proposed-projects`)}
             className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-white font-semibold rounded-lg border border-zinc-700 hover:scale-105 transition-all duration-200 text-sm"

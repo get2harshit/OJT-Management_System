@@ -27,11 +27,17 @@ const MENTOR_KINDS = [
   { value: true, label: 'External' },
 ] as const;
 
+const ADMIN_ACCESS = [
+  { value: false, label: 'Full access' },
+  { value: true, label: 'View only' },
+] as const;
+
 export default function StaffMemberForm({ role, onAdded }: { role: StaffRole; onAdded?: () => void }) {
   const { showSuccess, showError } = useToast();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [isExternal, setIsExternal] = useState(false);
+  const [isViewOnly, setIsViewOnly] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lastAdded, setLastAdded] = useState<AddedMember | null>(null);
   const copy = COPY[role];
@@ -46,7 +52,7 @@ export default function StaffMemberForm({ role, onAdded }: { role: StaffRole; on
     try {
       const added =
         role === 'admin'
-          ? await apiAddAdmin({ fullName, email })
+          ? await apiAddAdmin({ fullName, email, isViewOnly })
           : await apiAddMentor({ fullName, email, isExternal });
       setLastAdded(added);
       showSuccess(copy.added(added.fullName));
@@ -54,6 +60,7 @@ export default function StaffMemberForm({ role, onAdded }: { role: StaffRole; on
       setFullName('');
       setEmail('');
       setIsExternal(false);
+      setIsViewOnly(false);
     } catch (err) {
       showError(err instanceof Error ? err.message : `Could not ${copy.action.toLowerCase()}`);
     } finally {
@@ -121,6 +128,38 @@ export default function StaffMemberForm({ role, onAdded }: { role: StaffRole; on
                 );
               })}
             </div>
+          </fieldset>
+        )}
+
+        {role === 'admin' && (
+          <fieldset className="space-y-1.5">
+            <legend className="text-sm text-gray-300">Access</legend>
+            <div className="grid grid-cols-2 gap-1.5 max-w-xs" role="radiogroup" aria-label="Admin access">
+              {ADMIN_ACCESS.map(({ value, label }) => {
+                const selected = isViewOnly === value;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setIsViewOnly(value)}
+                    className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-gold/60 ${
+                      selected
+                        ? 'bg-gold text-black border-gold'
+                        : 'bg-zinc-900 border-zinc-750 text-gray-400 hover:border-gray-600 hover:text-gray-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-gray-500">
+              {isViewOnly
+                ? 'Sees every page, report and export, but cannot add, edit, delete or run anything.'
+                : 'Can do everything an admin can.'}
+            </p>
           </fieldset>
         )}
 

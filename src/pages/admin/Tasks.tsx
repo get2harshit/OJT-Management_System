@@ -30,6 +30,7 @@ import { apiListCohorts } from '../../lib/api';
 import type { Cohort } from '../../lib/types';
 import { usePageRefresh } from '../../context/RefreshContext';
 import { exportToCSV } from '../../lib/csvExport';
+import { useViewOnly } from '../../hooks/useViewOnly';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
@@ -177,6 +178,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
   const [addingAssignees, setAddingAssignees] = useState(false);
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
+  const viewOnly = useViewOnly();
   const confirm = useConfirm();
 
   const loadCohorts = useCallback(() => {
@@ -682,9 +684,11 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
           >
             Export CSV
           </Button>
-          <Button onClick={() => navigate('/admin/dashboard/tasks/create')} leftIcon={<Plus size={18} />}>
-            Create Task / Goal
-          </Button>
+          {!viewOnly && (
+            <Button onClick={() => navigate('/admin/dashboard/tasks/create')} leftIcon={<Plus size={18} />}>
+              Create Task / Goal
+            </Button>
+          )}
         </div>
       </div>
 

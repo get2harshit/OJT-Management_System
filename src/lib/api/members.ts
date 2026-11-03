@@ -12,7 +12,8 @@ export interface AddedMember {
   newAccount: boolean;
 }
 
-export async function apiAddAdmin(input: { fullName: string; email: string }): Promise<AddedMember> {
+/** isViewOnly: sees every page, report and export, changes nothing. */
+export async function apiAddAdmin(input: { fullName: string; email: string; isViewOnly?: boolean }): Promise<AddedMember> {
   const { data } = await apiFetch<{ data: AddedMember }>('/api/v1/members/admins', {
     method: 'POST',
     body: JSON.stringify(input),
@@ -47,6 +48,8 @@ export interface StaffMember {
   isMentor: boolean;
   /** Mentors only. */
   isExternal: boolean | null;
+  /** Admins only: sees everything, changes nothing. */
+  isViewOnly: boolean | null;
 }
 
 export interface StaffMemberPage {
@@ -74,6 +77,8 @@ export interface StaffEdit {
   phoneNumber?: string | null;
   /** Mentors only. */
   isExternal?: boolean;
+  /** Admins only. Refused for yourself and for the last admin with full access. */
+  isViewOnly?: boolean;
 }
 
 export async function apiUpdateStaff(role: StaffRole, id: string, edit: StaffEdit): Promise<StaffMember> {

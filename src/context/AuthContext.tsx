@@ -10,6 +10,7 @@ import {
   getStoredToken,
   setStoredToken,
   clearStoredToken,
+  setViewOnlyMode,
 } from '../lib/api';
 
 // ── Context shape ───────────────────────────────────────────────────────────────
@@ -64,6 +65,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  // The API client holds back a view-only admin's writes; it follows the
+  // session so a sign-out or a different account never inherits the mode.
+  useEffect(() => {
+    setViewOnlyMode(user?.role === 'admin' && user.isViewOnly === true);
+  }, [user]);
+
   // Listen for global unauthorized events to clean up session
   useEffect(() => {
     const handleUnauthorized = () => {
@@ -101,20 +108,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return normalizedUser;
   }, []);
 
+  // A sign-in response does not say whether an admin is view-only; /auth/me
+  // does. Asked for admins only, straight after the session is stored, so the
+  // panel opens already showing the right access.
+  const withViewOnly = useCallback(async (signedIn: AuthUser): Promise<AuthUser> => {
+    if (signedIn.role !== 'admin') return signedIn;
+    try {
+      const me = await apiGetMe();
+      const withAccess = { ...signedIn, isViewOnly: me.isViewOnly === true };
+      setUser(withAccess);
+      return withAccess;
+    } catch {
+      // The server still refuses their writes; only the banner waits for the next load.
+      return signedIn;
+    }
+  }, []);
+
   const login = useCallback(async (email: string, password: string, allowedRoles?: ApiUserRole[]) => {
-    return applySession(await apiSignIn(email, password), allowedRoles);
-  }, [applySession]);
+    return withViewOnly(applySession(await apiSignIn(email, password), allowedRoles));
+  }, [applySession, withViewOnly]);
 
   const signup = useCallback(async (email: string, password: string, fullName: string, role: ApiUserRole, allowedRoles?: ApiUserRole[]) => {
-    return applySession(await apiSignUp(email, password, fullName, role), allowedRoles);
-  }, [applySession]);
+    return withViewOnly(applySession(await apiSignUp(email, password, fullName, role), allowedRoles));
+  }, [applySession, withViewOnly]);
 
   // The backend does the real work here — verifying the token with Supabase
   // and refusing an address that isn't registered — so by the time this
   // resolves the session is no different from a password sign-in.
   const loginWithGoogle = useCallback(async (accessToken: string, refreshToken: string) => {
-    return applySession(await apiGoogleSignIn(accessToken, refreshToken));
-  }, [applySession]);
+    return withViewOnly(applySession(await apiGoogleSignIn(accessToken, refreshToken)));
+  }, [applySession, withViewOnly]);
 
   const logout = useCallback(async () => {
     try {

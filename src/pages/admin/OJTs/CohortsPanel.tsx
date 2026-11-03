@@ -15,10 +15,12 @@ import Button from '../../../components/Button';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
+import { useViewOnly } from '../../../hooks/useViewOnly';
 
 export default function CohortsPanel() {
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
+  const viewOnly = useViewOnly();
   const confirm = useConfirm();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loading, setLoading] = useState(true);
@@ -179,13 +181,15 @@ export default function CohortsPanel() {
           >
             Refresh
           </Button>
-          <Button
-            onClick={handleOpenCreateModal}
-            leftIcon={<Plus size={16} />}
-            className="hover:scale-105"
-          >
-            Create Cohort
-          </Button>
+          {!viewOnly && (
+            <Button
+              onClick={handleOpenCreateModal}
+              leftIcon={<Plus size={16} />}
+              className="hover:scale-105"
+            >
+              Create Cohort
+            </Button>
+          )}
         </div>
       </div>
 

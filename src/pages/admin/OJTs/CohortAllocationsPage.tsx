@@ -28,6 +28,7 @@ import { exportToCSV } from '../../../lib/csvExport';
 import { useToast } from '../../../toast';
 import { useConfirm } from '../../../confirm';
 import { usePageRefresh } from '../../../context/RefreshContext';
+import { useViewOnly } from '../../../hooks/useViewOnly';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
@@ -79,6 +80,7 @@ export default function CohortAllocationsPage() {
   const { cohortId } = useParams<{ cohortId: string }>();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
+  const viewOnly = useViewOnly();
   const confirm = useConfirm();
   const { tracks, options: trackOptions } = useTracks();
   const trackNameBySlug = new Map(tracks.map(t => [t.slug, t.name]));
@@ -609,6 +611,7 @@ export default function CohortAllocationsPage() {
             )}
           </div>
         </div>
+        {!viewOnly && (
         <div className="flex items-center gap-2 shrink-0">
           {/* Breakdown answers "where did allocation land"; this answers "who
               hasn't got there yet" — the per-student lifecycle, which is the
@@ -734,6 +737,7 @@ export default function CohortAllocationsPage() {
             {publishing ? 'Publishing...' : 'Publish'}
           </button>
         </div>
+        )}
       </div>
 
       {/* Some teams proposed their own project and its mentor review isn't a
