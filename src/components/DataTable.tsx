@@ -275,16 +275,22 @@ export default function DataTable<T extends object>({
 
   return (
     <div className={`flex flex-col bg-zinc-850 overflow-hidden ${containerSizing}`}>
-      <div className="p-4 border-b border-zinc-750 flex items-center gap-3 shrink-0">
+      {/* Wraps rather than squeezing: with many filters on the left, a
+          single row used to shrink the search box to nothing. */}
+      <div className="p-4 border-b border-zinc-750 flex flex-wrap items-center gap-3 shrink-0">
         {leftHeaderContent && (
-          <div className="flex items-center gap-3 mr-auto">
+          <div className="flex flex-wrap items-center gap-3 mr-auto">
             {leftHeaderContent}
           </div>
         )}
         {/* The container stays either way: it is also the flex-1 spacer that
             keeps Export and full-screen pushed to the right edge. Only the
             control inside it goes when there is nothing for it to do. */}
-        <div className={`flex items-center gap-3 ${leftHeaderContent ? 'flex-1 max-w-sm' : 'flex-1'}`}>
+        <div
+          className={`flex items-center gap-3 ${leftHeaderContent ? 'flex-1 max-w-sm' : 'flex-1'} ${
+            searchable ? 'min-w-[220px]' : ''
+          }`}
+        >
           {searchable && (
             <>
               <Search size={18} className="text-gray-500 shrink-0" />
