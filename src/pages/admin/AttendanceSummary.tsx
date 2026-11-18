@@ -244,7 +244,9 @@ export default function AttendanceSummary({ cohortId }: { cohortId: string }) {
       <p className="text-xs text-gray-500">
         Attendance % is present ÷ (present + absent + not marked), so a session nobody marked counts as absent.
         Excused sessions are left out, and only sessions that have already started are counted.
-        <AppliedDateRangeNote range={dateRange.appliedRange} />
+        <AppliedDateRangeNote range={dateRange.appliedRange}>
+          {' '}Students with no session in this range are not listed.
+        </AppliedDateRangeNote>
       </p>
       <DataTable<ApiCohortAttendanceRow>
         columns={columns}
