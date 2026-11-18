@@ -59,7 +59,12 @@ export default function DateRangePicker({
   // react-day-picker's range mode always hands back from <= to: a click
   // before the current start moves the start, so the range cannot come out
   // reversed.
-  const handleSelect = (range: DateRange | undefined) => {
+  const handleSelect = (picked: DateRange | undefined, clickedDay: Date) => {
+    // With min=1 the library reads a second click on the start day as
+    // "clear". Read it as a one-day range instead, so start = end is
+    // pickable: click a day twice.
+    const isSecondClickOnStart = !picked && !!startDate && !endDate && toLocalDateOnly(clickedDay) === startDate;
+    const range: DateRange | undefined = isSecondClickOnStart ? { from: clickedDay, to: clickedDay } : picked;
     const nextStart = range?.from ? toLocalDateOnly(range.from) : '';
     const nextEnd = range?.to ? toLocalDateOnly(range.to) : '';
     const hadNoEnd = !endDate;
@@ -120,6 +125,7 @@ export default function DateRangePicker({
             disabled={latestPickable ? { after: latestPickable } : undefined}
             endMonth={latestPickable}
           />
+          <p className="mt-1 px-1 text-[11px] text-gray-500">Click a start and an end day. For one day, click it twice.</p>
         </div>
       )}
     </div>
