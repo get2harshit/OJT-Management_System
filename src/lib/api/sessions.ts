@@ -490,6 +490,79 @@ export async function apiGetCohortAttendance(cohortId: string, params: CohortAtt
   return { data: body.data, pagination: { ...body.pagination, totalPages: body.pagination.pages }, batches: body.batches };
 }
 
+// ── Mentor session summary (admin) ───────────────────────────────────────────
+
+export type MentorSessionSort = 'missed' | 'completion' | 'name';
+
+export interface MentorSessionCounts {
+  completed: number;
+  /** Scheduled or rescheduled, and its end time has passed without anyone completing it. */
+  missed: number;
+  /** Scheduled or rescheduled, and not over yet. */
+  upcoming: number;
+  cancelled: number;
+  /** completed + missed + upcoming. Cancelled sessions are not counted. */
+  scheduled: number;
+  /** completed ÷ (completed + missed), out of 100; null when nothing has come due. */
+  completionPercentage: number | null;
+}
+
+export interface ApiMentorSessionRow extends MentorSessionCounts {
+  mentorId: string;
+  fullName: string;
+  email: string;
+}
+
+export interface MentorSessionParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  /** Mentors staffing any of these track slugs on this OJT. */
+  tracks?: string[];
+  sort?: MentorSessionSort;
+  /** Only sessions on or after this day ('YYYY-MM-DD', IST). */
+  from?: string;
+  /** Only sessions on or before this day ('YYYY-MM-DD', IST). Never before `from`. */
+  to?: string;
+}
+
+export interface MentorSessionPage {
+  data: ApiMentorSessionRow[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  /** Summed over every mentor the filters match, not just this page. */
+  totals: MentorSessionCounts;
+}
+
+function mentorSessionQuery(params: MentorSessionParams): URLSearchParams {
+  const query = new URLSearchParams();
+  if (params.search) query.set('search', params.search);
+  params.tracks?.forEach((track) => query.append('track', track));
+  if (params.sort) query.set('sort', params.sort);
+  if (params.from) query.set('from', params.from);
+  if (params.to) query.set('to', params.to);
+  return query;
+}
+
+export async function apiGetMentorSessionSummary(cohortId: string, params: MentorSessionParams): Promise<MentorSessionPage> {
+  const query = mentorSessionQuery(params);
+  query.set('page', String(params.page ?? 1));
+  query.set('limit', String(params.limit ?? 25));
+  const body = await apiFetch<{
+    data: ApiMentorSessionRow[];
+    pagination: { page: number; limit: number; total: number; pages: number };
+    totals: MentorSessionCounts;
+  }>(`/api/v1/cohorts/${cohortId}/mentor-session-summary?${query.toString()}`);
+  return { data: body.data, pagination: { ...body.pagination, totalPages: body.pagination.pages }, totals: body.totals };
+}
+
+/** Every mentor matching the filters, unpaged, for the CSV export. */
+export async function apiExportMentorSessionSummary(cohortId: string, params: MentorSessionParams): Promise<ApiMentorSessionRow[]> {
+  const query = mentorSessionQuery(params);
+  query.set('all', 'true');
+  const body = await apiFetch<{ data: ApiMentorSessionRow[] }>(`/api/v1/cohorts/${cohortId}/mentor-session-summary?${query.toString()}`);
+  return body.data;
+}
+
 /** Every student matching the filters, unpaged, for the CSV export. */
 export async function apiExportCohortAttendance(cohortId: string, params: CohortAttendanceParams): Promise<ApiCohortAttendanceRow[]> {
   const query = cohortAttendanceQuery(params);
