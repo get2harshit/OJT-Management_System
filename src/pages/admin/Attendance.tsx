@@ -5,20 +5,26 @@ import PageLayout from '../../components/PageLayout';
 import SessionAttendancePanel from '../../components/SessionAttendancePanel';
 import { apiListSessions } from '../../lib/api';
 import AttendanceSummary from './AttendanceSummary';
+import MentorSessionSummary from './MentorSessionSummary';
 
-type AttendanceTab = 'mark' | 'summary';
+type AttendanceTab = 'mark' | 'summary' | 'mentor-sessions';
 
 const TABS: { id: AttendanceTab; label: string; description: string }[] = [
   { id: 'mark', label: 'Mark attendance', description: 'Mark attendance per session — pick a date, then a session on that date.' },
   { id: 'summary', label: 'Student summary', description: "Every student's attendance across the OJT, lowest first." },
+  {
+    id: 'mentor-sessions',
+    label: 'Mentor session attendance',
+    description: "Every mentor's sessions on the OJT — scheduled, completed, missed, upcoming and cancelled.",
+  },
 ];
 
 export default function AdminAttendance() {
   const { cohortId } = useParams<{ cohortId: string }>();
   // In the URL so a link or a refresh lands on the same tab.
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab: AttendanceTab = searchParams.get('tab') === 'summary' ? 'summary' : 'mark';
-  const active = TABS.find((tab) => tab.id === activeTab)!;
+  const active = TABS.find((tab) => tab.id === searchParams.get('tab')) ?? TABS[0];
+  const activeTab = active.id;
 
   const loadSessionsForDate = useCallback(
     async (date: string) => {
@@ -56,6 +62,7 @@ export default function AdminAttendance() {
 
       {cohortId && activeTab === 'mark' && <SessionAttendancePanel loadSessionsForDate={loadSessionsForDate} />}
       {cohortId && activeTab === 'summary' && <AttendanceSummary cohortId={cohortId} />}
+      {cohortId && activeTab === 'mentor-sessions' && <MentorSessionSummary cohortId={cohortId} />}
     </PageLayout>
   );
 }
