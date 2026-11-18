@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import Select from '../../components/Select';
+import DateRangePicker from '../../components/DateRangePicker';
 import {
   apiGetCohortAttendance,
   apiExportCohortAttendance,
@@ -12,6 +13,9 @@ import {
 } from '../../lib/api';
 import type { ApiMentor } from '../../lib/types';
 import { exportToCSV } from '../../lib/csvExport';
+import { toLocalDateOnly } from '../../lib/utils';
+import { useDateRangeFilter, dateRangeFileSuffix } from '../../hooks/useDateRangeFilter';
+import AppliedDateRangeNote from '../../components/AppliedDateRangeNote';
 import { useTracks } from '../../hooks/useTracks';
 import { useToast } from '../../toast';
 import { usePageRefresh } from '../../context/RefreshContext';
@@ -72,6 +76,8 @@ export default function AttendanceSummary({ cohortId }: { cohortId: string }) {
   const thresholdInvalid = parseThreshold(thresholdInput) === 'invalid';
   const [sort, setSort] = useState<CohortAttendanceSort>('percentage');
   const [page, setPage] = useState(1);
+  const backToFirstPage = useCallback(() => setPage(1), []);
+  const dateRange = useDateRangeFilter(backToFirstPage);
   const [limit, setLimit] = useState(25);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -85,8 +91,10 @@ export default function AttendanceSummary({ cohortId }: { cohortId: string }) {
       mentorId: mentorId || undefined,
       belowPercentage,
       sort,
+      from: dateRange.from,
+      to: dateRange.to,
     }),
-    [search, selectedBatches, selectedTracks, mentorId, belowPercentage, sort]
+    [search, selectedBatches, selectedTracks, mentorId, belowPercentage, sort, dateRange.from, dateRange.to]
   );
 
   const loadRows = useCallback(async () => {
@@ -147,7 +155,7 @@ export default function AttendanceSummary({ cohortId }: { cohortId: string }) {
     try {
       const all = await apiExportCohortAttendance(cohortId, filters);
       exportToCSV(
-        `attendance_${cohortId}`,
+        `attendance_${cohortId}${dateRangeFileSuffix(dateRange.appliedRange)}`,
         all.map((row) => ({
           fullName: row.fullName,
           email: row.email,
@@ -236,6 +244,7 @@ export default function AttendanceSummary({ cohortId }: { cohortId: string }) {
       <p className="text-xs text-gray-500">
         Attendance % is present ÷ (present + absent + not marked), so a session nobody marked counts as absent.
         Excused sessions are left out, and only sessions that have already started are counted.
+        <AppliedDateRangeNote range={dateRange.appliedRange} />
       </p>
       <DataTable<ApiCohortAttendanceRow>
         columns={columns}
@@ -283,6 +292,16 @@ export default function AttendanceSummary({ cohortId }: { cohortId: string }) {
               options={mentorOptions}
               placeholder="All Mentors"
               className="min-w-[170px] !text-xs !py-1.5"
+            />
+            <DateRangePicker
+              variant="filter"
+              clearable
+              placeholder="All dates"
+              startDate={dateRange.pickedRange.startDate}
+              endDate={dateRange.pickedRange.endDate}
+              onRangeChange={dateRange.handleRangeChange}
+              // Sessions after today have not happened, so they are never counted.
+              maxDate={toLocalDateOnly(new Date())}
             />
             <label
               className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border shrink-0 ${

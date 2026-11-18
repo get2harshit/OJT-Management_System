@@ -451,6 +451,10 @@ export interface CohortAttendanceParams {
   mentorId?: string;
   belowPercentage?: number;
   sort?: CohortAttendanceSort;
+  /** Only sessions on or after this day ('YYYY-MM-DD', IST). */
+  from?: string;
+  /** Only sessions on or before this day ('YYYY-MM-DD', IST). Never before `from`. */
+  to?: string;
 }
 
 export interface CohortAttendancePage {
@@ -469,6 +473,8 @@ function cohortAttendanceQuery(params: CohortAttendanceParams): URLSearchParams 
   if (params.mentorId) query.set('mentorId', params.mentorId);
   if (params.belowPercentage !== undefined) query.set('belowPercentage', String(params.belowPercentage));
   if (params.sort) query.set('sort', params.sort);
+  if (params.from) query.set('from', params.from);
+  if (params.to) query.set('to', params.to);
   return query;
 }
 
