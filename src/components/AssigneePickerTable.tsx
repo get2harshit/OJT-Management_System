@@ -26,8 +26,9 @@ interface AssigneePickerTableProps {
   studentRows: AssigneePickerStudentRow[];
   teamRows: AssigneePickerTeamRow[];
   batchOptions: { value: string; label: string }[];
-  batchFilter: string;
-  onBatchFilterChange: (value: string) => void;
+  // Several batches at once; empty means every batch.
+  batchFilter: string[];
+  onBatchFilterChange: (value: string[]) => void;
   trackNameBySlug: Map<string, string>;
   selected: Set<string>;
   onSelectedChange: (next: Set<string>) => void;
@@ -84,7 +85,14 @@ export default function AssigneePickerTable({
 
   const filterRow = (
     <div className="flex items-center gap-2">
-      <Select value={batchFilter} onChange={(v) => onBatchFilterChange(v as string)} options={batchOptions} className="w-36" />
+      <Select
+        isMulti
+        value={batchFilter}
+        onChange={onBatchFilterChange}
+        options={batchOptions}
+        placeholder="All Batches"
+        className="min-w-[9rem]"
+      />
       {onModeChange && (
         <Select value={mode} onChange={(v) => onModeChange(v as 'individual' | 'team')} options={modeOptions} className="w-44" />
       )}
