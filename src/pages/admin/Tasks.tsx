@@ -177,7 +177,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
   const [addCandidateStudents, setAddCandidateStudents] = useState<AssigneePickerStudentRow[]>([]);
   const [addCandidateTeams, setAddCandidateTeams] = useState<AssigneePickerTeamRow[]>([]);
   const [addCandidatesLoading, setAddCandidatesLoading] = useState(false);
-  const [addBatchFilter, setAddBatchFilter] = useState('');
+  const [addBatchFilter, setAddBatchFilter] = useState<string[]>([]);
   const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
   const [addingAssignees, setAddingAssignees] = useState(false);
   const navigate = useNavigate();
@@ -293,7 +293,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
     setResubmitComment('');
     setAddAssigneesOpen(false);
     setAddSelected(new Set());
-    setAddBatchFilter('');
+    setAddBatchFilter([]);
   };
 
   const handleEditClick = async (t: ApiTask) => {
@@ -357,7 +357,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
           tracksToUse.map((track) =>
             apiGetTeamsForCohortDetailed(editTaskDetail.cohort_id, {
               track,
-              batch: addBatchFilter || undefined,
+              batch: addBatchFilter.length > 0 ? addBatchFilter : undefined,
               status: 'published',
               limit: 200,
               skipCount: true,
@@ -379,7 +379,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
       } else {
         const results = await Promise.all(
           tracksToUse.map((track) =>
-            apiListStudents({ batch: addBatchFilter ? [addBatchFilter] : undefined, track, publishedOnly: true })
+            apiListStudents({ batch: addBatchFilter.length > 0 ? addBatchFilter : undefined, track, publishedOnly: true })
               // See CreateTaskPage's loadStudentCandidates — ApiStudent.track
               // isn't reliably populated, tag with the track this call was
               // actually scoped to.
@@ -617,7 +617,7 @@ export default function AdminTasks({ onViewTaskSubmissions }: Props) {
   // looked up by the task's own cohort_id, not activeCohort.
   const editCohortBatchOptions = useMemo(() => {
     const cohort = editTaskDetail ? cohorts.find(c => c.id === editTaskDetail.cohort_id) : undefined;
-    return [{ value: '', label: 'All Batches' }, ...(cohort?.allowedBatches ?? []).map(b => ({ value: b, label: b }))];
+    return (cohort?.allowedBatches ?? []).map(b => ({ value: b, label: b }));
   }, [cohorts, editTaskDetail]);
   // Same status palette the rest of the app uses (colour-500 at low opacity),
   // not the darker 900-based shades that read off-theme here.

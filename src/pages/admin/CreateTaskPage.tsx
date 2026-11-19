@@ -135,7 +135,7 @@ export default function CreateTaskPage() {
   // Narrows the assignee-picker table below (both students and teams);
   // sent to the API alongside track so the candidate pool stays server-
   // filtered rather than fetched whole and sliced client-side.
-  const [batchFilter, setBatchFilter] = useState('');
+  const [batchFilter, setBatchFilter] = useState<string[]>([]);
   const [studentCandidates, setStudentCandidates] = useState<AssigneePickerStudentRow[]>([]);
   const [teamCandidates, setTeamCandidates] = useState<AssigneePickerTeamRow[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
@@ -202,7 +202,7 @@ export default function CreateTaskPage() {
   // Batch options come from the cohort's own allowedBatches — matches the
   // candidate pool regardless of which track(s) are selected.
   const uniqueBatches = activeCohort?.allowedBatches || [];
-  const batchOptions = [{ value: '', label: 'All Batches' }, ...uniqueBatches.map(b => ({ value: b, label: b }))];
+  const batchOptions = uniqueBatches.map(b => ({ value: b, label: b }));
 
   // The Track picker (student mode) and the Track filter on the Mentors
   // picker (mentor mode) both need to offer only this cohort's own
@@ -255,7 +255,7 @@ export default function CreateTaskPage() {
     setCandidatesLoading(true);
     return Promise.all(
       selectedTracks.map((track) =>
-        apiListStudents({ batch: batchFilter ? [batchFilter] : undefined, track, publishedOnly: true })
+        apiListStudents({ batch: batchFilter.length > 0 ? batchFilter : undefined, track, publishedOnly: true })
           // ApiStudent.track isn't reliably populated (a student's real
           // track lives on their team's track_id, not a direct column —
           // apiListStudents filters via that join, per StudentRepository).
@@ -293,7 +293,7 @@ export default function CreateTaskPage() {
       selectedTracks.map((track) =>
         apiGetTeamsForCohortDetailed(activeCohort.id, {
           track,
-          batch: batchFilter || undefined,
+          batch: batchFilter.length > 0 ? batchFilter : undefined,
           status: 'published',
           limit: 200,
           skipCount: true,
