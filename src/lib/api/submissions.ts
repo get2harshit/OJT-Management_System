@@ -1,5 +1,6 @@
 import type { PrdSubmission, PrdStatus, SubmissionKind } from '../types';
 import { apiFetch, cachedFetch, invalidateCached } from './client';
+import type { DirectUploadKind } from '../directUpload';
 
 const SUBMISSIONS_TTL = 15_000;
 
@@ -73,26 +74,24 @@ export async function apiGetPrdSubmission(id: string): Promise<PrdSubmission> {
   return apiFetch<PrdSubmission>(`/api/v1/submissions/${id}`);
 }
 
-// Student — submits a task's deliverable and creates the versioned record in
-// one call. The shape depends on the task's category:
-//   document → a `file` (PDF)
-//   text     → `content` (a written answer)
-//   link     → `content` (one or more URLs, newline-separated)
+// Student — submits a written task deliverable and creates the versioned
+// record in one call:
+//   text → `content` (a written answer)
+//   link → `content` (one or more URLs, newline-separated)
+// A PDF or video goes through apiSubmitFileTaskWork instead.
 // `taskId` links it to the task; the backend transitions that task to review.
 export async function apiSubmitTaskWork(params: {
   allocationId: string;
-  submissionType: SubmissionKind;
+  submissionType: Extract<SubmissionKind, 'text' | 'link'>;
   taskId: string;
-  file?: File;
-  content?: string;
+  content: string;
 }): Promise<PrdSubmission> {
-  const { allocationId, submissionType, file, content, taskId } = params;
+  const { allocationId, submissionType, content, taskId } = params;
   const formData = new FormData();
   formData.append('allocationId', allocationId);
   formData.append('submissionType', submissionType);
   formData.append('taskId', taskId);
-  if (file) formData.append('file', file);
-  if (content) formData.append('content', content);
+  formData.append('content', content);
   const res = await apiFetch<{ message: string; submission: PrdSubmission }>('/api/v1/submissions/upload', {
     method: 'POST',
     body: formData,
@@ -111,34 +110,32 @@ export async function apiSubmitTaskWork(params: {
   return res.submission;
 }
 
-interface VideoUploadInit {
+interface DirectUploadInit {
   uploadUrl: string;
   gcsUri: string;
   contentType: string;
   expiresAt: string;
 }
 
-// Step 1 of a video submission: asks the backend for a short-lived signed
-// URL to PUT the file straight to Google Cloud Storage.
-async function apiInitiateVideoUpload(params: {
-  allocationId: string;
-  taskId: string;
-  fileSizeBytes: number;
-}): Promise<VideoUploadInit> {
-  return apiFetch<VideoUploadInit>('/api/v1/submissions/video/init', {
+// Step 1 of a file submission (video or PDF): asks the backend for a
+// short-lived signed URL to PUT the file straight to Google Cloud Storage.
+async function apiInitiateDirectUpload(
+  kind: DirectUploadKind,
+  params: { allocationId: string; taskId: string; fileSizeBytes: number }
+): Promise<DirectUploadInit> {
+  return apiFetch<DirectUploadInit>(`/api/v1/submissions/${kind}/init`, {
     method: 'POST',
     body: JSON.stringify(params),
   });
 }
 
 // Step 2: the browser PUTs the file directly to GCS — never through our own
-// backend, since proxying a 100MB body through it would mean buffering the
-// whole thing in server memory and risking the platform's own request-size
-// ceiling. Plain XMLHttpRequest, not fetch, because fetch has no upload
-// progress event. Only Content-Type is set: the signed URL's signature is
-// bound to exactly that header, and adding our usual auth header would just
-// be extra noise GCS never asked for.
-function putVideoToSignedUrl(
+// backend, since Cloud Run refuses request bodies over 32 MiB and proxying
+// would buffer the whole file in server memory. Plain XMLHttpRequest, not
+// fetch, because fetch has no upload progress event. Only Content-Type is
+// set: the signed URL's signature is bound to exactly that header, and adding
+// our usual auth header would just be extra noise GCS never asked for.
+function putFileToSignedUrl(
   uploadUrl: string,
   file: File,
   contentType: string,
@@ -155,21 +152,20 @@ function putVideoToSignedUrl(
     };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`Video upload failed (${xhr.status})`));
+      else reject(new Error(`Upload failed (${xhr.status})`));
     };
-    xhr.onerror = () => reject(new Error('Video upload failed — check your connection and try again'));
+    xhr.onerror = () => reject(new Error('Upload failed — check your connection and try again'));
     xhr.send(file);
   });
 }
 
 // Step 3: tells the backend the upload finished so it can verify the object
 // actually in GCS (size, content type) and create the submission record.
-async function apiCompleteVideoUpload(params: {
-  allocationId: string;
-  taskId?: string;
-  gcsUri: string;
-}): Promise<PrdSubmission> {
-  const res = await apiFetch<{ message: string; submission: PrdSubmission }>('/api/v1/submissions/video/complete', {
+async function apiCompleteDirectUpload(
+  kind: DirectUploadKind,
+  params: { allocationId: string; taskId?: string; gcsUri: string }
+): Promise<PrdSubmission> {
+  const res = await apiFetch<{ message: string; submission: PrdSubmission }>(`/api/v1/submissions/${kind}/complete`, {
     method: 'POST',
     body: JSON.stringify(params),
   });
@@ -184,20 +180,21 @@ async function apiCompleteVideoUpload(params: {
   return res.submission;
 }
 
-// Student — submits a video task deliverable end to end: gets a signed
-// upload URL, PUTs the file straight to GCS, then confirms the upload.
+// Student — submits a video or PDF task deliverable end to end: gets a
+// signed upload URL, PUTs the file straight to GCS, then confirms the upload.
 // `onProgress` (0-100) drives the upload progress bar — the confirm step
 // itself is fast, so the caller doesn't need its own separate indicator.
-export async function apiSubmitVideoTaskWork(params: {
+export async function apiSubmitFileTaskWork(params: {
+  kind: DirectUploadKind;
   allocationId: string;
   taskId: string;
   file: File;
   onProgress?: (percent: number) => void;
 }): Promise<PrdSubmission> {
-  const { allocationId, taskId, file, onProgress } = params;
-  const init = await apiInitiateVideoUpload({ allocationId, taskId, fileSizeBytes: file.size });
-  await putVideoToSignedUrl(init.uploadUrl, file, init.contentType, onProgress);
-  return apiCompleteVideoUpload({ allocationId, taskId, gcsUri: init.gcsUri });
+  const { kind, allocationId, taskId, file, onProgress } = params;
+  const init = await apiInitiateDirectUpload(kind, { allocationId, taskId, fileSizeBytes: file.size });
+  await putFileToSignedUrl(init.uploadUrl, file, init.contentType, onProgress);
+  return apiCompleteDirectUpload(kind, { allocationId, taskId, gcsUri: init.gcsUri });
 }
 
 // Mentor/Admin — moves a PRD submission to under_review, changes_requested, or approved.

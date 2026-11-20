@@ -9,7 +9,7 @@ import {
   apiGetMyAllocation,
   apiGetMySubmissions,
   apiSubmitTaskWork,
-  apiSubmitVideoTaskWork,
+  apiSubmitFileTaskWork,
   apiGetPrdDownloadUrl,
 } from '../../lib/api';
 import { apiListTasks } from '../../lib/api/tasks';
@@ -18,11 +18,9 @@ import { statusDotClass, submissionKindOf, submissionStatusLabel } from '../../l
 import { useSubmissionViewerUrl } from '../../hooks/useSubmissionViewerUrl';
 import { usePageRefresh } from '../../context/RefreshContext';
 import LateBadge from '../../components/LateBadge';
+import { DIRECT_UPLOAD_RULES, maxSizeLabel, pickedFileProblem, type DirectUploadKind } from '../../lib/directUpload';
 
-// A hard cap on a video submission — enforced again server-side (the real
-// authority), checked here too so picking an oversized file fails instantly
-// instead of after a slow upload attempt.
-const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
+const isFileKind = (kind: SubmissionKind): kind is DirectUploadKind => kind === 'video' || kind === 'document';
 
 // A task's category maps to how its deliverable is submitted/rendered.
 const submissionKindForCategory = (category?: ApiTaskCategory | null): SubmissionKind =>
@@ -205,9 +203,7 @@ export default function StudentSubmissions({
   // only briefly while opening) — drives which input the modal shows.
   const activeTask = submittableTasks.find((t) => t.id === activeTaskId);
   const activeKind = submissionKindForCategory(activeTask?.category);
-  const canUpload =
-    !!allocation &&
-    (activeKind === 'document' || activeKind === 'video' ? !!selectedFile && !fileError : !!uploadText.trim());
+  const canUpload = !!allocation && (isFileKind(activeKind) ? !!selectedFile && !fileError : !!uploadText.trim());
 
   const closeUploadModal = () => {
     setUploadModalOpen(false);
@@ -218,17 +214,9 @@ export default function StudentSubmissions({
     setActiveTaskId(null);
   };
 
-  const selectVideoFile = (file: File | null) => {
+  const selectFile = (kind: DirectUploadKind, file: File | null) => {
     setSelectedFile(file);
-    if (!file) {
-      setFileError(null);
-    } else if (file.type !== 'video/mp4') {
-      setFileError('Only MP4 videos are supported.');
-    } else if (file.size > MAX_VIDEO_SIZE_BYTES) {
-      setFileError(`Video exceeds the ${MAX_VIDEO_SIZE_BYTES / (1024 * 1024)}MB limit.`);
-    } else {
-      setFileError(null);
-    }
+    setFileError(file ? pickedFileProblem(kind, file) : null);
   };
 
   const handleUpload = async () => {
@@ -237,9 +225,10 @@ export default function StudentSubmissions({
     setUploadProgress(0);
     setError(null);
     try {
-      if (activeKind === 'video') {
+      if (isFileKind(activeKind)) {
         if (!selectedFile) return;
-        await apiSubmitVideoTaskWork({
+        await apiSubmitFileTaskWork({
+          kind: activeKind,
           allocationId: allocation.id,
           taskId: activeTaskId,
           file: selectedFile,
@@ -250,8 +239,7 @@ export default function StudentSubmissions({
           allocationId: allocation.id,
           submissionType: activeKind,
           taskId: activeTaskId,
-          file: activeKind === 'document' ? selectedFile ?? undefined : undefined,
-          content: activeKind === 'document' ? undefined : uploadText.trim(),
+          content: uploadText.trim(),
         });
       }
       await loadSubmissions();
@@ -431,36 +419,22 @@ export default function StudentSubmissions({
             <>
               {/* The input depends on the task's category — the title already
                   says what's expected, so there's no type picker. */}
-              {activeKind === 'document' && (
+              {isFileKind(activeKind) && (
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">Document (PDF)</label>
-                  <label className="border-2 border-dashed border-zinc-750 rounded-lg p-6 text-center hover:border-gold/40 transition-colors block cursor-pointer">
-                    <input
-                      type="file"
-                      accept="application/pdf"
-                      className="hidden"
-                      onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-                    />
-                    <Upload size={24} className="mx-auto text-gray-500 mb-2" />
-                    <p className="text-sm text-gray-500">
-                      {selectedFile ? selectedFile.name : 'Click to select a PDF'}
-                    </p>
+                  <label className="block text-sm text-gray-400 mb-1">
+                    {activeKind === 'video' ? 'Video (MP4' : 'Document (PDF'}, up to{' '}
+                    {maxSizeLabel(DIRECT_UPLOAD_RULES[activeKind])})
                   </label>
-                </div>
-              )}
-              {activeKind === 'video' && (
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Video (MP4, up to 100MB)</label>
                   <label className="border-2 border-dashed border-zinc-750 rounded-lg p-6 text-center hover:border-gold/40 transition-colors block cursor-pointer">
                     <input
                       type="file"
-                      accept="video/mp4"
+                      accept={DIRECT_UPLOAD_RULES[activeKind].accept}
                       className="hidden"
-                      onChange={(e) => selectVideoFile(e.target.files?.[0] ?? null)}
+                      onChange={(e) => selectFile(activeKind, e.target.files?.[0] ?? null)}
                     />
                     <Upload size={24} className="mx-auto text-gray-500 mb-2" />
                     <p className="text-sm text-gray-500">
-                      {selectedFile ? selectedFile.name : 'Click to select an MP4 video'}
+                      {selectedFile ? selectedFile.name : DIRECT_UPLOAD_RULES[activeKind].pickPrompt}
                     </p>
                   </label>
                   {fileError && <p className="text-xs text-red-400 mt-1.5">{fileError}</p>}
